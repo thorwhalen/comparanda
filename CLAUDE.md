@@ -28,8 +28,23 @@ see ADR-0003. Display aliases are a per-analysis setting, never hard-coded.
 
     docs/domain-model.md     vocabulary and the corrections to the original sketch
     docs/adr/                decisions; `proposed` means genuinely open
-    docs/research/           what to research before building, and the findings
+    docs/adr/PENDING-ACTIONS.md  ADR changes the research recommends, not yet settled
+    docs/research/README.md  the research ledger — start here to find out what is known
+    docs/research/           briefs (questions), sections/ (working notes), findings-*.md (synthesis)
     examples/                public-domain example datasets (ADR-0016)
+    skills/                  dev skills — tooling for the agent building this repo
+
+## Dev skills
+
+Real files in `skills/`, surfaced through relative symlinks in `.claude/skills/`. These are for
+the agent *building* comparanda, not for end users.
+
+- **`comparanda-dev-schema-change`** — read before touching the schema, JSON Schema emission, or
+  migrations. Owns the migration-with-version-1 rule, the policy-vs-mechanism line, and the
+  cross-repo protocol with `rubricator`.
+- **`comparanda-dev-a11y-gate`** — read before writing any view code. Owns the four constraints
+  that fail a PR on their own: never colour alone, contrast computed from the rendered
+  background, a keyboard path for every drag, missingness distinguishable without colour.
 
 ## Companion repo
 
