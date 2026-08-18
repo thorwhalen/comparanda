@@ -1,0 +1,18 @@
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+.vite/
+.turbo/
+*.tsbuildinfo
+.claude/handoffs/
+
+# ADR-0016 pre-publish denylist: names terms from the private originating work.
+# It must NEVER be committed to a public repo -- committing it would leak exactly what it protects.
+.denylist
+.denylist.txt
