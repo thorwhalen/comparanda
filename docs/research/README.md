@@ -116,6 +116,13 @@ needs its full chain.
   (best idea / worst mistake each), annotation anchoring, and the framework and bundle measurements
   under the mailed-file constraint.
 
+## Review
+
+- [`phase0-review-candidates.md`](./phase0-review-candidates.md) — an **incomplete** adversarial
+  review of the round-1 recommendations. 77 candidates raised, 21 adjudicated and all 21 refuted,
+  56 never adjudicated. Its measured precision is low; entries are questions to check, not
+  findings. Covers both repositories. One candidate survived hand-checking and became an issue.
+
 ## Open questions
 
 Carried forward. The two findings files hold 37 between them; these are the ones that gate work or
