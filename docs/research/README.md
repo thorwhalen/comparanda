@@ -118,10 +118,13 @@ needs its full chain.
 
 ## Review
 
-- [`phase0-review-candidates.md`](./phase0-review-candidates.md) — an **incomplete** adversarial
-  review of the round-1 recommendations. 77 candidates raised, 21 adjudicated and all 21 refuted,
-  56 never adjudicated. Its measured precision is low; entries are questions to check, not
-  findings. Covers both repositories. One candidate survived hand-checking and became an issue.
+- [`phase0-review.md`](./phase0-review.md) — an adversarial review of the round-1 *recommendations*
+  (their citations were audited separately). Covers both repositories. **Read its calibration
+  section first**: a refutation-biased first round refuted 21 of 21 and was worthless; a fair
+  second round found 7 confirmed, 22 partly real, 27 refuted — and downgraded **every one** of the
+  twelve candidates that claimed `blocking`. Treat severity claims as upper bounds.
+- [`phase0-review-candidates.md`](./phase0-review-candidates.md) — the superseded interim file,
+  written when the review was half-finished. Kept for the calibration record; do not act on it.
 
 ## Open questions
 

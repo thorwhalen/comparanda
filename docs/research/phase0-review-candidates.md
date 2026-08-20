@@ -1,5 +1,18 @@
 # Phase 0 review — candidates, not findings
 
+> [!IMPORTANT]
+> **Superseded by [`phase0-review.md`](./phase0-review.md). Do not act on this file.**
+>
+> This was written while the review was half-finished: 21 of 77 candidates had been examined, all
+> 21 refuted, and 56 were unadjudicated because a usage limit cut the run short. The 56 have since
+> been adjudicated fairly, and the result is materially different — 7 confirmed and 22 partly real,
+> with **every** candidate that claimed `blocking` downgraded.
+>
+> It is kept, rather than deleted, because its framing was correct at the time and the record of
+> what a half-finished review looked like is part of the calibration story the successor tells.
+
+
+
 **Read the next paragraph before you read anything else in this file.**
 
 This is the output of an *incomplete* adversarial review pass, and its measured precision is
