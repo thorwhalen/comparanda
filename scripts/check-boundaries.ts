@@ -93,8 +93,23 @@ function check(): Violation[] {
  * core bundle contain any view input? tsup writes a metafile we can read.
  */
 function checkBundle(): Violation[] {
-  const meta = join(ROOT, 'dist', 'metafile-esm.json');
-  if (!existsSync(meta)) return [];
+  const dist = join(ROOT, 'dist');
+  const meta = join(dist, 'metafile-esm.json');
+
+  // Before a build there is no dist, and running the static half alone is the
+  // intended behaviour. But a dist with no metafile means the build stopped
+  // emitting one and this check has quietly become a no-op -- which is exactly
+  // the failure it exists to prevent, so say so instead of passing.
+  if (!existsSync(dist)) return [];
+  if (!existsSync(meta)) {
+    return [{
+      file: 'dist/metafile-esm.json',
+      line: 0,
+      rule: 'bundle-check-cannot-run',
+      text: 'dist exists but no metafile was emitted; set `metafile: true` in tsup.config.ts. ' +
+        'Without it the core-contains-no-view check silently passes.',
+    }];
+  }
   const m = JSON.parse(readFileSync(meta, 'utf8')) as {
     outputs: Record<string, { inputs?: Record<string, unknown>; entryPoint?: string }>;
   };

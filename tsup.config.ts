@@ -16,4 +16,8 @@ export default defineConfig({
   sourcemap: true,
   treeshake: true,
   splitting: true,
+  // Emitted so `scripts/check-boundaries.ts` can read which inputs actually
+  // landed in the core bundle. Without it that check silently passes, which is
+  // worse than not having it.
+  metafile: true,
 });

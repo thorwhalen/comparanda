@@ -1,2 +1,6 @@
+# pnpm refuses to run a dependency's build scripts unless it is allow-listed.
+# esbuild ships a prebuilt binary through a postinstall script, and both tsup and
+# vitest are dead without it. Without this, `pnpm install` exits non-zero and CI
+# fails before it reaches a single check.
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true

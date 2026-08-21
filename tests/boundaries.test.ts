@@ -58,3 +58,61 @@ describe('DOM-global detection', () => {
     expect(usesDomGlobal('const x = adapter.document.title;', 'document')).toBe(false);
   });
 });
+
+/**
+ * The bundle half of the check — ADR-0005's stated condition of acceptance,
+ * that a core-only consumer gets no view code.
+ *
+ * It reads the esbuild metafile tsup emits. Two things can make it a no-op: the
+ * metafile not being emitted at all, and the field names drifting. The first is
+ * now a loud failure in the script; the second is what this covers, by running
+ * the same predicate against a synthetic metafile of each shape.
+ */
+type Metafile = { outputs: Record<string, { entryPoint?: string; inputs?: Record<string, unknown> }> };
+
+function coreBundleLeaks(meta: Metafile): string[] {
+  const leaks: string[] = [];
+  for (const [, info] of Object.entries(meta.outputs)) {
+    if (info.entryPoint !== 'src/index.ts') continue;
+    for (const input of Object.keys(info.inputs ?? {})) {
+      if (input.includes('src/view/')) leaks.push(input);
+    }
+  }
+  return leaks;
+}
+
+describe('core bundle isolation', () => {
+  it('flags view code that reached the core bundle', () => {
+    const leaked: Metafile = {
+      outputs: {
+        'dist/index.js': {
+          entryPoint: 'src/index.ts',
+          inputs: { 'src/core/schema/analysis.ts': {}, 'src/view/matrix.ts': {} },
+        },
+      },
+    };
+    expect(coreBundleLeaks(leaked)).toEqual(['src/view/matrix.ts']);
+  });
+
+  it('does not flag view code in the view bundle, which is where it belongs', () => {
+    const fine: Metafile = {
+      outputs: {
+        'dist/index.js': { entryPoint: 'src/index.ts', inputs: { 'src/core/schema/analysis.ts': {} } },
+        'dist/view/index.js': { entryPoint: 'src/view/index.ts', inputs: { 'src/view/index.ts': {} } },
+      },
+    };
+    expect(coreBundleLeaks(fine)).toEqual([]);
+  });
+
+  it('reads the real metafile when one has been built', async () => {
+    // Skipped rather than failed when dist is absent: `pnpm test` is expected to
+    // work without a prior build. CI builds first, so there it does run.
+    const { existsSync, readFileSync } = await import('node:fs');
+    const path = new URL('../dist/metafile-esm.json', import.meta.url).pathname;
+    if (!existsSync(path)) return;
+    const meta = JSON.parse(readFileSync(path, 'utf8')) as Metafile;
+    const entries = Object.values(meta.outputs).filter((o) => o.entryPoint === 'src/index.ts');
+    expect(entries.length, 'no core entry in the metafile — field names may have drifted').toBe(1);
+    expect(coreBundleLeaks(meta)).toEqual([]);
+  });
+});
