@@ -226,6 +226,42 @@ them to be reinvented at Phase 3.
 Which views ship in v1 is ADR-0026's business. These three commitments are analysis-side and belong
 here.
 
+### 2026-08-21 — Rank acceptability is `rankShare`, and it renders inside `RankFlow`
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+The "Sensitivity gains a perturbation" amendment above ships Monte-Carlo rank acceptability and
+leaves two problems behind it. Neither touches the analysis, which ships exactly as described.
+
+**1. The word `acceptability` is already taken, and the SMAA quantity gives way.** The "Veto screening
+is conjunctive screening" amendment above states that "the schema field is **`acceptability`**", and
+shipped code carries it — `Measurement.acceptability`, `Criterion.acceptability`, `screen()`. SMAA's
+rank acceptability index is an unrelated quantity: the share of sampled weight vectors placing an
+alternative at a given rank. One word, two meanings, one document is the confusion ADR-0020 exists to
+prevent for `weight`, and ADR-0019 has already declined a literature term — `certain` — for colliding
+with something this schema stores.
+
+The SMAA quantity is **`rankShare`**: per alternative, per rank, the share of sampled weight vectors
+that put it there. That is the field name and the label the reader sees. "Rank acceptability index" is
+cited once, to [13, 14], as the name the method carries in its own literature, and is used nowhere
+else. In this repository `acceptability` means the conjunctive screening floor and nothing else.
+SMAA's *central weight vector* keeps its name; it collides with nothing.
+
+**2. It does not get its own view.** That amendment justified recording the analysis here on the
+ground that "a user-facing analysis with its own question, its own view, its own random number
+generator and its own sample count must not exist only in an export list". The question, the
+generator and the sample count stand; **the claim to a view is withdrawn**. Which views ship in v1 is
+ADR-0026's business, as the "views that realise these analyses" amendment above says in as many
+words, and ADR-0026 admits a view only where it repairs a named weakness of the matrix.
+`rankShare` answers "is this conclusion stable under a different weighting", which is `RankFlow`'s
+stated job and is already behind the same weighted-aggregation opt-in.
+
+`rankShare` therefore renders **inside `RankFlow`**, as a per-alternative distribution across the rank
+columns shown beside the realised ranking. ADR-0026's roster stays at five views. The justifying
+sentence is corrected to that extent and to no other.
+
 ## References
 Cited from the Amendments only. The full reasoning and the wider literature are in
 `docs/research/findings-terminology.md` §§ 3–5 and `docs/research/findings-visualisation.md` § 2.

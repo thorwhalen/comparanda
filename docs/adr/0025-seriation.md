@@ -128,6 +128,29 @@ them, because groups are data (ADR-0008).
   we must supply our own distance regardless, and OLO plus agglomerative clustering is a few
   hundred lines of pure, DOM-free, highly testable code — exactly what belongs in `core`.
 
+## Amendments
+
+### 2026-08-21 — An unusable ordinal criterion is excluded and reported, never silently degraded
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+The Consequences say "an ordinal `(criterion, measure)` pair must declare its ordered levels or the
+ordinal branch degrades silently to nominal". **That degradation is unreachable and must not be
+implemented.** ADR-0018 makes the declaration *required* on ordinal, interval and ratio and enforces
+it at the schema boundary, and `validateMeasurement` in `src/core/schema/measurement.ts` does so —
+refusing both a missing range on any ordered level and a missing level list on a nominal or ordinal
+one. A pair that fails that check never reaches a seriation run. ADR-0018 wins; this sentence
+overstated what could still go wrong.
+
+Where it could nonetheless arise — a caller seriating an analysis it never validated — **the criterion
+is excluded from the Gower distance and named in the result**, exactly as ADR-0019 clause 7 names the
+criteria a dominance basis left out, and exactly as this ADR's `minOverlap` guard already parks an
+alternative visibly rather than placing it wrongly. Nothing in this repository degrades a level of
+measurement silently: a quiet fall-through to nominal would change the arrangement while leaving the
+`AxisOrder` provenance that exists to explain the arrangement unable to say so.
+
 ## References
 The evidence and the full derivation are in `docs/research/findings-visualisation.md` § 1, with
 working notes and the eight interaction rules in `docs/research/sections/c5-seriation.md` § 5. The

@@ -39,6 +39,8 @@ See [../domain-model.md](../domain-model.md) for the full treatment and the reas
 
 ### 2026-08-21 — The grid is a performance matrix, and the no-total argument rests on non-compensation
 
+- **Status:** accepted
+- **Date:** 2026-08-21
 - **Deciders:** Thor Whalen
 
 Phase 0 terminology research revisited this ADR's vocabulary and found one name wrong and one

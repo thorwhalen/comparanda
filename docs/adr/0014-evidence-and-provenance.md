@@ -38,6 +38,8 @@ should be recording `unknown` rather than a confident number.
 
 ### 2026-08-21 — The detail panel is load-bearing, excerpts are content fields, and a blank can be evidenced
 
+- **Status:** accepted
+- **Date:** 2026-08-21
 - **Deciders:** Thor Whalen
 
 Phase 0 research confirmed this ADR. The span-not-document rule and the resolver indirection both

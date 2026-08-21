@@ -137,6 +137,20 @@ the field belongs in v1.
   that you must not, would be indefensible the first time anyone read the source. ADR-0003 earned its
   keep here by disqualifying a plausible choice on principle rather than on taste.
 
+## Amendments
+
+### 2026-08-21 — The lowest independence rung is `shared-context`
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+The Decision's labelling rule names the lowest rung `in-session`. ADR-0011's amendment of the same
+date establishes the field this rule depends on and fixes its ladder — `shared-context`, `resampled`,
+`perturbed`, `independent`, `consensus` — which is the spelling `src/core/schema/provenance.ts`
+already carries and the one ADR-0024 and the cross-repo document read. **Read `in-session` as
+`shared-context`.** Nothing else in the rule changes, and `in-session` is reserved for nothing.
+
 ## References
 The reasoning is in `docs/research/findings-terminology.md` §5 and its working note
 `docs/research/sections/c4-agreement.md`. The labelling rule and the interval-rendering requirement

@@ -122,6 +122,38 @@ schema-driven. Locking adds one field, one state to the marker area, and an attr
 event. Sequences add one small collection to the same `DataProvider<T>` shape everything else
 already uses (ADR-0006 as amended), so they cost a store registration rather than an architecture.
 
+### 2026-08-21 — View state has three classes of field, and only one is a dirty-state dimension
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+Clause 2 says the dimensions "are those the view-state schema declares", which reads every field of
+view state as a dimension. ADR-0027 then persists the matrix's roving `tabindex` position in view
+state, so that returning from the detail panel lands in the cell you left — and under clause 2 as
+written, moving the keyboard cursor would raise the "Modified" marker and offer a "Revert cursor
+position" control. That is precisely the false-positive marker this ADR exists to prevent, arriving
+through a field clause 1's test does not catch: a cursor position is not a *derivation* of the
+arrangement, it is not part of the arrangement at all.
+
+**ADR-0027 gives way on nothing; this ADR was the one that assumed too much.** The view-state schema
+declares each field into one of **three classes**, beside the field rather than in the comparison
+function:
+
+- **arrangement** — alternative order, criterion order, grouping, selection, active encoding, sort,
+  filter, `transposed`. Saved with the view, compared, individually revertable. These are clause 2's
+  dimensions, unchanged.
+- **derivation** — `AxisOrder.provenance`. Saved and restored, never compared. Clause 1, unchanged.
+- **session** — where the reader is rather than what they arranged: the roving `tabindex` position,
+  scroll offset, whether the detail panel is open. **Never written into a saved view at all**, so it
+  cannot be compared, cannot be reverted, and cannot mark a view modified. It is per-user,
+  per-device and ephemeral, which is what ADR-0006's Context already says view state is.
+
+A field with no declared class **fails schema validation** rather than defaulting into the dimension
+set. Clause 2's "a dimension added later gets its revert for free" stands for arrangement fields and
+is exactly what must not happen to the other two; defaulting is how this contradiction would arrive
+a second time.
+
 ## References
 1. [Getting started with Airtable views — Airtable Support](https://support.airtable.com/docs/getting-started-with-airtable-views)
 2. [Database views, filters, sorts & groups — Notion Help Center](https://www.notion.com/help/views-filters-and-sorts)

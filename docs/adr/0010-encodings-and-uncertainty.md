@@ -222,3 +222,30 @@ first is better served by juxtaposition [1].
 8. [Fact Sheet: New Rule on the Accessibility of Web Content and Mobile Apps Provided by State and Local Governments (ADA Title II) — US Department of Justice](https://www.ada.gov/resources/2024-03-08-web-rule/)
 9. [CSS Color Adjustment Module Level 1 — Forced Colors Mode — W3C](https://www.w3.org/TR/css-color-adjust-1/)
 10. [Understanding SC 1.4.11: Non-text Contrast (Level AA) — W3C WAI, WCAG 2.2](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html)
+
+### 2026-08-21 — Clause 7's channel assignment defers to ADR-0028
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+Clause 7 names three non-hue channels for a missing cell — border for `terminal`, glyph shape for the
+reason, fill pattern for `informative` — and it should not have named any of them. ADR-0009 clause 9
+delegates "which non-colour channel carries which flag" to the accessibility ADR on non-colour
+channels, and clause 4 above says in its own words that "ADR-0028 owns the channel details". Clause 7
+specified where it was meant to defer, and it collided: fill pattern and ADR-0028's hatch density are
+one visual variable, and ADR-0028 gives that variable to confidence.
+
+**ADR-0028's assignment governs**, in its amendment of the same date. What stands in clause 7 is
+everything that is not a channel assignment: structural absence as the absence of ink and contingent
+absence as the presence of a placeholder, the figure-versus-ground argument for why that survives
+greyscale, print and forced colors, and both prohibitions — never take a missing cell's colour from
+the sequential value ramp, and never let a missing cell's accessible name be an em dash. The
+three-channel list is withdrawn.
+
+One part is withdrawn outright rather than relocated: **`informative` gets no visual channel.**
+ADR-0009 clause 2 makes it advisory where `structural` and `terminal` are mandatory, and neither
+`docs/domain-model.md` nor the shipped `MissingCodeFacts` carries it. An advisory flag that is
+derivable from the reason code the glyph already shows does not earn a third visual variable in a
+40 × 30 px cell. It is carried in words instead — in the cell's accessible name and in the legend's
+missingness key, which clause 7 already requires to exist.

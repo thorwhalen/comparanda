@@ -133,6 +133,29 @@ should give the workaround.
   encoding. `vite-plugin-singlefile` is the maintained thing, and Quarto's `embed-resources` reached
   the same conclusion for the same artifact shape.
 
+## Amendments
+
+### 2026-08-21 — Decision 4's tree-shaking example names two encodings that do not exist
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+Decision 4 illustrates per-consumer tree-shaking with "a consumer who only wants `value` and
+`uncertainty-suppressed` does not ship `disagreement`, `staleness` and `completeness`". `staleness`
+and `completeness` are not encodings. ADR-0010's amendment of the same date fixes the roster at
+eight — `value`, `categorical`, `uncertainty-suppressed`, `missingness`, `datum`, `disagreement`,
+`disagreement-spread`, `consensus-suppressed` — and completeness is an analysis (ADR-0015), not a
+mapping to a visual channel. The example was written against ADR-0010's Consequences, which names
+"rater disagreement, staleness, completeness" as *future lenses* rather than as registered
+encodings.
+
+**Read the example as `disagreement`, `disagreement-spread` and `datum`.** Nothing about decision 4
+changes: registries are still populated explicitly by the composition root, self-registration is
+still a correctness defect under `"sideEffects": false`, and the tree-shaking argument is unaffected
+by which three encodings the sentence happens to name. ADR-0010 clause 8 restates this same sentence
+and is to be read the same way; per ADR-0001 neither is corrected by an edit.
+
 ## References
 1. `docs/research/sections/c8-prior-art-and-stack.md` §B.5 — measured bundle sizes, conditions, and
    the raw-versus-gzip argument. Condensed in `docs/research/findings-visualisation.md` §5.1 and

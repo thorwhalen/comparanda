@@ -99,6 +99,48 @@ slower pipeline.
 - *Treating forced colors and print as a later accessibility pass.* Precisely what BRIEF.md's
   "accessibility is not a later pass" refuses.
 
+## Amendments
+
+### 2026-08-21 — The missing-cell channels, and the forced-colors block never overwrites a meaning-bearing border
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+ADR-0009 clause 9 delegates the flag-to-channel assignment here; ADR-0010 clause 7 pre-empted it with
+a different one, and the two collide on fill pattern versus hatch density. This section takes the
+delegation and rules. ADR-0010's list is withdrawn in its amendment of the same date.
+
+**A missing cell and a valued cell are disjoint populations, and "two channels, never overloaded" is
+stated over each.** A missing cell carries no value and therefore no confidence, so the hatch channel
+is not in play there; a valued cell carries no reason code, so the glyph channel is not in play
+there. Within each population no channel does another's job, which is what the Decision's rule was
+protecting.
+
+For a **missing** cell, three channels:
+
+- **figure versus ground carries `structural`** — a structurally absent cell has no ink and reads as
+  though there were no cell there, a contingently absent one carries a placeholder (ADR-0010
+  clause 7).
+- **glyph shape carries the reason code**, keyed on the closed core six, custom codes rendering their
+  `broader` ancestor's glyph beside their own text label. Unchanged from the Decision.
+- **border style carries `terminal`** — dashed means work remains, solid means this is the answer.
+  Style is the right variable for it: forced-colors mode overrides border *colour* and leaves border
+  *style* alone [1], and a dashed rule prints with backgrounds off.
+
+For a **valued** cell, hatch density carries confidence at no more than three levels, exactly as the
+Decision says, and nothing else ever rides on it.
+
+**The forced-colors block restores border colour and width, never border style.** The Decision
+requires that block to restore "an explicit border on every cell" because the ramp that gave the grid
+its structure is gone. Written as a blanket `border: 1px solid`, it would delete the one missing-cell
+channel that survives forced colors by construction. Restore the colour and the width; take the style
+from the cell's `terminal` flag there as everywhere else.
+
+`informative` is deliberately absent from this assignment. ADR-0010's amendment of the same date
+records why: it is advisory, it is not in the shipped schema, and it is derivable from the reason code
+the glyph already carries.
+
 ## References
 The evidence and the full argument are in `docs/research/findings-visualisation.md` § 4.5; the
 coarse-channel reasoning is in § 3.4 and the two-channel resolution in § 7.6. Viénot (1999) and

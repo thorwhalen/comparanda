@@ -110,3 +110,27 @@ workaround. A user should learn it from the tool, not from a bounce.
 #### References
 
 1. [Anti-malware protection for email in Microsoft 365 — common attachments filter, Microsoft Learn](https://learn.microsoft.com/en-us/defender-office-365/anti-malware-protection-about) — `htm`/`html` sit on the opt-in additional list rather than the default blocked set, and the true-type matcher recognises them regardless of extension.
+
+### 2026-08-21 — The analysis port is `AnalysisSource`; `DataSource` is retired
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+The Decision's port table names the analysis port `DataSource`; ADR-0021 refers to "the `DataSource`
+behind the port (ADR-0013)"; and ADR-0006's 2026-08-21 amendment introduces
+`AnalysisSource = DataProvider<Analysis>`, glossed as "ADR-0013's `DataSource`", without retiring
+either. Two live names for one port across three ADRs is what ADR-0020 was written to stop happening
+to `weight`.
+
+**`AnalysisSource` is the name**, on the ground ADR-0006's amendment restated the ports on: now that
+every port is a `DataProvider<T>`, "DataSource" describes all five equally and distinguishes none of
+them, while `AnalysisSource` says what it provides and matches the `…Source` / `…Store` / `…Sink`
+convention its four siblings already follow. Read the Decision's port table, and ADR-0021's
+`DataSource`, as `AnalysisSource`. The name `DataSource` is **retired and reserved for nothing**; no
+port in this package may carry it.
+
+Nothing about the port changes. It is still load-and-subscribe over the analysis, still a degenerate
+one-item provider (ADR-0006 clause 2), still bound to a frozen in-memory implementation in the
+standalone shape, and still the enforcement point for ADR-0021's disclosure projection in the
+connected shape.

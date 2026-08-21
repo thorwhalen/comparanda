@@ -44,6 +44,8 @@ same rules without reimplementing them.
 
 ### 2026-08-21 — JSON Schema emission is a build-time, Node-only concern
 
+- **Status:** accepted
+- **Date:** 2026-08-21
 - **Deciders:** Thor Whalen
 
 Phase 0 research confirmed this ADR by reading zodal's source rather than its README: the affordance

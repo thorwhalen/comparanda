@@ -97,6 +97,40 @@ coordination document still needs the matching entry.
 - *Leave `range` optional and warn.* A warning next to a number is read as a number. The refusal is
   the product.
 
+## Amendments
+
+### 2026-08-21 — `ordered` means order without a direction of preference
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+Decision clause 1 defines `ordered` as "an explicit best-to-worst order over levels that would
+otherwise read as nominal". ADR-0019 clause 7 excludes it from strict dominance because it "declares
+an order without a direction of preference". Best-to-worst *is* a direction, so the two definitions
+cannot both be implemented. **This ADR's definition gives way**, on three grounds:
+
+- **The purpose clause 1 introduced it for is already served without it.** A criterion whose levels
+  genuinely run best-to-worst is not nominal — it is **ordinal**, and declaring it so, with an ordered
+  level list and `preference: increasing` (or `decreasing`), gives dominance, screening and the datum
+  encoding everything they need. A fifth preference kind that duplicates that is a second source of
+  truth for one fact, which is the objection this same Decision raises against putting `direction`
+  inside `range`.
+- **Otherwise `ordered` is useless.** ADR-0019 excludes nominal criteria from the comparison basis and
+  excludes `ordered` as well, so under clause 1's reading a criterion carrying it enters no flagship
+  analysis at all — the opposite of what clause 1 was for.
+- **Shipped code already reads it ADR-0019's way.** `admitsDominance` in
+  `src/core/schema/measurement.ts` admits `increasing`, `decreasing` and `target` only, and
+  `validateMeasurement` rejects any preference other than `none` on a nominal level.
+
+**`ordered` means: the levels carry an intrinsic order, and no direction along it is preferred.**
+Ranking, sorting and seriation (ADR-0025) are legal on it; dominance, screening and the datum encoding
+are not, and each names it among the criteria it excluded (ADR-0019 clause 7). It requires an ordered
+level of measurement.
+
+Clause 1's closing sentence goes with the definition: a **nominal** criterion takes `preference: none`.
+`ordered` is not available there, because a set of levels carrying an order is not a nominal scale.
+
 ## References
 1. [Multi-criteria analysis: a manual — Department for Communities and Local Government (2009)](https://researchonline.lse.ac.uk/id/eprint/12761/1/Multi-criteria_Analysis.pdf)
 2. [Dominance-based Rough Set Approach, basic ideas and main trends — Błaszczyński, Greco, Matarazzo & Szeląg, arXiv:2210.03233 (2022)](https://arxiv.org/pdf/2210.03233) — the "consistent family of criteria" properties are attributed there to Roy & Bouyssou (1993), which was not read directly.

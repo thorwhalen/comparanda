@@ -43,6 +43,8 @@ not a preference.
 
 ### 2026-08-21 — Confirmed; the examples moved onto the critical path, and no ADR quotes an unreachable source
 
+- **Status:** accepted
+- **Date:** 2026-08-21
 - **Deciders:** Thor Whalen
 
 Phase 0 research left this ADR untouched — nothing it found argues with any clause here, and the

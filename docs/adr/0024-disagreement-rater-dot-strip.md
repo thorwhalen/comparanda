@@ -110,6 +110,34 @@ falls on the view now, while it is cheap, rather than after the study.
 - *Tastle and Wierman's consensus measure as the ramp's domain.* It computes the arithmetic mean of
   the ordinal codes internally; rejected in ADR-0022, where the ramp's domain is decided.
 
+## Amendments
+
+### 2026-08-21 — The `disagreement-spread` ramp's domain is `(1 − A) / 2`
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+The Decision gives the ramp "the per-cell dispersion statistic ADR-0022 defines **and nothing else**"
+and stops before naming the transform. ADR-0022 supplies van der Eijk's **A**, which is an
+*agreement* measure over [−1, +1] — +1 unanimity, 0 uniform, −1 perfect bimodality. A sequential
+light-to-dark ramp laid on A directly renders unanimity darkest, which is the inverse of the reading
+this encoding exists to give and a defect that looks entirely correct in review. The transform was
+assumed rather than decided; this decides it.
+
+**The ramp's domain is `disagreementIndex = (1 − A) / 2`**, over [0, 1]: 0 is unanimity and takes the
+lightest step, 1 is perfect bimodality and takes the darkest. It is a monotone re-expression of A and
+not a second statistic — ADR-0022 still owns the scalar, its computation, and the rule that A is never
+shown without `n` beside it. Naming it apart from A is the point: the two run in opposite directions,
+and code that passes one where the other is meant must not read as plausible. ADR-0010 § 1's "a
+dispersion statistic and nothing else" is satisfied, not amended: `disagreementIndex` is a dispersion
+index and value never enters the mapping.
+
+`consensus-suppressed` takes the same `disagreementIndex`, so that suppression rises with
+disagreement exactly as it rises with uncertainty in `uncertainty-suppressed`. That is ADR-0010
+clause 2's `û = 1 − normalise(confidence)` hazard a second time, and it earns the same treatment —
+unit-test the corners.
+
 ## References
 The full reasoning, including the per-cell shape statistic and the rejected agreement coefficients,
 is in `docs/research/findings-terminology.md` § 5; open question 11 in that document's § 9 is the

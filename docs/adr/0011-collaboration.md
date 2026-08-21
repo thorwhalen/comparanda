@@ -147,6 +147,49 @@ participant cannot contest is precisely the thing to avoid [7]; any arrangement 
 starting point a human adjusts (ADR-0008) and any analysis states its method at the point of use
 (ADR-0015).
 
+### 2026-08-21 — Every assertion declares its `independence`
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+Point 3 above makes multi-rater values first-class and names what an assertion retains — author,
+timestamp, justification — and stops one field short. ADR-0022 labels every agreement statistic by
+"the lowest `independence` rung present in the assertion set it was computed over"; ADR-0024 gives the
+rater dot strip's accessible name the same dependency. Both consume the field and no ADR creates it:
+it exists in `src/core/schema/provenance.ts` and as a cross-repo request in
+`docs/cross-repo-coordination.md` § 5.1. It was **assumed rather than decided**, and this decides it,
+here, because this ADR owns what a multi-rater assertion stores.
+
+**Every assertion carries `independence`, one rung of a five-rung ladder, weakest first:**
+
+| rung | means |
+|---|---|
+| `shared-context` | produced in the same conversation or transcript as other assertions here; prior judgements were visible, or at least present |
+| `resampled` | a fresh draw from the same model and prompt — independent of the other draws' text, not of the model's priors |
+| `perturbed` | deliberately varied; the companion `perturbation` field records what was varied |
+| `independent` | a genuinely separate assessor — a different person, or a different model with no shared context |
+| `consensus` | not an independent observation at all; an agreed value that supersedes what it was derived from |
+
+Three rules come with it, and they are why the field is v1 rather than later.
+
+- **It is required, and there is no permissive default.** Five draws of one model and five people who
+  argued in a room are the same bytes without it, and ADR-0022's labelling rule then reduces to
+  guessing. Where a rung is genuinely unrecorded — a document migrated in from before the field — the
+  value is `shared-context`, the most cautious rung, never `independent`. A silently optimistic
+  default is the exact failure this field exists to prevent, wearing the schema's own clothes.
+- **The rung is a property of the assertion, not of its author.** A person shown the panel's scores
+  before rating is `shared-context`; an agent run with no prior context is `independent`. Deriving it
+  from `Author.kind` reintroduces the conflation it removes.
+- **The spelling above governs.** ADR-0022's Decision calls the lowest rung `in-session`; that is this
+  rung under an earlier spelling, corrected in ADR-0022's amendment of the same date. `in-session` is
+  reserved for nothing.
+
+This is the migration hazard the Consequences above already name for multi-rater, arriving through
+provenance instead. An assertion set migrated in after the fact cannot be relabelled honestly,
+because nobody can afterwards recover which it was — so every agreement statistic computed before the
+field lands is permanently uninterpretable (`docs/cross-repo-coordination.md` § 5.1).
+
 ## References
 The reasoning and the citation-integrity pass behind these entries are in
 `docs/research/findings-terminology.md` § 6.1–6.2 and `docs/research/findings-visualisation.md`

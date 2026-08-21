@@ -12,11 +12,11 @@ with confidence. Complete, tidy, good for a first look and for docs screenshots.
 **`relocation.json` — deliberately messy.** Choosing a city to live in. Must exercise the parts of
 the schema the clean example does not:
 
-- all five missingness codes, including a whole `not-applicable` group block;
+- all six missingness codes, including a whole `not-applicable` group block;
 - criterion groups (cost / climate / logistics) and alternative groups (Europe / Asia / Americas);
 - an inapplicable group pair;
 - multi-rater values with real disagreement on at least three cells;
-- a criterion marked as a veto with a threshold;
+- a criterion carrying an `acceptability` floor with a threshold (a "veto criterion" in UI prose);
 - mixed levels of measurement — ordinal ratings, a ratio-scaled cost, a nominal category, a boolean;
 - evidence links, some with embedded excerpts, at least one deliberately stale;
 - annotation threads, one resolved, one open, one anchored to a criterion rather than a cell.

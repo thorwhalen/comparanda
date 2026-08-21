@@ -69,6 +69,24 @@ responsibility, and Phase 5 should assert on the bytes it emits.
   only honours it and announces its effect. Recorded so the next reader need not re-check it. See
   `docs/research/phase0-review.md`, the ADR-0021 entry.
 
+## Amendments
+
+### 2026-08-21 — The connected enforcement point is the `AnalysisSource`
+
+- **Status:** accepted
+- **Date:** 2026-08-21
+- **Deciders:** Thor Whalen
+
+The Decision names the connected enforcement point "the `DataSource` behind the port (ADR-0013)".
+ADR-0013's amendment of the same date retires that name: every port is a `DataProvider<T>`
+(ADR-0006), so `DataSource` distinguishes none of the five, and the analysis port is
+**`AnalysisSource`**. Read this ADR's `DataSource` as `AnalysisSource`. The name `DataSource` is
+reserved for nothing and no port in this package may carry it.
+
+Nothing about the enforcement changes: the projection is still applied where the analysis crosses to
+the reader — by the port's provider in connected mode, by `comparanda build` before the payload is
+inlined in standalone mode.
+
 ## References
 The reasoning is in `docs/research/findings-terminology.md` § 7, Conflict B, and the enforcement
 clause comes from the surviving review finding on this draft in `docs/research/phase0-review.md`.
