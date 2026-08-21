@@ -18,7 +18,7 @@ import { Thread, Suggestion } from './annotations.js';
 import {
   MissingCodeDeclaration, tallyCompleteness, type Completeness,
 } from './missingness.js';
-import { validateMeasurement } from './measurement.js';
+import { validateMeasurement, type Measurement } from './measurement.js';
 import { validateEvidence } from './evidence.js';
 
 /**
@@ -211,7 +211,7 @@ export function validateAnalysis(input: unknown): {
 /** Index cells for O(1) lookup. Rebuilt rather than stored; it is derived. */
 export function cellIndex(a: Analysis): Map<string, Cell> {
   const m = new Map<string, Cell>();
-  for (const c of a.cells) m.set(`${c.alternativeId} ${c.criterionId} ${c.measure}`, c);
+  for (const c of a.cells) m.set(`${c.alternativeId}\u0000${c.criterionId}\u0000${c.measure}`, c);
   return m;
 }
 
@@ -221,7 +221,49 @@ export function getCell(a: Analysis, alternativeId: string, criterionId: string,
   );
 }
 
-/** Reduce one cell, resolving the level of measurement so `mean` can be refused. */
+/**
+ * A prepared reader over one analysis and one measure.
+ *
+ * Every analysis that walks the whole matrix -- completeness, dominance,
+ * screening -- was otherwise scanning `cells` linearly per lookup, making a full
+ * pass quadratic in the number of cells. At a hundred alternatives that is
+ * millions of comparisons to answer a question the matrix already knows.
+ *
+ * Building it also resolves each criterion's measurement once rather than per
+ * cell, which was the other repeated lookup.
+ */
+export interface CellReader {
+  measure: string;
+  read(alternativeId: string, criterionId: string): Reduced | undefined;
+  measurementOf(criterionId: string): Measurement | undefined;
+}
+
+export function makeCellReader(a: Analysis, measure: string): CellReader {
+  const cells = cellIndex(a);
+  const measurements = new Map<string, Measurement | undefined>();
+  for (const c of a.criteria) measurements.set(c.id, measurementFor(c, measure));
+
+  return {
+    measure,
+    measurementOf: (criterionId) => measurements.get(criterionId),
+    read(alternativeId, criterionId) {
+      const cell = cells.get(`${alternativeId} ${criterionId} ${measure}`);
+      if (!cell) return undefined;
+      const m = measurements.get(criterionId);
+      return reduce(cell, {
+        defaultReduction: a.defaultReduction,
+        ...(m ? { level: m.level } : {}),
+      });
+    },
+  };
+}
+
+/**
+ * Reduce one cell.
+ *
+ * Convenient for a single lookup. Anything walking the matrix should build a
+ * {@link CellReader} once instead -- this scans `cells` linearly.
+ */
 export function reducedValue(
   a: Analysis, alternativeId: string, criterionId: string, measure: string,
 ): Reduced | undefined {
@@ -256,6 +298,7 @@ export function completeness(
   const alts = scope.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id);
   const crits = scope.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
   const cells: { hasValue: boolean; code?: string }[] = [];
+  const reader = makeCellReader(a, scope.measure);
 
   for (const altId of alts) {
     for (const critId of crits) {
@@ -263,7 +306,7 @@ export function completeness(
         cells.push({ hasValue: false, code: 'not-applicable' });
         continue;
       }
-      const r = reducedValue(a, altId, critId, scope.measure);
+      const r = reader.read(altId, critId);
       if (r?.value !== undefined) cells.push({ hasValue: true });
       else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code });
       else cells.push({ hasValue: false, code: 'not-assessed' });

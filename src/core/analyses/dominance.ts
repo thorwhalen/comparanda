@@ -29,7 +29,7 @@
  * missing data, measured in alternatives you cannot yet set aside.
  */
 import type { Analysis } from '../schema/analysis.js';
-import { isInapplicable, reducedValue } from '../schema/analysis.js';
+import { isInapplicable, reducedValue, makeCellReader } from '../schema/analysis.js';
 import { measurementFor } from '../schema/structure.js';
 import { admitsDominance, isOrdered, type Measurement } from '../schema/measurement.js';
 import { resolveMissingCode } from '../schema/missingness.js';
@@ -298,28 +298,118 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
   };
 }
 
-/**
- * Which blanks, if filled, would most reduce the provisional set.
- *
- * A crude pair-counting proxy for value of information, and labelled as one: it
- * counts how many undecided pairs each blank cell participates in. It is not a
- * decision-theoretic VOI and should not be presented as one -- but "fill these
- * six cells next" is a far more useful answer than "the matrix is incomplete".
- */
-export function blanksWorthFilling(
-  a: Analysis, opts: DominanceOptions,
-): { alternativeId: string; criterionId: string; undecidedPairs: number }[] {
-  const result = dominance(a, opts);
-  const undecided = new Set(result.provisional);
-  const out: { alternativeId: string; criterionId: string; undecidedPairs: number }[] = [];
+export interface BlankWorthFilling {
+  alternativeId: string;
+  criterionId: string;
+  /**
+   * How many pairwise comparisons involving this alternative would be **settled**
+   * by learning this one cell -- that is, comparisons whose verdict differs
+   * between the cell resolving to its worst possible value and to its best.
+   */
+  decidesPairs: number;
+  /** The comparisons in question, so a caller can show what is at stake. */
+  against: string[];
+}
 
-  for (const altId of undecided) {
+/**
+ * Which blanks, if filled, would actually decide something.
+ *
+ * The honest version of "value of information". For each blank cell it pins the
+ * cell to the bottom of its declared range and then to the top, recomputes the
+ * pairwise dominance verdicts involving that alternative, and counts the pairs
+ * whose verdict *changes*. A cell that gives the same answer whichever way it
+ * resolves is worth nothing to fill, however uncertain it looks.
+ *
+ * It is still a proxy, not a decision-theoretic VOI: it counts decided pairs
+ * rather than weighing what the decision is worth, and it assumes the extremes
+ * bracket the outcome, which holds because dominance here is monotone in each
+ * cell. But it discriminates, which is the whole job -- "fill these three cells
+ * next" is a far more useful answer than "the matrix is incomplete".
+ *
+ * Cost is O(blanks x alternatives x criteria), which at the sizes this tool
+ * targets is nothing.
+ */
+export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlankWorthFilling[] {
+  const result = dominance(a, opts);
+  if (result.basis.length === 0) return [];
+
+  const altIds = opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id);
+  const reader = makeCellReader(a, opts.measure);
+
+  // Rebuild the oriented intervals once, exactly as `dominance` does.
+  type Row = Map<string, Interval | 'excluded'>;
+  const rows = new Map<string, Row>();
+  const measurements = new Map<string, Measurement>();
+  for (const cid of result.basis) {
+    const m = reader.measurementOf(cid);
+    if (m) measurements.set(cid, m);
+  }
+  for (const altId of altIds) {
+    const row: Row = new Map();
     for (const cid of result.basis) {
-      const r = reducedValue(a, altId, cid, opts.measure);
-      if (r?.value !== undefined) continue;
+      const m = measurements.get(cid)!;
+      const raw = intervalFor(a, altId, cid, m, opts.measure);
+      row.set(cid, raw === 'excluded' || raw === undefined ? 'excluded' : (orient(raw, m) ?? 'excluded'));
+    }
+    rows.set(altId, row);
+  }
+
+  const tolerance = (cid: string): number =>
+    opts.usePracticalTolerance ? (measurements.get(cid)?.thresholds?.indifference ?? 0) : 0;
+
+  const dominates = (rx: Row, ry: Row): boolean => {
+    let strict = false;
+    let compared = false;
+    for (const cid of result.basis) {
+      const ix = rx.get(cid), iy = ry.get(cid);
+      if (ix === 'excluded' || iy === 'excluded' || !ix || !iy) continue;
+      compared = true;
+      const q = tolerance(cid);
+      if (ix.lo < iy.hi - q) return false;
+      if (ix.lo > iy.hi + q) strict = true;
+    }
+    return compared && strict;
+  };
+
+  /** The verdict pair for (x, y), as a comparable token. */
+  const verdict = (rx: Row, ry: Row): string =>
+    `${dominates(rx, ry) ? 1 : 0}${dominates(ry, rx) ? 1 : 0}`;
+
+  const out: BlankWorthFilling[] = [];
+
+  for (const altId of altIds) {
+    const row = rows.get(altId)!;
+    for (const cid of result.basis) {
+      if (reader.read(altId, cid)?.value !== undefined) continue;
       if (isInapplicable(a, altId, cid)) continue;
-      out.push({ alternativeId: altId, criterionId: cid, undecidedPairs: undecided.size - 1 });
+      const current = row.get(cid);
+      if (current === 'excluded' || !current) continue;
+
+      // Pin to each end of the (already oriented) interval and see what moves.
+      const atWorst: Row = new Map(row);
+      atWorst.set(cid, { lo: current.lo, hi: current.lo });
+      const atBest: Row = new Map(row);
+      atBest.set(cid, { lo: current.hi, hi: current.hi });
+
+      const against: string[] = [];
+      for (const otherId of altIds) {
+        if (otherId === altId) continue;
+        const other = rows.get(otherId)!;
+        if (verdict(atWorst, other) !== verdict(atBest, other)) against.push(otherId);
+      }
+
+      if (against.length > 0) {
+        out.push({ alternativeId: altId, criterionId: cid, decidesPairs: against.length, against });
+      }
     }
   }
-  return out.sort((x, y) => y.undecidedPairs - x.undecidedPairs);
+
+  // Ties broken by id so the ordering is reproducible -- a ranking whose order
+  // depends on Map iteration would differ between runs on the same data.
+  return out.sort(
+    (x, y) =>
+      y.decidesPairs - x.decidesPairs ||
+      x.alternativeId.localeCompare(y.alternativeId) ||
+      x.criterionId.localeCompare(y.criterionId),
+  );
 }
