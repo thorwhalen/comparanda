@@ -54,25 +54,27 @@ function buildAnalysis(
     inapplicable: [],
     rejectedCriteria: [],
     cells: rows.flatMap((r) =>
-      r.values.flatMap((v, i) =>
-        v === undefined
-          ? [{
-              alternativeId: r.id, criterionId: CRITERIA[i]!, measure: 'score',
-              assertions: [{
-                id: `${r.id}-${i}`, authorId: 'a', at: '2026-01-01T00:00:00Z',
-                missing: { code: 'not-assessed' },
-                evidence: [], independence: 'independent' as const, version: 1,
-              }],
-            }]
-          : [{
-              alternativeId: r.id, criterionId: CRITERIA[i]!, measure: 'score',
-              assertions: [{
-                id: `${r.id}-${i}`, authorId: 'a', at: '2026-01-01T00:00:00Z',
-                value: v,
-                evidence: [], independence: 'independent' as const, version: 1,
-              }],
-            }],
-      ),
+      r.values.map((v, i) => {
+        // Built as one shape with a conditional payload rather than two branches
+        // returning different shapes -- the latter widens badly under inference
+        // and the error surfaces in `tsc` but not in the test run.
+        const assertion: Record<string, unknown> = {
+          id: `${r.id}-${i}`,
+          authorId: 'a',
+          at: '2026-01-01T00:00:00Z',
+          evidence: [],
+          independence: 'independent',
+          version: 1,
+        };
+        if (v === undefined) assertion.missing = { code: 'not-assessed' };
+        else assertion.value = v;
+        return {
+          alternativeId: r.id,
+          criterionId: CRITERIA[i]!,
+          measure: 'score',
+          assertions: [assertion],
+        };
+      }),
     ),
     authors: [{ id: 'a', displayName: 'test', kind: 'human' }],
     procedures: [], rounds: [], threads: [], suggestions: [], missingCodes: [],
