@@ -27,8 +27,8 @@ see ADR-0003. Display aliases are a per-analysis setting, never hard-coded.
 ## Where things live
 
     docs/domain-model.md     vocabulary and the corrections to the original sketch
-    docs/adr/                decisions; `proposed` means genuinely open
-    docs/adr/PENDING-ACTIONS.md  ADR changes the research recommends, not yet settled
+    docs/adr/                decisions, all settled; corrections go in as dated amendments
+    docs/adr/README.md       the ADR index, grouped by theme
     docs/research/README.md  the research ledger — start here to find out what is known
     docs/research/           briefs (questions), sections/ (working notes), findings-*.md (synthesis)
     examples/                public-domain example datasets (ADR-0016)

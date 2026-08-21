@@ -18,12 +18,12 @@ Three rules make the chain trustworthy:
   **EVIDENCE** (literature, cited) or **(reasoning, not evidence)**. Sources that could not be
   reached are marked, not quietly dropped.
 - **No ADR is edited here.** ADRs are immutable once accepted (ADR-0001). Research recommends; a
-  human settles. The consolidated list is [`../adr/PENDING-ACTIONS.md`](../adr/PENDING-ACTIONS.md).
+  human settles. All round-1 actions have been applied; the settled set is indexed at [`../adr/README.md`](../adr/README.md).
 - **Sections stay as the evidence of record.** A findings file is a synthesis and will be shorter
   than its evidence; when a claim needs its full chain, read the section it came from.
 
 New-ADR numbers below use the **consolidated allocation proposed in
-[`../adr/PENDING-ACTIONS.md`](../adr/PENDING-ACTIONS.md)**, not the per-document numbers used
+[`../adr/README.md`](../adr/README.md)**, not the per-document numbers used
 inside the findings files — the two research rounds were written in parallel and collided on
 0017–0025. The mapping is in that file.
 
@@ -162,7 +162,7 @@ so nobody re-derives them — are in
 **Needs a human, not more research.**
 
 - **The ADR number allocation.** Two research rounds proposed overlapping blocks. A consolidated
-  allocation is recommended in [`../adr/PENDING-ACTIONS.md`](../adr/PENDING-ACTIONS.md); nothing in
+  allocation is recommended in [`../adr/README.md`](../adr/README.md); nothing in
   the content depends on the numbers, but they must be assigned once, in one pass, before any ADR
   is written.
 - **Re-verify the ELECTRE chapter's wording.** It underpins the most consequential correction in

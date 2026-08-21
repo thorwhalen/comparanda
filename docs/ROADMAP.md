@@ -5,7 +5,7 @@ each one unblocks, where the gates are, and what gets cut first if time runs sho
 disagree, the issues win.
 
 Read [`../BRIEF.md`](../BRIEF.md) for the phase plan this elaborates,
-[`adr/PENDING-ACTIONS.md`](adr/PENDING-ACTIONS.md) for the decisions Phase 0 must settle, and
+[`adr/README.md`](adr/README.md) for the decisions Phase 0 must settle, and
 [`research/README.md`](research/README.md) for the ledger that says what is already known, and
 [`cross-repo-coordination.md`](cross-repo-coordination.md) for the gates, the schema-request protocol
 and the version handshake with `rubricator`. That file is canonical for anything involving both
@@ -66,7 +66,7 @@ done. It gates no development work.
 
 ## 1. Settle the ADRs (Phase 0)
 
-`adr/PENDING-ACTIONS.md` holds thirteen new ADRs (0017–0029), nine amendments (ADRs 0003, 0006, 0007,
+The settled set adds thirteen ADRs (0017–0029) and nine amendments (ADRs 0003, 0006, 0007,
 0008, 0009, 0010, 0011, 0013, 0015) and five confirm-with-note records (ADRs 0002, 0004, 0005, 0014,
 0016). ADR-0012 was not examined and carries no recommendation. Nothing in it has been
 applied; ADRs are immutable once accepted, so research recommends and a human settles. The issues
@@ -88,7 +88,7 @@ Four items genuinely need a human rather than more reading: the number allocatio
 correction can be re-verified (the substance survives without it, the quotation should not be cited
 until someone with library access checks it); and whether ADR-0008 is amended or superseded.
 
-**Done when** `adr/PENDING-ACTIONS.md` is deleted, because its content lives in the ADRs it names.
+**Done.** `adr/PENDING-ACTIONS.md` has been deleted; its content lives in the ADRs it named.
 
 ## 2. Repository scaffolding and CI (Phase 1)
 

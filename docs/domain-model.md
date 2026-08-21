@@ -18,11 +18,23 @@ that already have standard names.
 | The question being decided | **subject** | decision context, decision problem, goal | One per analysis. Free text plus optional structured framing. |
 | The things being compared | **alternatives** | alternatives (MCDA), options, candidates | Rows, by convention. |
 | The things they are compared on | **criteria** | criteria (MCDA), attributes, dimensions | Columns, by convention. |
-| The whole grid | **matrix** | decision matrix, evaluation matrix, performance matrix, consequence table | |
+| The whole grid | **matrix** | performance matrix, consequence table | See the note below on why *not* "decision matrix". |
 | One (alternative, criterion) intersection | **cell** | performance value | |
 | A distinct quantity stored per cell | **measure** | — | e.g. `score`, `confidence`. See the correction below. |
 | A stored datum | **value** | performance value | Typed by its criterion × measure. |
 | A qualified absence | **missing** | missingness, observation status | Always carries a reason code. |
+
+**Why not "decision matrix".** It is the most common name and we do not use it, for two reasons.
+Its canonical definition puts *criteria on rows* — transposed from our convention, so the phrase
+imports an orientation we do not follow. And it names the artefact after the decision, when the
+grid holds *consequences*: the decision is what a reader does after reading it, which is exactly
+the stance ADR-0015 takes in refusing a default verdict. The practitioner traditions we draw on
+say **performance matrix** or **consequence table**, and the second is the friendlier of the two
+for a non-specialist. See ADR-0003.
+
+Note also that row/column orientation is genuinely unstandardised across the literature — the
+Pugh tradition puts concepts on columns and criteria on rows — so `transposed` is view state, not
+a fact about the data.
 
 **Domain aliasing is required, not optional.** "Alternatives" and "criteria" are the internal
 names; every deployment must be able to relabel them in the UI without touching data — *directions*
@@ -85,22 +97,45 @@ the pair, with a per-criterion default to keep the common case terse.
 
 ## Missingness
 
-A blank must never be ambiguous. Every absent value carries a reason:
+A blank must never be ambiguous. Every absent value carries a reason code from a closed core set,
+and every code declares two flags that analyses key on **instead of the literal code** — so a
+deployment can extend the set without breaking anything downstream.
 
-| Code | Means | Typically set by |
-|---|---|---|
-| `not-applicable` | This criterion does not apply to this alternative — often a whole group × group block | author or schema rule |
-| `not-assessed` | Nobody has looked yet | default for a new cell |
-| `pending` | Deliberately deferred; someone was asked to leave it blank for now | author or agent instruction |
-| `unknown` | Someone looked and could not determine it | assessor or agent |
-| `withheld` | Known but not shown here — confidentiality, licensing | author |
+| Code | Means | structural | terminal |
+|---|---|---|---|
+| `not-applicable` | This criterion does not apply to this alternative — often a whole group × group block | yes | yes |
+| `not-assessed` | Nobody has looked yet. The default for a new cell | no | no |
+| `deferred` | Deliberately left for now; someone was asked to skip it | no | no |
+| `not-evidenced` | We looked, and the sources are **silent** | no | yes |
+| `indeterminate` | We looked, and the sources do **not settle it** — they conflict, or they underdetermine the level | no | yes |
+| `withheld` | Known, but not shown here — confidentiality, licensing | no | yes |
+
+**`structural`** means the cell *should* be empty: excluded from completeness counts, and removed
+from a dominance comparison rather than widened to the criterion's range. **`terminal`** means
+someone looked and this is the answer; non-terminal absences are work outstanding.
+
+**On `not-evidenced` and `indeterminate`.** These were one code, called `unknown`. Splitting them
+is not cosmetic. "Nobody has written this down" and "the sources disagree" lead to completely
+different next actions — the first is a gap in the corpus, the second is a genuine finding about
+a contested question — and collapsing them destroys the most decision-relevant signal an agent
+produces. An agent authoring this document must distinguish them, which is why the distinction is
+in the schema and not left to a note field.
+
+`pending` was renamed `deferred` and `unknown` was retired in favour of the pair above. See
+ADR-0009.
+
+**Extending the set.** An analysis may declare additional codes. Each must name exactly one core
+code as its `broader`, so a consumer that knows only the core set can still classify it by
+following that link. Defaults for the two flags follow `broader` unless explicitly overridden, and
+an override is a real claim about the code's meaning rather than a convenience.
 
 `not-applicable` and `not-assessed` must be visually distinguishable, not merely different in the
-data. They mean opposite things about whether work remains.
+data. They mean opposite things about whether work remains: one reads as *correctly nothing*, the
+other as *a gap*.
 
-The distinction between *structurally* absent (`not-applicable`) and *contingently* absent
-(everything else) should be queryable: "what is left to do" is a real question the tool should
-answer.
+The distinction between *structurally* absent and *contingently* absent must be queryable: "what
+is left to do" is a real question the tool should answer, at analysis, row, column and group
+scope.
 
 ---
 
