@@ -1,0 +1,88 @@
+{
+  "name": "comparanda",
+  "version": "0.1.0",
+  "description": "A schema and a view for structured comparison: alternatives x criteria, with qualified missingness, confidence, evidence links and no default aggregation.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Thor Whalen",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thorwhalen/comparanda.git"
+  },
+  "homepage": "https://github.com/thorwhalen/comparanda#readme",
+  "bugs": "https://github.com/thorwhalen/comparanda/issues",
+  "keywords": [
+    "mcda",
+    "decision-matrix",
+    "comparison",
+    "schema",
+    "zodal",
+    "seriation",
+    "pareto"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./view": {
+      "types": "./dist/view/index.d.ts",
+      "import": "./dist/view/index.js",
+      "require": "./dist/view/index.cjs"
+    },
+    "./store": {
+      "types": "./dist/store/index.d.ts",
+      "import": "./dist/store/index.js",
+      "require": "./dist/store/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "schema"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "emit-schema": "tsx scripts/emit-json-schema.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint:boundaries": "tsx scripts/check-boundaries.ts",
+    "check": "pnpm typecheck && pnpm lint:boundaries && pnpm test",
+    "prepublishOnly": "pnpm check && pnpm build && pnpm emit-schema"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "preact": "^10.24.0"
+  },
+  "peerDependenciesMeta": {
+    "preact": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "preact": "^10.24.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

@@ -16,3 +16,6 @@ coverage/
 # It must NEVER be committed to a public repo -- committing it would leak exactly what it protects.
 .denylist
 .denylist.txt
+
+# probe script, deleted once the schema stabilises
+scripts/probe-zod.mjs
