@@ -81,9 +81,42 @@ export const Independence = z.enum([
 ]);
 export type Independence = z.infer<typeof Independence>;
 
-/** Whether assertions at this level may enter an inter-rater agreement statistic. */
-export function countsAsIndependentRater(i: Independence): boolean {
+/**
+ * Whether an assertion at this rung may enter an inter-rater agreement statistic.
+ *
+ * Takes `undefined` because the field is optional and absent means *unknown
+ * independence* -- which must not count. Anything other than a recorded
+ * `independent` is excluded, so the safe answer is the default answer rather
+ * than something a caller has to remember.
+ */
+export function countsAsIndependentRater(i: Independence | undefined): boolean {
   return i === 'independent';
+}
+
+/**
+ * The most cautious reading of a set of assertions: the weakest rung any of
+ * them records, with an unrecorded rung counting as weaker than all of them.
+ *
+ * An agreement statistic must be labelled by this, not by the best rung
+ * present -- one shared-context assertion in a set of five makes the whole set
+ * correlated, and reporting it as agreement between five raters overstates it.
+ */
+export function weakestIndependence(
+  assertions: readonly { independence?: Independence | undefined }[],
+): Independence | 'unknown' {
+  if (assertions.length === 0) return 'unknown';
+  const rank: Record<Independence, number> = {
+    'shared-context': 0, resampled: 1, perturbed: 2, independent: 3, consensus: 4,
+  };
+  // Any unrecorded rung short-circuits: one assertion whose independence nobody
+  // wrote down makes the whole set's independence unknown, and no amount of
+  // confidently-labelled company rescues it.
+  let weakest: Independence = 'consensus';
+  for (const a of assertions) {
+    if (a.independence === undefined) return 'unknown';
+    if (rank[a.independence] < rank[weakest]) weakest = a.independence;
+  }
+  return weakest;
 }
 
 /**

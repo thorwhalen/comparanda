@@ -120,9 +120,8 @@ export function resolveMissingCode(
  * Counts for a set of cells. Reported as counts *and* as rates, because a rate
  * with no denominator is unreadable and a count with no total is unactionable.
  *
- * `assessedRate` and `settledRate` differ exactly on the cells someone has
- * looked at but could not settle -- which is the number an honest agent moves
- * and a careless one does not.
+ * `examinedRate` and `valuedRate` differ exactly on the cells someone has
+ * looked at but could not settle. That gap is the honest part of the report.
  */
 export interface Completeness {
   /** Cells in scope, before any exclusion. */
@@ -137,11 +136,24 @@ export interface Completeness {
   settledAbsent: number;
   /** Absent, non-structural, non-terminal: outstanding work. */
   outstanding: number;
-  /** (present + settledAbsent) / applicable -- how much has been *looked at*. */
-  assessedRate: number;
-  /** present / applicable -- how much carries a value. */
-  settledRate: number;
-  /** settledAbsent / applicable -- how much was looked at and came back empty. */
+  /**
+   * (present + settledAbsent) / applicable -- how much has been **looked at**.
+   *
+   * Named `examinedRate` rather than `assessedRate` or `settledRate` because
+   * both of those read naturally as "looked at" *and* as "carries a value",
+   * which is precisely how the ADR and the implementation came to define them
+   * as each other's opposite. Ambiguous names do not survive two authors.
+   */
+  examinedRate: number;
+  /** present / applicable -- how much carries an actual value. */
+  valuedRate: number;
+  /**
+   * settledAbsent / applicable -- looked at, and came back empty.
+   *
+   * The number an honest agent moves and a careless one does not: it is the
+   * share of the matrix where someone searched and the answer was "nothing
+   * here", as distinct from the share nobody has reached yet.
+   */
   silenceRate: number;
 }
 
@@ -149,7 +161,7 @@ export function emptyCompleteness(): Completeness {
   return {
     total: 0, structural: 0, applicable: 0, present: 0,
     settledAbsent: 0, outstanding: 0,
-    assessedRate: 0, settledRate: 0, silenceRate: 0,
+    examinedRate: 0, valuedRate: 0, silenceRate: 0,
   };
 }
 
@@ -184,8 +196,8 @@ export function tallyCompleteness(
   }
   c.applicable = c.total - c.structural;
   if (c.applicable > 0) {
-    c.assessedRate = (c.present + c.settledAbsent) / c.applicable;
-    c.settledRate = c.present / c.applicable;
+    c.examinedRate = (c.present + c.settledAbsent) / c.applicable;
+    c.valuedRate = c.present / c.applicable;
     c.silenceRate = c.settledAbsent / c.applicable;
   }
   return c;

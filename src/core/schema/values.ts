@@ -38,8 +38,22 @@ export const Assertion = z.object({
   /** One line: the "why this score". The most-read field in the document. */
   justification: z.optional(z.string()),
   evidence: z._default(z.array(EvidenceRef), []),
-  /** How independent this is of the other assertions here. See `Independence`. */
-  independence: z._default(Independence, 'independent'),
+  /**
+   * How independent this is of the other assertions in this cell. See
+   * `Independence`.
+   *
+   * **Deliberately optional, with no default.** It defaulted to `independent`,
+   * which is the *least* cautious rung on the ladder: an assertion set that
+   * recorded nothing rendered as that many separate assessors, and an agreement
+   * statistic over it would have been reported as inter-rater agreement. That
+   * is the exact failure this field exists to prevent.
+   *
+   * Absent means **unknown independence**, and everything downstream treats
+   * unknown as not-independent. An optimistic default is unrecoverable after
+   * the fact -- once five draws of one model are stored as five raters, nothing
+   * in the document says otherwise.
+   */
+  independence: z.optional(Independence),
   perturbation: z.optional(Perturbation),
   /** The round this belongs to, for multi-round elicitation. */
   roundId: z.optional(z.string()),
