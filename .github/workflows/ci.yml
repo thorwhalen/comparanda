@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# No publish job yet. CI's job at this stage is to protect the code, not to
+# release it; a publish step needs an npm token nobody has set, and a red CI on
+# every push teaches people to ignore it.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Module boundaries
+        # ADR-0005 makes the core/view isolation a condition of its own
+        # acceptance, and ADR-0013 says one stray fetch() in a renderer breaks
+        # the standalone bundle -- and only offline, so it ships green.
+        run: pnpm lint:boundaries
+
+      - name: Tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Core bundle contains no view code
+        # The static check above runs again against the real build, where the
+        # metafile can be read. This is the half that actually proves it.
+        run: pnpm lint:boundaries
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No absolute local paths or personal identifiers
+        # This repository is public and much of its documentation was generated.
+        # A leaked home directory is the most likely way something local escapes.
+        run: |
+          set -euo pipefail
+          if grep -rIn -E '/Users/[a-z]|/home/[a-z]|/root/[a-z]' \
+               --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist . ; then
+            echo "::error::absolute local path found; see the note in CLAUDE.md on public-repo hygiene"
+            exit 1
+          fi
+          echo "no absolute local paths anywhere in the tree"
+
+      - name: Pre-publish denylist (ADR-0016)
+        # The denylist names terms from the private analysis this originated in,
+        # so the file itself must never be committed -- committing it would leak
+        # exactly what it protects. It is supplied out of band as a secret.
+        # Absent secret => skipped, and the step says so rather than passing
+        # silently, because a hygiene check that quietly does nothing is worse
+        # than no check.
+        env:
+          DENYLIST: ${{ secrets.ADR_0016_DENYLIST }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DENYLIST:-}" ]; then
+            echo "::warning::ADR_0016_DENYLIST secret is not set; the pre-publish check did NOT run."
+            echo "ADR-0016 requires this before first publish. Set it as a newline-separated list."
+            exit 0
+          fi
+          printf '%s\n' "$DENYLIST" | grep -v '^[[:space:]]*$' > /tmp/denylist.txt
+          if grep -rIinf /tmp/denylist.txt \
+               --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist . ; then
+            echo "::error::denylisted term found. ADR-0016 is a hard constraint, not a preference."
+            exit 1
+          fi
+          echo "denylist clean ($(wc -l < /tmp/denylist.txt) terms checked)"
