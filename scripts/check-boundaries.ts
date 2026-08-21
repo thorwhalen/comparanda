@@ -58,7 +58,15 @@ function check(): Violation[] {
     const lines = strip(readFileSync(file, 'utf8')).split('\n');
     lines.forEach((line, i) => {
       for (const g of DOM_GLOBALS) {
-        if (new RegExp(`\\b${g}\\b`).test(line)) add(file, i, `core-has-no-dom (${g})`, line);
+        // Match the global only where it is *used* -- followed by a member
+        // access, an index, or a call -- and not where it merely appears as a
+        // property name. `{ document: current }` is a field called "document",
+        // not the DOM, and flagging it trains people to ignore this check.
+        const used = new RegExp(`(?<![.\\w$])${g}\\s*[.\\[(]`);
+        const typeofGuard = new RegExp(`typeof\\s+${g}\\b`);
+        if (used.test(line) || typeofGuard.test(line)) {
+          add(file, i, `core-has-no-dom (${g})`, line);
+        }
       }
       if (/from\s+['"][^'"]*\.\.\/view/.test(line) || /from\s+['"]\.\.\/\.\.\/view/.test(line)) {
         add(file, i, 'core-must-not-import-view', line);
