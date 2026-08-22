@@ -73,6 +73,53 @@ export const Selector = z.discriminatedUnion('type', [
 export type Selector = z.infer<typeof Selector>;
 
 /**
+ * A cleaned copy of an ingested source, and the fingerprint of what it was made
+ * from.
+ *
+ * Ingestion normalises -- strips navigation, rejoins hyphenated lines, collapses
+ * whitespace -- so a character range indexes the *cleaned* text and not the file
+ * a reader opens. Two ways out were live, and we keep the cleaned copy and cite
+ * into it (ADR-0014, 2026-08-22). The cost is a second copy of every ingested
+ * document; the return is that every quote in an analysis resolves offline,
+ * indefinitely, whether or not the original still exists at its locator.
+ *
+ * `originalSha256` is what makes drift **visible instead of silent**. Three
+ * standings follow, and the middle one is the one that will actually occur:
+ *
+ * | rendition | original hash | what the reader is told |
+ * |---|---|---|
+ * | resolves | matches | checkable and current |
+ * | resolves | **differs** | checkable against what we ingested; the source has moved on |
+ * | missing | -- | not resolvable here, and *why* -- never a bare "unverified" |
+ */
+export const Rendition = z.object({
+  id: z.string(),
+  /** Where the original came from. Opaque; meaningful to the host's resolver. */
+  originalLocator: z.string(),
+  /**
+   * Hash of the original's bytes **at ingest time**.
+   *
+   * Not of the rendition: the rendition is ours and does not change under us.
+   * This is the thing that can, and detecting that is the entire job.
+   */
+  originalSha256: z.string(),
+  /**
+   * Which normaliser produced the cleaned text.
+   *
+   * Versioned and append-only: changing what a normaliser does silently
+   * invalidates every offset recorded against it, so a changed normaliser is a
+   * new id rather than a new behaviour under the old one.
+   */
+  normaliserId: z.string(),
+  /** Bytes of the cleaned text, when the bundle carries them inline. */
+  text: z.optional(z.string()),
+  retrievedAt: z.optional(z.string()),
+  /** Human-facing title, for the link a reader follows. */
+  label: z.optional(z.string()),
+});
+export type Rendition = z.infer<typeof Rendition>;
+
+/**
  * What the source *is*, relative to the claim.
  *
  * ADR-0006 is emphatic here, and for a reason the originating work discovered
@@ -120,8 +167,44 @@ export type Stance = z.infer<typeof Stance>;
  * to a reader with a different corpus would mislead, so the reader is shown when
  * and by what it was made.
  */
+/**
+ * The graded verdict from re-finding a quote. **One spelling, and this is it.**
+ *
+ * Three vocabularies were live at once: this file's, rubricator's citation
+ * ladder's, and ADR-0014's. ADR-0014 is the accepted decision, so the other two
+ * come to it. `verified` is retired -- it read as "someone approved this" when it
+ * meant "found verbatim" -- and `drifted` split, because "the document changed
+ * and the quote is still there" and "the document changed and the quote is gone"
+ * are different answers that a reader must be able to act on differently.
+ *
+ * The first three are ladder rungs: how *hard* we had to look.
+ * The next two are about the document underneath.
+ *
+ * - `exact`         found verbatim, after whitespace normalisation only.
+ * - `normalised`    found once punctuation and case are folded.
+ * - `fuzzy`         found by token overlap above the configured threshold. A
+ *                   quote reassembled across a line break usually lands here.
+ * - `moved`         the document changed and the quote was found elsewhere.
+ *                   Re-anchor, and log that it moved.
+ * - `stale`         the document changed and the quote is gone. Surface it.
+ * - `unresolvable`  the target could not be reached at all.
+ * - `unchecked`     no check ran. Not a verdict; the absence of one.
+ */
+export const CitationVerdict = z.enum([
+  'exact', 'normalised', 'fuzzy', 'moved', 'stale', 'unresolvable', 'unchecked',
+]);
+export type CitationVerdict = z.infer<typeof CitationVerdict>;
+
+/** Verdicts that mean the quoted text was actually located. */
+const FOUND: ReadonlySet<CitationVerdict> = new Set<CitationVerdict>(['exact', 'normalised', 'fuzzy', 'moved']);
+
+/** Whether a verdict means the reader can go and look at the quoted span. */
+export function verdictFound(v: CitationVerdict): boolean {
+  return FOUND.has(v);
+}
+
 export const CitationCheck = z.object({
-  status: z.enum(['verified', 'not-found', 'drifted', 'unchecked', 'unresolvable']),
+  status: CitationVerdict,
   /**
    * When the check ran. **Required for every status except `unchecked`**, which
    * is the one status that describes the absence of a check and so has no
@@ -135,6 +218,15 @@ export const CitationCheck = z.object({
   checkerVersion: z.optional(z.string()),
   /** Which selector resolved, when several were tried. */
   resolvedBy: z.optional(z.string()),
+  /**
+   * True when the original's hash at check time differed from the
+   * `originalSha256` its rendition recorded at ingest.
+   *
+   * Orthogonal to `status`: a quote can be `exact` in our rendition while the
+   * source it was taken from has changed underneath. Both facts are true and a
+   * reader needs both, so they are two fields rather than one overloaded enum.
+   */
+  originalDrifted: z.optional(z.boolean()),
   detail: z.optional(z.string()),
 });
 export type CitationCheck = z.infer<typeof CitationCheck>;
@@ -159,6 +251,15 @@ export type CheckFreshness = 'unchecked' | 'current' | 'older-checker' | 'aged';
 
 export interface CheckStanding {
   freshness: CheckFreshness;
+  /**
+   * The source has changed since we ingested it.
+   *
+   * Independent of `freshness`, which is about *our* check going out of date.
+   * This is about the *document* moving on, and it needs a caveat of its own:
+   * the quote is still checkable against what we read, and a reader following
+   * the original link may not find it.
+   */
+  sourceChanged: boolean;
   /**
    * Whole days between `checkedAt` and `now`. Absent when there is nothing to
    * measure from -- no check, or a check that failed the requiredness rule.
@@ -197,8 +298,10 @@ export function checkStanding(
   }: { currentCheckerVersion: string; now: Date; staleAfterDays?: number },
 ): CheckStanding {
   if (!check || check.status === 'unchecked') {
-    return { freshness: 'unchecked', needsCaveat: true };
+    return { freshness: 'unchecked', sourceChanged: false, needsCaveat: true };
   }
+
+  const sourceChanged = check.originalDrifted === true;
 
   const ageDays = check.checkedAt
     ? Math.floor((now.getTime() - new Date(check.checkedAt).getTime()) / 86_400_000)
@@ -207,12 +310,15 @@ export function checkStanding(
   // Version first: a check from an older checker is suspect however recent it
   // is, because what changed is the thing doing the checking.
   if (check.checkerVersion !== currentCheckerVersion) {
-    return { freshness: 'older-checker', ageDays, needsCaveat: true };
+    return { freshness: 'older-checker', sourceChanged, ageDays, needsCaveat: true };
   }
   if (staleAfterDays !== undefined && ageDays !== undefined && ageDays > staleAfterDays) {
-    return { freshness: 'aged', ageDays, needsCaveat: true };
+    return { freshness: 'aged', sourceChanged, ageDays, needsCaveat: true };
   }
-  return { freshness: 'current', ageDays, needsCaveat: false };
+  // A current check over a source that has moved on still needs a caveat: the
+  // verdict is true about what we ingested and may be false about what the
+  // reader would open.
+  return { freshness: 'current', sourceChanged, ageDays, needsCaveat: sourceChanged };
 }
 
 /**
@@ -265,8 +371,23 @@ export const EvidenceRef = z.object({
    * supporting text with no network (ADR-0013).
    */
   excerpt: z.optional(z.string()),
-  /** Hash of `excerpt`, so a resolver can detect that the target has moved on. */
-  quoteHash: z.optional(z.string()),
+  /**
+   * Hash of `excerpt` -- **our** quoted text, so a resolver can tell that the
+   * stored excerpt and the stored selectors have fallen out of step.
+   *
+   * Renamed from `quoteHash`, which read as though it hashed the source. It
+   * hashes the excerpt, the source's fingerprint is `Rendition.originalSha256`,
+   * and a document that ships both under names that do not distinguish them is a
+   * document whose drift detection nobody can reason about.
+   */
+  excerptHash: z.optional(z.string()),
+  /**
+   * The rendition this reference's selectors index into.
+   *
+   * Absent means the selectors index the original directly, which is the
+   * un-normalised case and is legal -- a plain text file needs no rendition.
+   */
+  renditionId: z.optional(z.string()),
   /**
    * For `agent-summary` and `agent-inference`: the ids of the references this
    * was derived from. An inference with an empty `derivedFrom` is an assertion

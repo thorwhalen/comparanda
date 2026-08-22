@@ -26,9 +26,21 @@ Two repositories, one contract.
   (`comparanda: docs/research/findings-terminology.md` findings #4, #5, #11). The two research
   rounds converged on the same conclusion from opposite ends. That convergence is the strongest
   evidence available that these fields belong in v1.
-- **Today, both repositories are documentation only.** No schema code, no tools, no fixtures beyond
-  a README describing them. Every gate below is therefore ahead of us, not behind us, which is the
-  cheapest position this plan will ever be written from.
+- **This was written when both repositories were documentation only, and that is no longer true**
+  (corrected 2026-08-22). `comparanda` has the `zod/mini` schema, a migration harness, the
+  declaration substrate, dominance and screening — roughly 2,800 lines with a test suite.
+  `rubricator` has a schema facade, a citation ladder and a traversal planner, and enforces its
+  determinism boundary by AST analysis in CI. **What has not moved is the artifact between them**:
+  `scripts/emit-json-schema.ts` does not exist, so `pnpm prepublishOnly` fails and no JSON Schema
+  has ever been emitted. The gates are therefore *not* uniformly ahead of us — Gate 2a is a reading
+  nobody has done, Gate 2b is blocked on a file nobody has written, and both fixtures are still a
+  README. Read every "ahead of us" below with that correction.
+- **The contract is two artifacts.** `comparanda.v1.json` carries the shape; `vocabularies.v1.json`,
+  emitted beside it in the same pass, carries the closed core of each extensible vocabulary and
+  where its declarations live in the document. A JSON Schema cannot say "open, and here is the
+  closed core underneath it" without closing it. `rubricator` **vendors both together**, refreshed
+  by one command, so they can never be half-updated
+  (`comparanda: docs/adr/0004-schema-first-with-zodal.md`, amended 2026-08-22).
 
 The asymmetry that governs everything: **absorbing a field before v1 freezes costs a line in a
 schema file; absorbing it after costs a migration through every stored analysis.**
@@ -260,6 +272,20 @@ Which is to say: nearly all of it, once Gate 2a is closed.
 - The **request register** (§7) — one table, mirrored issues, one disposition column.
 - The **domain vocabulary**. Both repos already write in it. The cheapest possible coordination
   mechanism is that neither repo ever says "items" or "features".
+- **The citation verdict vocabulary.** Three spellings are live: `comparanda` ships
+  `verified / not-found / drifted / unchecked / unresolvable`, `rubricator` publishes
+  `verified / normalised / partial / not-found / empty`, and `rubricator`'s own ADR-0014 mandates
+  `exact / normalised / fuzzy / moved / stale / unresolvable`. **The third is accepted and
+  `verified` is retired in both** (`comparanda: docs/adr/0014-evidence-and-provenance.md`, amended
+  2026-08-22). This is joint and urgent: `rubricator`'s CI currently pins the wrong contract green
+  through doctests running under `--doctest-modules`, so the divergence is not merely undetected —
+  it is *enforced*.
+- **`MatrixProps`.** `comparanda` publishes the type before the matrix component exists, so
+  `rubricator`'s interim table and `comparanda`'s eventual `mountMatrix` consume one shape and the
+  interim table is deleted rather than refactored (`comparanda: docs/adr/0032-…`).
+- **Golden merge fixtures.** `comparanda` authors them (ADR-0016 governs their content);
+  `rubricator` runs its merge against them. Key parity is not semantic parity, and these are the
+  only thing that catches two implementations that agree by inspection.
 
 ---
 
@@ -399,6 +425,25 @@ in the corpus manifest.
 - **Duplicated in both.** They will diverge within one schema bump, and the divergence will surface
   as a mysterious demo failure rather than as a diff.
 
+### 4.4 The messy fixture is now a falsification fixture, and it is shared
+
+*(Added 2026-08-22.)* `relocation.json` gains one property that changes what it is for: it
+**declares a measurement scale and a missingness code that neither repository's v1 implements.**
+Each side runs one integration test against it, asserting the document loads, validates, dominates,
+screens and renders by degrading through `broader`, and that **exactly two** degradation records
+surface with the exact axes. If both tests are green, every declaration seam in both repositories
+exists (`comparanda: docs/adr/0030-…`). If either cannot be written, the declaration architecture is
+prose.
+
+It stays authored in `comparanda` — §4.2's recommendation is unchanged — and is vendored, not
+forked. A fixture that exists twice is a fixture that disagrees with itself.
+
+**Golden merge fixtures live here too.** Reconstituting one `Analysis` from N per-contributor files
+is `rubricator`'s code in v1 (`comparanda: docs/adr/0006-…`, amended), so the only defence against a
+later TypeScript port drifting from it is a set of fixtures — inputs plus the byte-exact merged
+output — authored in `comparanda` and run by both. Key parity between the two schema artifacts
+cannot see a semantic disagreement about ties; this can.
+
 ---
 
 ## 5. Failure modes if the gates are ignored
@@ -458,16 +503,22 @@ an analysis; `comparanda` renders it.**
 
 Everything in §2.2 and §2.3 runs beside this chain. These are the links that genuinely block.
 
-1. **`comparanda` settles the six field-shaping Tier 1 ADRs** (plus new ADR-0017, which names the
-   library the schema is authored in). Blocking because they are field decisions, not opinions.
-   — joining here: **`rubricator` freezes the tool surface and closes the request set** (Gate 1),
-   and **`comparanda` dispositions the seven requests** (Gate 2a). This join is the only place the
-   two repositories must wait on each other before the end.
-2. **`comparanda` writes the zodal schema v1**, the migration harness with a registered v1, and the
-   Node-only JSON Schema emission.
-3. **`comparanda` hand-authors `relocation.json`** and validates it. Blocking, because it is the only
-   thing that proves the schema can express the hard cases — and it is the demo's gold document.
-4. **`comparanda` publishes the versioned artifact** and tags a release. **Gate 2b.**
+*(Links 1–4 rewritten 2026-08-22; the original wording assumed no schema code existed.)*
+
+1. **`comparanda` records the request dispositions** (Gate 2a) — a reading, not a feature — joining
+   with **`rubricator` freezing its tool surface and closing the request set** (Gate 1). Still the
+   only place the two repositories must wait on each other before the end.
+2. **`comparanda` lands the declaration substrate and the freeze-critical fields**:
+   `Resolution` / `Degradation`, criterion-scoped missingness, the opened `Reduction`,
+   `Measurement.scale` and `anchors`, the persona fields, the rendition fields, the reconciled
+   verdict vocabulary, cell-key uniqueness, and the validation families. **Every one is a migration
+   after the freeze and a line before it.**
+3. **`comparanda` writes `scripts/emit-json-schema.ts`** and emits both artifacts. *A link nobody
+   costed:* this was assumed to exist and does not, so `prepublishOnly` fails today.
+4. **`comparanda` hand-authors `relocation.json`** as the falsification fixture (§4.4), validates it,
+   and proves ADR-0030 with the two-degradation test. Blocking, because it is the only thing that
+   proves the seams exist rather than being described — and it is the demo's gold document. Then
+   **`comparanda` publishes the versioned artifacts** and tags a release. **Gate 2b.**
 5. **`rubricator` swaps `SketchSchema` → `PublishedSchema("1.0")`**, works the sketch/published diff,
    vendors the artifact, declares `EMITS = {"1.0"}`.
 6. **`rubricator`'s `measures_write`, `analysis_validate` and `check_citations` write real cells
@@ -480,6 +531,12 @@ Everything in §2.2 and §2.3 runs beside this chain. These are the links that g
 9. **`comparanda` view renders the matrix** with one encoding and the missingness treatment. A slice
    of Phase 3, not all of it.
 10. **Demo.** Then Gate 3 turns the demo into a standing check.
+
+**What was added to this path on 2026-08-22, and what was removed.** Added: the emission link, and
+the field work in link 2. Removed: nothing — but the *demo's `comparanda` surface* shrinks further
+than shortener 2 below anticipates, because v1's encoding is `text-only`
+(`comparanda: docs/adr/0032-…`). The render slice is now load, validate, matrix, text, and
+missingness announced from the vocabulary's own `means` string. No palette is on this path at all.
 
 Ten links, of which 1 → 2 → 3 → 4 → 5 → 6 → 7 → (8 ‖ 9) → 10 are serial.
 
@@ -518,23 +575,34 @@ collaboration beyond what the schema already accommodates.
 
 ## 7. The request register
 
-The seven requests, as filed by `rubricator`'s Phase 0 research. This table is the Gate 2a checklist;
-the disposition column is filled in by `comparanda`, in the mirrored issues, and nowhere else.
+The original seven requests, as filed by `rubricator`'s Phase 0 research. This table is the Gate 2a
+checklist; the disposition column is filled in by `comparanda`, in the mirrored issues, and nowhere
+else. **Nine further requests were filed on 2026-08-22 and live in §7.3**; the checklist is both
+tables together.
 
 | # | Request | Why it is expensive later | Disposition |
 |---|---|---|---|
-| 1 | Criteria carry a **structured definition** — objective, question, scale anchors, evidence rule, missing rule, exclusions — not free text | The honesty guarantee is *defined* by the criterion and only *exercised* by the cell; free text puts it at the wrong level and `criteria_set` has nowhere to validate | — |
-| 2 | Criteria sets are **versioned**; every measure records the criterion version it was scored against | Without it, a redefinition mid-analysis produces columns scored against different rubrics, invisibly. Cheap now, impossible to retrofit honestly | — |
-| 3 | Criteria carry **provenance**, and **rejected** criteria with reason codes ship with the analysis | The criteria-level application of the discipline the schema already applies to values and to missing cells | — |
-| 4 | Assertions carry `authorKind`, `independence`, `perturbation`; analyses carry a `procedure` record; `mode` joins the reduction enum | Per-assertion, therefore the ADR-0011 migration hazard exactly. `independence` is the most important field in this table | — |
-| 5 | Evidence references carry `stance` and `sourceType`, plus `derivedFrom`, `quoteHash` and a tool-written `check` | Contradicting evidence is currently unrepresentable and therefore uncountable — the most damaging citation failure available in a decision matrix | — |
-| 6 | Confirm the criterion **`preference`** (direction) field | Independently required by `comparanda`'s own research (findings #4, #5): dominance and screening are undefined without a direction | — |
-| 7 | A `missing` reason for `insufficient_evidence_to_discriminate` | The negative case of the pairwise escalation rule has no existing code, so it currently collapses into a catch-all — which is the thing the missingness ADR exists to abolish | — |
+| 1 | Criteria carry a **structured definition** — objective, question, scale anchors, evidence rule, missing rule, exclusions — not free text | The honesty guarantee is *defined* by the criterion and only *exercised* by the cell; free text puts it at the wrong level and `criteria_set` has nowhere to validate | `accept-v1` |
+| 2 | Criteria sets are **versioned**; every measure records the criterion version it was scored against | Without it, a redefinition mid-analysis produces columns scored against different rubrics, invisibly. Cheap now, impossible to retrofit honestly | `accept-v1` |
+| 3 | Criteria carry **provenance**, and **rejected** criteria with reason codes ship with the analysis | The criteria-level application of the discipline the schema already applies to values and to missing cells | `accept-v1` |
+| 4 | Assertions carry `authorKind`, `independence`, `perturbation`; analyses carry a `procedure` record; `mode` joins the reduction enum | Per-assertion, therefore the ADR-0011 migration hazard exactly. `independence` is the most important field in this table | `accept-v1` |
+| 5 | Evidence references carry `stance` and `sourceType`, plus `derivedFrom`, `quoteHash` and a tool-written `check` | Contradicting evidence is currently unrepresentable and therefore uncountable — the most damaging citation failure available in a decision matrix | `accept-v1` |
+| 6 | Confirm the criterion **`preference`** (direction) field | Independently required by `comparanda`'s own research (findings #4, #5): dominance and screening are undefined without a direction | `accept-v1` |
+| 7 | A `missing` reason for `insufficient_evidence_to_discriminate` | The negative case of the pairwise escalation rule has no existing code, so it currently collapses into a catch-all — which is the thing the missingness ADR exists to abolish | `accept-v1`, as a **declaration** rather than a core member (ADR-0030) |
 
 Requests 1, 2, 3 and 6 are criterion-shaped; 4 is assertion-shaped; 5 is evidence-shaped; 7 is a
-single enum member. Only 4 and 5 carry real design weight for `comparanda`; the rest are field
+single enum member as filed — though it lands as a declaration instead, see below. Only 4 and 5
+carry real design weight for `comparanda`; the rest are field
 additions once the shape is agreed. That distribution is worth knowing before triage starts, because
 it means Gate 2a is a short meeting and two long ones, not seven long ones.
+
+**Dispositions recorded 2026-08-22.** Requests 1–6 are satisfied by the shipped schema and are marked
+`accept-v1` on that basis; a disposition is a reading of what the schema now does, not a promise.
+Request 7 is `accept-v1` in a different shape from the one asked for: under ADR-0030 an
+`insufficient-evidence-to-discriminate` code is a `MissingCodeDeclaration` row *in the document*
+with `broader: 'indeterminate'`, which is **zero code changes in either repository** rather than a
+new core enum member. That is the whole argument for opening the vocabulary, arriving as its first
+worked example.
 
 ### 7.1 The eighth item, which is not a request — the missingness rename
 
@@ -570,14 +638,47 @@ issue reusing that key makes every `{{comparanda:schema-criterion-preference}}` 
 `request-criterion-preference`, `request-assertion-independence`, and so on — and make the
 `rubricator` side's `{{comparanda:…}}` placeholders match, exactly.
 
+### 7.3 Requests 8–16, filed 2026-08-22
+
+Nine further requests follow from the nine decisions settled on 2026-08-22. Same protocol, same
+disposition vocabulary. Six of them **block before the freeze**, which is the whole reason they are
+filed as a batch rather than discovered during implementation.
+
+| # | Request | Blocking? |
+|---|---|---|
+| 8 | `Author.principalId`, `Author.actingAs`, `Author.attestation`; `effectiveIndependence`, `distinctPrincipals` | yes — contributor identity and the per-contributor file layout depend on it |
+| 9 | `EvidenceRef.renditionId`; a `Rendition` record with `originalLocator`, `originalSha256`, `normaliserId`; rename `quoteHash` → `excerptHash` (it hashes *our excerpt*, a third thing) | yes |
+| 10 | Reconcile the **three live verdict spellings** onto `exact / normalised / fuzzy / moved / stale / unresolvable`, mapping `drifted` → `moved` / `stale` and retiring `verified` | yes — and `rubricator`'s CI enforces the wrong one today |
+| 11 | `Reduction` → `z.string()` plus `ReductionDeclaration` plus `Analysis.reductions` | yes — one line now, a migration later |
+| 12 | Uniqueness on `(alternativeId, criterionId, measure)`; `getCell` delegates to `cellIndex` | yes — a live bug the moment merges land |
+| 13 | `Measurement.scale` (optional, never defaulted), `Measurement.anchors` (an `AnchorSet` carrying `requires`), `Analysis.scales` | yes |
+| 14 | `Criterion.missingCodes` overlay; the `MissingnessVocabulary` facade | no — analysis scope works in v1 |
+| 15 | `validateAnalysis` takes injected rule families; `ValidationProblem` gains `family`, `fix`, `ruleId` | yes |
+| 16 | `Suggestion.proposed` typed as a partial `Assertion` — it is `z.unknown()` today, so no honesty rule can reach suggestion mode | no — before suggestions ship |
+
+**On request 13's "never defaulted".** A default of `'ordinal-1-5-anchored'` would silently stamp a
+criterion authored today as ratio-decreasing-with-a-range — which validates with zero problems on
+the shipped build — as a 1–5 ordinal, and a resolver would then hand back an interpreter that
+rejects `4200` and forbids a mean that is perfectly legal on a ratio level. An absent `scale` means
+"Stevens, as declared by `level`, `preference` and `range`", which is what it meant before the field
+existed. This is the kind of thing a register exists to state once.
+
+**On request 12.** `cellIndex()` builds a `Map` — last wins. `getCell()` uses `Array.find` — first
+wins. One document, two readers, two answers. Benign only while nothing writes documents, which
+stopped being true when the team went into v1.
+
 ---
 
 ## Related reading
 
 - `comparanda: skills/comparanda-dev-schema-change/SKILL.md` — the schema PR checklist and the five
   before-you-add-a-field tests. This document extends its cross-repo section; it does not replace it.
-- `comparanda: docs/adr/PENDING-ACTIONS.md` — the tiering. Tier 1 is Gate 2a's ADR half.
-- `rubricator: docs/adr/PENDING-ACTIONS.md` — the Order table. Items 1–3 are Gate 1's ADR half.
+- `comparanda: docs/adr/0030-declarations-resolution-and-reported-degradation.md` — the declaration
+  substrate every open vocabulary in the contract is built on.
+- `comparanda: docs/adr/0031-boundary-validation-honesty-and-completeness.md` — the two rule
+  families, and why honesty can never be suppressed.
+- `comparanda: docs/adr/0032-text-only-encoding-and-the-matrix-props-contract.md` — v1's encoding,
+  and the `MatrixProps` type published before the matrix.
 - `rubricator: docs/research/findings-method.md` — the tool surface and the request table.
 - `comparanda: docs/research/findings-terminology.md` — findings #4, #5 and #11, which are why the
   criterion `preference` request is a confirmation rather than a new ask.

@@ -11,6 +11,9 @@ import { describe, it, expect } from 'vitest';
 import {
   countsAsIndependentRater,
   weakestIndependence,
+  effectiveIndependence,
+  distinctPrincipals,
+  type Independence,
 } from '../src/core/schema/provenance.js';
 import { Assertion } from '../src/core/schema/values.js';
 import { tallyCompleteness } from '../src/core/schema/missingness.js';
@@ -100,5 +103,61 @@ describe('completeness rates', () => {
     ]);
     expect(c.applicable).toBe(1);
     expect(c.valuedRate).toBe(1);
+  });
+});
+
+describe('personas do not multiply into raters', () => {
+  const authors = [
+    { id: 'ana', principalId: undefined },
+    { id: 'ana-as-buyer', principalId: 'ana' },
+    { id: 'ana-as-operator', principalId: 'ana' },
+    { id: 'ben', principalId: undefined },
+  ];
+
+  const asserted = (authorId: string, independence: Independence) => ({ authorId, independence });
+
+  it('collapses two personas of one analyst, even when both say independent', () => {
+    // Both assertions are honestly `independent` -- neither consulted the other.
+    // They are still one head, and an agreement statistic over them is not
+    // inter-rater agreement.
+    const set = [asserted('ana-as-buyer', 'independent'), asserted('ana-as-operator', 'independent')];
+    expect(weakestIndependence(set)).toBe('independent');   // what was recorded
+    expect(effectiveIndependence(set, authors)).toBe('resampled'); // what is true
+  });
+
+  it('leaves a genuinely independent pair alone', () => {
+    const set = [asserted('ana', 'independent'), asserted('ben', 'independent')];
+    expect(effectiveIndependence(set, authors)).toBe('independent');
+  });
+
+  it('collapses a persona against its own principal', () => {
+    const set = [asserted('ana', 'independent'), asserted('ana-as-buyer', 'independent')];
+    expect(effectiveIndependence(set, authors)).toBe('resampled');
+  });
+
+  it('never raises a rung -- a weaker record still wins', () => {
+    const set = [asserted('ana', 'shared-context'), asserted('ben', 'independent')];
+    expect(effectiveIndependence(set, authors)).toBe('shared-context');
+  });
+
+  it('stays unknown when any assertion recorded nothing', () => {
+    const set = [{ authorId: 'ana' }, asserted('ben', 'independent')];
+    expect(effectiveIndependence(set, authors)).toBe('unknown');
+  });
+
+  it('counts principals, not authors', () => {
+    const set = [
+      asserted('ana-as-buyer', 'independent'),
+      asserted('ana-as-operator', 'independent'),
+      asserted('ben', 'independent'),
+    ];
+    expect(set.length).toBe(3);
+    expect(distinctPrincipals(set, authors)).toBe(2);
+  });
+
+  it('treats an author nobody declared as its own principal', () => {
+    // The cautious direction: an unknown author is one more distinct head, not
+    // silently folded into someone else's.
+    expect(distinctPrincipals([{ authorId: 'stranger' }], authors)).toBe(1);
   });
 });

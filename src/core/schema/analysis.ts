@@ -22,7 +22,7 @@ import {
 } from './missingness.js';
 import type { Degradation } from './declarations.js';
 import { ScaleDeclaration, validateMeasurement, type Measurement } from './measurement.js';
-import { validateEvidence } from './evidence.js';
+import { Rendition, validateEvidence } from './evidence.js';
 
 /**
  * The schema version this build reads and writes.
@@ -102,6 +102,15 @@ export const Analysis = z.object({
 
   /** Deployment extensions to the closed core set of reductions. */
   reductions: z._default(z.array(ReductionDeclaration), []),
+
+  /**
+   * The cleaned copies of ingested sources that this analysis's quotes index
+   * into, each with the fingerprint of the original it was made from.
+   *
+   * Travelling with the document is the point: a recipient with no corpus and no
+   * resolver can still check every quote.
+   */
+  renditions: z._default(z.array(Rendition), []),
 
   /** Whether the analysis accepts direct edits, or only suggestions. */
   locked: z.optional(z.boolean()),
@@ -234,20 +243,72 @@ export function validateAnalysis(input: unknown): {
     }
   }
 
+  // A cell's identity must be unique. Two cells with the same identity is not a
+  // merge conflict to be resolved later: it is a document in which two readers
+  // of the same coordinates see different values.
+  const seenCells = new Map<string, number>();
+  for (const [i, c] of a.cells.entries()) {
+    const k = cellKey(c.alternativeId, c.criterionId, c.measure);
+    const first = seenCells.get(k);
+    if (first !== undefined) {
+      err(
+        `cells[${i}]`,
+        `duplicates the identity of cells[${first}] (${c.alternativeId} x ${c.criterionId} x ` +
+          `${c.measure}). Merge their assertions into one cell -- a cell is already a set of ` +
+          'assertions, so there is nothing a second cell can express that the first cannot.',
+      );
+    } else {
+      seenCells.set(k, i);
+    }
+  }
+
   return { ok: problems.every((p) => p.severity !== 'error'), analysis: a, problems };
+}
+
+/**
+ * The identity of a cell, as one string.
+ *
+ * Exported so that nothing computes it a second time and gets it subtly
+ * different.
+ *
+ * **`JSON.stringify` of the triple, not a separator-joined string**, because a
+ * separator-joined key is not injective and a document is untrusted input.
+ * With a NUL separator, `cellKey('a\u0000b', 'c', 'd')` and
+ * `cellKey('a', 'b\u0000c', 'd')` produce the same key -- so two genuinely
+ * different cells collide, one is silently lost from `cellIndex`, and the
+ * duplicate check flags a pair that is not a duplicate. "NUL cannot occur in an
+ * id" is a belief about producers, and this key does not need to hold it.
+ *
+ * Length-prefixing would also work. `JSON.stringify` is chosen because it is
+ * obviously injective to a reader, and this runs once per cell per index build.
+ */
+export function cellKey(alternativeId: string, criterionId: string, measure: string): string {
+  return JSON.stringify([alternativeId, criterionId, measure]);
 }
 
 /** Index cells for O(1) lookup. Rebuilt rather than stored; it is derived. */
 export function cellIndex(a: Analysis): Map<string, Cell> {
   const m = new Map<string, Cell>();
-  for (const c of a.cells) m.set(`${c.alternativeId}\u0000${c.criterionId}\u0000${c.measure}`, c);
+  for (const c of a.cells) m.set(cellKey(c.alternativeId, c.criterionId, c.measure), c);
   return m;
 }
 
+/**
+ * One cell, by identity.
+ *
+ * **Delegates to `cellIndex` rather than scanning**, and that is a correctness
+ * fix rather than a tidy-up. The scan returned the *first* match and the index
+ * keeps the *last*, so on a document carrying two cells with the same identity
+ * the two readers disagreed -- `getCell` showing one value and every matrix walk
+ * showing another, with nothing anywhere saying so. Duplicates are not
+ * hypothetical once contributions from several people are merged into one
+ * document, which is what v1 does.
+ *
+ * The duplicate itself is rejected by `validateAnalysis`. This makes the two
+ * readers agree even on a document that has not been validated.
+ */
 export function getCell(a: Analysis, alternativeId: string, criterionId: string, measure: string): Cell | undefined {
-  return a.cells.find(
-    (c) => c.alternativeId === alternativeId && c.criterionId === criterionId && c.measure === measure,
-  );
+  return cellIndex(a).get(cellKey(alternativeId, criterionId, measure));
 }
 
 /**
@@ -288,7 +349,7 @@ export function makeCellReader(
     measure,
     measurementOf: (criterionId) => measurements.get(criterionId),
     read(alternativeId, criterionId) {
-      const cell = cells.get(`${alternativeId}\u0000${criterionId}\u0000${measure}`);
+      const cell = cells.get(cellKey(alternativeId, criterionId, measure));
       if (!cell) return undefined;
       const m = measurements.get(criterionId);
       return reduce(cell, {

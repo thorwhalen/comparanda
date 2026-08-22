@@ -17,6 +17,8 @@ import {
   checkStanding,
   validateCitationCheck,
   validateEvidence,
+  verdictFound,
+  CitationVerdict,
   type CitationCheck,
   type EvidenceRef,
 } from '../src/core/schema/evidence.js';
@@ -25,7 +27,7 @@ const NOW = new Date('2026-08-22T00:00:00Z');
 const V = 'checker/2.0.0';
 
 const check = (over: Partial<CitationCheck> = {}): CitationCheck => ({
-  status: 'verified',
+  status: 'exact',
   checkedAt: '2026-08-20T00:00:00Z',
   checkerVersion: V,
   ...over,
@@ -33,7 +35,7 @@ const check = (over: Partial<CitationCheck> = {}): CitationCheck => ({
 
 describe('the requiredness rule', () => {
   it('rejects a verdict with no date and no checker', () => {
-    const problems = validateCitationCheck({ status: 'verified' });
+    const problems = validateCitationCheck({ status: 'exact' });
     expect(problems.map((p) => p.path)).toEqual(['check.checkedAt', 'check.checkerVersion']);
     // Informative errors: the message says what is wrong AND why it matters.
     expect(problems[0]!.message).toContain('reads as current forever');
@@ -45,7 +47,7 @@ describe('the requiredness rule', () => {
   });
 
   it('applies to every other status, including the failures', () => {
-    for (const status of ['not-found', 'drifted', 'unresolvable'] as const) {
+    for (const status of ['normalised', 'fuzzy', 'moved', 'stale', 'unresolvable'] as const) {
       expect(validateCitationCheck({ status })).toHaveLength(2);
     }
   });
@@ -58,7 +60,7 @@ describe('the requiredness rule', () => {
       sourceType: 'primary',
       stance: 'supports',
       derivedFrom: [],
-      check: { status: 'verified' }, // no stamp
+      check: { status: 'exact' }, // no stamp
     };
     const paths = validateEvidence([ref]).map((p) => p.path);
     expect(paths).toContain('evidence[0].check.checkedAt');
@@ -83,8 +85,8 @@ describe('freshness', () => {
     );
     expect(s.freshness).toBe('older-checker');
     expect(s.needsCaveat).toBe(true);
-    // The verdict itself is still "verified" -- that is exactly why the
-    // standing has to travel beside it.
+    // The verdict itself is still `exact` -- that is exactly why the standing
+    // has to travel beside it.
   });
 
   it('treats a missing check and an unchecked one alike, and both need a caveat', () => {
@@ -130,12 +132,60 @@ describe('the property a renderer must not violate', () => {
       undefined,
       check({ status: 'unchecked' }),
       check({ checkerVersion: 'checker/1.0.0' }),
-      check({ status: 'drifted', checkerVersion: 'checker/1.0.0' }),
+      check({ status: 'stale', checkerVersion: 'checker/1.0.0' }),
       check({ checkedAt: '2020-01-01T00:00:00Z' }),
     ];
     for (const c of cases) {
       const s = checkStanding(c, { currentCheckerVersion: V, now: NOW, staleAfterDays: 30 });
       if (s.freshness !== 'current') expect(s.needsCaveat).toBe(true);
     }
+  });
+});
+
+describe('the retired spellings', () => {
+  it('does not accept `verified`, which read as approval and meant "found verbatim"', () => {
+    expect(CitationVerdict.safeParse('verified').success).toBe(false);
+    expect(CitationVerdict.safeParse('not-found').success).toBe(false);
+  });
+
+  it('splits `drifted` into the two answers a reader acts on differently', () => {
+    // "the document changed and the quote is still there" -> re-anchor.
+    // "the document changed and the quote is gone"        -> go and look.
+    expect(CitationVerdict.safeParse('drifted').success).toBe(false);
+    expect(verdictFound('moved')).toBe(true);
+    expect(verdictFound('stale')).toBe(false);
+  });
+
+  it('treats only the four locating verdicts as found', () => {
+    const found = (['exact', 'normalised', 'fuzzy', 'moved', 'stale', 'unresolvable', 'unchecked'] as const)
+      .filter(verdictFound);
+    expect(found).toEqual(['exact', 'normalised', 'fuzzy', 'moved']);
+  });
+});
+
+describe('the source moving is not the same as our check ageing', () => {
+  it('demands a caveat on a current check when the original has drifted', () => {
+    // The verdict is true about what we ingested and may be false about what
+    // the reader would open. Both facts travel; neither is inferred from the
+    // other.
+    const s = checkStanding(check({ originalDrifted: true }), { currentCheckerVersion: V, now: NOW });
+    expect(s.freshness).toBe('current');
+    expect(s.sourceChanged).toBe(true);
+    expect(s.needsCaveat).toBe(true);
+  });
+
+  it('leaves an undrifted current check with nothing to say', () => {
+    const s = checkStanding(check(), { currentCheckerVersion: V, now: NOW });
+    expect(s.sourceChanged).toBe(false);
+    expect(s.needsCaveat).toBe(false);
+  });
+
+  it('reports both when the check is old AND the source moved', () => {
+    const s = checkStanding(
+      check({ checkerVersion: 'checker/1.0.0', originalDrifted: true }),
+      { currentCheckerVersion: V, now: NOW },
+    );
+    expect(s.freshness).toBe('older-checker');
+    expect(s.sourceChanged).toBe(true);
   });
 });
