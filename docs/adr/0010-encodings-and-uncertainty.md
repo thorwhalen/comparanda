@@ -223,6 +223,27 @@ first is better served by juxtaposition [1].
 9. [CSS Color Adjustment Module Level 1 — Forced Colors Mode — W3C](https://www.w3.org/TR/css-color-adjust-1/)
 10. [Understanding SC 1.4.11: Non-text Contrast (Level AA) — W3C WAI, WCAG 2.2](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html)
 
+### 2026-08-22 — `informative` still gets no visual channel, but for one reason instead of two
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+
+The amendment below withdraws a visual channel for `informative` and gives two reasons: that
+ADR-0009 clause 2 "makes it advisory where `structural` and `terminal` are mandatory", and that
+"neither `docs/domain-model.md` nor the shipped `MissingCodeFacts` carries it".
+
+**Both of those premises are now false.** ADR-0009's amendment of 2026-08-22 lands the flag in
+`MissingCodeFacts`, in the core table and in the domain model, and reclassifies it from advisory to
+load-bearing, because `silenceRate` now keys on it.
+
+**The conclusion is unchanged.** It rested on a third reason that stands on its own: `informative`
+is derivable from the reason code the glyph already shows, and a derivable flag does not earn a
+third visual variable in a 40 × 30 px cell. It continues to be carried in words — in the cell's
+accessible name and in the legend's missingness key, which clause 7 already requires to exist.
+
+Recorded rather than left alone because the next reader would otherwise find a live decision resting
+on two dead premises, and could not tell which of the three reasons was load-bearing.
+
 ### 2026-08-21 — Clause 7's channel assignment defers to ADR-0028
 
 - **Status:** accepted

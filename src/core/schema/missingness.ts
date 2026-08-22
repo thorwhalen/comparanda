@@ -6,7 +6,7 @@
  * identical in a spreadsheet and mean opposite things about whether the analysis
  * is finished.
  *
- * Two flags do the real work, and they are what analyses key on -- never the
+ * Three flags do the real work, and they are what analyses key on -- never the
  * literal code, so that an analysis keeps working when a deployment extends the
  * set:
  *
@@ -14,6 +14,10 @@
  *     counts and removed from a dominance comparison entirely.
  *   - `terminal`: someone looked and this is the answer. Non-terminal absences
  *     are work outstanding.
+ *   - `informative`: the absence is itself a statement about the *subject*, not
+ *     about our process. `not-evidenced` says nobody documents this; `withheld`
+ *     says we know and are not saying. Only the first tells a reader anything
+ *     about the alternative, and `silenceRate` counts only that kind.
  *
  * The core set is closed and every extension declares a `broader` code inside
  * it, so "what is left to do" stays answerable across deployments. This is the
@@ -57,17 +61,39 @@ export interface MissingCodeFacts {
   structural: boolean;
   /** Someone looked; this is an answer, not outstanding work. */
   terminal: boolean;
+  /**
+   * The absence is evidence about the subject, not about our process.
+   *
+   * This is the distinction `silenceRate` keys on, and it cuts *across*
+   * `terminal`: `not-evidenced` and `withheld` are both terminal, and only the
+   * first says anything about the alternative. Counting both was the defect
+   * that made `silenceRate` a weaker quantity than ADR-0009 defines.
+   */
+  informative: boolean;
   /** One-line meaning, for the UI and for an agent's prompt. */
   means: string;
 }
 
+/**
+ * The flags for each core code, exactly as ADR-0009 clause 2 tabulates them.
+ *
+ * `not-applicable` is `informative: true` because "this criterion does not
+ * apply" is a real statement about the alternative -- battery life does not
+ * apply to a desktop, and that tells you what the alternative is. It never
+ * reaches `silenceRate` regardless, being `structural` and so outside the
+ * denominator; the flag is set for correctness, not for effect.
+ *
+ * The pair that matters is `not-evidenced` (informative: nobody documents this)
+ * against `withheld` (not informative: we know and are not saying). They are
+ * both terminal and they mean opposite things about the subject.
+ */
 export const CORE_MISSING_CODES: Readonly<Record<MissingCode, MissingCodeFacts>> = Object.freeze({
-  'not-applicable': { structural: true, terminal: true, means: 'This criterion does not apply to this alternative.' },
-  'not-assessed': { structural: false, terminal: false, means: 'Nobody has looked yet.' },
-  deferred: { structural: false, terminal: false, means: 'Deliberately left for now.' },
-  'not-evidenced': { structural: false, terminal: true, means: 'We looked; the sources are silent.' },
-  indeterminate: { structural: false, terminal: true, means: 'We looked; the sources do not settle it.' },
-  withheld: { structural: false, terminal: true, means: 'Known, but not shown here.' },
+  'not-applicable': { structural: true, terminal: true, informative: true, means: 'This criterion does not apply to this alternative.' },
+  'not-assessed': { structural: false, terminal: false, informative: false, means: 'Nobody has looked yet.' },
+  deferred: { structural: false, terminal: false, informative: false, means: 'Deliberately left for now.' },
+  'not-evidenced': { structural: false, terminal: true, informative: true, means: 'We looked; the sources are silent.' },
+  indeterminate: { structural: false, terminal: true, informative: true, means: 'We looked; the sources do not settle it.' },
+  withheld: { structural: false, terminal: true, informative: false, means: 'Known, but not shown here.' },
 });
 
 /**
@@ -82,6 +108,17 @@ export const MissingCodeDeclaration = z.object({
   /** Defaults follow `broader` unless overridden; an override is a real claim. */
   structural: z.optional(z.boolean()),
   terminal: z.optional(z.boolean()),
+  /**
+   * Also defaults from `broader`, and this is the one worth overriding.
+   *
+   * The world-versus-process distinction cuts across the silence-versus-conflict
+   * one, so a refinement can easily need the opposite value from its parent: a
+   * code for "the source is paywalled" is a sensible refinement of
+   * `not-evidenced` and is emphatically *not* informative about the subject.
+   * Inheriting is a claim the declarer makes by choosing `broader`; overriding
+   * is a sharper one.
+   */
+  informative: z.optional(z.boolean()),
 });
 export type MissingCodeDeclaration = z.infer<typeof MissingCodeDeclaration>;
 
@@ -112,6 +149,7 @@ export function resolveMissingCode(
   return {
     structural: decl.structural ?? base.structural,
     terminal: decl.terminal ?? base.terminal,
+    informative: decl.informative ?? base.informative,
     means: decl.means,
   };
 }
@@ -134,6 +172,15 @@ export interface Completeness {
   present: number;
   /** Absent, non-structural, terminal: looked at, and that is the answer. */
   settledAbsent: number;
+  /**
+   * Absent, non-structural, terminal **and informative**: looked at, and the
+   * emptiness is itself a statement about the subject.
+   *
+   * A subset of `settledAbsent`. The two differ exactly on the cells we could
+   * fill and are choosing not to -- `withheld`, and any deployment code that
+   * refines it -- which is why `silenceRate` is computed from this one.
+   */
+  informativeAbsent: number;
   /** Absent, non-structural, non-terminal: outstanding work. */
   outstanding: number;
   /**
@@ -148,11 +195,18 @@ export interface Completeness {
   /** present / applicable -- how much carries an actual value. */
   valuedRate: number;
   /**
-   * settledAbsent / applicable -- looked at, and came back empty.
+   * informativeAbsent / applicable -- looked at, and the silence is the finding.
    *
-   * The number an honest agent moves and a careless one does not: it is the
-   * share of the matrix where someone searched and the answer was "nothing
-   * here", as distinct from the share nobody has reached yet.
+   * The number an honest agent moves and a careless one does not: the share of
+   * the matrix where someone searched and the answer was "nothing here", as
+   * distinct both from the share nobody has reached yet and from the share we
+   * know and are not showing.
+   *
+   * It is deliberately **not** `settledAbsent / applicable`. That wider
+   * quantity counts `withheld` -- a fact about us -- alongside `not-evidenced`
+   * -- a fact about the subject -- and only the second is evidence a reader can
+   * use. ADR-0009 clause 5 defines the narrow one; the wide one shipped by
+   * accident and read as the same thing.
    */
   silenceRate: number;
 }
@@ -160,7 +214,7 @@ export interface Completeness {
 export function emptyCompleteness(): Completeness {
   return {
     total: 0, structural: 0, applicable: 0, present: 0,
-    settledAbsent: 0, outstanding: 0,
+    settledAbsent: 0, informativeAbsent: 0, outstanding: 0,
     examinedRate: 0, valuedRate: 0, silenceRate: 0,
   };
 }
@@ -188,6 +242,7 @@ export function tallyCompleteness(
       c.structural += 1;
     } else if (facts?.terminal) {
       c.settledAbsent += 1;
+      if (facts.informative) c.informativeAbsent += 1;
     } else {
       // An undeclared code counts as outstanding: the safe direction is to
       // over-report work remaining, never to under-report it.
@@ -198,7 +253,7 @@ export function tallyCompleteness(
   if (c.applicable > 0) {
     c.examinedRate = (c.present + c.settledAbsent) / c.applicable;
     c.valuedRate = c.present / c.applicable;
-    c.silenceRate = c.settledAbsent / c.applicable;
+    c.silenceRate = c.informativeAbsent / c.applicable;
   }
   return c;
 }

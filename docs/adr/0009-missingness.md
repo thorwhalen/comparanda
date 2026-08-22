@@ -147,6 +147,76 @@ needs migrating, and deciding later costs a two-repo sweep that deciding now doe
 example dataset is the place to check it against reality, and finding otherwise is grounds for a
 superseding ADR, not a quiet edit.
 
+### 2026-08-22 — `informative` ships, `silenceRate` narrows to it, and the shipped names are recorded
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+Three corrections, all of them the implementation catching up with clauses 2 and 5 above, plus one
+divergence that had gone unrecorded. Nothing in the decision changes.
+
+**1. `informative` exists now.** Clause 2 tabulates it for all six core codes and clause 5 defines
+`silenceRate` in terms of it, but `MissingCodeFacts` carried only `structural`, `terminal` and
+`means`, and `docs/domain-model.md`'s table carried only the first two. The flag is now in the
+interface, in `CORE_MISSING_CODES` with clause 2's values verbatim, and in the domain model's table.
+A decided-and-absent field is worse than an undecided one: it reads as settled to anyone checking
+the ADR and is invisible to anyone reading the code.
+
+**2. `silenceRate` narrows to match its own definition.** Clause 5 defines it as "the share of the
+applicable matrix where we looked and the absence is itself a statement about the subject" — that
+is `informative && terminal`. What shipped was `settledAbsent / applicable`: **every** terminal
+absence, which lumps `withheld` (we know, we are not saying) in with `not-evidenced` (we looked,
+the sources are silent). Only the second is evidence a reader can use, and `silenceRate` is the
+number an honest agent moves and a careless one does not — so the wider quantity quietly weakened
+the metric the honesty guarantee is measured by.
+
+A new count, **`informativeAbsent`**, is a subset of `settledAbsent`, and the rate is computed from
+it. `settledAbsent` is retained because `examinedRate` needs it and because "looked at and settled"
+is a real quantity; it simply is not this one.
+
+**3. `informative` is no longer merely advisory, and clause 3's wording is corrected to that
+extent.** Clause 3 lists "the mandatory `structural` and `terminal` flags, the advisory
+`informative` flag". Once `silenceRate` keys on it, it is load-bearing. Precisely:
+
+- in **resolved facts** it is mandatory — `MissingCodeFacts.informative` is a required boolean, so
+  no consumer ever meets an absent value;
+- in a **declaration** it is optional and defaults from `broader`, exactly like `structural` and
+  `terminal`, and an override is a real claim.
+
+The override is the case that matters, because the world-versus-process axis cuts *across* the
+silence-versus-conflict axis: a deployment code for "the source is paywalled" is a sensible
+refinement of `not-evidenced` and is emphatically **not** informative about the subject. Inheriting
+is a claim the declarer makes by choosing `broader`; overriding is a sharper one. An **undeclared**
+code still resolves to `undefined` and counts as outstanding — guessing `informative` for a code
+nobody declared would put an invention underneath the one metric the honesty claim rests on.
+
+`not-applicable` keeps clause 2's `informative: true`, which is correct on its own terms — "this
+criterion does not apply" is a real statement about the alternative — and is moot for the rate,
+since structural absence leaves the denominator before any rate is computed.
+
+**4. The shipped count and rate names differ from clause 5's, deliberately, and that was never
+written down.** Recorded here so the next reader does not treat it as drift:
+
+| clause 5 | shipped | why |
+|---|---|---|
+| `assessedRate` | **`valuedRate`** | both original names read naturally as "looked at" *and* as "carries a value" — which is how this ADR and the implementation came to define them as each other's opposite |
+| `settledRate` | **`examinedRate`** | as above |
+| `valued` | `present` | matches `hasValue` at the call site |
+| `inapplicable` | `structural` | keys on the flag, as clause 4 requires, rather than restating the code |
+| `resolved-absent` | `settledAbsent` | one word, and it is not a code |
+| — | `total`, `informativeAbsent` | a rate with no denominator is unreadable; `informativeAbsent` is new here |
+
+**Ship `examinedRate` and `valuedRate` together; never ship only one** — clause 5's rule, under the
+shipped names.
+
+A test pins all of this, including the `withheld` cell the two definitions disagree about. Four of
+its assertions fail against the superseded `settledAbsent / applicable` definition, which was
+verified by restoring that definition and watching them go red. A guard that cannot fail is not a
+guard, and this repository has shipped three of those.
+
+Closes #125.
+
 #### References
 
 1. [CodeSystem: NullFlavor (HL7 v3) — HL7 Terminology v6.0.2 (2024)](https://terminology.hl7.org/6.0.2/CodeSystem-v3-NullFlavor.html)
