@@ -109,3 +109,60 @@ nobody budgeted for. It was refuted there: the one-item provider covers the non-
 the cost of a two-method wrapper, and a second port shape would buy nothing the semantic separation
 above does not already give. Recorded so the next reader need not re-check it — see
 `docs/research/phase0-review.md`, the ADR-0006 entry.
+
+### 2026-08-22 — v1 uses one port, and multi-writer safety is a property of the key layout
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The 2026-08-21 amendment above fixes a **five-port** set — `AnalysisSource`, `ViewStateStore`,
+`SavedViewStore`, `AnnotationSink`, `AssertionStore` — with `getCapabilities()` as the single source
+of truth. Everything it says about *shape* stands. This narrows *how many of them v1 builds*, and
+adds one constraint the port set cannot express on its own.
+
+**1. v1 implements exactly one port: `DataProvider<Analysis>`.** The other four are view-state and
+collaboration conveniences, and **splitting a port set before any of its members has two
+implementations freezes a guess about which axes vary.** Saved views, annotations and assertions all
+travel *inside* the analysis document in v1 — annotations because ADR-0011 anchors them to ids in
+the document, assertions because ADR-0011 clause 3 puts them in the cell. A separate provider for
+each is four interfaces over one aggregate. They arrive when a second implementation of one of them
+exists, and the 2026-08-21 shape is what they arrive as.
+
+This narrowing is recorded rather than taken silently because a reader comparing the code to that
+amendment would otherwise read four missing ports as drift.
+
+**2. `getCapabilities()` remains the single source of truth, unchanged.** Clause 3 above is not
+narrowed by clause 1 and is not weakened by there being one port: v1's provider evaluates sort,
+filter, search and pagination client-side and **declares exactly that**, which is true and is
+correct for a handful of contributors. Moving any of them to the server later is a change to a
+declaration, not to a component. `comparanda` still never invents a parallel read-only flag.
+
+**3. `multiWriter` may be true only where `perContributorFiles` is.** `DataProvider.update(id,
+partial)` is last-write-wins with no version field. ADR-0011 clause 6 says last-write-wins is not
+acceptable for the analysis — and those two facts are compatible only under one condition: **that
+two contributors never write the same key.** A store that keeps one file per contributor per
+analysis satisfies it by construction; a store that keeps one shared document does not, and would
+lose contributions silently.
+
+So the capability report grows a **pair**, and the pair is the rule: a provider reporting
+`multiWriter: true` while `perContributorFiles` is false is a defect, not a configuration. This is
+the load-bearing invariant behind the whole shared-repository story, and it is written into the
+capability report precisely so it stops being folklore.
+
+**4. Below the port, everything is bytes, and that layer is the dependent's.** A consumer that
+persists analyses to a filesystem or to a shared git repository does so through a mutable
+string-to-bytes mapping in its own language, with the JSON codec, the key template and its
+write-time validation *above* the seam and only the leaf byte store varying. **`comparanda` does not
+own that layer and must not grow an opinion about it.** It is named here only so the next reader
+knows the absence is deliberate: the analysis reaches this package as a `DataProvider<Analysis>`
+and this package cannot tell, and must not be able to tell, whether it came from a directory, a
+clone or an object store (ADR-0002).
+
+**5. Merge is not `comparanda`'s in v1, and that is a decision.** Reconstituting one `Analysis` from
+N contributor files is pure, deterministic, and belongs beside the schema — but it is written once,
+in the repository that writes the files. A TypeScript port is deferred; when it lands it shares
+**golden fixtures** with the first implementation, byte-compared, because two hand-written merges
+that agree by inspection is exactly the drift ADR-0004's amendment of this date says a key-parity
+check cannot see. The fixtures are `comparanda`'s to author (ADR-0016 governs their content) and are
+the prerequisite for the port, not a follow-up to it.

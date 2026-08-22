@@ -147,6 +147,76 @@ needs migrating, and deciding later costs a two-repo sweep that deciding now doe
 example dataset is the place to check it against reality, and finding otherwise is grounds for a
 superseding ADR, not a quiet edit.
 
+### 2026-08-22 — `informative` ships, `silenceRate` narrows to it, and the shipped names are recorded
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+Three corrections, all of them the implementation catching up with clauses 2 and 5 above, plus one
+divergence that had gone unrecorded. Nothing in the decision changes.
+
+**1. `informative` exists now.** Clause 2 tabulates it for all six core codes and clause 5 defines
+`silenceRate` in terms of it, but `MissingCodeFacts` carried only `structural`, `terminal` and
+`means`, and `docs/domain-model.md`'s table carried only the first two. The flag is now in the
+interface, in `CORE_MISSING_CODES` with clause 2's values verbatim, and in the domain model's table.
+A decided-and-absent field is worse than an undecided one: it reads as settled to anyone checking
+the ADR and is invisible to anyone reading the code.
+
+**2. `silenceRate` narrows to match its own definition.** Clause 5 defines it as "the share of the
+applicable matrix where we looked and the absence is itself a statement about the subject" — that
+is `informative && terminal`. What shipped was `settledAbsent / applicable`: **every** terminal
+absence, which lumps `withheld` (we know, we are not saying) in with `not-evidenced` (we looked,
+the sources are silent). Only the second is evidence a reader can use, and `silenceRate` is the
+number an honest agent moves and a careless one does not — so the wider quantity quietly weakened
+the metric the honesty guarantee is measured by.
+
+A new count, **`informativeAbsent`**, is a subset of `settledAbsent`, and the rate is computed from
+it. `settledAbsent` is retained because `examinedRate` needs it and because "looked at and settled"
+is a real quantity; it simply is not this one.
+
+**3. `informative` is no longer merely advisory, and clause 3's wording is corrected to that
+extent.** Clause 3 lists "the mandatory `structural` and `terminal` flags, the advisory
+`informative` flag". Once `silenceRate` keys on it, it is load-bearing. Precisely:
+
+- in **resolved facts** it is mandatory — `MissingCodeFacts.informative` is a required boolean, so
+  no consumer ever meets an absent value;
+- in a **declaration** it is optional and defaults from `broader`, exactly like `structural` and
+  `terminal`, and an override is a real claim.
+
+The override is the case that matters, because the world-versus-process axis cuts *across* the
+silence-versus-conflict axis: a deployment code for "the source is paywalled" is a sensible
+refinement of `not-evidenced` and is emphatically **not** informative about the subject. Inheriting
+is a claim the declarer makes by choosing `broader`; overriding is a sharper one. An **undeclared**
+code still resolves to `undefined` and counts as outstanding — guessing `informative` for a code
+nobody declared would put an invention underneath the one metric the honesty claim rests on.
+
+`not-applicable` keeps clause 2's `informative: true`, which is correct on its own terms — "this
+criterion does not apply" is a real statement about the alternative — and is moot for the rate,
+since structural absence leaves the denominator before any rate is computed.
+
+**4. The shipped count and rate names differ from clause 5's, deliberately, and that was never
+written down.** Recorded here so the next reader does not treat it as drift:
+
+| clause 5 | shipped | why |
+|---|---|---|
+| `assessedRate` | **`valuedRate`** | both original names read naturally as "looked at" *and* as "carries a value" — which is how this ADR and the implementation came to define them as each other's opposite |
+| `settledRate` | **`examinedRate`** | as above |
+| `valued` | `present` | matches `hasValue` at the call site |
+| `inapplicable` | `structural` | keys on the flag, as clause 4 requires, rather than restating the code |
+| `resolved-absent` | `settledAbsent` | one word, and it is not a code |
+| — | `total`, `informativeAbsent` | a rate with no denominator is unreadable; `informativeAbsent` is new here |
+
+**Ship `examinedRate` and `valuedRate` together; never ship only one** — clause 5's rule, under the
+shipped names.
+
+A test pins all of this, including the `withheld` cell the two definitions disagree about. Four of
+its assertions fail against the superseded `settledAbsent / applicable` definition, which was
+verified by restoring that definition and watching them go red. A guard that cannot fail is not a
+guard, and this repository has shipped three of those.
+
+Closes #125.
+
 #### References
 
 1. [CodeSystem: NullFlavor (HL7 v3) — HL7 Terminology v6.0.2 (2024)](https://terminology.hl7.org/6.0.2/CodeSystem-v3-NullFlavor.html)
@@ -156,3 +226,63 @@ superseding ADR, not a quiet edit.
 5. [Inference and missing data — D. B. Rubin, Biometrika 63(3):581–592 (1976)](https://doi.org/10.1093/biomet/63.3.581)
 6. [Handbook on Constructing Composite Indicators: Methodology and User Guide — OECD / JRC European Commission (2008)](https://www.oecd.org/content/dam/oecd/en/publications/reports/2008/08/handbook-on-constructing-composite-indicators-methodology-and-user-guide_g1gh9301/9789264043466-en.pdf)
 7. [The Missing Indicator Method: From Low to High Dimensions — M. Van Ness et al., arXiv:2211.09259 (2022)](https://arxiv.org/pdf/2211.09259)
+
+### 2026-08-22 — A vocabulary is scoped, and it is reached through a facade
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The amendment above finishes the *flags*. This finishes the *scope* and the *reach*. Clause 3 of the
+2026-08-21 amendment makes the code set open and every code an object; it puts declarations at
+**analysis** scope and stops there, and it says no code may `switch` on a literal without saying
+what a consumer calls instead. Three additions close both gaps. Neither changes a decision.
+
+**1. A criterion may overlay the vocabulary.** `Criterion.missingCodes` takes the same
+`MissingCodeDeclaration[]` as `Analysis.missingCodes`, and a criterion-scoped declaration wins for
+cells of that criterion. The reason is the one that motivated `informative`: the codes a column
+actually needs are a property of *the question the column asks*. "The vendor declined to answer" is
+a real refinement of `withheld` for a procurement criterion and is noise on every other column, and
+forcing it to analysis scope either pollutes the whole document or does not get declared at all.
+
+Overlay, not replacement: a criterion's declarations are searched first, then the analysis's, then
+the core. Nothing shadows a **core** code — clause 3's "no custom code may be a schema default"
+already forbids redeclaring one, and that check now runs at both scopes.
+
+**2. Every consumer reaches the vocabulary through one facade, and no consumer builds the overlay
+itself.**
+
+    interface MissingnessVocabulary {
+      facts(code: string, opts?: { criterionId?: string }): Resolution<MissingCodeFacts>;
+      known(criterionId?: string): readonly string[];
+      means(code: string, opts?: { criterionId?: string }): string;
+    }
+    function vocabularyOf(a: Analysis): MissingnessVocabulary;
+
+Two scopes to search is exactly the amount of logic that gets re-implemented slightly differently in
+four places, and clause 3's prohibition on `switch`-ing over a literal is only actionable once there
+is a named thing to call instead.
+
+`means()` earns its own method because it has two callers who must never diverge: the accessibility
+announcement for a blank cell (ADR-0027, ADR-0028) and the prose a producing agent is given. **Both
+read the declaration's own `means` string; neither may carry a literal.** A custom code with no
+announcement text is the failure mode that turns the a11y merge gate from a guard into a false pass,
+and it is reachable today.
+
+**3. `resolveMissingCode` returns a `Resolution`, not `MissingCodeFacts | undefined`.** Its current
+signature is right about the hard part — it returns `undefined` for an undeclared code "rather than
+defaulting, because defaulting an unknown absence to 'outstanding work' or to 'correctly nothing'
+are both wrong and both invisible". What it cannot do is *tell anyone*, and it cannot distinguish
+"nobody declared this" from "declared, and this build reads it as its parent", which are opposite
+instructions to a caller. ADR-0030 gives it the shape that can: a resolution carrying whether the
+answer came from the core, from a declaration, or by degrading through `broader`, plus a
+`Degradation` record when it degraded. The behaviour is unchanged; the silence is not.
+
+**4. One thing this amendment does not have to say, and one it still does.** The second source of
+truth for the core set — the six-code array written inline in `validateAnalysis`'s redeclaration
+check instead of reading `CORE_MISSING_CODES` — **has been repaired**, and this amendment is not the
+place to complain about it. What has *not* been built is the guard that would have caught it: a
+source scan asserting no module outside `missingness.ts` contains a core code literal. Clause 4 of
+the 2026-08-21 amendment says completeness keys on the flag "never on a literal"; that is the same
+principle one level up, it was violated once in the file that owns the rule, and nothing would have
+noticed. The guard is owed.

@@ -262,13 +262,66 @@ stated job and is already behind the same weighted-aggregation opt-in.
 columns shown beside the realised ranking. ADR-0026's roster stays at five views. The justifying
 sentence is corrected to that extent and to no other.
 
+### 2026-08-22 — The ELECTRE quotation is verified, and the citation caveat is lifted
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The "Veto screening is conjunctive screening" amendment above closes with **"On the citation"**,
+which says the wording usually quoted for `v_j` "is not quoted here and nothing rests on it" because
+its available copy was gone, and points at issue #36 "for anyone who wants the sharper wording".
+
+**The wording has been re-verified. The caveat is lifted and the sharper wording is available.**
+
+A retrievable full-text copy of the chapter (Figueira, Mousseau & Roy, *ELECTRE Methods*, in
+*Multiple Criteria Decision Analysis: State of the Art Surveys*, Springer 2005, pp. 133–153,
+[doi:10.1007/0-387-23081-5_4](https://doi.org/10.1007/0-387-23081-5_4)) was located and read on
+2026-08-22. All four quotations the research had transcribed hold **verbatim**, and each is now
+recorded with the section it sits in:
+
+| § | What is verified |
+|---|---|
+| **2.1** | Ordinal and weakly-interval scales "are not suitable for the comparison of differences" |
+| **2.2** | The concordance and non-discordance conditions, quoted verbatim |
+| **2.4** | The veto threshold: "Veto thresholds express the power attributed to a given criterion to be against the assertion 'a outranks b', when the difference of the evaluation between g(b) and g(a) is greater than this threshold." |
+| **2.4** | Importance coefficients are voting power, and "can not be interpreted as substitution rates as in compensatory aggregation procedures" |
+
+**A fifth passage, not previously cited, corroborates this ADR's correction from inside the chapter
+itself.** At §3.1.2, introducing ELECTRE Iv, the authors contrast the two rules directly: "while
+discordance level is related to the scale of criterion `g_j` in absolute terms for an action `a` from
+`A`, threshold veto is related to the preference differences between `g_j(a)` and `g_j(b)`." An
+absolute-scale rule and a difference-based veto are named as *different things* by the chapter that
+defines both — which is exactly the distinction the correction above draws. The correction is now
+attested by the source it corrects the misreading of, not only by Roy's foundational statement.
+
+**Nothing in the decision changes.** The field is still `acceptability`; `veto` is still reserved,
+not occupied; the analysis still ships as described. What changes is the standing of the evidence:
+this ADR's correction no longer depends on independent corroboration, and the chapter's wording may
+now be quoted in this repository.
+
+**What is recorded instead of a URL.** The copy consulted is a third-party mirror, not the
+publisher's, and the chapter remains closed access at Springer. The previous copy rotted, and this
+one may. So the *section numbers* above, plus the sentence immediately following the veto definition
+— "These thresholds can be constant along a scale or it can also vary." — are the durable record: a
+reader with any copy can confirm in seconds that they have the right passage. This is the same
+principle as ADR-0014's citation rule applied to our own bibliography: **cite a span, not a
+document.**
+
+**Consequence for the corpus.** Three other ADRs carry the same caveat in their reference lists and
+each takes a one-line amendment pointing here: ADR-0003 (reference 8), ADR-0018 (the note under its
+references) and ADR-0020 (reference 2). The research documents that carry it —
+`docs/research/findings-terminology.md`, `docs/research/README.md`,
+`docs/research/sections/c2-measurement-and-aggregation.md` and `docs/ROADMAP.md` — are updated in
+place with a dated verification note. Issue #36 is closed as verified rather than as declined.
+
 ## References
 Cited from the Amendments only. The full reasoning and the wider literature are in
 `docs/research/findings-terminology.md` §§ 3–5 and `docs/research/findings-visualisation.md` § 2.
 
 1. [Multi-criteria analysis: a manual — Department for Communities and Local Government (2009)](https://researchonline.lse.ac.uk/id/eprint/12761/1/Multi-criteria_Analysis.pdf)
 2. [Elimination by aspects: A theory of choice — A. Tversky, *Psychological Review* 79(4):281–299 (1972)](https://doi.org/10.1037/h0032955)
-3. [The outranking approach and the foundations of ELECTRE methods — B. Roy, *Theory and Decision* 31:49–73 (1991)](https://link.springer.com/article/10.1007/BF00134132). The later ELECTRE survey chapter (Figueira, Mousseau & Roy, 2005, [doi:10.1007/0-387-23081-5_4](https://doi.org/10.1007/0-387-23081-5_4)) states the veto threshold in the wording usually quoted, but is closed access and its available copy is gone — it is therefore not quoted here.
+3. [The outranking approach and the foundations of ELECTRE methods — B. Roy, *Theory and Decision* 31:49–73 (1991)](https://link.springer.com/article/10.1007/BF00134132). The later ELECTRE survey chapter (Figueira, Mousseau & Roy, 2005, [doi:10.1007/0-387-23081-5_4](https://doi.org/10.1007/0-387-23081-5_4)) states the veto threshold in the wording usually quoted. It was closed access with no available copy when the 2026-08-21 amendments were written, which is why they do not quote it; **a retrievable full-text copy was located and the wording re-verified on 2026-08-22** (§2.4), so it may now be quoted — see the amendment of that date above, which records the section numbers in place of a URL and explains why.
 4. [Skyline Query Processing for Incomplete Data — M. E. Khalefa, M. F. Mokbel & J. J. Levandoski, ICDE 2008](https://dmlab.cs.umn.edu/new/papers/ICDE08_Skyline.pdf) — the standard common-dimensions definition, and the proof that it is non-transitive.
 5. [A Preference Programming Approach to Make the Even Swaps Method Even Easier — J. Mustajoki & R. P. Hämäläinen, *Decision Analysis* 2(2):110–123 (2005)](https://doi.org/10.1287/deca.1050.0043) — the source for practical dominance.
 6. [Composite Indicator Development and Analysis in R with COINr, ch. 6: Missing data and Imputation — W. Becker (2022)](https://bluefoxr.github.io/COINrDoc/missing-data-and-imputation.html) — "shadow imputation".

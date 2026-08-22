@@ -1,0 +1,148 @@
+/**
+ * The committed schema artifacts must be what the code would emit today.
+ *
+ * `package.json` has declared `emit-schema` and shipped a `schema` directory in
+ * `files` since this repository was created, and the script did not exist -- so
+ * `prepublishOnly` had never succeeded and no artifact had ever been produced.
+ * The companion repository validates against the published schema and was
+ * therefore pinned to a hand-written sketch.
+ *
+ * The load-bearing test here is the staleness one. An emitter that exists but is
+ * only run by hand at release time is an artifact that silently describes an old
+ * schema for however long it takes anyone to notice; the cross-repo contract
+ * then says one thing while the code does another, which is the failure this
+ * whole boundary exists to prevent.
+ */
+import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { SCHEMA_VERSION } from '../src/core/schema/analysis.js';
+import { CORE_MISSING_CODES } from '../src/core/schema/missingness.js';
+import { CORE_REDUCTIONS } from '../src/core/schema/values.js';
+import { CitationVerdict } from '../src/core/schema/evidence.js';
+import { Independence, AttestationMethod } from '../src/core/schema/provenance.js';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const schemaDir = join(root, 'schema');
+const documentPath = join(schemaDir, `comparanda.v${SCHEMA_VERSION}.json`);
+const vocabPath = join(schemaDir, `vocabularies.v${SCHEMA_VERSION}.json`);
+
+const readJson = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
+
+describe('the artifacts exist', () => {
+  it('has both files, at the current schema version', () => {
+    expect(existsSync(documentPath), `${documentPath} is missing; run pnpm emit-schema`).toBe(true);
+    expect(existsSync(vocabPath), `${vocabPath} is missing; run pnpm emit-schema`).toBe(true);
+  });
+
+  it('describes an analysis document', () => {
+    const s = readJson(documentPath);
+    expect(s.$schema).toContain('json-schema.org');
+    expect(s.type).toBe('object');
+    for (const required of ['alternatives', 'criteria', 'cells', 'authors', 'subject']) {
+      expect(Object.keys(s.properties)).toContain(required);
+    }
+  });
+
+  it('says plainly that satisfying the shape is not the whole contract', () => {
+    // A document can validate against this schema and still be rejected by the
+    // honesty family. Anyone integrating against the artifact alone needs to
+    // know that before they discover it.
+    expect(readJson(documentPath).description).toMatch(/honesty/);
+  });
+});
+
+describe('the artifacts are not stale', () => {
+  it('re-emitting produces byte-identical files', () => {
+    const before = [readFileSync(documentPath, 'utf8'), readFileSync(vocabPath, 'utf8')];
+    execFileSync('npx', ['tsx', 'scripts/emit-json-schema.ts'], { cwd: root, stdio: 'pipe' });
+    const after = [readFileSync(documentPath, 'utf8'), readFileSync(vocabPath, 'utf8')];
+    expect(after[0], 'schema/comparanda.v1.json is stale; run pnpm emit-schema').toBe(before[0]);
+    expect(after[1], 'schema/vocabularies.v1.json is stale; run pnpm emit-schema').toBe(before[1]);
+  }, 60_000);
+});
+
+describe('the vocabulary artifact carries the facts a shape cannot', () => {
+  const vocab = () => readJson(vocabPath);
+
+  it('has the shape ADR-0004 specifies', () => {
+    const v = vocab();
+    expect(Object.keys(v.vocabularies).sort()).toEqual(['missingCode', 'reduction', 'scale']);
+    for (const name of ['missingCode', 'reduction', 'scale']) {
+      const entry = v.vocabularies[name];
+      expect(entry.core, `${name}.core`).toBeInstanceOf(Array);
+      expect(entry.extensible, `${name}.extensible`).toBe(true);
+      // `declaredAt` is what stops a consumer having to learn our field names by
+      // reading our source.
+      expect(entry.declaredAt, `${name}.declaredAt`).toMatch(/^\$\./);
+    }
+  });
+
+  it('exports the missingness core with all three flags, verbatim', () => {
+    // Emitted from the same frozen table the runtime reads. If this ever has to
+    // be re-typed, the two can disagree while both look right -- which is the
+    // whole reason the artifact is generated rather than written.
+    expect(vocab().vocabularies.missingCode.facts).toEqual(CORE_MISSING_CODES);
+    expect(vocab().vocabularies.missingCode.core).toEqual(Object.keys(CORE_MISSING_CODES));
+  });
+
+  it('carries what silenceRate keys on, which JSON Schema cannot say', () => {
+    const facts = vocab().vocabularies.missingCode.facts;
+    expect(facts['not-evidenced'].informative).toBe(true);
+    expect(facts.withheld.informative).toBe(false);
+    // Those two are both terminal, and a consumer computing silenceRate from
+    // `terminal` alone gets a different, weaker number.
+    expect(facts['not-evidenced'].terminal).toBe(facts.withheld.terminal);
+  });
+
+  it('exports the reduction core with the arithmetic flag', () => {
+    const facts = vocab().vocabularies.reduction.facts;
+    expect(facts).toEqual(CORE_REDUCTIONS);
+    expect(facts.mean.arithmetic).toBe(true);
+    expect(facts['lower-median'].arithmetic).toBe(false);
+  });
+
+  it('keeps closed enums out of the extensible map', () => {
+    // Listing a closed enum beside the open three as `extensible: false` would
+    // invite a consumer to try extending it. There is no `broader` to degrade
+    // through, so naming a member outside these is wrong rather than newer.
+    const closed = vocab().closedEnums;
+    expect(Object.keys(closed).filter((k) => k !== '$comment').sort()).toEqual(
+      ['attestationMethod', 'authorKind', 'citationVerdict', 'independence', 'sourceType', 'stance'],
+    );
+    for (const name of Object.keys(closed).filter((k) => k !== '$comment')) {
+      expect(closed[name].extensible).toBeUndefined();
+    }
+  });
+
+  it('exports one spelling of the citation verdict, and not the retired ones', () => {
+    const core: string[] = vocab().closedEnums.citationVerdict.core;
+    expect(core).toEqual([...CitationVerdict.options]);
+    for (const retired of ['verified', 'drifted', 'not-found']) {
+      expect(core).not.toContain(retired);
+    }
+  });
+
+  it('exports the attestation methods, which are an enum inside an object', () => {
+    // Attestation is `{ method, issuer?, at? }`; only the method is a closed
+    // vocabulary, and emitting the object would publish a shape rather than a set.
+    expect(vocab().closedEnums.attestationMethod.core).toEqual([...AttestationMethod.options]);
+  });
+
+  it('exports the independence ladder in order, weakest first', () => {
+    expect(vocab().closedEnums.independence.core).toEqual([...Independence.options]);
+    expect(vocab().closedEnums.independence.core[0]).toBe('shared-context');
+  });
+
+  it('lists no extensions, because extensions live in documents', () => {
+    // Anything a deployment declares travels inside its analysis. If this file
+    // ever grows a registry of them, the design has quietly inverted.
+    for (const name of ['missingCode', 'reduction', 'scale']) {
+      expect(Object.keys(vocab().vocabularies[name])).not.toContain('declared');
+      expect(Object.keys(vocab().vocabularies[name])).not.toContain('extensions');
+    }
+  });
+});

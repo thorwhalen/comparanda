@@ -67,5 +67,20 @@ The reasoning behind this decision, with the full literature, is in
 `docs/research/findings-terminology.md` §§ 3.1–3.2.
 
 1. [Common Mistakes in Making Value Trade-Offs — R. L. Keeney, *Operations Research* 50(6):935–945 (2002)](https://pubsonline.informs.org/doi/10.1287/opre.50.6.935.357) — full text paywalled; title and abstract verified.
-2. [The outranking approach and the foundations of ELECTRE methods — B. Roy, *Theory and Decision* 31:49–73 (1991)](https://link.springer.com/article/10.1007/BF00134132). The often-quoted statement that ELECTRE weights are "not substitution rates" comes from the later ELECTRE survey chapter (Figueira, Mousseau & Roy, 2005, [doi:10.1007/0-387-23081-5_4](https://doi.org/10.1007/0-387-23081-5_4)), whose wording cannot currently be re-verified — it is therefore not quoted here, and the claim rests on Roy's foundational statement.
+2. [The outranking approach and the foundations of ELECTRE methods — B. Roy, *Theory and Decision* 31:49–73 (1991)](https://link.springer.com/article/10.1007/BF00134132). The often-quoted statement that ELECTRE weights are "not substitution rates" comes from the later ELECTRE survey chapter (Figueira, Mousseau & Roy, 2005, [doi:10.1007/0-387-23081-5_4](https://doi.org/10.1007/0-387-23081-5_4)), whose wording cannot currently be re-verified — it is therefore not quoted here, and the claim rests on Roy's foundational statement. *(See the amendment below: re-verified 2026-08-22.)*
+
+## Amendments
+
+### 2026-08-22 — Reference 2's access caveat is lifted, and this ADR's central claim is now directly attested
+
+The chapter was re-verified against a retrievable full-text copy on 2026-08-22. The passage this ADR
+exists for is verbatim at **§2.4**: "For a given criterion the weight, `w_j`, reflects its voting
+power when it contributes to the majority which is in favor of an outranking. The weights do not
+depend neither on the ranges nor the encoding of the scales. Let us point out that these parameters
+can not be interpreted as substitution rates as in compensatory aggregation procedures AHP, MACBETH
+and MAUT."
+
+That is the two-kinds-of-weight distinction stated by the source, in one sentence, and this ADR may
+now quote it. The decision — `substitutionWeight` and `votingWeight` never share a field — is
+unchanged; it is better evidenced. Full record: **ADR-0015, amendment of 2026-08-22**.
 3. [What is the PAPRIKA method? — 1000minds; after P. Hansen & F. Ombler, *Journal of Multi-Criteria Decision Analysis* 15:87–107 (2008)](https://www.1000minds.com/paprika)

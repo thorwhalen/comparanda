@@ -76,3 +76,85 @@ Measurements and full reasoning: `docs/research/findings-visualisation.md` § 5.
 `docs/research/findings-terminology.md` § 6.3; the zodal source read is in
 `docs/research/sections/c8-prior-art-and-stack.md`. All three are own measurements and source
 reads, not citations.
+
+### 2026-08-22 — The contract is two artifacts, and one of them has never been emitted
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The Decision stands, and so does the amendment above. What changes is the *count* of artifacts the
+contract consists of, plus one fact about the current state that should have been recorded when it
+became true.
+
+**1. `scripts/emit-json-schema.ts` does not exist.** `package.json` declares
+`"emit-schema": "tsx scripts/emit-json-schema.ts"` and `prepublishOnly` invokes it. The file is
+absent, so `pnpm prepublishOnly` fails and **no JSON Schema artifact has ever been produced**. The
+`files` array also lists a `schema` directory that does not exist. `rubricator`'s entire dependency
+is defined against an artifact that has never existed, and it is pinned to its own provisional
+sketch until this lands.
+
+This is recorded in an ADR rather than only in an issue because the Decision above asserts the
+artifact as a *property of the design*, and an assertion nobody can execute is exactly the failure
+ADR-0016 forbids in a citation, arriving in the build instead of in a footnote.
+
+**2. The contract is two files, not one.** `comparanda.v1.json` carries the *shape*.
+`vocabularies.v1.json`, emitted beside it by the same script in the same pass, carries the **core
+member set of every extensible vocabulary**, plus where a declaration for that vocabulary lives in
+the document:
+
+    { "schemaVersion": 1,
+      "vocabularies": {
+        "missingCode": { "core": [...], "extensible": true, "declaredAt": "$.missingCodes" },
+        "reduction":   { "core": [...], "extensible": true, "declaredAt": "$.reductions" },
+        "scale":       { "core": [...], "extensible": true, "declaredAt": "$.scales" } } }
+
+**Why a second file rather than an `enum` in the first.** ADR-0030 opens three vocabularies at the
+point of use: the JSON Schema for `Missing.code`, `Cell.reduction` and `Measurement.scale` is
+`{"type": "string"}`, which is correct and which erases exactly the fact a consumer needs — *which
+members this build interprets without degrading*. A JSON Schema cannot say "open, and here is the
+closed core underneath it" without closing it. So the core sets travel in their own artifact, and
+one script emits both so they can never be half-updated.
+
+**3. The parity test runs in the dependent, not here.** `comparanda` must never need to know
+`rubricator` exists (ADR-0002). So `comparanda`'s test asserts only that the emitted file equals its
+own TypeScript constants; the *cross-language* comparison is `rubricator`'s test against the file it
+vendors. That direction is what makes the manifest incapable of lying about either side, and it is
+the whole reason the core sets are *read from an artifact* rather than imported as a constant.
+
+**4. What this does not catch, stated so a green check is not over-read.** Key parity is not
+semantic parity. Both repositories can register a `lower-median` and disagree about ties, and
+nothing here notices. The only real defence is golden fixtures run through both implementations with
+byte-compared output, which is deliberately not in v1 (`docs/cross-repo-coordination.md` § 4.4).
+
+### 2026-08-22 — both artifacts are emitted, and the manifest gains two fields
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+
+The amendment above records that `scripts/emit-json-schema.ts` "does not exist", so
+`pnpm prepublishOnly` fails and "no JSON Schema artifact has ever been produced". **It exists now.**
+Both artifacts are emitted and committed, `prepublishOnly` passes, and the `files: ["dist",
+"schema"]` declaration finally names a directory that is there.
+
+The manifest follows this ADR's specified shape — a `vocabularies` map keyed by singular name, each
+entry carrying `core`, `extensible` and `declaredAt` — with two additive extensions:
+
+- **`facts` beside `core`.** The sketch above shows `core` as a member set, and a set is not enough.
+  A consumer computing `silenceRate` has to know that `withheld` is terminal and **not** informative;
+  one keying on `terminal` alone gets a different, weaker quantity. Those facts are exactly what a
+  JSON Schema cannot express, which is this file's entire reason for existing, so leaving them out
+  would have shipped a manifest that does not do its job.
+- **`closedEnums`, kept separate.** Citation verdicts, source types, stances, author kinds,
+  attestation methods and the independence ladder are closed. Listing them beside the open three as
+  `extensible: false` invites a consumer to try extending one, and there is no `broader` to degrade
+  through when they do — a member outside these is wrong rather than newer.
+
+The staleness guard is the part worth noting. A test re-runs the emitter and requires byte-identical
+output, so an artifact that has fallen behind the code fails the build rather than describing an old
+schema for however long it takes someone to open it. It has already fired once, on the commit that
+added `Criterion.missingCodes`.
+
+**Clause 4 of the amendment above stands unchanged**: key parity is not semantic parity, both
+repositories can register a `lower-median` and disagree about ties, and only golden fixtures through
+both implementations would catch that.

@@ -73,6 +73,53 @@ export const Selector = z.discriminatedUnion('type', [
 export type Selector = z.infer<typeof Selector>;
 
 /**
+ * A cleaned copy of an ingested source, and the fingerprint of what it was made
+ * from.
+ *
+ * Ingestion normalises -- strips navigation, rejoins hyphenated lines, collapses
+ * whitespace -- so a character range indexes the *cleaned* text and not the file
+ * a reader opens. Two ways out were live, and we keep the cleaned copy and cite
+ * into it (ADR-0014, 2026-08-22). The cost is a second copy of every ingested
+ * document; the return is that every quote in an analysis resolves offline,
+ * indefinitely, whether or not the original still exists at its locator.
+ *
+ * `originalSha256` is what makes drift **visible instead of silent**. Three
+ * standings follow, and the middle one is the one that will actually occur:
+ *
+ * | rendition | original hash | what the reader is told |
+ * |---|---|---|
+ * | resolves | matches | checkable and current |
+ * | resolves | **differs** | checkable against what we ingested; the source has moved on |
+ * | missing | -- | not resolvable here, and *why* -- never a bare "unverified" |
+ */
+export const Rendition = z.object({
+  id: z.string(),
+  /** Where the original came from. Opaque; meaningful to the host's resolver. */
+  originalLocator: z.string(),
+  /**
+   * Hash of the original's bytes **at ingest time**.
+   *
+   * Not of the rendition: the rendition is ours and does not change under us.
+   * This is the thing that can, and detecting that is the entire job.
+   */
+  originalSha256: z.string(),
+  /**
+   * Which normaliser produced the cleaned text.
+   *
+   * Versioned and append-only: changing what a normaliser does silently
+   * invalidates every offset recorded against it, so a changed normaliser is a
+   * new id rather than a new behaviour under the old one.
+   */
+  normaliserId: z.string(),
+  /** The cleaned text, when the bundle carries it inline. */
+  content: z.optional(z.string()),
+  retrievedAt: z.optional(z.string()),
+  /** Human-facing title, for the link a reader follows. */
+  label: z.optional(z.string()),
+});
+export type Rendition = z.infer<typeof Rendition>;
+
+/**
  * What the source *is*, relative to the claim.
  *
  * ADR-0006 is emphatic here, and for a reason the originating work discovered
@@ -120,15 +167,196 @@ export type Stance = z.infer<typeof Stance>;
  * to a reader with a different corpus would mislead, so the reader is shown when
  * and by what it was made.
  */
+/**
+ * The graded verdict from re-finding a quote. **One spelling, and this is it.**
+ *
+ * Three vocabularies were live at once: this file's, rubricator's citation
+ * ladder's, and ADR-0014's. ADR-0014 is the accepted decision, so the other two
+ * come to it. `verified` is retired -- it read as "someone approved this" when it
+ * meant "found verbatim" -- and `drifted` split, because "the document changed
+ * and the quote is still there" and "the document changed and the quote is gone"
+ * are different answers that a reader must be able to act on differently.
+ *
+ * The first three are ladder rungs: how *hard* we had to look.
+ * The next two are about the document underneath.
+ *
+ * - `exact`         found verbatim, after whitespace normalisation only.
+ * - `normalised`    found once punctuation and case are folded.
+ * - `fuzzy`         found by token overlap above the configured threshold. A
+ *                   quote reassembled across a line break usually lands here.
+ * - `moved`         the document changed and the quote was found elsewhere.
+ *                   Re-anchor, and log that it moved.
+ * - `stale`         the document changed and the quote is gone. Surface it.
+ * - `unresolvable`  the target could not be reached at all.
+ * - `unchecked`     no check ran. Not a verdict; the absence of one.
+ */
+export const CitationVerdict = z.enum([
+  'exact', 'normalised', 'fuzzy', 'moved', 'stale', 'unresolvable', 'unchecked',
+]);
+export type CitationVerdict = z.infer<typeof CitationVerdict>;
+
+/** Verdicts that mean the quoted text was actually located. */
+const FOUND: ReadonlySet<CitationVerdict> = new Set<CitationVerdict>(['exact', 'normalised', 'fuzzy', 'moved']);
+
+/** Whether a verdict means the reader can go and look at the quoted span. */
+export function verdictFound(v: CitationVerdict): boolean {
+  return FOUND.has(v);
+}
+
 export const CitationCheck = z.object({
-  status: z.enum(['verified', 'not-found', 'drifted', 'unchecked', 'unresolvable']),
+  status: CitationVerdict,
+  /**
+   * When the check ran. **Required for every status except `unchecked`**, which
+   * is the one status that describes the absence of a check and so has no
+   * moment to record. The rule is enforced by `validateCitationCheck` rather
+   * than by the shape, following this module's convention: zod carries the
+   * shape, plain functions carry the rules, and a rule violation comes back as
+   * a path and a sentence rather than a parse failure.
+   */
   checkedAt: z.optional(z.string()),
+  /** What ran it. Same requiredness rule as `checkedAt`. */
   checkerVersion: z.optional(z.string()),
   /** Which selector resolved, when several were tried. */
   resolvedBy: z.optional(z.string()),
+  /**
+   * True when the original's hash at check time differed from the
+   * `originalSha256` its rendition recorded at ingest.
+   *
+   * Orthogonal to `status`: a quote can be `exact` in our rendition while the
+   * source it was taken from has changed underneath. Both facts are true and a
+   * reader needs both, so they are two fields rather than one overloaded enum.
+   */
+  originalDrifted: z.optional(z.boolean()),
   detail: z.optional(z.string()),
 });
 export type CitationCheck = z.infer<typeof CitationCheck>;
+
+/**
+ * How much a stored check can still be trusted, at the moment of reading.
+ *
+ * A check travels inside the document (ADR-0014), which is what lets a bundle
+ * sent to someone with no resolver and no corpus show something real. The cost
+ * is that it can arrive stale, so a reader is never shown a bare verdict: they
+ * are shown the verdict *and* how far it can be trusted.
+ *
+ * - `unchecked`      no check has run. Not a verdict at all.
+ * - `current`        run by the checker version now in use.
+ * - `older-checker`  run by an earlier checker. The verdict stands as a record
+ *                    of what that checker found; it is not a claim about what
+ *                    the current one would find.
+ * - `aged`           older than a caller-supplied threshold. Only ever produced
+ *                    when a caller supplies one -- see `staleAfterDays`.
+ */
+export type CheckFreshness = 'unchecked' | 'current' | 'older-checker' | 'aged';
+
+export interface CheckStanding {
+  freshness: CheckFreshness;
+  /**
+   * The source has changed since we ingested it.
+   *
+   * Independent of `freshness`, which is about *our* check going out of date.
+   * This is about the *document* moving on, and it needs a caveat of its own:
+   * the quote is still checkable against what we read, and a reader following
+   * the original link may not find it.
+   */
+  sourceChanged: boolean;
+  /**
+   * Whole days between `checkedAt` and `now`. Absent when there is nothing to
+   * measure from -- no check, or a check that failed the requiredness rule.
+   *
+   * Spelled `| undefined` explicitly because this project runs
+   * `exactOptionalPropertyTypes`, under which an optional property does not
+   * accept an explicit `undefined` value.
+   */
+  ageDays?: number | undefined;
+  /**
+   * True when the reader must be shown a caveat alongside the verdict. Every
+   * freshness except `current` requires one; the view contract may not render a
+   * non-current check as though it were current.
+   */
+  needsCaveat: boolean;
+}
+
+/**
+ * Classify a stored check for display.
+ *
+ * `now` is a parameter and not a hidden clock, so this stays pure and testable
+ * and so a bundle rendered twice from the same inputs renders identically.
+ *
+ * **There is deliberately no default age threshold.** Expiring a check on an age
+ * nobody can justify would blind a shared bundle with no way for its recipient
+ * to refresh it, and a visible caveat carries strictly more information than an
+ * absence. Age is therefore always *reported* and only *acted on* when a caller
+ * has chosen a threshold and owns that choice.
+ */
+export function checkStanding(
+  check: CitationCheck | undefined,
+  {
+    currentCheckerVersion,
+    now,
+    staleAfterDays,
+  }: { currentCheckerVersion: string; now: Date; staleAfterDays?: number },
+): CheckStanding {
+  if (!check || check.status === 'unchecked') {
+    return { freshness: 'unchecked', sourceChanged: false, needsCaveat: true };
+  }
+
+  const sourceChanged = check.originalDrifted === true;
+
+  const ageDays = check.checkedAt
+    ? Math.floor((now.getTime() - new Date(check.checkedAt).getTime()) / 86_400_000)
+    : undefined;
+
+  // Version first: a check from an older checker is suspect however recent it
+  // is, because what changed is the thing doing the checking.
+  if (check.checkerVersion !== currentCheckerVersion) {
+    return { freshness: 'older-checker', sourceChanged, ageDays, needsCaveat: true };
+  }
+  if (staleAfterDays !== undefined && ageDays !== undefined && ageDays > staleAfterDays) {
+    return { freshness: 'aged', sourceChanged, ageDays, needsCaveat: true };
+  }
+  // A current check over a source that has moved on still needs a caveat: the
+  // verdict is true about what we ingested and may be false about what the
+  // reader would open.
+  return { freshness: 'current', sourceChanged, ageDays, needsCaveat: sourceChanged };
+}
+
+/**
+ * The requiredness rule for a stored check.
+ *
+ * A verdict with no date and no checker is the failure this rule exists to
+ * prevent: it reads as current to anyone who opens the document, and there is
+ * nothing in it that says otherwise. `unchecked` is exempt because it is the
+ * absence of a verdict rather than an undated one.
+ */
+export function validateCitationCheck(
+  check: CitationCheck | undefined,
+  path = 'check',
+): EvidenceProblem[] {
+  if (!check || check.status === 'unchecked') return [];
+  const problems: EvidenceProblem[] = [];
+  if (!check.checkedAt) {
+    problems.push({
+      path: `${path}.checkedAt`,
+      message: `a check with status "${check.status}" must record when it ran. ` +
+        'An undated verdict reads as current forever.',
+      family: 'honesty',
+      ruleId: 'check-dated',
+      fix: 'set checkedAt to the moment the check ran, or set status to "unchecked".',
+    });
+  }
+  if (!check.checkerVersion) {
+    problems.push({
+      path: `${path}.checkerVersion`,
+      message: `a check with status "${check.status}" must record what ran it. ` +
+        'Without it a reader cannot tell whether the current checker would still agree.',
+      family: 'honesty',
+      ruleId: 'check-attributed',
+      fix: 'set checkerVersion to the identifier of the checker that produced this verdict.',
+    });
+  }
+  return problems;
+}
 
 /**
  * One evidence reference.
@@ -149,8 +377,36 @@ export const EvidenceRef = z.object({
    * supporting text with no network (ADR-0013).
    */
   excerpt: z.optional(z.string()),
-  /** Hash of `excerpt`, so a resolver can detect that the target has moved on. */
-  quoteHash: z.optional(z.string()),
+  /**
+   * Hash of `excerpt` -- **our** quoted text, so a resolver can tell that the
+   * stored excerpt and the stored selectors have fallen out of step.
+   *
+   * Renamed from `quoteHash`, which read as though it hashed the source. It
+   * hashes the excerpt, the source's fingerprint is `Rendition.originalSha256`,
+   * and a document that ships both under names that do not distinguish them is a
+   * document whose drift detection nobody can reason about.
+   */
+  excerptHash: z.optional(z.string()),
+  /**
+   * The rendition this reference's selectors index into.
+   *
+   * Absent means the selectors index the original directly, which is the
+   * un-normalised case and is legal -- a plain text file needs no rendition.
+   */
+  renditionId: z.optional(z.string()),
+  /**
+   * The normaliser under which this reference's offsets and stored check were
+   * computed.
+   *
+   * On the **reference**, not only on the rendition, and that is the point: a
+   * verdict computed under one normaliser is not reproducible under another. A
+   * rendition can be re-made -- a normaliser is fixed and a new one gets a new
+   * id -- and a reference carrying a check has to say which one its verdict was
+   * true under, or the verdict cannot be re-checked at all.
+   *
+   * Absent is legal when there is no check and no rendition.
+   */
+  normaliserId: z.optional(z.string()),
   /**
    * For `agent-summary` and `agent-inference`: the ids of the references this
    * was derived from. An inference with an empty `derivedFrom` is an assertion
@@ -166,6 +422,18 @@ export type EvidenceRef = z.infer<typeof EvidenceRef>;
 export interface EvidenceProblem {
   path: string;
   message: string;
+  /**
+   * Which family this belongs to, so the caller does not have to guess.
+   *
+   * Every rule in this module is `honesty`: each one is about a reference
+   * asserting something a reader cannot check. They were being reported as
+   * warnings by `validateAnalysis`, which meant a document whose every
+   * supporting reference was the agent's own output still validated -- the exact
+   * failure ADR-0006 names, passing the boundary it was written for.
+   */
+  family: 'honesty';
+  ruleId: string;
+  fix: string;
 }
 
 /**
@@ -187,13 +455,21 @@ export function validateEvidence(refs: readonly EvidenceRef[], path = 'evidence'
         path: at,
         message: 'a reference must identify a span: give at least one selector, or an excerpt. ' +
           'Pointing at a whole document is not evidence.',
+        family: 'honesty',
+        ruleId: 'cite-a-span',
+        fix: 'add a TextQuoteSelector with the quoted words, or an excerpt.',
       });
     }
+    problems.push(...validateCitationCheck(ref.check, `${at}.check`));
     if (!isExternalSupport(ref.sourceType) && ref.derivedFrom.length === 0) {
       problems.push({
         path: `${at}.derivedFrom`,
         message: `sourceType "${ref.sourceType}" is the agent's own output, so it must name the ` +
           'references it was derived from. An inference citing nothing is not a citation.',
+        family: 'honesty',
+        ruleId: 'inference-names-its-sources',
+        fix: 'list the ids of the references this was derived from, or record the cell as a ' +
+          'qualified absence instead.',
       });
     }
   });
@@ -204,6 +480,10 @@ export function validateEvidence(refs: readonly EvidenceRef[], path = 'evidence'
       path,
       message: 'every supporting reference is the agent\'s own summary or inference. ' +
         'Nothing external supports this value; it should carry a qualified absence instead.',
+      family: 'honesty',
+      ruleId: 'external-support-required',
+      fix: 'cite a primary or secondary source, or replace the value with a qualified absence ' +
+        '("not-evidenced" if the sources are silent, "indeterminate" if they conflict).',
     });
   }
 

@@ -118,7 +118,17 @@ Full reasoning and the complete literature: `docs/research/findings-terminology.
 5. [Analytic Hierarchy Process: A Complete Guide — TransparentChoice](https://www.transparentchoice.com/analytic-hierarchy-process)
 6. [Polls — Loomio Help](https://www.loomio.com/docs/en/user_manual/polls/proposal_types)
 7. [The outranking approach and the foundations of ELECTRE methods — B. Roy, *Theory and Decision* 31:49–73 (1991)](https://link.springer.com/article/10.1007/BF00134132)
-8. [Electre Methods — J. Figueira, V. Mousseau & B. Roy, in *Multiple Criteria Decision Analysis: State of the Art Surveys*, pp. 133–153 (2005)](https://doi.org/10.1007/0-387-23081-5_4) — closed access and the copy the research transcribed from is no longer online, so its wording is **not** quoted here; the substantive claim rests on [7].
+8. [Electre Methods — J. Figueira, V. Mousseau & B. Roy, in *Multiple Criteria Decision Analysis: State of the Art Surveys*, pp. 133–153 (2005)](https://doi.org/10.1007/0-387-23081-5_4) — closed access and the copy the research transcribed from is no longer online, so its wording is **not** quoted here; the substantive claim rests on [7]. *(See the 2026-08-22 amendment below: the wording has since been re-verified and this caveat is lifted.)*
+
+## Amendments — citation
+
+### 2026-08-22 — Reference 8's access caveat is lifted
+
+The chapter cited at reference 8 was re-verified against a retrievable full-text copy on 2026-08-22.
+The non-compensation wording this ADR relies on is verbatim at **§2.1** ("not suitable for the
+comparison of differences"). The caveat above stands as the record of what was true when this ADR
+was written; it no longer describes the present state. Full record, including what is stored in place
+of a URL and why: **ADR-0015, amendment of 2026-08-22**.
 9. [On the Theory of Scales of Measurement — S. S. Stevens (1946)](https://www.science.org/doi/10.1126/science.103.2684.677)
 10. [Nominal, Ordinal, Interval, and Ratio Typologies Are Misleading — P. F. Velleman & L. Wilkinson (1993)](https://www.tandfonline.com/doi/abs/10.1080/00031305.1993.10475938)
 11. [Likert scales, levels of measurement and the "laws" of statistics — G. Norman (2010)](https://link.springer.com/article/10.1007/s10459-010-9222-y) — paywalled; the quoted sentence is from the abstract.

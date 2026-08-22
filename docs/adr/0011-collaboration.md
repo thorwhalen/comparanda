@@ -203,3 +203,150 @@ surviving residue of the review of this amendment in `docs/research/phase0-revie
 5. [Suggest edits in Google Docs — Google Docs Editors Help](https://support.google.com/docs/answer/6033474)
 6. [Group informed consensus — The Computational Democracy Project / Polis](https://compdemocracy.org/Group-Informed-Consensus/)
 7. [Algorithms — The Computational Democracy Project / Polis](https://compdemocracy.org/algorithms/)
+
+## Amendments
+
+### 2026-08-22 — the team is in v1; the staging changes, the decision does not
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+**Nothing in the Decision changes.** All seven clauses stand exactly as accepted. What changes is
+the Consequences paragraph's staging.
+
+It reads: "This is the largest single area of the specification and should be staged: annotations and
+edit attribution first, then multi-rater and disagreement, then suggestion mode." That staging
+assumed a first shippable version for one author, with the group arriving later. Asked directly
+whether the first real user is one person or a team arguing over a shared document, the owner chose
+the team:
+
+> "A team arguing over a shared document is in v1."
+
+**So clauses 1–4 and 7 ship in v1** — anchored annotations at every scope, threads with resolve,
+multi-rater values with every assertion retained, disagreement as an encoding, and a legible activity
+record. **Clause 5, suggestion mode, remains staged**: it is the one clause that presupposes an
+authorisation story, and ADR-0012 puts authorisation in the host's hands, so it is additive rather
+than foundational. **Clause 6, versioned writes with conflicts surfaced, ships in v1** and is no
+longer optional — it was tolerable to defer while a single author edited a local file, and it is not
+tolerable the moment two people write to one shared analysis.
+
+**The Consequences paragraph's real warning is now load-bearing rather than prospective.** It says
+"retrofitting multi-rater onto a single-value cell is a migration through every stored analysis".
+There is no longer a window in which that retrofit could have been cheap: the multi-rater shape is
+what v1 stores.
+
+**Two contributors, one model.** The Context says a comparison "is produced, then argued over" —
+and in this product some of the producing and some of the arguing is done by an agent. Human and
+agent contributors are **peers in the schema**: each asserts a value with a justification, each is
+retained with its author and timestamp, each is subject to the same missingness vocabulary and the
+same evidence requirements. What separates them is `AuthorKind`, which a reader can see at a glance
+(ADR-0012), and the independence rung the assertion records (`provenance.ts`) — not a second,
+parallel representation.
+
+**Clause 3's reduction list becomes a seam.** It names `single`, `latest`, `median`, `consensus`.
+Those remain, and remain the defaults, but the reduction over a cell's assertions is **selectable**
+rather than closed — the owner asked for aggregation across contributors to be parametrisable, "based
+on some default or custom parametrization". Two constraints survive the opening, both from ADR-0015:
+**never a mean over ordinal assertions**, and **never a point reduction over a polarised cell** — a
+reduction that hides a 2-and-a-5 behind a 3.5 is the single representation clause 4 exists to
+prevent, and a seam is not a licence to reintroduce it. A registered reduction that violates either
+is a defect, not a configuration.
+
+**What this costs.** The collaboration half was the part most available to cut under time pressure,
+and it is no longer available. The compensating discipline is that clause 5 and real-time co-editing
+stay out, so v1 is *multi-contributor* without being *concurrent-editing* — which is the distinction
+clause 6 already drew and the reason it can decline CRDTs.
+
+### 2026-08-22 — Reduction becomes a declared vocabulary, and a cell key must be unique
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The amendment above puts the team in v1 and makes writing documents the normal case. Three things
+follow that the staging change did not have to say, and one of them was already true and unstated.
+
+**1. `Reduction` is a `string` at the point of use, with a declared core.** Clause 3's reduction
+list is "selectable rather than closed"; `Reduction` today is a `z.enum` of six consumed by a closed
+`switch` — the only vocabulary in this schema built closed. It becomes:
+
+- `CoreReduction`, the closed six (`single`, `latest`, `lower-median`, `mode`, `mean`, `consensus`),
+- `Reduction = z.string()` where a cell or an analysis names one,
+- `ReductionDeclaration` on `Analysis.reductions`, carrying ADR-0030's `broader` into
+  `CoreReduction` plus three facts a foreign reader needs: `numeric`, `requiresIntervalOrAbove`
+  (the `mean` rule, as a fact rather than a special case) and `synthesises` (it produces a level no
+  contributor chose).
+
+**TypeScript's exhaustiveness proof over the `switch` is not lost.** The switch stays typed on
+`CoreReduction`; an unknown name is resolved through `broader` *before* dispatch, so the widening
+lives entirely in the resolution step and the compiler still proves the dispatch total.
+
+**The two constraints on a reduction are enforced in the resolving wrapper, once, before dispatch —
+never inside a reducer.** No mean over ordinal assertions, and no point value for a polarised cell
+unless a caller explicitly overrides. A reducer that re-implements a guard is a reducer that can
+forget one, and "a registered reduction that violates either is a defect" is only checkable if
+something other than the reduction checks it.
+
+**Timing.** This costs one line before the freeze and a migration through every stored analysis
+after it. It is the single most time-critical field change in the plan.
+
+**2. `Analysis.cells` must be unique on `(alternativeId, criterionId, measure)`, and the two readers
+must agree.** `cellIndex()` builds a `Map` — **last** wins. `getCell()` uses `Array.find` — **first**
+wins. One document, two readers, two answers. This is benign only while nothing writes documents,
+and the amendment above made writing documents v1's normal case: the moment N contributor files are
+reconstituted into one `Analysis`, a duplicated triple is producible by concatenation and the
+inconsistency becomes a live bug that reads as flakiness.
+
+Two fixes, both required: `getCell` delegates to `cellIndex`, so there is one reader; and duplicate
+triples are an **honesty** error under ADR-0031, not a warning, because a document that answers
+differently depending on which accessor a caller reached for is not merely incomplete.
+
+**3. A merge refuses rather than resolves.** Where two contributors' assertions collide at the same
+`version` on the same cell, the reconstituted document **records both and refuses the cell** — it
+does not consult timestamps. Last-write-wins is precisely the failure clause 6 rejects, and
+reintroducing it inside a merge would reintroduce it invisibly, which is worse than reintroducing it
+in the open. `Assertion.version` is the concurrency unit and `supersededBy` retains rather than
+deletes; both already ship, and this says what to do when they are not enough.
+
+**4. Two personas of one contributor are not two raters, and this is now computable.** ADR-0012's
+amendment of this date gives a persona its own `Author` row carrying a `principalId`. Clause 3's
+multi-rater model and ADR-0022's labelling rule both count *assertions*, so without a link back to
+the person they would count one analyst's two perspectives as two raters — manufactured rigour of
+exactly the kind clause 4 exists to prevent.
+
+`effectiveIndependence` — a sibling of the shipped `weakestIndependence`, which keeps its signature
+and its behaviour — collapses assertions whose authors share a `principalId` and then caps the
+resulting set at `resampled`. Rule 2 of ADR-0012's persona amendment states this from the identity
+side; this is the computation, and it lives here because this ADR owns what a multi-rater assertion
+means.
+
+### 2026-08-22 — `ReductionDeclaration` carries no facts, and does not need to
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+
+The "Reduction becomes a declared vocabulary" amendment above says a `ReductionDeclaration` carries
+"three facts a foreign reader needs: `numeric`, `requiresIntervalOrAbove` (the `mean` rule, as a
+fact rather than a special case) and `synthesises`". None of the three exists, and on reflection
+none should.
+
+**Why the facts moved off the declaration.** They exist to answer one question — may this reduction
+run on this level of measurement — and that question is only asked of a reduction this build can
+actually run. ADR-0030's 2026-08-22 amendment settles that a declared reduction this build cannot
+run is **refused**, not substituted. So a declaration's facts would be consulted on exactly the path
+that never reaches them.
+
+`ReductionFacts` therefore carries what the core six need — `means`, and **`arithmetic`**, meaning
+the reduction can produce a value nobody asserted, which is the `mean` rule generalised exactly as
+the amendment above intended. A declared extension inherits `arithmetic` from its `broader` parent,
+so a `trimmed-mean` naming `mean` is already known to be arithmetic without stating it; when a build
+implements it, the guard fires without anyone having remembered to add it.
+
+`numeric` and `synthesises` are dropped as distinctions this schema never uses: every reduction that
+needs numbers already fails on non-numeric input with its own message, and `synthesises` is
+`arithmetic` under another name.
+
+**What does not change.** `Reduction` is an open string at the point of use, `Analysis.reductions`
+carries the declarations, the core six are closed, and the two constraints from ADR-0015 stand —
+never a mean over ordinal assertions, and never a point reduction over a polarised cell.

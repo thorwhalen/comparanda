@@ -1,0 +1,1240 @@
+{
+  "id": "relocation",
+  "schemaVersion": 1,
+  "title": "Where to live next",
+  "subject": {
+    "question": "Which city should we move to next year?",
+    "decision": "a two-year relocation for a household of two",
+    "ambiguities": [
+      "\"next year\" — the school year or the calendar year? Two criteria depend on which.",
+      "Whether one partner keeps a remote contract changes the weight of income tax entirely; unresolved."
+    ]
+  },
+  "measures": [
+    {
+      "name": "score",
+      "label": "Score"
+    }
+  ],
+  "defaultReduction": "lower-median",
+  "groups": [
+    {
+      "id": "g-europe",
+      "label": "Europe",
+      "axis": "alternatives"
+    },
+    {
+      "id": "g-asia",
+      "label": "Asia",
+      "axis": "alternatives"
+    },
+    {
+      "id": "g-americas",
+      "label": "Americas",
+      "axis": "alternatives"
+    },
+    {
+      "id": "g-cost",
+      "label": "Cost",
+      "axis": "criteria"
+    },
+    {
+      "id": "g-climate",
+      "label": "Climate",
+      "axis": "criteria"
+    },
+    {
+      "id": "g-logistics",
+      "label": "Logistics",
+      "axis": "criteria"
+    },
+    {
+      "id": "g-eu",
+      "label": "EU residency",
+      "axis": "criteria",
+      "description": "Only meaningful for an EU destination."
+    }
+  ],
+  "alternatives": [
+    {
+      "id": "lisbon",
+      "label": "Lisbon",
+      "groupIds": [
+        "g-europe"
+      ]
+    },
+    {
+      "id": "berlin",
+      "label": "Berlin",
+      "groupIds": [
+        "g-europe"
+      ]
+    },
+    {
+      "id": "taipei",
+      "label": "Taipei",
+      "groupIds": [
+        "g-asia"
+      ]
+    },
+    {
+      "id": "seoul",
+      "label": "Seoul",
+      "groupIds": [
+        "g-asia"
+      ]
+    },
+    {
+      "id": "montreal",
+      "label": "Montreal",
+      "groupIds": [
+        "g-americas"
+      ]
+    }
+  ],
+  "inapplicable": [
+    {
+      "alternativeGroupId": "g-asia",
+      "criterionGroupId": "g-eu",
+      "reason": "not an EU destination, so EU residency rules do not apply"
+    },
+    {
+      "alternativeGroupId": "g-americas",
+      "criterionGroupId": "g-eu",
+      "reason": "not an EU destination, so EU residency rules do not apply"
+    }
+  ],
+  "criteria": [
+    {
+      "id": "rent",
+      "label": "Rent",
+      "groupIds": [
+        "g-cost"
+      ],
+      "defaultMeasurement": {
+        "level": "ratio",
+        "preference": "decreasing",
+        "range": {
+          "min": 0,
+          "max": 6000,
+          "unit": "USD/month"
+        },
+        "scale": "bounded-ratio-usd"
+      }
+    },
+    {
+      "id": "income-tax",
+      "label": "Income tax burden",
+      "groupIds": [
+        "g-cost"
+      ],
+      "defaultMeasurement": {
+        "level": "ordinal",
+        "preference": "increasing",
+        "range": {
+          "min": 1,
+          "max": 5
+        },
+        "levels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "scale": "ordinal-1-5-anchored",
+        "anchors": {
+          "levels": {
+            "1": "effective rate above 45% on our expected income",
+            "3": "effective rate between 25% and 35%",
+            "5": "effective rate below 20%, stated in a published schedule"
+          },
+          "contentHash": "sha256:fixture",
+          "requires": [
+            "1",
+            "3",
+            "5"
+          ]
+        }
+      },
+      "missingCodes": [
+        {
+          "id": "paywalled",
+          "broader": "not-evidenced",
+          "means": "The authoritative schedule is behind a paywall we did not pass.",
+          "informative": false,
+          "params": {}
+        }
+      ]
+    },
+    {
+      "id": "climate-type",
+      "label": "Climate type",
+      "groupIds": [
+        "g-climate"
+      ],
+      "defaultMeasurement": {
+        "level": "nominal",
+        "preference": "none",
+        "levels": [
+          "Mediterranean",
+          "Continental",
+          "Subtropical"
+        ]
+      }
+    },
+    {
+      "id": "winter-daylight",
+      "label": "Winter daylight",
+      "groupIds": [
+        "g-climate"
+      ],
+      "defaultMeasurement": {
+        "level": "ordinal",
+        "preference": "increasing",
+        "range": {
+          "min": 1,
+          "max": 5
+        },
+        "levels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "scale": "ordinal-1-5-anchored",
+        "anchors": {
+          "levels": {
+            "1": "under 8 hours at the solstice",
+            "3": "between 9 and 10 hours at the solstice",
+            "5": "over 10 hours at the solstice"
+          },
+          "contentHash": "sha256:fixture",
+          "requires": [
+            "1",
+            "3",
+            "5"
+          ]
+        }
+      }
+    },
+    {
+      "id": "visa-free",
+      "label": "Visa-free entry for both passports",
+      "groupIds": [
+        "g-logistics"
+      ],
+      "defaultMeasurement": {
+        "level": "nominal",
+        "preference": "none",
+        "levels": [
+          false,
+          true
+        ]
+      }
+    },
+    {
+      "id": "flight-hours",
+      "label": "Flight hours to family",
+      "groupIds": [
+        "g-logistics"
+      ],
+      "defaultMeasurement": {
+        "level": "ratio",
+        "preference": "decreasing",
+        "range": {
+          "min": 0,
+          "max": 24,
+          "unit": "hours"
+        }
+      },
+      "acceptability": {
+        "threshold": 16,
+        "rationale": "Beyond sixteen hours nobody visits, which defeats the point."
+      }
+    },
+    {
+      "id": "school-quality",
+      "label": "School quality",
+      "groupIds": [
+        "g-logistics"
+      ],
+      "defaultMeasurement": {
+        "level": "ordinal",
+        "preference": "increasing",
+        "range": {
+          "min": 1,
+          "max": 5
+        },
+        "levels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "scale": "bt-latent"
+      }
+    },
+    {
+      "id": "eu-residency-path",
+      "label": "Path to EU residency",
+      "groupIds": [
+        "g-eu"
+      ],
+      "defaultMeasurement": {
+        "level": "ordinal",
+        "preference": "increasing",
+        "range": {
+          "min": 1,
+          "max": 5
+        },
+        "levels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "scale": "ordinal-1-5-anchored",
+        "anchors": {
+          "levels": {
+            "1": "no route without an employer sponsor",
+            "3": "a route exists but takes over five years",
+            "5": "a documented route completing within three years"
+          },
+          "contentHash": "sha256:fixture",
+          "requires": [
+            "1",
+            "3",
+            "5"
+          ]
+        }
+      }
+    }
+  ],
+  "authors": [
+    {
+      "id": "ana",
+      "displayName": "Ana Ruiz",
+      "kind": "human",
+      "attestation": {
+        "method": "unverified"
+      }
+    },
+    {
+      "id": "ben",
+      "displayName": "Ben Okafor",
+      "kind": "human",
+      "attestation": {
+        "method": "unverified"
+      }
+    },
+    {
+      "id": "ana:the-frugal-one",
+      "displayName": "the frugal one",
+      "kind": "human",
+      "attestation": {
+        "method": "unverified"
+      },
+      "principalId": "ana",
+      "actingAs": "scored on cost exposure alone"
+    },
+    {
+      "id": "agent-run-7",
+      "displayName": "rubricator run 7",
+      "kind": "agent",
+      "attestation": {
+        "method": "unverified"
+      },
+      "agent": {
+        "name": "rubricator",
+        "model": "example-model",
+        "promptVersion": "score-cell@1.2.0",
+        "runId": "run-7"
+      }
+    }
+  ],
+  "missingCodes": [
+    {
+      "id": "not-yet-negotiated",
+      "broader": "deferred",
+      "means": "Depends on a contract term still being negotiated.",
+      "params": {}
+    }
+  ],
+  "scales": [
+    {
+      "id": "bounded-ratio-usd",
+      "broader": "stevens",
+      "means": "An amount in US dollars per month; lower is better.",
+      "params": {}
+    },
+    {
+      "id": "ordinal-1-5-anchored",
+      "broader": "stevens",
+      "means": "Five ordinal levels with written evidence conditions at 1, 3 and 5.",
+      "params": {}
+    }
+  ],
+  "renditions": [
+    {
+      "id": "r-lisbon-tax",
+      "originalLocator": "https://example.org/pt/tax-schedule-2026",
+      "originalSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-22T09:00:00Z",
+      "label": "Portugal, personal income tax schedule 2026"
+    },
+    {
+      "id": "r-berlin-rent",
+      "originalLocator": "https://example.org/de/mietspiegel-2026",
+      "originalSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-22T09:00:00Z",
+      "label": "Berlin rent index 2026"
+    }
+  ],
+  "procedures": [
+    {
+      "id": "p-agent-7",
+      "describedAs": "one cell-wise pass, seeded permutation, no repeats",
+      "repeats": 1,
+      "reduction": "single",
+      "traversal": "cell-wise",
+      "startedAt": "2026-08-22T09:00:00Z"
+    }
+  ],
+  "rounds": [],
+  "cells": [
+    {
+      "alternativeId": "lisbon",
+      "criterionId": "rent",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-rent-lis-ana",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 1900,
+          "justification": "two-bedroom asking prices in the central districts",
+          "independence": "independent"
+        },
+        {
+          "id": "a-rent-lis-frugal",
+          "authorId": "ana:the-frugal-one",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 1450,
+          "justification": "the same listings one ring further out, which we would take",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "berlin",
+      "criterionId": "rent",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-rent-ber-ana",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [
+            {
+              "id": "e-ber-rent",
+              "target": "doc:mietspiegel",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Mittelwert 14,80 EUR je Quadratmeter"
+                }
+              ],
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-22T09:00:00Z",
+                "checkerVersion": "comparanda-check/1.0.0"
+              },
+              "renditionId": "r-berlin-rent",
+              "normaliserId": "nfc-v1",
+              "excerpt": "Mittelwert 14,80 EUR je Quadratmeter"
+            }
+          ],
+          "version": 1,
+          "value": 1600,
+          "justification": "rent index midpoint for the size we need",
+          "independence": "independent"
+        },
+        {
+          "id": "a-rent-ber-ben",
+          "authorId": "ben",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 2300,
+          "justification": "the index lags; actual asking prices are a third higher",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "taipei",
+      "criterionId": "rent",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-rent-tai-ana",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 1100,
+          "justification": "asking prices near the MRT lines we would use",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "seoul",
+      "criterionId": "rent",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-rent-seo",
+          "authorId": "agent-run-7",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "indeterminate",
+            "note": "the deposit-versus-rent structure means the two sources give figures that are not comparable"
+          },
+          "independence": "shared-context"
+        }
+      ]
+    },
+    {
+      "alternativeId": "montreal",
+      "criterionId": "rent",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-rent-mon",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 1250,
+          "justification": "two-bedroom asking prices on the Plateau",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "lisbon",
+      "criterionId": "income-tax",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-tax-lis",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [
+            {
+              "id": "e-lis-tax",
+              "target": "doc:pt-tax",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "taxa efetiva de 21%"
+                }
+              ],
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-22T09:00:00Z",
+                "checkerVersion": "comparanda-check/1.0.0"
+              },
+              "renditionId": "r-lisbon-tax",
+              "normaliserId": "nfc-v1",
+              "excerpt": "taxa efetiva de 21%"
+            }
+          ],
+          "version": 1,
+          "value": 4,
+          "justification": "the published schedule puts our expected income at 21% effective",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "berlin",
+      "criterionId": "income-tax",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-tax-ber",
+          "authorId": "agent-run-7",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "paywalled",
+            "note": "the authoritative schedule sits behind a subscription we do not hold"
+          },
+          "independence": "shared-context"
+        }
+      ]
+    },
+    {
+      "alternativeId": "taipei",
+      "criterionId": "income-tax",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-tax-tai",
+          "authorId": "ben",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "withheld",
+            "note": "known from a previous employer's advice we are not free to reproduce"
+          },
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "seoul",
+      "criterionId": "income-tax",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-tax-seo",
+          "authorId": "agent-run-7",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-evidenced",
+            "note": "searched the ministry site and two summaries; none states an effective rate for our bracket"
+          },
+          "independence": "shared-context"
+        }
+      ]
+    },
+    {
+      "alternativeId": "montreal",
+      "criterionId": "income-tax",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-tax-mon",
+          "authorId": "agent-run-7",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-assessed"
+          },
+          "independence": "shared-context"
+        }
+      ]
+    },
+    {
+      "alternativeId": "lisbon",
+      "criterionId": "climate-type",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-cli-lis",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": "Mediterranean",
+          "justification": "Koppen Csa"
+        }
+      ]
+    },
+    {
+      "alternativeId": "berlin",
+      "criterionId": "climate-type",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-cli-ber",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": "Continental",
+          "justification": "Koppen Dfb"
+        }
+      ]
+    },
+    {
+      "alternativeId": "taipei",
+      "criterionId": "climate-type",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-cli-tai",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": "Subtropical",
+          "justification": "Koppen Cfa"
+        }
+      ]
+    },
+    {
+      "alternativeId": "seoul",
+      "criterionId": "climate-type",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-cli-seo",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": "Continental",
+          "justification": "Koppen Dwa"
+        }
+      ]
+    },
+    {
+      "alternativeId": "montreal",
+      "criterionId": "climate-type",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-cli-mon",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": "Continental",
+          "justification": "Koppen Dfb"
+        }
+      ]
+    },
+    {
+      "alternativeId": "berlin",
+      "criterionId": "winter-daylight",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-day-ber-ana",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [
+            {
+              "id": "e-ber-day",
+              "target": "doc:almanac-2019",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "7 h 39 min"
+                }
+              ],
+              "check": {
+                "status": "stale",
+                "checkedAt": "2026-08-22T09:00:00Z",
+                "checkerVersion": "comparanda-check/1.0.0",
+                "originalDrifted": true
+              },
+              "excerpt": "7 h 39 min"
+            }
+          ],
+          "version": 1,
+          "value": 1,
+          "justification": "7h39m at the solstice, which is under the level-1 condition",
+          "independence": "independent"
+        },
+        {
+          "id": "a-day-ber-ben",
+          "authorId": "ben",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 3,
+          "justification": "the condition should be read as usable daylight, not astronomical; the difference is the whole disagreement",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "lisbon",
+      "criterionId": "winter-daylight",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-day-lis",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 5,
+          "justification": "9h32m, and reliably clear",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "taipei",
+      "criterionId": "winter-daylight",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-day-tai",
+          "authorId": "agent-run-7",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-assessed"
+          },
+          "independence": "shared-context"
+        }
+      ]
+    },
+    {
+      "alternativeId": "seoul",
+      "criterionId": "winter-daylight",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-day-seo",
+          "authorId": "agent-run-7",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-assessed"
+          },
+          "independence": "shared-context"
+        }
+      ]
+    },
+    {
+      "alternativeId": "montreal",
+      "criterionId": "winter-daylight",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-day-mon",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 1,
+          "justification": "8h42m and overcast",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "lisbon",
+      "criterionId": "visa-free",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-visa-lis",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": true,
+          "justification": "both passports, EU"
+        }
+      ]
+    },
+    {
+      "alternativeId": "berlin",
+      "criterionId": "visa-free",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-visa-ber",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": true,
+          "justification": "both passports, EU"
+        }
+      ]
+    },
+    {
+      "alternativeId": "taipei",
+      "criterionId": "visa-free",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-visa-tai",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": true,
+          "justification": "90 days visa-free for both"
+        }
+      ]
+    },
+    {
+      "alternativeId": "seoul",
+      "criterionId": "visa-free",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-visa-seo",
+          "authorId": "ben",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": false,
+          "justification": "one passport needs a K-ETA, which is not visa-free"
+        }
+      ]
+    },
+    {
+      "alternativeId": "montreal",
+      "criterionId": "visa-free",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-visa-mon",
+          "authorId": "agent-run-7",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-yet-negotiated",
+            "note": "depends whether the remote contract makes one of us a business visitor"
+          },
+          "independence": "shared-context"
+        }
+      ]
+    },
+    {
+      "alternativeId": "lisbon",
+      "criterionId": "flight-hours",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-fly-lis",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 2.5,
+          "justification": "direct, under three hours"
+        }
+      ]
+    },
+    {
+      "alternativeId": "berlin",
+      "criterionId": "flight-hours",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-fly-ber",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 2.0,
+          "justification": "direct"
+        }
+      ]
+    },
+    {
+      "alternativeId": "taipei",
+      "criterionId": "flight-hours",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-fly-tai",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 15.5,
+          "justification": "one stop"
+        }
+      ]
+    },
+    {
+      "alternativeId": "seoul",
+      "criterionId": "flight-hours",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-fly-seo",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 17.0,
+          "justification": "one stop, and above the floor we set"
+        }
+      ]
+    },
+    {
+      "alternativeId": "montreal",
+      "criterionId": "flight-hours",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-fly-mon",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 7.5,
+          "justification": "direct"
+        }
+      ]
+    },
+    {
+      "alternativeId": "lisbon",
+      "criterionId": "school-quality",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-sch-lis-ana",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 3,
+          "justification": "the international school is oversubscribed",
+          "independence": "independent"
+        },
+        {
+          "id": "a-sch-lis-ben",
+          "authorId": "ben",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 5,
+          "justification": "the state system is stronger than its reputation; the international school is not the only option",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "berlin",
+      "criterionId": "school-quality",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-sch-ber",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 4,
+          "justification": "several bilingual options",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "taipei",
+      "criterionId": "school-quality",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-sch-tai",
+          "authorId": "agent-run-7",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "deferred",
+            "note": "left for the visit"
+          },
+          "independence": "shared-context"
+        }
+      ]
+    },
+    {
+      "alternativeId": "seoul",
+      "criterionId": "school-quality",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-sch-seo",
+          "authorId": "agent-run-7",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-assessed"
+          },
+          "independence": "shared-context"
+        }
+      ]
+    },
+    {
+      "alternativeId": "montreal",
+      "criterionId": "school-quality",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-sch-mon",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 4,
+          "justification": "public system, both languages",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "lisbon",
+      "criterionId": "eu-residency-path",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-eu-lis",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 5,
+          "justification": "a documented route completing in two years",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "berlin",
+      "criterionId": "eu-residency-path",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-eu-ber",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 3,
+          "justification": "a route exists; the queue is the problem",
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "montreal",
+      "criterionId": "eu-residency-path",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "a-eu-mon",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-applicable",
+            "note": "stated on the cell as well as implied by the group pair, so the block rule and the cell rule can be tested against each other"
+          }
+        }
+      ]
+    }
+  ],
+  "threads": [
+    {
+      "id": "t-resolved",
+      "anchor": {
+        "scope": "cell",
+        "alternativeId": "berlin",
+        "criterionId": "rent",
+        "measure": "score",
+        "repairHint": "Berlin / Rent"
+      },
+      "resolved": true,
+      "resolvedBy": "ana",
+      "resolvedAt": "2026-08-22T11:30:00Z",
+      "comments": [
+        {
+          "id": "c1",
+          "authorId": "ben",
+          "at": "2026-08-22T09:00:00Z",
+          "body": "The index is two years old. Asking prices are a third higher."
+        },
+        {
+          "id": "c2",
+          "authorId": "ana",
+          "at": "2026-08-22T11:30:00Z",
+          "body": "Agreed that the index lags. Keeping both assertions rather than picking one -- the gap is the finding."
+        }
+      ]
+    },
+    {
+      "id": "t-open",
+      "anchor": {
+        "scope": "cell",
+        "alternativeId": "berlin",
+        "criterionId": "winter-daylight",
+        "measure": "score",
+        "repairHint": "Berlin / Winter daylight"
+      },
+      "resolved": false,
+      "comments": [
+        {
+          "id": "c3",
+          "authorId": "ben",
+          "at": "2026-08-22T09:00:00Z",
+          "body": "We are scoring different things. Astronomical daylight or usable daylight? The anchor does not say."
+        }
+      ]
+    },
+    {
+      "id": "t-criterion",
+      "anchor": {
+        "scope": "criterion",
+        "criterionId": "school-quality",
+        "repairHint": "School quality"
+      },
+      "resolved": false,
+      "comments": [
+        {
+          "id": "c4",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "body": "What do we mean by quality here -- outcomes, fit for our two, or admission odds? Three of the five scores are answering different questions."
+        },
+        {
+          "id": "c5",
+          "authorId": "ben",
+          "at": "2026-08-22T11:30:00Z",
+          "body": "Fit. Outcomes are a proxy for a population we are not in."
+        }
+      ]
+    }
+  ],
+  "suggestions": [],
+  "rejectedCriteria": [],
+  "reductions": []
+}

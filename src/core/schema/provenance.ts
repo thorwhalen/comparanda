@@ -27,10 +27,89 @@ export type AuthorKind = z.infer<typeof AuthorKind>;
  * anybody (ADR-0012); it consumes what it is given and is honest about the fact
  * that a local identity is unverified.
  */
+/**
+ * How well the host knows the identity it asserted.
+ *
+ * `comparanda` never authenticates anybody (ADR-0012); it consumes what it is
+ * given. This field is what stops that consumption being mistaken for a claim.
+ *
+ * - `unverified`  a name somebody typed. The honest default, and what a host
+ *                 that asserts nothing leaves in place.
+ * - `session`     the host's own session, whatever that is worth there.
+ * - `oauth`       an external identity provider vouched for it.
+ * - `signed`      a cryptographic signature travels with the assertion.
+ *
+ * It is a **disclosure, never a control**. Nothing in this package refuses an
+ * assertion for being `unverified`, because the alternative is a permission
+ * model this package has no business having. What it does is make the reader's
+ * question -- how much is this attribution worth -- answerable.
+ */
+export const AttestationMethod = z.enum(['unverified', 'host-session', 'oauth', 'signature']);
+export type AttestationMethod = z.infer<typeof AttestationMethod>;
+
+/**
+ * How the identity was established, and by whom.
+ *
+ * An object rather than a bare enum, because `oauth` on its own is half a fact:
+ * "vouched for by an identity provider" is only worth something once you know
+ * *which* provider, and "signed" is worth nothing without knowing when. A reader
+ * deciding how much an attribution is worth needs the issuer and the moment, and
+ * a field that cannot carry them invites the reader to assume.
+ */
+export const Attestation = z.object({
+  method: AttestationMethod,
+  /** Who vouched: an identity provider, a signing key id, a host name. */
+  issuer: z.optional(z.string()),
+  /** When the identity was established. */
+  at: z.optional(z.string()),
+});
+export type Attestation = z.infer<typeof Attestation>;
+
 export const Author = z.object({
   id: z.string(),
   displayName: z.string(),
   kind: AuthorKind,
+  /**
+   * Who is actually behind this author, when the author is a persona.
+   *
+   * A persona is a **materialised `Author` of its own** -- it has an id, a
+   * display name and a kind, and assertions reference it like any other author.
+   * What makes it a persona is this field pointing at the principal.
+   *
+   * The practice it exists for is real and good: scoring a matrix once as the
+   * operator and once as the buyer surfaces disagreements a single pass hides.
+   * The representation has to make that possible without letting it become
+   * three other things, so (ADR-0012's 2026-08-22 amendment):
+   *
+   *   - it is **not anonymity**. The principal is in the document and is not
+   *     hidden from readers. Someone wanting to contribute unattributed uses the
+   *     anonymous session, and gets what that honestly offers. A persona that a
+   *     contributor *believed* was concealing them is the worst outcome here, so
+   *     it conceals nothing.
+   *   - it is **not an independence rung**. See `effectiveIndependence`.
+   *   - it **never changes `kind`**. An agent asked to reason as the buyer is
+   *     still `agent`, with model, prompt version and run id unchanged.
+   *   - it is **declared, never inferred** from what was written.
+   *
+   * The linkage is pseudonymous rather than anonymous, and inside a small team
+   * the mapping is guessable, because the set of accounts is small and known.
+   * That must never be described to a contributor as though it hid them from a
+   * colleague.
+   */
+  principalId: z.optional(z.string()),
+  /**
+   * The perspective this persona is taking, in the contributor's own words --
+   * "scored as the buyer, not the operator".
+   *
+   * Optional, and worth writing: it is the context that makes a divergence
+   * between two of one person's personas readable rather than confusing.
+   */
+  actingAs: z.optional(z.string()),
+  /**
+   * How well the host knows this identity. Absent reads as `unverified`, which
+   * is the honest default for a host that asserts nothing.
+   */
+  attestation: z.optional(Attestation),
   /** Present when `kind` is `agent`. What actually produced the value. */
   agent: z.optional(
     z.object({
@@ -117,6 +196,63 @@ export function weakestIndependence(
     if (rank[a.independence] < rank[weakest]) weakest = a.independence;
   }
   return weakest;
+}
+
+/**
+ * The independence of a set of assertions, **after collapsing personas that
+ * share a principal**.
+ *
+ * This is the function an agreement statistic must use. `weakestIndependence`
+ * answers "what is the weakest rung anybody recorded"; this one answers "and how
+ * independent are these assertions really", which differs exactly when one
+ * person has contributed under more than one name.
+ *
+ * One person scoring as the operator and again as the buyer may honestly record
+ * `independent` on both -- they did not consult the other assertion. They are
+ * still one head. Counting them as two raters is the manufactured rigour this
+ * whole module exists to prevent, and it is *more* likely now that personas are
+ * a supported practice than it was when nobody could sign under two names.
+ *
+ * The collapse is deliberately blunt: any principal contributing more than once
+ * drags the whole set down to `resampled` -- independent of the other
+ * assertions' text, not independent of the mind that produced them. That is the
+ * same reading `resampled` already has for repeated draws from one model, which
+ * is the closest true analogy.
+ */
+export function effectiveIndependence(
+  assertions: readonly { independence?: Independence | undefined; authorId: string }[],
+  authors: readonly { id: string; principalId?: string | undefined }[],
+): Independence | 'unknown' {
+  const recorded = weakestIndependence(assertions);
+  if (recorded === 'unknown') return 'unknown';
+
+  const principalOf = new Map(authors.map((a) => [a.id, a.principalId ?? a.id]));
+  const counts = new Map<string, number>();
+  for (const a of assertions) {
+    const p = principalOf.get(a.authorId) ?? a.authorId;
+    counts.set(p, (counts.get(p) ?? 0) + 1);
+  }
+  const repeated = [...counts.values()].some((n) => n > 1);
+  if (!repeated) return recorded;
+
+  const rank: Record<Independence, number> = {
+    'shared-context': 0, resampled: 1, perturbed: 2, independent: 3, consensus: 4,
+  };
+  return rank[recorded] > rank.resampled ? 'resampled' : recorded;
+}
+
+/**
+ * How many distinct people or agents are behind a set of assertions.
+ *
+ * The number a reader actually wants beside an agreement statistic, and the one
+ * that is wrong if you count authors. Two personas of one analyst are one.
+ */
+export function distinctPrincipals(
+  assertions: readonly { authorId: string }[],
+  authors: readonly { id: string; principalId?: string | undefined }[],
+): number {
+  const principalOf = new Map(authors.map((a) => [a.id, a.principalId ?? a.id]));
+  return new Set(assertions.map((a) => principalOf.get(a.authorId) ?? a.authorId)).size;
 }
 
 /**

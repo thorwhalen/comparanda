@@ -294,6 +294,12 @@ alternative's own value.** These are different fields answering different questi
 | Needs | one threshold per screening criterion | a full compensatory outranking construction |
 | Established name | conjunctive / non-compensatory screening, Tversky's family [36] | veto threshold [24] |
 
+The chapter itself draws exactly this distinction when it introduces the threshold, and the
+sentence is the cleanest corroboration available: "while discordance level is related to the scale
+of criterion `g_j` in absolute terms for an action `a` from `A`, threshold veto is related to the
+preference differences between `g_j(a)` and `g_j(b)`" [24 §3.1.2]. Our rule is the *absolute*
+kind it contrasts the veto with.
+
 The established name for what we actually built is a **conjunctive (non-compensatory) screening
 rule** [36]. Rename the schema field **`acceptability`** and reserve `veto` for the ELECTRE sense;
 "veto criterion" may remain a display alias. Note also (reasoning) that ELECTRE's veto is
@@ -1220,11 +1226,12 @@ What the research did not settle, and what would settle it.
 
 **Citations that need a human**
 
-18. **The ELECTRE chapter [24].** Its quotations underpin the most consequential correction in this
-    document (§3.1), and the copy they were transcribed from is no longer online. The *substance*
-    does not depend on them — the q/p/v triple is independently attested and Roy's foundational
-    paper [30] is available — but someone with library access should re-verify the wording before
-    ADR-0015 is amended on their authority.
+18. ~~**The ELECTRE chapter [24].**~~ **Settled 2026-08-22 — closed.** The quotations underpinning
+    §3.1 were re-verified verbatim against a retrievable full-text copy: the veto definition at §2.4,
+    the voting-power reading of the importance coefficients in the same section, and a third passage
+    at §3.1.2 that independently corroborates the correction by contrasting an absolute-scale
+    discordance level with a difference-based veto. The wordings stand and may be quoted. Recorded in
+    ADR-0015's 2026-08-22 amendment; issue #36 closed.
 19. **Two sources could not be reached at audit time**: the data-visualisation style guide
     underpinning the texture-reservation rule (§4) and the ISO/IEC 25012 normative text (§4). Both
     arguments survive without them, but the ADR should not quote them.
@@ -1256,7 +1263,7 @@ What the research did not settle, and what would settle it.
 21. [Analyzing ordinal data with metric models: What could possibly go wrong? — T. M. Liddell & J. K. Kruschke (2018)](https://scholarworks.iu.edu/dspace/items/9bcd0f5e-7837-4f9c-ac07-a114e595e146)
 22. [Analyzing Likert Data — H. N. Boone Jr. & D. A. Boone (2012)](https://commons.joe.org/joe/vol50/iss2/48/)
 23. [Type — Vega-Lite documentation](https://vega.github.io/vega-lite/docs/type.html)
-24. [Electre Methods (chapter, *Multiple Criteria Decision Analysis: State of the Art Surveys*, pp. 133–153) — J. Figueira, V. Mousseau & B. Roy (2005)](https://doi.org/10.1007/0-387-23081-5_4) — title, authors and page range verified via Crossref and OpenAlex. **Access caveat:** the copy the quotations were transcribed from is no longer online and the chapter is closed access, so the *wordings* cannot currently be re-verified; the substantive claims are independently corroborated by Roy's foundational statement of the outranking approach [30].
+24. [Electre Methods (chapter, *Multiple Criteria Decision Analysis: State of the Art Surveys*, pp. 133–153) — J. Figueira, V. Mousseau & B. Roy (2005)](https://doi.org/10.1007/0-387-23081-5_4) — title, authors and page range verified via Crossref and OpenAlex. **Verified 2026-08-22** against a full-text copy of the chapter. The veto wording is at **§2.4, “About the Relative Importance of Criteria”**, and reads exactly as transcribed here. The sentence immediately following it — “These thresholds can be constant along a scale or it can also vary.” — is recorded as a fingerprint so any future reader can confirm they have the right passage. The copy consulted was a third-party mirror, not the publisher’s; the chapter remains closed access at Springer, which is why the section number and the following sentence are recorded rather than the URL. Two further attributions to [24] were checked in the same pass and also hold verbatim: the voting-power reading of the importance coefficients, in the same §2.4 (“the weight, `w_j`, reflects its voting power when it contributes to the majority which is in favor of an outranking … these parameters can not be interpreted as substitution rates as in compensatory aggregation procedures”), and the absolute-versus-difference contrast at §3.1.2, quoted in §3.1 above. The substantive claims remain independently corroborated by Roy's foundational statement of the outranking approach [30]; they no longer *depend* on that corroboration.
 25. [About Modeling Types — JMP documentation](https://www.jmp.com/support/help/en/19.0/jmp/about-modeling-types.shtml)
 26. [Note—A Preference Ranking Organisation Method: The PROMETHEE Method for Multiple Criteria Decision-Making — J. P. Brans & Ph. Vincke (1985)](https://pubsonline.informs.org/doi/10.1287/mnsc.31.6.647)
 27. [Remarks on the Analytic Hierarchy Process — J. S. Dyer, Management Science 36(3):249–258 (1990)](https://doi.org/10.1287/mnsc.36.3.249) — companion primary source: Belton & Gear, ["On a short-coming of Saaty's method of analytic hierarchies"](https://doi.org/10.1016/0305-0483(83)90047-6), Omega 11(3):228–230 (1983). Neither full text obtained.
@@ -1331,10 +1338,11 @@ What the research did not settle, and what would settle it.
 96. [Robust intra-document locations — T. A. Phelps & R. Wilensky, WWW9 / *Computer Networks* 33:105–118 (2000), doi:10.1016/S1389-1286(00)00043-8](https://www.semanticscholar.org/paper/bf3a9da17f9dbeb2d2d09f4d562c903e4e9b2f2e) — record verified; **full text not obtained.** The principle it states is independently attested by [81] and [82].
 
 **Verification note.** Every reference above is carried over from a working section that ran a
-citation-integrity pass. Four are flagged in place as unverified or unretrieved and should not be
-quoted in an ADR without a human re-checking them: [24] (ELECTRE chapter — the quotations underpin
-§3.1 and their source copy is gone), [52] (ISO/IEC 25012 — paywalled), [87] (Miro — bot-gated), and
-[96] (Phelps & Wilensky — full text not obtained). Two further sources relied on by the working
+citation-integrity pass. Three are flagged in place as unverified or unretrieved and should not be
+quoted in an ADR without a human re-checking them: [52] (ISO/IEC 25012 — paywalled), [87] (Miro —
+bot-gated), and [96] (Phelps & Wilensky — full text not obtained). A fourth, [24] (the ELECTRE
+chapter), carried the same flag until **2026-08-22**, when its three load-bearing quotations were
+re-verified verbatim against a retrievable full-text copy; it is now quotable, and §3.1 quotes it. Two further sources relied on by the working
 notes could not be reached at audit time and are therefore **not cited here at all**: the
 data-visualisation style guide behind the texture-reservation rule (§4) and van der Eijk's original
 paper, which is represented by [72]'s caveated entry plus the corroborating sources [74] and the R
