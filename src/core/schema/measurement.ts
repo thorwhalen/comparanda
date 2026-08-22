@@ -342,8 +342,14 @@ export const Measurement = z.object({
   /**
    * For nominal and ordinal levels: the permitted values, in order. The order is
    * the ordering for `ordinal`, and is display order only for `nominal`.
+   *
+   * Booleans are permitted, and were not until a fixture needed one. This
+   * module's own opening docstring says "a boolean is a two-level nominal", and
+   * `ScalarValue` has always accepted one -- so a yes/no criterion could be
+   * *asserted* and could not be *declared*, which is the kind of contradiction
+   * that only shows up when someone writes the document the README asked for.
    */
-  levels: z.optional(z.array(z.union([z.string(), z.number()]))),
+  levels: z.optional(z.array(z.union([z.string(), z.number(), z.boolean()]))),
 });
 export type Measurement = z.infer<typeof Measurement>;
 
