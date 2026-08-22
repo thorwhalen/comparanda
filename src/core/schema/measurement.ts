@@ -17,7 +17,10 @@
  * analyses were undefined. See `docs/research/findings-terminology.md`.
  */
 import * as z from 'zod/mini';
-import { declarationFields } from './declarations.js';
+import {
+  declarationFields, resolveDeclaration,
+  type Resolution,
+} from './declarations.js';
 
 /**
  * Stevens's levels. The order matters: each level admits every operation the
@@ -211,6 +214,61 @@ export const AnchorSet = z.object({
   requires: z._default(z.array(z.string()), []),
 });
 export type AnchorSet = z.infer<typeof AnchorSet>;
+
+/**
+ * What a build knows about a named scale.
+ *
+ * Deliberately thin, and that thinness is the finding rather than a shortcut:
+ * everything a Stevens-family scale varies by is already on the `Measurement`,
+ * as required fields, so there is nothing for a scale interpreter to supply that
+ * a reader does not already have. What a scale name adds is *identity* -- which
+ * named scale two analyses were authored to, and therefore whether they are
+ * comparable on a criterion.
+ */
+export interface ScaleFacts {
+  /** One line, for a reader whose build does not know this scale. */
+  means: string;
+}
+
+const CORE_SCALES: Readonly<Record<string, ScaleFacts>> = Object.freeze({
+  stevens: {
+    means:
+      'A Stevens-family scale, fully described by the measurement itself: its level, its ' +
+      'direction of preference, its range and its permitted levels.',
+  },
+});
+
+/**
+ * Resolve a scale name through the one resolver.
+ *
+ * **An unknown scale degrades and does not refuse**, which is the opposite of
+ * how an unknown reduction behaves, and the difference is worth being explicit
+ * about because both are extension points on the same document.
+ *
+ * A reduction is a *computation*: running its parent produces a different number
+ * and presents it as the author's, so the honest answer is to show nothing. A
+ * scale is an *identity*: every behaviour that depends on it -- whether a mean
+ * is legal, whether the column can be dominated, which direction is better -- is
+ * already a pure function of `level`, `preference` and `range`, which are
+ * required fields the reader has in hand. Degrading loses the *name*, not the
+ * behaviour, so the column still validates, still dominates and still renders
+ * correctly, and the reader is told which name it could not interpret.
+ */
+export function resolveScale(
+  name: string,
+  declarations: readonly ScaleDeclaration[] = [],
+): Resolution<ScaleFacts> {
+  return resolveDeclaration<ScaleFacts>(
+    name,
+    CORE_SCALES,
+    declarations as readonly { id: string; broader: string; means: string }[],
+    // A declaration is fully self-describing: its `means` is everything this
+    // build needs, because the behaviour lives on the Measurement. So a declared
+    // scale resolves rather than degrading -- the same property missingness has,
+    // and for the same reason.
+    (decl) => ({ means: decl.means }),
+  );
+}
 
 /**
  * The exact bytes an anchor set hashes over.

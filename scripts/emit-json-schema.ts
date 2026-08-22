@@ -37,7 +37,7 @@ import { CORE_MISSING_CODES } from '../src/core/schema/missingness.js';
 import { CORE_REDUCTIONS } from '../src/core/schema/values.js';
 import { SCALE_CORE } from '../src/core/schema/measurement.js';
 import { CitationVerdict, SourceType, Stance } from '../src/core/schema/evidence.js';
-import { AuthorKind, Attestation, Independence } from '../src/core/schema/provenance.js';
+import { AuthorKind, AttestationMethod, Independence } from '../src/core/schema/provenance.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, '..', 'schema');
@@ -48,55 +48,90 @@ function membersOf(e: { options: readonly string[] }): string[] {
 }
 
 /**
- * The core vocabularies, with their facts.
+ * The vocabulary manifest, in the shape ADR-0004 specifies.
  *
- * Built from the same frozen tables the runtime reads -- never re-typed here --
- * so that this file cannot say one thing while `missingness.ts` does another.
+ * `vocabularies` carries the three **extensible** vocabularies: the closed core
+ * underneath an open string, whether it is extensible, and where a declaration
+ * for it lives in the document. That last field is what stops a consumer having
+ * to know our field names by reading our source.
+ *
+ * Two deliberate extensions to the ADR's sketch, both additive:
+ *
+ * 1. **`facts`** beside `core`. The ADR shows `core` as a member set, and a set
+ *    is not enough: a consumer computing `silenceRate` needs to know that
+ *    `withheld` is terminal and **not** informative, and one keying on
+ *    `terminal` alone gets a different, weaker number. The facts are what JSON
+ *    Schema cannot say and are the reason this file exists at all.
+ * 2. **`closedEnums`**. Vocabularies that are *not* extensible -- citation
+ *    verdicts, source types, stances, author kinds, attestation methods, the
+ *    independence ladder -- are listed separately rather than folded in beside
+ *    the open three, because calling a closed enum "extensible: false" in the
+ *    same map invites a consumer to try extending it.
+ *
+ * Everything is built from the frozen tables the runtime reads. Nothing here is
+ * re-typed, so this file cannot say one thing while the schema says another.
  */
-function vocabularies() {
+function manifest() {
   return {
-    $comment:
-      'The closed core of every open vocabulary in comparanda, with the facts each member ' +
-      'carries. A consumer in another language needs these to compute the same rates and make ' +
-      'the same refusals. Extensions are declared inside each analysis document and are not ' +
-      'listed here; every extension names one of these as its `broader` parent.',
     schemaVersion: SCHEMA_VERSION,
-    missingCodes: {
-      $comment:
-        'structural: the cell should be empty, so it leaves every denominator. terminal: someone ' +
-        'looked and this is the answer. informative: the absence is a statement about the ' +
-        'subject rather than about our process -- silenceRate counts only these.',
-      core: CORE_MISSING_CODES,
+    $comment:
+      'The closed core of every vocabulary in comparanda. Extensions are declared inside each ' +
+      'analysis document and are not listed here; every extension names one of these as its ' +
+      '`broader` parent, which is what lets a reader that has never heard of it classify it.',
+    vocabularies: {
+      missingCode: {
+        $comment:
+          'structural: the cell should be empty, so it leaves every denominator. terminal: ' +
+          'someone looked and this is the answer. informative: the absence is a statement about ' +
+          'the subject rather than about our process -- silenceRate counts only these, and ' +
+          'not-evidenced and withheld differ on exactly this while sharing terminal.',
+        core: Object.keys(CORE_MISSING_CODES),
+        facts: CORE_MISSING_CODES,
+        extensible: true,
+        declaredAt: '$.missingCodes',
+      },
+      reduction: {
+        $comment:
+          'arithmetic: the reduction can produce a value nobody asserted, which is illegal on ' +
+          'nominal and ordinal levels. A build that cannot run a declared reduction refuses ' +
+          'rather than running its parent, because substituting changes a number a reader acts on.',
+        core: Object.keys(CORE_REDUCTIONS),
+        facts: CORE_REDUCTIONS,
+        extensible: true,
+        declaredAt: '$.reductions',
+      },
+      scale: {
+        $comment:
+          'One member. Everything a Stevens-family scale varies by is already a field of ' +
+          'Measurement, and every scale-dependent function is a pure function of those fields, ' +
+          'so a reader that has never heard of a named scale still validates, dominates and ' +
+          'renders it.',
+        core: membersOf(SCALE_CORE),
+        extensible: true,
+        declaredAt: '$.scales',
+      },
     },
-    reductions: {
+    closedEnums: {
       $comment:
-        'arithmetic: the reduction can produce a value nobody asserted, which is illegal on ' +
-        'nominal and ordinal levels. A declared extension inherits this from its parent.',
-      core: CORE_REDUCTIONS,
-    },
-    scales: {
-      $comment:
-        'One member. Everything a Stevens-family scale varies by is already a field of ' +
-        'Measurement, and every scale-dependent function is a pure function of those fields, so ' +
-        'a reader that has never heard of a named scale still validates, dominates and renders it.',
-      core: membersOf(SCALE_CORE),
-    },
-    citationVerdicts: {
-      $comment:
-        'exact/normalised/fuzzy are ladder rungs -- how hard we had to look. moved/stale are ' +
-        'about the document underneath. The retired spellings are `verified`, which read as ' +
-        'approval, and `drifted`, which conflated moved with stale.',
-      core: membersOf(CitationVerdict),
-    },
-    sourceTypes: { core: membersOf(SourceType) },
-    stances: { core: membersOf(Stance) },
-    authorKinds: { core: membersOf(AuthorKind) },
-    attestations: { core: membersOf(Attestation) },
-    independence: {
-      $comment:
-        'A ladder, weakest first. An agreement statistic is labelled by the weakest rung present, ' +
-        'and personas sharing a principal collapse before the label is chosen.',
-      core: membersOf(Independence),
+        'Not extensible. A document naming a member outside these is wrong rather than newer, ' +
+        'and there is no `broader` to degrade through.',
+      citationVerdict: {
+        $comment:
+          'exact/normalised/fuzzy are ladder rungs -- how hard we had to look. moved/stale are ' +
+          'about the document underneath. The retired spellings are `verified`, which read as ' +
+          'approval, and `drifted`, which conflated moved with stale.',
+        core: membersOf(CitationVerdict),
+      },
+      sourceType: { core: membersOf(SourceType) },
+      stance: { core: membersOf(Stance) },
+      authorKind: { core: membersOf(AuthorKind) },
+      attestationMethod: { core: membersOf(AttestationMethod) },
+      independence: {
+        $comment:
+          'A ladder, weakest first. An agreement statistic is labelled by the weakest rung ' +
+          'present, and personas sharing a principal collapse before the label is chosen.',
+        core: membersOf(Independence),
+      },
     },
   };
 }
@@ -120,7 +155,7 @@ function main(): void {
 
   const files: [string, unknown][] = [
     [`comparanda.v${SCHEMA_VERSION}.json`, schema],
-    [`vocabularies.v${SCHEMA_VERSION}.json`, vocabularies()],
+    [`vocabularies.v${SCHEMA_VERSION}.json`, manifest()],
   ];
 
   for (const [name, content] of files) {

@@ -194,15 +194,32 @@ describe('every problem is classified', () => {
     const r = validateAnalysis(doc([cellOf('alt-1', { justification: undefined, authorId: 'ghost' })]));
     expect(r.problems.length).toBeGreaterThan(0);
     for (const p of r.problems) {
-      expect(['shape', 'honesty', 'completeness']).toContain(p.family);
+      expect(['schema', 'honesty', 'completeness']).toContain(p.family);
       expect(p.ruleId).toBeTruthy();
+      expect(p.fix, `${p.ruleId} has no fix`).toBeTruthy();
     }
   });
 
-  it('classifies a malformed document as shape, not as dishonest', () => {
+  it('classifies a malformed document as schema, not as dishonest', () => {
     const r = validateAnalysis({ nonsense: true });
     expect(r.ok).toBe(false);
-    expect(r.problems.every((p) => p.family === 'shape')).toBe(true);
+    expect(r.problems.every((p) => p.family === 'schema')).toBe(true);
+  });
+
+  it('gives distinct rules distinct ids, so a suppression is auditable', () => {
+    // Every structural rule shared one id until this was checked. Silencing
+    // "duplicate declaration" would then have silently also silenced "unknown
+    // alternative", which is the opposite of what a stable id is for.
+    const r = validateAnalysis({
+      id: 'a', schemaVersion: 1, subject: { question: 'q' },
+      authors: [AUTHOR], alternatives: [], criteria: [],
+      cells: [{ alternativeId: 'ghost', criterionId: 'ghost', measure: 'score', assertions: [] }],
+      missingCodes: [{ id: 'withheld', broader: 'withheld', means: 'x' }],
+    });
+    const ids = new Set(r.problems.map((p) => p.ruleId));
+    expect(ids.has('cell-coordinates-exist')).toBe(true);
+    expect(ids.has('no-redeclaring-core')).toBe(true);
+    expect(ids.size).toBeGreaterThan(1);
   });
 
   it('never reports an honesty problem as a warning', () => {

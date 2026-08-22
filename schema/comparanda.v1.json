@@ -142,6 +142,56 @@
       "items": {
         "type": "object",
         "properties": {
+          "missingCodes": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "broader": {
+                  "type": "string",
+                  "enum": [
+                    "not-applicable",
+                    "not-assessed",
+                    "deferred",
+                    "not-evidenced",
+                    "indeterminate",
+                    "withheld"
+                  ]
+                },
+                "means": {
+                  "type": "string"
+                },
+                "params": {
+                  "default": {},
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "structural": {
+                  "type": "boolean"
+                },
+                "terminal": {
+                  "type": "boolean"
+                },
+                "informative": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "broader",
+                "means",
+                "params"
+              ],
+              "additionalProperties": false
+            }
+          },
           "id": {
             "type": "string"
           },
@@ -528,6 +578,7 @@
           }
         },
         "required": [
+          "missingCodes",
           "id",
           "label",
           "measurements",
@@ -903,6 +954,9 @@
                       "renditionId": {
                         "type": "string"
                       },
+                      "normaliserId": {
+                        "type": "string"
+                      },
                       "derivedFrom": {
                         "default": [],
                         "type": "array",
@@ -1073,13 +1127,28 @@
             "type": "string"
           },
           "attestation": {
-            "type": "string",
-            "enum": [
-              "unverified",
-              "session",
-              "oauth",
-              "signed"
-            ]
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "unverified",
+                  "host-session",
+                  "oauth",
+                  "signature"
+                ]
+              },
+              "issuer": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "method"
+            ],
+            "additionalProperties": false
           },
           "agent": {
             "type": "object",
@@ -1533,7 +1602,7 @@
           "normaliserId": {
             "type": "string"
           },
-          "text": {
+          "content": {
             "type": "string"
           },
           "retrievedAt": {

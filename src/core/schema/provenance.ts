@@ -44,7 +44,25 @@ export type AuthorKind = z.infer<typeof AuthorKind>;
  * model this package has no business having. What it does is make the reader's
  * question -- how much is this attribution worth -- answerable.
  */
-export const Attestation = z.enum(['unverified', 'session', 'oauth', 'signed']);
+export const AttestationMethod = z.enum(['unverified', 'host-session', 'oauth', 'signature']);
+export type AttestationMethod = z.infer<typeof AttestationMethod>;
+
+/**
+ * How the identity was established, and by whom.
+ *
+ * An object rather than a bare enum, because `oauth` on its own is half a fact:
+ * "vouched for by an identity provider" is only worth something once you know
+ * *which* provider, and "signed" is worth nothing without knowing when. A reader
+ * deciding how much an attribution is worth needs the issuer and the moment, and
+ * a field that cannot carry them invites the reader to assume.
+ */
+export const Attestation = z.object({
+  method: AttestationMethod,
+  /** Who vouched: an identity provider, a signing key id, a host name. */
+  issuer: z.optional(z.string()),
+  /** When the identity was established. */
+  at: z.optional(z.string()),
+});
 export type Attestation = z.infer<typeof Attestation>;
 
 export const Author = z.object({
@@ -87,7 +105,10 @@ export const Author = z.object({
    * between two of one person's personas readable rather than confusing.
    */
   actingAs: z.optional(z.string()),
-  /** How well the host knows this identity. Absent reads as `unverified`. */
+  /**
+   * How well the host knows this identity. Absent reads as `unverified`, which
+   * is the honest default for a host that asserts nothing.
+   */
   attestation: z.optional(Attestation),
   /** Present when `kind` is `agent`. What actually produced the value. */
   agent: z.optional(

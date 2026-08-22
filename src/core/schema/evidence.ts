@@ -111,8 +111,8 @@ export const Rendition = z.object({
    * new id rather than a new behaviour under the old one.
    */
   normaliserId: z.string(),
-  /** Bytes of the cleaned text, when the bundle carries them inline. */
-  text: z.optional(z.string()),
+  /** The cleaned text, when the bundle carries it inline. */
+  content: z.optional(z.string()),
   retrievedAt: z.optional(z.string()),
   /** Human-facing title, for the link a reader follows. */
   label: z.optional(z.string()),
@@ -394,6 +394,19 @@ export const EvidenceRef = z.object({
    * un-normalised case and is legal -- a plain text file needs no rendition.
    */
   renditionId: z.optional(z.string()),
+  /**
+   * The normaliser under which this reference's offsets and stored check were
+   * computed.
+   *
+   * On the **reference**, not only on the rendition, and that is the point: a
+   * verdict computed under one normaliser is not reproducible under another. A
+   * rendition can be re-made -- a normaliser is fixed and a new one gets a new
+   * id -- and a reference carrying a check has to say which one its verdict was
+   * true under, or the verdict cannot be re-checked at all.
+   *
+   * Absent is legal when there is no check and no rendition.
+   */
+  normaliserId: z.optional(z.string()),
   /**
    * For `agent-summary` and `agent-inference`: the ids of the references this
    * was derived from. An inference with an empty `derivedFrom` is an assertion

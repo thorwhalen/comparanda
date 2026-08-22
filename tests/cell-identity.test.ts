@@ -80,8 +80,9 @@ describe('a duplicate identity is rejected', () => {
     expect(dup).toBeDefined();
     expect(dup!.path).toBe('cells[1]');
     expect(dup!.message).toContain('cells[0]');
+    expect(dup!.ruleId).toBe('cells-unique');
     // And it says what to do, because "duplicate" without a fix is a puzzle.
-    expect(dup!.message).toContain('Merge their assertions into one cell');
+    expect(dup!.fix).toContain('Merge their assertions into one cell');
   });
 
   it('accepts the same coordinates under a different measure', () => {

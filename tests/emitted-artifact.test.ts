@@ -23,7 +23,7 @@ import { SCHEMA_VERSION } from '../src/core/schema/analysis.js';
 import { CORE_MISSING_CODES } from '../src/core/schema/missingness.js';
 import { CORE_REDUCTIONS } from '../src/core/schema/values.js';
 import { CitationVerdict } from '../src/core/schema/evidence.js';
-import { Independence } from '../src/core/schema/provenance.js';
+import { Independence, AttestationMethod } from '../src/core/schema/provenance.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const schemaDir = join(root, 'schema');
@@ -68,47 +68,81 @@ describe('the artifacts are not stale', () => {
 describe('the vocabulary artifact carries the facts a shape cannot', () => {
   const vocab = () => readJson(vocabPath);
 
+  it('has the shape ADR-0004 specifies', () => {
+    const v = vocab();
+    expect(Object.keys(v.vocabularies).sort()).toEqual(['missingCode', 'reduction', 'scale']);
+    for (const name of ['missingCode', 'reduction', 'scale']) {
+      const entry = v.vocabularies[name];
+      expect(entry.core, `${name}.core`).toBeInstanceOf(Array);
+      expect(entry.extensible, `${name}.extensible`).toBe(true);
+      // `declaredAt` is what stops a consumer having to learn our field names by
+      // reading our source.
+      expect(entry.declaredAt, `${name}.declaredAt`).toMatch(/^\$\./);
+    }
+  });
+
   it('exports the missingness core with all three flags, verbatim', () => {
     // Emitted from the same frozen table the runtime reads. If this ever has to
     // be re-typed, the two can disagree while both look right -- which is the
     // whole reason the artifact is generated rather than written.
-    expect(vocab().missingCodes.core).toEqual(CORE_MISSING_CODES);
+    expect(vocab().vocabularies.missingCode.facts).toEqual(CORE_MISSING_CODES);
+    expect(vocab().vocabularies.missingCode.core).toEqual(Object.keys(CORE_MISSING_CODES));
   });
 
   it('carries what silenceRate keys on, which JSON Schema cannot say', () => {
-    const core = vocab().missingCodes.core;
-    expect(core['not-evidenced'].informative).toBe(true);
-    expect(core.withheld.informative).toBe(false);
+    const facts = vocab().vocabularies.missingCode.facts;
+    expect(facts['not-evidenced'].informative).toBe(true);
+    expect(facts.withheld.informative).toBe(false);
     // Those two are both terminal, and a consumer computing silenceRate from
     // `terminal` alone gets a different, weaker number.
-    expect(core['not-evidenced'].terminal).toBe(core.withheld.terminal);
+    expect(facts['not-evidenced'].terminal).toBe(facts.withheld.terminal);
   });
 
   it('exports the reduction core with the arithmetic flag', () => {
-    expect(vocab().reductions.core).toEqual(CORE_REDUCTIONS);
-    expect(vocab().reductions.core.mean.arithmetic).toBe(true);
-    expect(vocab().reductions.core['lower-median'].arithmetic).toBe(false);
+    const facts = vocab().vocabularies.reduction.facts;
+    expect(facts).toEqual(CORE_REDUCTIONS);
+    expect(facts.mean.arithmetic).toBe(true);
+    expect(facts['lower-median'].arithmetic).toBe(false);
+  });
+
+  it('keeps closed enums out of the extensible map', () => {
+    // Listing a closed enum beside the open three as `extensible: false` would
+    // invite a consumer to try extending it. There is no `broader` to degrade
+    // through, so naming a member outside these is wrong rather than newer.
+    const closed = vocab().closedEnums;
+    expect(Object.keys(closed).filter((k) => k !== '$comment').sort()).toEqual(
+      ['attestationMethod', 'authorKind', 'citationVerdict', 'independence', 'sourceType', 'stance'],
+    );
+    for (const name of Object.keys(closed).filter((k) => k !== '$comment')) {
+      expect(closed[name].extensible).toBeUndefined();
+    }
   });
 
   it('exports one spelling of the citation verdict, and not the retired ones', () => {
-    const core: string[] = vocab().citationVerdicts.core;
+    const core: string[] = vocab().closedEnums.citationVerdict.core;
     expect(core).toEqual([...CitationVerdict.options]);
-    expect(core).not.toContain('verified');
-    expect(core).not.toContain('drifted');
-    expect(core).not.toContain('not-found');
+    for (const retired of ['verified', 'drifted', 'not-found']) {
+      expect(core).not.toContain(retired);
+    }
+  });
+
+  it('exports the attestation methods, which are an enum inside an object', () => {
+    // Attestation is `{ method, issuer?, at? }`; only the method is a closed
+    // vocabulary, and emitting the object would publish a shape rather than a set.
+    expect(vocab().closedEnums.attestationMethod.core).toEqual([...AttestationMethod.options]);
   });
 
   it('exports the independence ladder in order, weakest first', () => {
-    expect(vocab().independence.core).toEqual([...Independence.options]);
-    expect(vocab().independence.core[0]).toBe('shared-context');
+    expect(vocab().closedEnums.independence.core).toEqual([...Independence.options]);
+    expect(vocab().closedEnums.independence.core[0]).toBe('shared-context');
   });
 
   it('lists no extensions, because extensions live in documents', () => {
     // Anything a deployment declares travels inside its analysis. If this file
     // ever grows a registry of them, the design has quietly inverted.
-    const v = vocab();
-    for (const key of ['missingCodes', 'reductions']) {
-      expect(Object.keys(v[key])).toEqual(['$comment', 'core']);
+    for (const name of ['missingCode', 'reduction', 'scale']) {
+      expect(Object.keys(vocab().vocabularies[name])).not.toContain('declared');
+      expect(Object.keys(vocab().vocabularies[name])).not.toContain('extensions');
     }
   });
 });

@@ -50,6 +50,19 @@ import {
  * must distinguish them, which is why the split is in the schema and not left to
  * a note field.
  */
+/**
+ * The core code a cell falls back to when nothing is asserted for it.
+ *
+ * Named rather than written as a literal at the call sites that need it. A
+ * literal here is the same defect as the inline six-code array that
+ * `validateAnalysis` used to carry: it survives a rename of the code it names,
+ * and the survivor is silently wrong.
+ */
+export const NOT_ASSESSED = 'not-assessed' as const;
+
+/** The core code for a cell that a structural rule says should be empty. */
+export const NOT_APPLICABLE = 'not-applicable' as const;
+
 export const MissingCode = z.enum([
   'not-applicable',
   'not-assessed',
@@ -186,6 +199,51 @@ export function missingCodeFactsOrUndefined(
 }
 
 /**
+ * A criterion may narrow or extend the vocabulary for its own column.
+ *
+ * The overlay exists because a criterion is where a specialised blank actually
+ * belongs: "no public filing" means something on a governance column and nothing
+ * on a latency one, and forcing it to analysis scope makes every column carry
+ * every other column's vocabulary.
+ */
+export interface MissingnessVocabulary {
+  /** Resolve a code, honouring a criterion's overlay where one is given. */
+  resolve(code: string, criterionId?: string): Resolution<MissingCodeFacts>;
+  /** The one-line meaning, for a reader. `undefined` when nothing defines it. */
+  means(code: string, criterionId?: string): string | undefined;
+  /** Every declaration in force for a criterion, overlay first. */
+  declarationsFor(criterionId?: string): readonly MissingCodeDeclaration[];
+}
+
+/**
+ * The one way to reach the vocabulary of an analysis.
+ *
+ * Takes the analysis-level declarations and a lookup for a criterion's overlay,
+ * rather than the `Analysis` type, so that this module does not have to import
+ * the document it is part of. The composition happens in `analysis.ts`.
+ *
+ * A criterion's own declaration wins for that criterion. Two declarations of one
+ * id at the same scope is a document defect and is caught by `validateAnalysis`;
+ * the same id at *different* scopes is not a defect, and the narrower one is the
+ * one the author meant.
+ */
+export function makeVocabulary(
+  analysisCodes: readonly MissingCodeDeclaration[],
+  overlayFor: (criterionId: string) => readonly MissingCodeDeclaration[] = () => [],
+): MissingnessVocabulary {
+  const declarationsFor = (criterionId?: string): readonly MissingCodeDeclaration[] =>
+    criterionId ? [...overlayFor(criterionId), ...analysisCodes] : analysisCodes;
+
+  return {
+    declarationsFor,
+    resolve: (code, criterionId) => resolveMissingCode(code, declarationsFor(criterionId)),
+    means(code, criterionId) {
+      return this.resolve(code, criterionId).facts?.means;
+    },
+  };
+}
+
+/**
  * Counts for a set of cells. Reported as counts *and* as rates, because a rate
  * with no denominator is unreadable and a count with no total is unactionable.
  *
@@ -258,8 +316,17 @@ export function emptyCompleteness(): Completeness {
  * be reused at analysis, row, column and group scope without four variants.
  */
 export function tallyCompleteness(
-  cells: Iterable<{ hasValue: boolean; code?: string }>,
-  declarations: readonly MissingCodeDeclaration[] = [],
+  cells: Iterable<{ hasValue: boolean; code?: string; criterionId?: string }>,
+  /**
+   * Either a flat declaration list, or the vocabulary facade.
+   *
+   * Pass the **facade** whenever the cells span more than one criterion: a
+   * criterion's overlay is only reachable through it, and passing the flat
+   * analysis-level list instead silently treats every overlay code as
+   * undeclared -- which counts a deliberate, defined blank as outstanding work
+   * and moves the completeness report in the wrong direction.
+   */
+  vocabulary: readonly MissingCodeDeclaration[] | MissingnessVocabulary = [],
   /**
    * Appended to, when a cell names a code this build could not resolve.
    *
@@ -270,6 +337,11 @@ export function tallyCompleteness(
    */
   degradations?: Degradation[],
 ): Completeness {
+  const resolve = Array.isArray(vocabulary)
+    ? (code: string) => resolveMissingCode(code, vocabulary as readonly MissingCodeDeclaration[])
+    : (code: string, criterionId?: string) =>
+        (vocabulary as MissingnessVocabulary).resolve(code, criterionId);
+
   const c = emptyCompleteness();
   let i = -1;
   for (const cell of cells) {
@@ -279,7 +351,7 @@ export function tallyCompleteness(
       c.present += 1;
       continue;
     }
-    const r = cell.code ? resolveMissingCode(cell.code, declarations) : undefined;
+    const r = cell.code ? resolve(cell.code, cell.criterionId) : undefined;
     const facts = r?.facts;
     if (r && degradations) {
       const d = degradationOf(r, 'missing-code', `cells[${i}].missing.code`);

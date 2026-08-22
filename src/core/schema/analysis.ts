@@ -18,11 +18,14 @@ import {
 import { Author, Procedure, Round } from './provenance.js';
 import { Thread, Suggestion } from './annotations.js';
 import {
-  CORE_MISSING_CODES, MissingCodeDeclaration, resolveMissingCode,
-  tallyCompleteness, type Completeness,
+  CORE_MISSING_CODES, MissingCodeDeclaration, NOT_APPLICABLE, NOT_ASSESSED,
+  makeVocabulary, resolveMissingCode, tallyCompleteness,
+  type Completeness, type MissingnessVocabulary,
 } from './missingness.js';
-import type { Degradation } from './declarations.js';
-import { ScaleDeclaration, validateMeasurement, type Measurement } from './measurement.js';
+import { degradationOf, type Degradation } from './declarations.js';
+import {
+  ScaleDeclaration, resolveScale, validateMeasurement, type Measurement,
+} from './measurement.js';
 import { Rendition, validateEvidence } from './evidence.js';
 
 /**
@@ -121,7 +124,8 @@ export type Analysis = z.infer<typeof Analysis>;
 /**
  * Which kind of rule a problem came from. **This is the boundary contract.**
  *
- * - `shape`         the document is not a document. Always an error.
+ * - `schema`        the document is not a document, or refers to ids that are not
+ *                   in it. Always an error.
  * - `honesty`       the document asserts something a reader cannot check: a
  *                   score with no rationale, an assertion by nobody, a blank
  *                   whose code the document never defines, a verdict with no
@@ -136,7 +140,7 @@ export type Analysis = z.infer<typeof Analysis>;
  * turned up, you cannot save work in progress; turned down, "validates against
  * the schema" stops being a claim worth making.
  */
-export type RuleFamily = 'shape' | 'honesty' | 'completeness';
+export type RuleFamily = 'schema' | 'honesty' | 'completeness';
 
 export interface ValidationProblem {
   path: string;
@@ -148,8 +152,15 @@ export interface ValidationProblem {
    * without matching on prose.
    */
   ruleId: string;
-  /** What would fix it. A problem with no remedy is a puzzle, not an error. */
-  fix?: string;
+  /**
+   * What would fix it.
+   *
+   * **Required.** "Names the exact path and what would fix it" is not satisfied
+   * by a message that names only the path, and requiring the field is the only
+   * way to make that true of a rule nobody has written yet -- an optional `fix`
+   * is a field that is present on the rules whose author remembered.
+   */
+  fix: string;
 }
 
 /**
@@ -191,13 +202,15 @@ export function validateAnalysis(
         path: i.path.join('.') || '(root)',
         message: i.message,
         severity: 'error' as const,
-        family: 'shape' as const,
+        family: 'schema' as const,
         ruleId: 'schema-shape',
+        fix: 'correct the value at this path to the type the schema declares.',
       })),
     };
   }
 
   const a = parsed.data;
+  const vocabulary = vocabularyOf(a);
   const problems: ValidationProblem[] = [];
 
   /** An honesty failure. Always an error; there is no switch. */
@@ -211,17 +224,24 @@ export function validateAnalysis(
     }
   };
 
-  // Kept for the structural-integrity checks that predate the families: a
-  // document referring to ids that do not exist is malformed rather than
-  // dishonest, and calling it `shape` keeps the three families meaning what
-  // they say.
-  const err = (path: string, message: string) =>
-    problems.push({ path, message, severity: 'error', family: 'shape', ruleId: 'referential-integrity' });
-  const warn = (path: string, message: string) =>
-    problems.push({ path, message, severity: 'warning', family: 'shape', ruleId: 'shape-advisory' });
+  /**
+   * A structural failure: the document refers to something that is not in it,
+   * or declares something twice. Malformed rather than dishonest.
+   *
+   * Every call names its own `ruleId`. One shared id across a dozen rules would
+   * make a suppression un-auditable -- silencing "duplicate declaration" would
+   * silently also silence "unknown alternative" -- which is the whole reason
+   * the field is stable.
+   */
+  const err = (ruleId: string, path: string, message: string, fix: string) =>
+    problems.push({ path, message, severity: 'error', family: 'schema', ruleId, fix });
 
   if (a.schemaVersion > SCHEMA_VERSION) {
-    err('schemaVersion', `document is version ${a.schemaVersion}; this build reads up to ${SCHEMA_VERSION}`);
+    err(
+      'schema-version-readable', 'schemaVersion',
+      `document is version ${a.schemaVersion}; this build reads up to ${SCHEMA_VERSION}`,
+      'upgrade the reader, or ask the producer to emit an earlier schema version.',
+    );
   }
 
   const altIds = new Set(a.alternatives.map((x) => x.id));
@@ -234,7 +254,12 @@ export function validateAnalysis(
   ] as const) {
     const seen = new Set<string>();
     for (const item of list) {
-      if (seen.has(item.id)) err(label, `duplicate id "${item.id}"`);
+      if (seen.has(item.id)) {
+        err(
+          'unique-ids', label, `duplicate id "${item.id}"`,
+          `give one of them a different id; every reference to "${item.id}" is currently ambiguous.`,
+        );
+      }
       seen.add(item.id);
     }
   }
@@ -242,32 +267,56 @@ export function validateAnalysis(
   a.criteria.forEach((c, i) => {
     const declared = Object.entries(c.measurements);
     if (declared.length === 0 && !c.defaultMeasurement) {
-      err(`criteria[${i}]`, `criterion "${c.id}" declares no measurement and no default`);
+      err(
+        'criterion-has-a-measurement', `criteria[${i}]`,
+        `criterion "${c.id}" declares no measurement and no default`,
+        'add a defaultMeasurement, or a measurement for each measure this criterion carries.',
+      );
     }
     for (const [measure, m] of declared) {
       for (const p of validateMeasurement(m, `criteria[${i}].measurements.${measure}`)) {
-        err(p.path, p.message);
+        err('measurement-well-formed', p.path, p.message, 'see the message: it states the rule.');
       }
     }
     if (c.defaultMeasurement) {
       for (const p of validateMeasurement(c.defaultMeasurement, `criteria[${i}].defaultMeasurement`)) {
-        err(p.path, p.message);
+        err('measurement-well-formed', p.path, p.message, 'see the message: it states the rule.');
       }
     }
-    for (const g of c.groupIds) if (!groupIds.has(g)) err(`criteria[${i}].groupIds`, `unknown group "${g}"`);
+    for (const g of c.groupIds) {
+      if (!groupIds.has(g)) {
+        err('group-exists', `criteria[${i}].groupIds`, `unknown group "${g}"`,
+          `add a group with id "${g}", or remove the reference.`);
+      }
+    }
   });
 
   a.alternatives.forEach((alt, i) => {
-    for (const g of alt.groupIds) if (!groupIds.has(g)) err(`alternatives[${i}].groupIds`, `unknown group "${g}"`);
+    for (const g of alt.groupIds) {
+      if (!groupIds.has(g)) {
+        err('group-exists', `alternatives[${i}].groupIds`, `unknown group "${g}"`,
+          `add a group with id "${g}", or remove the reference.`);
+      }
+    }
   });
 
   a.cells.forEach((cell, i) => {
     const at = `cells[${i}]`;
-    if (!altIds.has(cell.alternativeId)) err(at, `unknown alternative "${cell.alternativeId}"`);
-    if (!critIds.has(cell.criterionId)) err(at, `unknown criterion "${cell.criterionId}"`);
+    if (!altIds.has(cell.alternativeId)) {
+      err('cell-coordinates-exist', at, `unknown alternative "${cell.alternativeId}"`,
+        'add the alternative, or correct the cell\'s alternativeId.');
+    }
+    if (!critIds.has(cell.criterionId)) {
+      err('cell-coordinates-exist', at, `unknown criterion "${cell.criterionId}"`,
+        'add the criterion, or correct the cell\'s criterionId.');
+    }
     const criterion = a.criteria.find((c) => c.id === cell.criterionId);
     if (criterion && !measurementFor(criterion, cell.measure)) {
-      err(at, `criterion "${cell.criterionId}" declares no measurement for measure "${cell.measure}"`);
+      err(
+        'cell-measure-declared', at,
+        `criterion "${cell.criterionId}" declares no measurement for measure "${cell.measure}"`,
+        `declare a measurement for "${cell.measure}" on that criterion, or on its defaultMeasurement.`,
+      );
     }
     cell.assertions.forEach((as, j) => {
       const atA = `${at}.assertions[${j}]`;
@@ -282,10 +331,16 @@ export function validateAnalysis(
       const hasValue = as.value !== undefined;
       const hasMissing = as.missing !== undefined;
       if (hasValue === hasMissing) {
-        err(atA, hasValue
-          ? 'an assertion carries a value and a missing reason; exactly one is required'
-          : 'an assertion carries neither a value nor a missing reason. No bare nulls: ' +
-            'every absence names why (ADR-0009).');
+        err(
+          'no-bare-null', atA,
+          hasValue
+            ? 'an assertion carries a value and a missing reason; exactly one is required'
+            : 'an assertion carries neither a value nor a missing reason. No bare nulls: ' +
+              'every absence names why (ADR-0009).',
+          hasValue
+            ? 'remove whichever of value/missing is not meant.'
+            : 'set a value, or set missing.code to a reason -- "not-assessed" if nobody has looked.',
+        );
       }
 
       // A score with no reason is the thing this tool exists not to produce.
@@ -305,7 +360,7 @@ export function validateAnalysis(
       // `broader` and is a limitation of the reader. This is a document that
       // does not say what its own blank means, which no reader can repair.
       if (as.missing) {
-        const r = resolveMissingCode(as.missing.code, a.missingCodes);
+        const r = vocabulary.resolve(as.missing.code, cell.criterionId);
         if (r.source === 'undeclared') {
           honesty(
             'blank-is-defined', `${atA}.missing.code`,
@@ -338,8 +393,14 @@ export function validateAnalysis(
   });
 
   for (const [i, b] of a.inapplicable.entries()) {
-    if (!groupIds.has(b.alternativeGroupId)) err(`inapplicable[${i}]`, `unknown group "${b.alternativeGroupId}"`);
-    if (!groupIds.has(b.criterionGroupId)) err(`inapplicable[${i}]`, `unknown group "${b.criterionGroupId}"`);
+    if (!groupIds.has(b.alternativeGroupId)) {
+      err('group-exists', `inapplicable[${i}]`, `unknown group "${b.alternativeGroupId}"`,
+        'add the group, or remove the inapplicable block.');
+    }
+    if (!groupIds.has(b.criterionGroupId)) {
+      err('group-exists', `inapplicable[${i}]`, `unknown group "${b.criterionGroupId}"`,
+        'add the group, or remove the inapplicable block.');
+    }
   }
 
   // The same redeclaration rule, for the two vocabularies that just gained it.
@@ -348,15 +409,44 @@ export function validateAnalysis(
   const vocabularies: [readonly { id: string }[], Readonly<Record<string, unknown>>, string][] = [
     [a.missingCodes, CORE_MISSING_CODES, 'missingCodes'],
     [a.reductions, CORE_REDUCTIONS, 'reductions'],
+    // Criterion overlays take the same rules. Missing them would let a
+    // criterion redeclare a core code, which is the one thing the rule stops.
+    ...a.criteria.map((c, i): [readonly { id: string }[], Readonly<Record<string, unknown>>, string] =>
+      [c.missingCodes, CORE_MISSING_CODES, `criteria[${i}].missingCodes`]),
   ];
   for (const [decls, core, field] of vocabularies) {
     const seen = new Set<string>();
     for (const [i, d] of decls.entries()) {
+      // ADR-0009 clause 3: a structural extension must refine `not-applicable`.
+      // Structural absence leaves every denominator and drops out of every
+      // dominance comparison, so a code that claims it while refining, say,
+      // `withheld` would silently remove cells from the matrix that somebody
+      // deliberately declined to show. There is exactly one core code that
+      // means "there was never a question here", and a structural extension is
+      // a refinement of that one or it is a mistake.
+      const structural = (d as { structural?: boolean }).structural;
+      const broader = (d as { broader?: string }).broader;
+      if (structural === true && broader !== NOT_APPLICABLE) {
+        err(
+          'structural-refines-not-applicable', `${field}[${i}]`,
+          `"${d.id}" declares structural: true but refines "${broader}". Structural absence ` +
+            'leaves every denominator and every comparison, which only "not-applicable" means.',
+          `set broader to "${NOT_APPLICABLE}", or drop structural: true.`,
+        );
+      }
       if (Object.prototype.hasOwnProperty.call(core, d.id)) {
-        err(`${field}[${i}]`, `"${d.id}" is a core member and cannot be redeclared`);
+        err(
+          'no-redeclaring-core', `${field}[${i}]`,
+          `"${d.id}" is a core member and cannot be redeclared`,
+          `use the core member as it is, or give the extension a different id.`,
+        );
       }
       if (seen.has(d.id)) {
-        err(`${field}[${i}]`, `"${d.id}" is declared more than once; the later one would win silently`);
+        err(
+          'unique-declarations', `${field}[${i}]`,
+          `"${d.id}" is declared more than once; the later one would win silently`,
+          'remove the duplicate, or give it a different id.',
+        );
       }
       seen.add(d.id);
     }
@@ -371,10 +461,11 @@ export function validateAnalysis(
     const first = seenCells.get(k);
     if (first !== undefined) {
       err(
-        `cells[${i}]`,
+        'cells-unique', `cells[${i}]`,
         `duplicates the identity of cells[${first}] (${c.alternativeId} x ${c.criterionId} x ` +
-          `${c.measure}). Merge their assertions into one cell -- a cell is already a set of ` +
-          'assertions, so there is nothing a second cell can express that the first cannot.',
+          `${c.measure}).`,
+        'Merge their assertions into one cell -- a cell is already a set of assertions, so there ' +
+          'is nothing a second cell can express that the first cannot.',
       );
     } else {
       seenCells.set(k, i);
@@ -403,6 +494,19 @@ export function validateAnalysis(
  */
 export function cellKey(alternativeId: string, criterionId: string, measure: string): string {
   return JSON.stringify([alternativeId, criterionId, measure]);
+}
+
+/**
+ * The vocabulary in force for this analysis, including every criterion overlay.
+ *
+ * **The one way to reach a missingness code's meaning.** Every consumer -- the
+ * completeness tally, the view's absence label, the honesty rule that rejects an
+ * undefined blank -- goes through this, so that criterion scope is honoured in
+ * one place rather than remembered in several.
+ */
+export function vocabularyOf(a: Analysis): MissingnessVocabulary {
+  const overlays = new Map(a.criteria.map((c) => [c.id, c.missingCodes]));
+  return makeVocabulary(a.missingCodes, (criterionId) => overlays.get(criterionId) ?? []);
 }
 
 /** Index cells for O(1) lookup. Rebuilt rather than stored; it is derived. */
@@ -482,6 +586,38 @@ export function makeCellReader(
 }
 
 /**
+ * Every scale name this analysis uses that this build could not interpret.
+ *
+ * Returned beside the document, never written into it: a degradation is a fact
+ * about the reader, and storing one would make one build's gap look like a
+ * property of the data.
+ *
+ * A degraded scale costs the *name*, not the behaviour -- `level`, `preference`
+ * and `range` are required fields, so the column still validates, dominates and
+ * renders. What the reader loses is the ability to say two analyses were scored
+ * to the same scale, which is exactly what the record is for.
+ */
+export function scaleDegradations(a: Analysis): Degradation[] {
+  const out: Degradation[] = [];
+  a.criteria.forEach((c, i) => {
+    const measurements: [string, Measurement | undefined][] = [
+      ['defaultMeasurement', c.defaultMeasurement],
+      ...Object.entries(c.measurements ?? {}).map(
+        ([k, m]): [string, Measurement | undefined] => [`measurements.${k}`, m],
+      ),
+    ];
+    for (const [where, m] of measurements) {
+      if (!m?.scale) continue;
+      const d = degradationOf(
+        resolveScale(m.scale, a.scales), 'scale', `criteria[${i}].${where}.scale`,
+      );
+      if (d) out.push(d);
+    }
+  });
+  return out;
+}
+
+/**
  * Reduce one cell.
  *
  * Convenient for a single lookup. Anything walking the matrix should build a
@@ -521,20 +657,24 @@ export function completeness(
 ): Completeness {
   const alts = scope.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id);
   const crits = scope.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
-  const cells: { hasValue: boolean; code?: string }[] = [];
+  const cells: { hasValue: boolean; code?: string; criterionId?: string }[] = [];
   const reader = makeCellReader(a, scope.measure);
 
   for (const altId of alts) {
     for (const critId of crits) {
       if (isInapplicable(a, altId, critId)) {
-        cells.push({ hasValue: false, code: 'not-applicable' });
+        cells.push({ hasValue: false, code: NOT_APPLICABLE, criterionId: critId });
         continue;
       }
       const r = reader.read(altId, critId);
-      if (r?.value !== undefined) cells.push({ hasValue: true });
-      else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code });
-      else cells.push({ hasValue: false, code: 'not-assessed' });
+      if (r?.value !== undefined) cells.push({ hasValue: true, criterionId: critId });
+      else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code, criterionId: critId });
+      else cells.push({ hasValue: false, code: NOT_ASSESSED, criterionId: critId });
     }
   }
-  return tallyCompleteness(cells, a.missingCodes);
+  // The facade, not the flat list: each cell carries its criterion, so a
+  // column's overlay resolves the way its author meant. Passing only the
+  // analysis-level set would treat an overlay code as undeclared -- counting a
+  // deliberate, defined blank as outstanding work.
+  return tallyCompleteness(cells, vocabularyOf(a));
 }

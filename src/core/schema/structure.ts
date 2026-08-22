@@ -7,6 +7,7 @@
  * requirements" without the data changing.
  */
 import * as z from 'zod/mini';
+import { MissingCodeDeclaration } from './missingness.js';
 import { Measurement, Acceptability } from './measurement.js';
 
 /** A thing being compared. A row, by convention. */
@@ -96,6 +97,20 @@ export type Weights = z.infer<typeof Weights>;
 
 /** A thing alternatives are compared on. A column, by convention. */
 export const Criterion = z.object({
+  /**
+   * Missingness codes this criterion may use in addition to the analysis's.
+   *
+   * A specialised blank usually belongs to a column rather than to a document:
+   * "no public filing" means something on a governance criterion and nothing on
+   * a latency one, and forcing every such code to analysis scope makes every
+   * column carry every other column's vocabulary.
+   *
+   * A declaration here wins over one of the same id at analysis scope, for this
+   * criterion only. Two of one id at the *same* scope is a document defect and
+   * is rejected; the same id at different scopes is not, and the narrower one is
+   * the one the author meant.
+   */
+  missingCodes: z._default(z.array(MissingCodeDeclaration), []),
   id: z.string(),
   label: z.string(),
   definition: z.optional(CriterionDefinition),
