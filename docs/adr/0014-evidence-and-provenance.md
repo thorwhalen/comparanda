@@ -191,3 +191,73 @@ consulted and are silent, **`indeterminate`** where material was found and does 
 level.)*
 
 Closes #66.
+
+### 2026-08-22 — The rendition is addressable, and the verdict vocabulary has one spelling
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The amendment above settles both halves as *policy*: a check is persisted and stamped, and a span
+indexes into a persisted normalised rendition with the original fingerprinted. Neither has fields
+yet, and one existing name is wrong. Four decisions follow; nothing above is reversed.
+
+**1. A `Rendition` is a first-class record, and a reference names one.**
+
+    Rendition { id, originalLocator, originalSha256, normaliserId, retrievedAt, content }
+    EvidenceRef.renditionId?: string
+
+`originalSha256` is the drift detector of the three-standing table above; the rendition's **own
+address** is what a `TextPositionSelector` indexes into. They are deliberately two hashes — one
+answers "has the source changed since we ingested it", the other answers "what exactly do these
+offsets point at" — and a single hash cannot answer both. Without `renditionId` on the reference,
+the table above has no way to say *which* rendition resolved, which is the difference between a
+standing and a guess.
+
+`normaliserId` travels **onto the reference**, not only onto the rendition, because a stored verdict
+computed under one normaliser is not reproducible under another, and a verdict that is not
+reproducible is not a verdict.
+
+**2. `quoteHash` is renamed `excerptHash`, and this is a correction rather than a preference.** The
+field hashes *our stored excerpt* — a third thing, distinct from both the original document and the
+quote as it appears in the rendition. Called `quoteHash` it reads as the hash of the thing a reader
+would re-find, which is the one thing it is not, and a checker written against the name rather than
+against the code will check the wrong string. Renaming costs an edit before the freeze and a
+migration after it.
+
+**3. The check verdict vocabulary has three live spellings, and one is accepted.** This repository
+ships `verified | not-found | drifted | unchecked | unresolvable`. `rubricator` publishes
+`verified | normalised | partial | not-found | empty` — **pinned green by doctests running under
+`--doctest-modules`, so its CI currently enforces a contract this repository never agreed to.** And
+`rubricator`'s own ADR-0014 mandates a third: `exact | normalised | fuzzy | moved | stale |
+unresolvable`, retiring the word `verified` outright.
+
+**The third is the accepted spelling**, on the reasoning already recorded there: it distinguishes an
+exact match from a normalisation-tolerant one — which is the difference between a citation and a
+paraphrase — and it splits our `drifted` into the two cases the amendment above already requires the
+reader be told apart: `moved` (the rendition resolves, the original hash differs) and `stale` (the
+rendition is missing). `unchecked` is retained beside them: it is the absence of a verdict, which is
+why the amendment above exempts it from the stamp requirement, and it is not a rung.
+
+`verified` is **retired and reserved for nothing** in both repositories. Reconciling before the
+freeze costs an enum edit; reconciling after costs a migration plus a period in which two systems
+disagree about what "checked" means, which is the failure this ADR exists to prevent.
+
+**4. `validateCitationCheck`'s problems are the honesty family.** The shipped rule is right and
+correctly placed — zod carries the shape, plain functions carry the rules, and requiredness is
+enforced there rather than by making the fields non-optional, which would break `unchecked`. Under
+ADR-0031 its output is `family: 'honesty'`, so an undated verdict is a **rejection** rather than a
+note, which is what the amendment above means by "an unverified reference is a legitimate state, an
+undated verdict is not". The classification is not a new rule; it is where the existing rule's
+severity stops being a per-call-site choice.
+
+**5. The requirement that a caveat be rendered is a test obligation, not an aspiration.** The
+amendment above says "the view contract may not render a non-current standing as current".
+`checkStanding` ships and nothing consumes it, because the view is a placeholder — so the
+requirement is recorded here as an obligation on **the first component that renders a check**: a
+test that fails if `checkStanding().needsCaveat` is true and no caveat appears. Recorded now so it
+cannot later be discovered as a missing feature rather than a broken promise.
+
+There is still **no default age threshold**, for the reason already given: expiring a check on an
+age nobody can justify goes blind, with no way for a recipient to refresh. `staleAfterDays` is
+supplied by a caller who owns that choice.

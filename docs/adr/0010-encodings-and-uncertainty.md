@@ -270,3 +270,20 @@ ADR-0009 clause 2 makes it advisory where `structural` and `terminal` are mandat
 derivable from the reason code the glyph already shows does not earn a third visual variable in a
 40 × 30 px cell. It is carried in words instead — in the cell's accessible name and in the legend's
 missingness key, which clause 7 already requires to exist.
+
+### 2026-08-22 — The roster grows to nine, and `text-only` is decided in ADR-0032
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The 2026-08-21 amendment fixes the roster at eight. **ADR-0032 adds a ninth, `text-only`, and makes
+it the only encoding v1 registers.** It also records a consequence of ADR-0018's amendment of this
+date for the parameterised palette here: once a criterion's scale is a declared, extensible thing, a
+column's arity is a property of that scale and can no longer be assumed from a fixed level count, so
+the build-time contrast test's nine colours for five scores by three confidence levels stops being a
+constant.
+
+Nothing here is reversed and no shipped encoding is withdrawn — read the roster as nine, read the
+palette's arity as derived rather than fixed, and read ADR-0032 for why the ninth is the one v1
+ships first.

@@ -131,6 +131,74 @@ level of measurement.
 Clause 1's closing sentence goes with the definition: a **nominal** criterion takes `preference: none`.
 `ordered` is not available there, because a set of levels carrying an order is not a nominal scale.
 
+### 2026-08-22 — A measurement may name its scale, and anchors carry what the scale requires
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The Decision requires `preference`, a `range` on ordered levels, and optional thresholds. It assumes
+without saying so that `level` and `preference` are the *whole* of what a scale is. For the Stevens
+family they are, and this repository's five scale-dependent functions — `meanIsLegal`, `isOrdered`,
+`admitsDominance`, `atLeastAsGood`, `validateMeasurement` — are pure functions of exactly those two.
+Read them and it follows directly: a money criterion declared
+`{ level: 'ratio', preference: 'decreasing', range: { min: 0, max: 1e6, unit: 'USD' } }` produces no
+validation problems, permits a mean, admits dominance, and orients `200` above `900` — with no
+change to any of those functions.
+
+The producing side has settled that the 1–5 anchored ordinal is a **default with a declared seam**
+rather than a law (`rubricator: docs/adr/0012-…`, amended of this date). Two optional fields on a
+`Measurement`, plus one array on the analysis, carry that into the document. Nothing existing is
+withdrawn and no required field becomes optional.
+
+**1. `Measurement.scale?: string`** names the scale a producer authored against, resolved through
+ADR-0030 against `Analysis.scales`, whose core member is `stevens`.
+
+**It is optional and deliberately never defaulted.** A default here is a live bug, not a
+convenience: a criterion authored as ratio-decreasing-with-a-range — which validates with zero
+problems — would be silently stamped as a 1–5 ordinal, and a resolver would then hand back an
+interpreter that rejects `4200` and forbids a mean that is perfectly legal on a ratio level. **An
+absent `scale` means "Stevens, as declared by `level`, `preference` and `range`"**, which is exactly
+what it meant before this field existed.
+
+**2. `Measurement.anchors?: AnchorSet`**, carrying `levels`, `contentHash` and `requires`.
+
+`levels` maps a level value to **the evidence condition that earns it** — not a label, because an
+adjective is scored against the reader's taste and a condition is scored against a document.
+`contentHash` is a change *detector*, not a comparability key: a hash cannot tell a boundary-moving
+edit from a typo fix, so comparability stays on the criterion's last *material* version and this
+field's job is to force the author to declare which kind of edit it was.
+
+`requires` is the load-bearing one. It stores **which levels this criterion's scale says must be
+anchored**, so a build that does not implement the scale can still check the anchor set is complete
+*on the scale's own terms*. Policy travels in the document; it is not re-derived from a table the
+reader may not have.
+
+**3. `Analysis.scales: ScaleDeclaration[]`**, per ADR-0030. The core is the single member `stevens`
+— the only family this build interprets — and that is a real closed set, not a placeholder:
+everything `level` / `preference` / `range` can express is Stevens.
+
+**4. There is no `MeasurementScale` interface, and that is the decision, not an omission.** Wrapping
+the five functions in a strategy object would rewrite working code to install indirection over data
+the document already carries, and would make every new scale a **lockstep release in two
+languages**.
+
+Under the declaration form, a producer adding a currency scale adds one row to its own preset table
+and one row to `Analysis.scales`, and a `comparanda` build that has never heard of that scale
+**still validates it, still dominates on it, still refuses a mean where the level forbids one, and
+still renders it** — because `level`, `preference` and `range` stay required and every reader
+understands them. It degrades through `broader: 'stevens'` and *says so* (ADR-0030).
+
+The interface becomes worth building the day a scale's behaviour is genuinely not a function of
+`(level, preference)` — a latent-strength scale, a computed anchor set — and on that day it attaches
+at **one** resolution point rather than at every call site. `ScaleDeclaration.params` is the
+reserved, unused attachment point for it.
+
+**5. One consequence for the palette, handed to ADR-0032.** ADR-0010's parameterised palette assumes
+an arity it can compute from a fixed level count. A declared scale means arity is a property of the
+scale, and a ratio-valued column has no correct ramp under a five-level construction. ADR-0032
+decides what v1 renders instead.
+
 ## References
 1. [Multi-criteria analysis: a manual — Department for Communities and Local Government (2009)](https://researchonline.lse.ac.uk/id/eprint/12761/1/Multi-criteria_Analysis.pdf)
 2. [Dominance-based Rough Set Approach, basic ideas and main trends — Błaszczyński, Greco, Matarazzo & Szeląg, arXiv:2210.03233 (2022)](https://arxiv.org/pdf/2210.03233) — the "consistent family of criteria" properties are attributed there to Roy & Bouyssou (1993), which was not read directly.

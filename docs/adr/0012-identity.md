@@ -84,3 +84,61 @@ what is editable. A persona grants nothing.
 **Consequence.** The unverified-local-identity caveat in Consequences now has a second sentence
 worth stating plainly in the docs: a persona is a *label a contributor chose*, carrying exactly as
 much assurance as the identity underneath it — which, for a local identity, is none.
+
+### 2026-08-22 — A persona is materialised as its own `Author`, carrying a principal
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The amendment above decides everything about what a persona *means* and nothing about how it is
+stored. This is the mechanism, and it is written second rather than folded in because one sentence
+of the amendment above reads as a storage decision that will not survive contact with the schema,
+and narrowing it explicitly is safer than leaving it to be discovered.
+
+**1. A persona is an `Author` row with its own `id`.** `Assertion.authorId` is one string, and every
+shipped path — `validateAnalysis`'s author check, the annotations module, the rater dot strip, the
+activity record — resolves attribution by looking that one string up in `Analysis.authors`. Two
+personas of one contributor must be **separately attributable per assertion**, or the divergence
+that the amendment above calls "the context that makes the divergence readable" cannot be rendered
+at all. A second field beside `authorId` would mean every one of those call sites learns about it;
+a persona-as-`Author` means none of them changes.
+
+**2. The link back to the person is `Author.principalId`.** Opaque, pseudonymous, never an email and
+never a display name. Two personas of one contributor carry the same `principalId`; a contributor
+with no persona carries `principalId === id`. `Author.actingAs` carries the amendment's "short
+statement of the perspective being taken".
+
+**3. What this narrows.** The amendment above says "The assertion still carries the real `id` and
+the real `AuthorKind`." Read that clause as: **the assertion carries the persona's `id`, and the
+persona's `Author` retains the real `principalId` and the real `AuthorKind`.** Every one of its four
+rules is preserved, and three of them become mechanically enforceable rather than aspirational:
+
+- *not anonymity* — `principalId` is in the document, in plain sight, unhidden from readers.
+  Concealment remains the anonymous session's job, honestly labelled.
+- *not an independence rung* — ADR-0011's `effectiveIndependence` collapses on `principalId` and
+  caps at `resampled`, and ADR-0031's `persona-independence` rule **rejects** a document where two
+  personas of one principal both claim `independent` on one cell. A computation *and* a refusal,
+  because rule 2 asks for a refusal and a computation alone can be ignored.
+- *never changes `AuthorKind`* — the persona's `Author.kind` is copied from the principal's, and a
+  persona whose `kind` differs from its principal's is an honesty error.
+- *declared, not inferred* — unchanged; `actingAs` is set, never derived.
+
+**4. `Author.attestation` records how well the identity is known.** `method` is one of
+`unverified | host-session | oauth | signature`, with an optional `issuer` and `at`. The Decision
+says a local identity is "honest about being unverified" and the Consequences say to state that
+plainly in the docs; a field states it *in the document*, which is where a reader three months later
+actually is. `unverified` is the truthful default and is what a host that asserts nothing leaves in
+place.
+
+**5. What this does not fix, stated because the mitigation invites over-reading.** A `principalId`
+is pseudonymous, not anonymous. Salting it per analysis stops an outsider holding one analysis from
+joining it to another; **inside a team repository the mapping is guessable**, because the set of
+accounts is small and known. It must never be described to a contributor as though it hides them
+from a colleague. A team needing genuinely unlinkable personas accepts that their independence is
+`unknown`, which the ladder already reports honestly.
+
+And the ladder is a **disclosure mechanism, never a control**: `persona-independence` catches the
+representable lie and cannot catch a fabricated principal. The system is as honest as the
+contributor — which is what the Consequences above already say about local identity, arriving
+through a second door.

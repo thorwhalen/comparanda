@@ -17,6 +17,10 @@ import { EvidenceRef } from './evidence.js';
 import { Missing } from './missingness.js';
 import { Independence, Perturbation } from './provenance.js';
 import { meanIsLegal, type LevelOfMeasurement } from './measurement.js';
+import {
+  declarationFields, resolveDeclaration, degradationOf,
+  type Degradation, type Resolution,
+} from './declarations.js';
 
 /** A stored datum. Typed by its (criterion, measure) declaration, not here. */
 export const ScalarValue = z.union([z.number(), z.string(), z.boolean()]);
@@ -86,8 +90,91 @@ export type Assertion = z.infer<typeof Assertion>;
  *                   `reduce` refuses it on ordinal rather than computing it.
  * - `consensus`     an explicitly agreed value that supersedes the rest.
  */
-export const Reduction = z.enum(['single', 'latest', 'lower-median', 'mode', 'mean', 'consensus']);
-export type Reduction = z.infer<typeof Reduction>;
+export const CoreReduction = z.enum(['single', 'latest', 'lower-median', 'mode', 'mean', 'consensus']);
+export type CoreReduction = z.infer<typeof CoreReduction>;
+
+/**
+ * What a reduction does, as facts a consumer can check without knowing which
+ * reduction it is.
+ */
+export interface ReductionFacts {
+  /** One line, shown to a reader whose build could not run this reduction. */
+  means: string;
+  /**
+   * True when the reduction can produce a value **nobody asserted**.
+   *
+   * A mean can. `lower-median` deliberately cannot -- that is the entire reason
+   * it exists in place of a bare median, which averages the two central values
+   * at even parity and invents a level no rater could have chosen.
+   *
+   * Arithmetic reductions are illegal on nominal and ordinal levels. Stating it
+   * as a *fact about the reduction* rather than a special case for `mean` is
+   * what makes the rule survive extension: a declared `trimmed-mean` naming
+   * `mean` as its parent inherits the refusal without anyone remembering to add
+   * it.
+   */
+  arithmetic: boolean;
+}
+
+export const CORE_REDUCTIONS: Readonly<Record<CoreReduction, ReductionFacts>> = Object.freeze({
+  single: { means: 'Exactly one assertion is expected; more is a conflict.', arithmetic: false },
+  latest: { means: 'The most recent assertion wins.', arithmetic: false },
+  'lower-median': { means: 'The lower of the two central order statistics.', arithmetic: false },
+  mode: { means: 'The most frequently asserted level; ties are reported, not broken.', arithmetic: false },
+  mean: { means: 'The arithmetic mean.', arithmetic: true },
+  consensus: { means: 'An explicitly agreed value that supersedes the rest.', arithmetic: false },
+});
+
+/**
+ * A reduction a deployment defines, named in the document so a foreign reader
+ * knows what it was asked to compute.
+ */
+export const ReductionDeclaration = z.object(declarationFields(CoreReduction));
+export type ReductionDeclaration = z.infer<typeof ReductionDeclaration>;
+
+/**
+ * A reduction name: a core member, or a declared extension.
+ *
+ * Open at the point of use, exactly like a missingness code.
+ */
+export const Reduction = z.string();
+export type Reduction = string;
+
+/**
+ * Resolve a reduction name through the one resolver.
+ *
+ * **A declared reduction this build cannot run is never substituted, and this is
+ * a deliberate departure from how missingness degrades.** The `broader` contract
+ * says "fall back to the parent", and for a *classification* that is safe: a
+ * paywalled blank classified as its parent is still correctly a terminal,
+ * non-informative absence, and nothing about the analysis changes.
+ *
+ * A reduction is not a classification. It is a computation whose output is a
+ * number a reader will act on. Running a mean where the author asked for a
+ * trimmed mean produces a different number, presents it as the author's, and
+ * discloses the substitution only in a degradation record beside the document --
+ * which is precisely the "plausible number instead of an honest blank" this
+ * package exists to refuse.
+ *
+ * So `reduce` refuses on a reduction it cannot run, and says which one and why.
+ * `Reduced.refused` already exists and is already rendered; a refusal costs a
+ * reader one sentence and costs them nothing false.
+ */
+export function resolveReduction(
+  name: string,
+  declarations: readonly ReductionDeclaration[] = [],
+): Resolution<ReductionFacts> {
+  return resolveDeclaration<ReductionFacts>(
+    name,
+    CORE_REDUCTIONS,
+    declarations as readonly { id: string; broader: string; means: string }[],
+    // v1 implements no reduction beyond the core six, so every declared
+    // extension resolves as `degraded` -- which `reduce` turns into a refusal
+    // rather than a substitution. Implementing one later means returning facts
+    // here and adding one branch to the switch; no call site changes.
+    () => undefined,
+  );
+}
 
 /** One (alternative, criterion, measure) intersection. */
 export const Cell = z.object({
@@ -148,14 +235,44 @@ function isNumeric(v: ScalarValue | undefined): v is number {
  */
 export function reduce(
   cell: Cell,
-  opts: { defaultReduction: Reduction; level?: LevelOfMeasurement },
+  opts: {
+    defaultReduction: Reduction;
+    level?: LevelOfMeasurement;
+    /** The document's reduction declarations, for resolving a non-core name. */
+    reductions?: readonly ReductionDeclaration[];
+    /** Appended to when the reduction name could not be resolved. */
+    degradations?: Degradation[];
+  },
 ): Reduced {
   const contributing = live(cell.assertions);
-  const mode = cell.reduction ?? opts.defaultReduction;
+  const named = cell.reduction ?? opts.defaultReduction;
+
+  const resolved = resolveReduction(named, opts.reductions ?? []);
+  if (opts.degradations) {
+    const d = degradationOf(resolved, 'reduction', `cells.${cell.alternativeId}/${cell.criterionId}.reduction`);
+    if (d) opts.degradations.push(d);
+  }
 
   if (contributing.length === 0) {
     return { contributing, disagreement: false, spread: [] };
   }
+
+  if (!resolved.known) {
+    return {
+      contributing,
+      disagreement: false,
+      spread: [],
+      refused:
+        resolved.source === 'degraded'
+          ? `this build cannot compute the reduction "${named}" (${resolved.because}). ` +
+            `Running its parent "${resolved.broader}" instead would produce a different number and ` +
+            'present it as the author\'s, so nothing is shown.'
+          : `unknown reduction "${named}", and the document declares no such name`,
+    };
+  }
+
+  // Past this point the name resolved to a core algorithm.
+  const mode = named as CoreReduction;
 
   const valued = contributing.filter((a) => a.value !== undefined);
   const absent = contributing.filter((a) => a.value === undefined && a.missing);
@@ -192,6 +309,18 @@ export function reduce(
     return { missing: latest?.missing, contributing, disagreement, spread };
   }
 
+  // The arithmetic rule, stated once over the reduction's facts rather than as a
+  // case for `mean`. A declared reduction that inherits `arithmetic: true` is
+  // refused here without anyone having remembered to add it.
+  if (resolved.facts.arithmetic && opts.level && !meanIsLegal(opts.level)) {
+    return {
+      contributing, disagreement, spread,
+      refused: `"${named}" produces a value nobody asserted, which is not legal on an ` +
+        `${opts.level} level; use lower-median. Averaging ordinal codes produces a value no ` +
+        'rater could have chosen.',
+    };
+  }
+
   switch (mode) {
     case 'single':
     case 'latest': {
@@ -219,13 +348,6 @@ export function reduce(
       return { value: winners[0], contributing, disagreement, spread };
     }
     case 'mean': {
-      if (opts.level && !meanIsLegal(opts.level)) {
-        return {
-          contributing, disagreement, spread,
-          refused: `a mean is not legal on an ${opts.level} level; use lower-median. ` +
-            'Averaging ordinal codes produces a value no rater could have chosen.',
-        };
-      }
       const nums = valued.map((a) => a.value).filter(isNumeric);
       if (nums.length !== valued.length) {
         return { contributing, disagreement, spread, refused: 'mean needs numeric values' };

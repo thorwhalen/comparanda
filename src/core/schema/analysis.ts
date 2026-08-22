@@ -12,13 +12,16 @@ import {
   Alternative, Criterion, Group, InapplicableBlock, RejectedCriterion, Aliases,
   measurementFor,
 } from './structure.js';
-import { Cell, Reduction, reduce, type Reduced } from './values.js';
+import {
+  Cell, Reduction, ReductionDeclaration, CORE_REDUCTIONS, reduce, type Reduced,
+} from './values.js';
 import { Author, Procedure, Round } from './provenance.js';
 import { Thread, Suggestion } from './annotations.js';
 import {
   CORE_MISSING_CODES, MissingCodeDeclaration, tallyCompleteness, type Completeness,
 } from './missingness.js';
-import { validateMeasurement, type Measurement } from './measurement.js';
+import type { Degradation } from './declarations.js';
+import { ScaleDeclaration, validateMeasurement, type Measurement } from './measurement.js';
 import { validateEvidence } from './evidence.js';
 
 /**
@@ -87,6 +90,18 @@ export const Analysis = z.object({
 
   /** Deployment extensions to the closed core set of missingness codes. */
   missingCodes: z._default(z.array(MissingCodeDeclaration), []),
+
+  /**
+   * The named scales this analysis's criteria were authored to.
+   *
+   * A row per scale, so a reader that has never heard of one still knows what it
+   * was and can say so. The measurement itself is on the criterion, as required
+   * fields, which is what lets an unknown scale still dominate and still render.
+   */
+  scales: z._default(z.array(ScaleDeclaration), []),
+
+  /** Deployment extensions to the closed core set of reductions. */
+  reductions: z._default(z.array(ReductionDeclaration), []),
 
   /** Whether the analysis accepts direct edits, or only suggestions. */
   locked: z.optional(z.boolean()),
@@ -199,13 +214,23 @@ export function validateAnalysis(input: unknown): {
     if (!groupIds.has(b.criterionGroupId)) err(`inapplicable[${i}]`, `unknown group "${b.criterionGroupId}"`);
   }
 
-  for (const [i, d] of a.missingCodes.entries()) {
-    // Read the core set rather than restating it. An inline list here is a
-    // second source of truth in the file that owns the rule: add a seventh core
-    // code and this check silently starts permitting its redeclaration, which
-    // is the one thing it exists to stop.
-    if (Object.prototype.hasOwnProperty.call(CORE_MISSING_CODES, d.id)) {
-      err(`missingCodes[${i}]`, `"${d.id}" is a core code and cannot be redeclared`);
+  // The same redeclaration rule, for the two vocabularies that just gained it.
+  // Written as a loop over (list, core table, field) rather than three times,
+  // because three copies is how the fourth vocabulary gets forgotten.
+  const vocabularies: [readonly { id: string }[], Readonly<Record<string, unknown>>, string][] = [
+    [a.missingCodes, CORE_MISSING_CODES, 'missingCodes'],
+    [a.reductions, CORE_REDUCTIONS, 'reductions'],
+  ];
+  for (const [decls, core, field] of vocabularies) {
+    const seen = new Set<string>();
+    for (const [i, d] of decls.entries()) {
+      if (Object.prototype.hasOwnProperty.call(core, d.id)) {
+        err(`${field}[${i}]`, `"${d.id}" is a core member and cannot be redeclared`);
+      }
+      if (seen.has(d.id)) {
+        err(`${field}[${i}]`, `"${d.id}" is declared more than once; the later one would win silently`);
+      }
+      seen.add(d.id);
     }
   }
 
@@ -242,7 +267,19 @@ export interface CellReader {
   measurementOf(criterionId: string): Measurement | undefined;
 }
 
-export function makeCellReader(a: Analysis, measure: string): CellReader {
+export function makeCellReader(
+  a: Analysis,
+  measure: string,
+  /**
+   * Appended to when a cell names a reduction this build cannot run.
+   *
+   * By reference rather than returned, so one list accumulates across a whole
+   * matrix walk. Optional so the common call stays two arguments -- but a caller
+   * that renders to a human should pass one, because a cell whose reduction was
+   * refused shows nothing, and the reason it shows nothing lives here.
+   */
+  degradations?: Degradation[],
+): CellReader {
   const cells = cellIndex(a);
   const measurements = new Map<string, Measurement | undefined>();
   for (const c of a.criteria) measurements.set(c.id, measurementFor(c, measure));
@@ -256,7 +293,9 @@ export function makeCellReader(a: Analysis, measure: string): CellReader {
       const m = measurements.get(criterionId);
       return reduce(cell, {
         defaultReduction: a.defaultReduction,
+        reductions: a.reductions,
         ...(m ? { level: m.level } : {}),
+        ...(degradations ? { degradations } : {}),
       });
     },
   };
@@ -277,6 +316,7 @@ export function reducedValue(
   const m = criterion ? measurementFor(criterion, measure) : undefined;
   return reduce(cell, {
     defaultReduction: a.defaultReduction,
+    reductions: a.reductions,
     ...(m ? { level: m.level } : {}),
   });
 }
