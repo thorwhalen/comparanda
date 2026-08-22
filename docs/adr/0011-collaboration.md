@@ -203,3 +203,57 @@ surviving residue of the review of this amendment in `docs/research/phase0-revie
 5. [Suggest edits in Google Docs — Google Docs Editors Help](https://support.google.com/docs/answer/6033474)
 6. [Group informed consensus — The Computational Democracy Project / Polis](https://compdemocracy.org/Group-Informed-Consensus/)
 7. [Algorithms — The Computational Democracy Project / Polis](https://compdemocracy.org/algorithms/)
+
+## Amendments
+
+### 2026-08-22 — the team is in v1; the staging changes, the decision does not
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+**Nothing in the Decision changes.** All seven clauses stand exactly as accepted. What changes is
+the Consequences paragraph's staging.
+
+It reads: "This is the largest single area of the specification and should be staged: annotations and
+edit attribution first, then multi-rater and disagreement, then suggestion mode." That staging
+assumed a first shippable version for one author, with the group arriving later. Asked directly
+whether the first real user is one person or a team arguing over a shared document, the owner chose
+the team:
+
+> "A team arguing over a shared document is in v1."
+
+**So clauses 1–4 and 7 ship in v1** — anchored annotations at every scope, threads with resolve,
+multi-rater values with every assertion retained, disagreement as an encoding, and a legible activity
+record. **Clause 5, suggestion mode, remains staged**: it is the one clause that presupposes an
+authorisation story, and ADR-0012 puts authorisation in the host's hands, so it is additive rather
+than foundational. **Clause 6, versioned writes with conflicts surfaced, ships in v1** and is no
+longer optional — it was tolerable to defer while a single author edited a local file, and it is not
+tolerable the moment two people write to one shared analysis.
+
+**The Consequences paragraph's real warning is now load-bearing rather than prospective.** It says
+"retrofitting multi-rater onto a single-value cell is a migration through every stored analysis".
+There is no longer a window in which that retrofit could have been cheap: the multi-rater shape is
+what v1 stores.
+
+**Two contributors, one model.** The Context says a comparison "is produced, then argued over" —
+and in this product some of the producing and some of the arguing is done by an agent. Human and
+agent contributors are **peers in the schema**: each asserts a value with a justification, each is
+retained with its author and timestamp, each is subject to the same missingness vocabulary and the
+same evidence requirements. What separates them is `AuthorKind`, which a reader can see at a glance
+(ADR-0012), and the independence rung the assertion records (`provenance.ts`) — not a second,
+parallel representation.
+
+**Clause 3's reduction list becomes a seam.** It names `single`, `latest`, `median`, `consensus`.
+Those remain, and remain the defaults, but the reduction over a cell's assertions is **selectable**
+rather than closed — the owner asked for aggregation across contributors to be parametrisable, "based
+on some default or custom parametrization". Two constraints survive the opening, both from ADR-0015:
+**never a mean over ordinal assertions**, and **never a point reduction over a polarised cell** — a
+reduction that hides a 2-and-a-5 behind a 3.5 is the single representation clause 4 exists to
+prevent, and a seam is not a licence to reintroduce it. A registered reduction that violates either
+is a defect, not a configuration.
+
+**What this costs.** The collaboration half was the part most available to cut under time pressure,
+and it is no longer available. The compensating discipline is that clause 5 and real-time co-editing
+stay out, so v1 is *multi-contributor* without being *concurrent-editing* — which is the distinction
+clause 6 already drew and the reason it can decline CRDTs.
