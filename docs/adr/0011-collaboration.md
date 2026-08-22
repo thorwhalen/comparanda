@@ -320,3 +320,33 @@ and its behaviour — collapses assertions whose authors share a `principalId` a
 resulting set at `resampled`. Rule 2 of ADR-0012's persona amendment states this from the identity
 side; this is the computation, and it lives here because this ADR owns what a multi-rater assertion
 means.
+
+### 2026-08-22 — `ReductionDeclaration` carries no facts, and does not need to
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+
+The "Reduction becomes a declared vocabulary" amendment above says a `ReductionDeclaration` carries
+"three facts a foreign reader needs: `numeric`, `requiresIntervalOrAbove` (the `mean` rule, as a
+fact rather than a special case) and `synthesises`". None of the three exists, and on reflection
+none should.
+
+**Why the facts moved off the declaration.** They exist to answer one question — may this reduction
+run on this level of measurement — and that question is only asked of a reduction this build can
+actually run. ADR-0030's 2026-08-22 amendment settles that a declared reduction this build cannot
+run is **refused**, not substituted. So a declaration's facts would be consulted on exactly the path
+that never reaches them.
+
+`ReductionFacts` therefore carries what the core six need — `means`, and **`arithmetic`**, meaning
+the reduction can produce a value nobody asserted, which is the `mean` rule generalised exactly as
+the amendment above intended. A declared extension inherits `arithmetic` from its `broader` parent,
+so a `trimmed-mean` naming `mean` is already known to be arithmetic without stating it; when a build
+implements it, the guard fires without anyone having remembered to add it.
+
+`numeric` and `synthesises` are dropped as distinctions this schema never uses: every reduction that
+needs numbers already fails on non-numeric input with its own message, and `synthesises` is
+`arithmetic` under another name.
+
+**What does not change.** `Reduction` is an open string at the point of use, `Analysis.reductions`
+carries the declarations, the core six are closed, and the two constraints from ADR-0015 stand —
+never a mean over ordinal assertions, and never a point reduction over a polarised cell.

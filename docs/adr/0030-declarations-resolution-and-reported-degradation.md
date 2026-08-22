@@ -128,3 +128,51 @@ contract stops being load-bearing.
 - *Return `undefined` and let callers decide.* The status quo. Every caller invents its own default,
   the defaults disagree, and nobody can enumerate what a build failed to interpret.
 - *Store the degradation on the document.* Rejected in clause 4.
+
+## Amendments
+
+### 2026-08-22 — the identifier is `id` everywhere, and a reduction refuses where a scale degrades
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+Two corrections, both found by checking this ADR against the code it describes rather than against
+the other ADRs.
+
+**1. The declaration identifier is `id` for all three vocabularies.** The Decision above says it is
+"`code` for a missingness code (matching `Missing.code` at the point of use, **as shipped**), `id`
+for a scale or a reduction", and that the symmetry is worth keeping. The parenthetical was already
+false when it was written: `declarationFields` supplies `id`, `MissingCodeDeclaration` spreads it
+wholesale, and the resolver matches on `d.id`. The companion repository's ADR-0021 independently
+specifies `{ id, broader, means, params }`.
+
+The uniform spelling is also the better answer, and not only because it is the shipped one. The
+declaration's `id` names *the declaration*; `Missing.code` names *the code a cell uses*. They are
+the same string and they are not the same field, and giving one vocabulary a different spelling
+from the other two costs the generic resolver its generality — `resolveDeclaration` would need a
+key-name parameter, which is indirection bought to preserve a symmetry nobody was relying on.
+
+**2. An unknown *reduction* refuses; an unknown *scale* degrades.** Clause 5's table gives one rule
+for both — "degrade via `broader`" — and the code deliberately does not, for a reason that is worth
+stating as a general principle rather than as a special case:
+
+> **Degrade a classification. Refuse a computation.**
+
+A missingness code and a scale are *classifications*. Falling back to the parent changes what the
+reader is told a thing **is**, and `broader` exists precisely so that answer stays correct: a
+paywalled blank classified as its parent is still terminal and still non-informative, and a
+column on an unrecognised scale still has its level, preference and range as required fields, so it
+still validates, still dominates and still renders. Nothing computed changes.
+
+A reduction is a *computation*. Running `mean` where the author asked for `trimmed-mean` produces a
+different number, presents it under the author's label, and discloses the substitution only in a
+record sitting beside the document. That is a plausible number in place of an honest blank, which is
+the one thing this schema exists to refuse. So `reduce` returns `refused` with the reduction named
+and the reason given, and `Reduced.refused` was already a rendered state.
+
+The degradation record is emitted either way; what differs is whether a value comes with it.
+
+**What does not change.** The declaration shape, `broader` as the degradation contract, the read/
+author asymmetry, and the rule that a `Degradation` is a fact about the build and is never written
+into the document.
