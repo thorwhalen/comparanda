@@ -16,7 +16,7 @@ import { Cell, Reduction, reduce, type Reduced } from './values.js';
 import { Author, Procedure, Round } from './provenance.js';
 import { Thread, Suggestion } from './annotations.js';
 import {
-  MissingCodeDeclaration, tallyCompleteness, type Completeness,
+  CORE_MISSING_CODES, MissingCodeDeclaration, tallyCompleteness, type Completeness,
 } from './missingness.js';
 import { validateMeasurement, type Measurement } from './measurement.js';
 import { validateEvidence } from './evidence.js';
@@ -200,7 +200,11 @@ export function validateAnalysis(input: unknown): {
   }
 
   for (const [i, d] of a.missingCodes.entries()) {
-    if (['not-applicable', 'not-assessed', 'deferred', 'not-evidenced', 'indeterminate', 'withheld'].includes(d.code)) {
+    // Read the core set rather than restating it. An inline list here is a
+    // second source of truth in the file that owns the rule: add a seventh core
+    // code and this check silently starts permitting its redeclaration, which
+    // is the one thing it exists to stop.
+    if (d.code in CORE_MISSING_CODES) {
       err(`missingCodes[${i}]`, `"${d.code}" is a core code and cannot be redeclared`);
     }
   }
@@ -247,7 +251,7 @@ export function makeCellReader(a: Analysis, measure: string): CellReader {
     measure,
     measurementOf: (criterionId) => measurements.get(criterionId),
     read(alternativeId, criterionId) {
-      const cell = cells.get(`${alternativeId} ${criterionId} ${measure}`);
+      const cell = cells.get(`${alternativeId}\u0000${criterionId}\u0000${measure}`);
       if (!cell) return undefined;
       const m = measurements.get(criterionId);
       return reduce(cell, {
