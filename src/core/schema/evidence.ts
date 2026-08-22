@@ -122,13 +122,129 @@ export type Stance = z.infer<typeof Stance>;
  */
 export const CitationCheck = z.object({
   status: z.enum(['verified', 'not-found', 'drifted', 'unchecked', 'unresolvable']),
+  /**
+   * When the check ran. **Required for every status except `unchecked`**, which
+   * is the one status that describes the absence of a check and so has no
+   * moment to record. The rule is enforced by `validateCitationCheck` rather
+   * than by the shape, following this module's convention: zod carries the
+   * shape, plain functions carry the rules, and a rule violation comes back as
+   * a path and a sentence rather than a parse failure.
+   */
   checkedAt: z.optional(z.string()),
+  /** What ran it. Same requiredness rule as `checkedAt`. */
   checkerVersion: z.optional(z.string()),
   /** Which selector resolved, when several were tried. */
   resolvedBy: z.optional(z.string()),
   detail: z.optional(z.string()),
 });
 export type CitationCheck = z.infer<typeof CitationCheck>;
+
+/**
+ * How much a stored check can still be trusted, at the moment of reading.
+ *
+ * A check travels inside the document (ADR-0014), which is what lets a bundle
+ * sent to someone with no resolver and no corpus show something real. The cost
+ * is that it can arrive stale, so a reader is never shown a bare verdict: they
+ * are shown the verdict *and* how far it can be trusted.
+ *
+ * - `unchecked`      no check has run. Not a verdict at all.
+ * - `current`        run by the checker version now in use.
+ * - `older-checker`  run by an earlier checker. The verdict stands as a record
+ *                    of what that checker found; it is not a claim about what
+ *                    the current one would find.
+ * - `aged`           older than a caller-supplied threshold. Only ever produced
+ *                    when a caller supplies one -- see `staleAfterDays`.
+ */
+export type CheckFreshness = 'unchecked' | 'current' | 'older-checker' | 'aged';
+
+export interface CheckStanding {
+  freshness: CheckFreshness;
+  /**
+   * Whole days between `checkedAt` and `now`. Absent when there is nothing to
+   * measure from -- no check, or a check that failed the requiredness rule.
+   *
+   * Spelled `| undefined` explicitly because this project runs
+   * `exactOptionalPropertyTypes`, under which an optional property does not
+   * accept an explicit `undefined` value.
+   */
+  ageDays?: number | undefined;
+  /**
+   * True when the reader must be shown a caveat alongside the verdict. Every
+   * freshness except `current` requires one; the view contract may not render a
+   * non-current check as though it were current.
+   */
+  needsCaveat: boolean;
+}
+
+/**
+ * Classify a stored check for display.
+ *
+ * `now` is a parameter and not a hidden clock, so this stays pure and testable
+ * and so a bundle rendered twice from the same inputs renders identically.
+ *
+ * **There is deliberately no default age threshold.** Expiring a check on an age
+ * nobody can justify would blind a shared bundle with no way for its recipient
+ * to refresh it, and a visible caveat carries strictly more information than an
+ * absence. Age is therefore always *reported* and only *acted on* when a caller
+ * has chosen a threshold and owns that choice.
+ */
+export function checkStanding(
+  check: CitationCheck | undefined,
+  {
+    currentCheckerVersion,
+    now,
+    staleAfterDays,
+  }: { currentCheckerVersion: string; now: Date; staleAfterDays?: number },
+): CheckStanding {
+  if (!check || check.status === 'unchecked') {
+    return { freshness: 'unchecked', needsCaveat: true };
+  }
+
+  const ageDays = check.checkedAt
+    ? Math.floor((now.getTime() - new Date(check.checkedAt).getTime()) / 86_400_000)
+    : undefined;
+
+  // Version first: a check from an older checker is suspect however recent it
+  // is, because what changed is the thing doing the checking.
+  if (check.checkerVersion !== currentCheckerVersion) {
+    return { freshness: 'older-checker', ageDays, needsCaveat: true };
+  }
+  if (staleAfterDays !== undefined && ageDays !== undefined && ageDays > staleAfterDays) {
+    return { freshness: 'aged', ageDays, needsCaveat: true };
+  }
+  return { freshness: 'current', ageDays, needsCaveat: false };
+}
+
+/**
+ * The requiredness rule for a stored check.
+ *
+ * A verdict with no date and no checker is the failure this rule exists to
+ * prevent: it reads as current to anyone who opens the document, and there is
+ * nothing in it that says otherwise. `unchecked` is exempt because it is the
+ * absence of a verdict rather than an undated one.
+ */
+export function validateCitationCheck(
+  check: CitationCheck | undefined,
+  path = 'check',
+): EvidenceProblem[] {
+  if (!check || check.status === 'unchecked') return [];
+  const problems: EvidenceProblem[] = [];
+  if (!check.checkedAt) {
+    problems.push({
+      path: `${path}.checkedAt`,
+      message: `a check with status "${check.status}" must record when it ran. ` +
+        'An undated verdict reads as current forever.',
+    });
+  }
+  if (!check.checkerVersion) {
+    problems.push({
+      path: `${path}.checkerVersion`,
+      message: `a check with status "${check.status}" must record what ran it. ` +
+        'Without it a reader cannot tell whether the current checker would still agree.',
+    });
+  }
+  return problems;
+}
 
 /**
  * One evidence reference.
@@ -189,6 +305,7 @@ export function validateEvidence(refs: readonly EvidenceRef[], path = 'evidence'
           'Pointing at a whole document is not evidence.',
       });
     }
+    problems.push(...validateCitationCheck(ref.check, `${at}.check`));
     if (!isExternalSupport(ref.sourceType) && ref.derivedFrom.length === 0) {
       problems.push({
         path: `${at}.derivedFrom`,
