@@ -25,6 +25,10 @@
  * that a flat extensible enum makes every consumer guess.
  */
 import * as z from 'zod/mini';
+import {
+  declarationFields, resolveDeclaration, degradationOf,
+  type Degradation, type Resolution,
+} from './declarations.js';
 
 /**
  * The closed core. An analysis may add codes, but each must name one of these as
@@ -102,9 +106,7 @@ export const CORE_MISSING_CODES: Readonly<Record<MissingCode, MissingCodeFacts>>
  * set can still classify it correctly by following `broader`.
  */
 export const MissingCodeDeclaration = z.object({
-  code: z.string(),
-  broader: MissingCode,
-  means: z.string(),
+  ...declarationFields(MissingCode),
   /** Defaults follow `broader` unless overridden; an override is a real claim. */
   structural: z.optional(z.boolean()),
   terminal: z.optional(z.boolean()),
@@ -132,26 +134,55 @@ export const Missing = z.object({
 export type Missing = z.infer<typeof Missing>;
 
 /**
- * Resolve a code -- core or extension -- to its facts.
+ * Resolve a code -- core or extension -- through the one resolver.
  *
- * Returns `undefined` for an undeclared code rather than defaulting, because
- * defaulting an unknown absence to "outstanding work" or to "correctly nothing"
- * are both wrong and both invisible.
+ * Returns a `Resolution`, not bare facts, because "this build could not
+ * interpret the code" and "this code means X" are different answers and a
+ * caller that cannot tell them apart will report one as the other.
+ *
+ * **A declared missingness code never degrades.** Its facts travel *with* the
+ * declaration -- `structural`, `terminal`, `informative` are all either stated
+ * or inherited from `broader` -- so any build can interpret any declaration
+ * without knowing anything about it. That is the whole return on carrying facts
+ * in the document rather than in an interpreter, and it makes this the one open
+ * vocabulary whose extensions are always fully readable.
+ *
+ * What still fails is an **undeclared** code, which resolves `undeclared` with
+ * no facts rather than defaulting. Defaulting an unknown absence to "outstanding
+ * work" or to "correctly nothing" are both wrong and both invisible.
  */
 export function resolveMissingCode(
   code: string,
   declarations: readonly MissingCodeDeclaration[] = [],
+): Resolution<MissingCodeFacts> {
+  return resolveDeclaration<MissingCodeFacts>(
+    code,
+    CORE_MISSING_CODES,
+    declarations as readonly { id: string; broader: string; means: string }[],
+    (decl, base) => {
+      const d = decl as unknown as MissingCodeDeclaration;
+      return {
+        structural: d.structural ?? base.structural,
+        terminal: d.terminal ?? base.terminal,
+        informative: d.informative ?? base.informative,
+        means: d.means,
+      };
+    },
+  );
+}
+
+/**
+ * The facts alone, for a caller that has already dealt with the unknown case.
+ *
+ * Deliberately named so that reaching for it looks like the shortcut it is:
+ * every path that renders to a human, or that feeds a rate, must go through
+ * `resolveMissingCode` and report what it could not interpret.
+ */
+export function missingCodeFactsOrUndefined(
+  code: string,
+  declarations: readonly MissingCodeDeclaration[] = [],
 ): MissingCodeFacts | undefined {
-  if (code in CORE_MISSING_CODES) return CORE_MISSING_CODES[code as MissingCode];
-  const decl = declarations.find((d) => d.code === code);
-  if (!decl) return undefined;
-  const base = CORE_MISSING_CODES[decl.broader];
-  return {
-    structural: decl.structural ?? base.structural,
-    terminal: decl.terminal ?? base.terminal,
-    informative: decl.informative ?? base.informative,
-    means: decl.means,
-  };
+  return resolveMissingCode(code, declarations).facts;
 }
 
 /**
@@ -229,15 +260,31 @@ export function emptyCompleteness(): Completeness {
 export function tallyCompleteness(
   cells: Iterable<{ hasValue: boolean; code?: string }>,
   declarations: readonly MissingCodeDeclaration[] = [],
+  /**
+   * Appended to, when a cell names a code this build could not resolve.
+   *
+   * Optional so the common call stays a one-liner, and by-reference rather than
+   * returned so a caller tallying at four scopes accumulates one list. What must
+   * not happen is a rate computed over codes nobody could read, with nothing
+   * anywhere saying so.
+   */
+  degradations?: Degradation[],
 ): Completeness {
   const c = emptyCompleteness();
+  let i = -1;
   for (const cell of cells) {
+    i += 1;
     c.total += 1;
     if (cell.hasValue) {
       c.present += 1;
       continue;
     }
-    const facts = cell.code ? resolveMissingCode(cell.code, declarations) : undefined;
+    const r = cell.code ? resolveMissingCode(cell.code, declarations) : undefined;
+    const facts = r?.facts;
+    if (r && degradations) {
+      const d = degradationOf(r, 'missing-code', `cells[${i}].missing.code`);
+      if (d) degradations.push(d);
+    }
     if (facts?.structural) {
       c.structural += 1;
     } else if (facts?.terminal) {

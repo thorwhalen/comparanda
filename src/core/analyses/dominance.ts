@@ -99,9 +99,14 @@ function intervalFor(
   }
 
   if (r?.missing) {
-    const facts = resolveMissingCode(r.missing.code, a.missingCodes);
+    const { facts } = resolveMissingCode(r.missing.code, a.missingCodes);
     // Structurally absent: the criterion does not apply here, so it leaves the
     // comparison for this pair rather than widening to the full range.
+    //
+    // An unresolvable code has no facts and therefore is NOT excluded: it widens
+    // to the criterion's range like any other contingent absence. That is the
+    // cautious direction -- an unknown code treated as structural would silently
+    // remove a cell from every comparison it appears in.
     if (facts?.structural) return 'excluded';
   }
 

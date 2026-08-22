@@ -1,3 +1,4 @@
+export * from './declarations.js';
 export * from './measurement.js';
 export * from './missingness.js';
 export * from './provenance.js';

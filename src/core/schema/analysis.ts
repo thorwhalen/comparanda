@@ -204,8 +204,8 @@ export function validateAnalysis(input: unknown): {
     // second source of truth in the file that owns the rule: add a seventh core
     // code and this check silently starts permitting its redeclaration, which
     // is the one thing it exists to stop.
-    if (d.code in CORE_MISSING_CODES) {
-      err(`missingCodes[${i}]`, `"${d.code}" is a core code and cannot be redeclared`);
+    if (Object.prototype.hasOwnProperty.call(CORE_MISSING_CODES, d.id)) {
+      err(`missingCodes[${i}]`, `"${d.id}" is a core code and cannot be redeclared`);
     }
   }
 

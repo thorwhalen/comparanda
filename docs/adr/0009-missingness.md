@@ -226,3 +226,63 @@ Closes #125.
 5. [Inference and missing data — D. B. Rubin, Biometrika 63(3):581–592 (1976)](https://doi.org/10.1093/biomet/63.3.581)
 6. [Handbook on Constructing Composite Indicators: Methodology and User Guide — OECD / JRC European Commission (2008)](https://www.oecd.org/content/dam/oecd/en/publications/reports/2008/08/handbook-on-constructing-composite-indicators-methodology-and-user-guide_g1gh9301/9789264043466-en.pdf)
 7. [The Missing Indicator Method: From Low to High Dimensions — M. Van Ness et al., arXiv:2211.09259 (2022)](https://arxiv.org/pdf/2211.09259)
+
+### 2026-08-22 — A vocabulary is scoped, and it is reached through a facade
+
+- **Status:** accepted
+- **Date:** 2026-08-22
+- **Deciders:** Thor Whalen
+
+The amendment above finishes the *flags*. This finishes the *scope* and the *reach*. Clause 3 of the
+2026-08-21 amendment makes the code set open and every code an object; it puts declarations at
+**analysis** scope and stops there, and it says no code may `switch` on a literal without saying
+what a consumer calls instead. Three additions close both gaps. Neither changes a decision.
+
+**1. A criterion may overlay the vocabulary.** `Criterion.missingCodes` takes the same
+`MissingCodeDeclaration[]` as `Analysis.missingCodes`, and a criterion-scoped declaration wins for
+cells of that criterion. The reason is the one that motivated `informative`: the codes a column
+actually needs are a property of *the question the column asks*. "The vendor declined to answer" is
+a real refinement of `withheld` for a procurement criterion and is noise on every other column, and
+forcing it to analysis scope either pollutes the whole document or does not get declared at all.
+
+Overlay, not replacement: a criterion's declarations are searched first, then the analysis's, then
+the core. Nothing shadows a **core** code — clause 3's "no custom code may be a schema default"
+already forbids redeclaring one, and that check now runs at both scopes.
+
+**2. Every consumer reaches the vocabulary through one facade, and no consumer builds the overlay
+itself.**
+
+    interface MissingnessVocabulary {
+      facts(code: string, opts?: { criterionId?: string }): Resolution<MissingCodeFacts>;
+      known(criterionId?: string): readonly string[];
+      means(code: string, opts?: { criterionId?: string }): string;
+    }
+    function vocabularyOf(a: Analysis): MissingnessVocabulary;
+
+Two scopes to search is exactly the amount of logic that gets re-implemented slightly differently in
+four places, and clause 3's prohibition on `switch`-ing over a literal is only actionable once there
+is a named thing to call instead.
+
+`means()` earns its own method because it has two callers who must never diverge: the accessibility
+announcement for a blank cell (ADR-0027, ADR-0028) and the prose a producing agent is given. **Both
+read the declaration's own `means` string; neither may carry a literal.** A custom code with no
+announcement text is the failure mode that turns the a11y merge gate from a guard into a false pass,
+and it is reachable today.
+
+**3. `resolveMissingCode` returns a `Resolution`, not `MissingCodeFacts | undefined`.** Its current
+signature is right about the hard part — it returns `undefined` for an undeclared code "rather than
+defaulting, because defaulting an unknown absence to 'outstanding work' or to 'correctly nothing'
+are both wrong and both invisible". What it cannot do is *tell anyone*, and it cannot distinguish
+"nobody declared this" from "declared, and this build reads it as its parent", which are opposite
+instructions to a caller. ADR-0030 gives it the shape that can: a resolution carrying whether the
+answer came from the core, from a declaration, or by degrading through `broader`, plus a
+`Degradation` record when it degraded. The behaviour is unchanged; the silence is not.
+
+**4. One thing this amendment does not have to say, and one it still does.** The second source of
+truth for the core set — the six-code array written inline in `validateAnalysis`'s redeclaration
+check instead of reading `CORE_MISSING_CODES` — **has been repaired**, and this amendment is not the
+place to complain about it. What has *not* been built is the guard that would have caught it: a
+source scan asserting no module outside `missingness.ts` contains a core code literal. Clause 4 of
+the 2026-08-21 amendment says completeness keys on the flag "never on a literal"; that is the same
+principle one level up, it was violated once in the file that owns the rule, and nothing would have
+noticed. The guard is owed.

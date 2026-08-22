@@ -18,6 +18,7 @@ import {
   tallyCompleteness,
   type MissingCodeDeclaration,
 } from '../src/core/schema/missingness.js';
+import type { Degradation } from '../src/core/schema/declarations.js';
 
 describe('the informative flag', () => {
   it('separates the two terminal absences that mean opposite things', () => {
@@ -94,20 +95,31 @@ describe('silenceRate', () => {
 describe('declared extensions', () => {
   const declarations: readonly MissingCodeDeclaration[] = [
     // Inherits informative: true from not-evidenced.
-    { code: 'no-public-filing', broader: 'not-evidenced', means: 'No public filing exists.' },
+    { id: 'no-public-filing', broader: 'not-evidenced', means: 'No public filing exists.', params: {} },
     // Overrides it. A paywall is a fact about our access, not about the subject
     // -- the case that makes inheriting the wrong default dangerous.
-    { code: 'source-paywalled', broader: 'not-evidenced', means: 'The source is paywalled.', informative: false },
+    { id: 'source-paywalled', broader: 'not-evidenced', means: 'The source is paywalled.', informative: false, params: {} },
   ];
 
   it('inherits informative from broader when not stated', () => {
-    expect(resolveMissingCode('no-public-filing', declarations)?.informative).toBe(true);
+    const r = resolveMissingCode('no-public-filing', declarations);
+    expect(r.source).toBe('declared');
+    expect(r.facts?.informative).toBe(true);
   });
 
   it('lets a refinement contradict its parent, because the axes are independent', () => {
-    const facts = resolveMissingCode('source-paywalled', declarations);
-    expect(facts?.informative).toBe(false);
-    expect(facts?.terminal).toBe(true); // still inherited
+    const r = resolveMissingCode('source-paywalled', declarations);
+    expect(r.facts?.informative).toBe(false);
+    expect(r.facts?.terminal).toBe(true); // still inherited
+  });
+
+  it('never degrades a declared code, because its facts travel with it', () => {
+    // This is the return on carrying facts in the document rather than in an
+    // interpreter: a build that has never heard of `source-paywalled` still
+    // classifies it exactly right, so there is nothing to report.
+    for (const id of ['no-public-filing', 'source-paywalled']) {
+      expect(resolveMissingCode(id, declarations).known).toBe(true);
+    }
   });
 
   it('keeps an overriding extension out of silenceRate', () => {
@@ -126,9 +138,43 @@ describe('declared extensions', () => {
   it('still refuses to resolve an undeclared code rather than guessing', () => {
     // Guessing `informative` for a code nobody declared would put an invention
     // underneath the one metric the honesty claim is measured by.
-    expect(resolveMissingCode('invented-by-someone')).toBeUndefined();
+    const r = resolveMissingCode('invented-by-someone');
+    expect(r.known).toBe(false);
+    expect(r.source).toBe('undeclared');
+    expect(r.facts).toBeUndefined();
+
     const c = tallyCompleteness([{ hasValue: false, code: 'invented-by-someone' }]);
     expect(c.informativeAbsent).toBe(0);
     expect(c.outstanding).toBe(1);
+  });
+
+  it('reports an undeclared code as a degradation, with where it was used', () => {
+    // The rate is still computed -- the analysis is not corrupt -- but the
+    // caller learns that one cell was counted without anyone knowing what its
+    // code meant. Silently counting it as outstanding and saying nothing is how
+    // a completeness report becomes confidently wrong.
+    const degradations: Degradation[] = [];
+    tallyCompleteness(
+      [{ hasValue: true }, { hasValue: false, code: 'invented-by-someone' }],
+      declarations,
+      degradations,
+    );
+    expect(degradations).toHaveLength(1);
+    expect(degradations[0]).toMatchObject({
+      axis: 'missing-code',
+      id: 'invented-by-someone',
+      at: 'cells[1].missing.code',
+    });
+    expect(degradations[0]!.broader).toBeUndefined();
+  });
+
+  it('reports nothing when every code resolves', () => {
+    const degradations: Degradation[] = [];
+    tallyCompleteness(
+      [{ hasValue: false, code: 'withheld' }, { hasValue: false, code: 'source-paywalled' }],
+      declarations,
+      degradations,
+    );
+    expect(degradations).toEqual([]);
   });
 });
