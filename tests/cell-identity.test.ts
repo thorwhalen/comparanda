@@ -23,7 +23,10 @@ const cell = (value: number, id: string): Cell => ({
   alternativeId: 'alt-1',
   criterionId: 'crit-1',
   measure: 'score',
-  assertions: [{ id, authorId: 'ana', at: '2026-08-22T00:00:00Z', value, evidence: [], version: 1 }],
+  assertions: [{
+    id, authorId: 'ana', at: '2026-08-22T00:00:00Z', value,
+    justification: 'the filing states it', evidence: [], version: 1,
+  }],
 });
 
 /** A minimal analysis carrying whatever cells the test needs. */

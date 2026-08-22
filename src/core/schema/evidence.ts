@@ -340,6 +340,9 @@ export function validateCitationCheck(
       path: `${path}.checkedAt`,
       message: `a check with status "${check.status}" must record when it ran. ` +
         'An undated verdict reads as current forever.',
+      family: 'honesty',
+      ruleId: 'check-dated',
+      fix: 'set checkedAt to the moment the check ran, or set status to "unchecked".',
     });
   }
   if (!check.checkerVersion) {
@@ -347,6 +350,9 @@ export function validateCitationCheck(
       path: `${path}.checkerVersion`,
       message: `a check with status "${check.status}" must record what ran it. ` +
         'Without it a reader cannot tell whether the current checker would still agree.',
+      family: 'honesty',
+      ruleId: 'check-attributed',
+      fix: 'set checkerVersion to the identifier of the checker that produced this verdict.',
     });
   }
   return problems;
@@ -403,6 +409,18 @@ export type EvidenceRef = z.infer<typeof EvidenceRef>;
 export interface EvidenceProblem {
   path: string;
   message: string;
+  /**
+   * Which family this belongs to, so the caller does not have to guess.
+   *
+   * Every rule in this module is `honesty`: each one is about a reference
+   * asserting something a reader cannot check. They were being reported as
+   * warnings by `validateAnalysis`, which meant a document whose every
+   * supporting reference was the agent's own output still validated -- the exact
+   * failure ADR-0006 names, passing the boundary it was written for.
+   */
+  family: 'honesty';
+  ruleId: string;
+  fix: string;
 }
 
 /**
@@ -424,6 +442,9 @@ export function validateEvidence(refs: readonly EvidenceRef[], path = 'evidence'
         path: at,
         message: 'a reference must identify a span: give at least one selector, or an excerpt. ' +
           'Pointing at a whole document is not evidence.',
+        family: 'honesty',
+        ruleId: 'cite-a-span',
+        fix: 'add a TextQuoteSelector with the quoted words, or an excerpt.',
       });
     }
     problems.push(...validateCitationCheck(ref.check, `${at}.check`));
@@ -432,6 +453,10 @@ export function validateEvidence(refs: readonly EvidenceRef[], path = 'evidence'
         path: `${at}.derivedFrom`,
         message: `sourceType "${ref.sourceType}" is the agent's own output, so it must name the ` +
           'references it was derived from. An inference citing nothing is not a citation.',
+        family: 'honesty',
+        ruleId: 'inference-names-its-sources',
+        fix: 'list the ids of the references this was derived from, or record the cell as a ' +
+          'qualified absence instead.',
       });
     }
   });
@@ -442,6 +467,10 @@ export function validateEvidence(refs: readonly EvidenceRef[], path = 'evidence'
       path,
       message: 'every supporting reference is the agent\'s own summary or inference. ' +
         'Nothing external supports this value; it should carry a qualified absence instead.',
+      family: 'honesty',
+      ruleId: 'external-support-required',
+      fix: 'cite a primary or secondary source, or replace the value with a qualified absence ' +
+        '("not-evidenced" if the sources are silent, "indeterminate" if they conflict).',
     });
   }
 

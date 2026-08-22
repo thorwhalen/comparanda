@@ -18,7 +18,8 @@ import {
 import { Author, Procedure, Round } from './provenance.js';
 import { Thread, Suggestion } from './annotations.js';
 import {
-  CORE_MISSING_CODES, MissingCodeDeclaration, tallyCompleteness, type Completeness,
+  CORE_MISSING_CODES, MissingCodeDeclaration, resolveMissingCode,
+  tallyCompleteness, type Completeness,
 } from './missingness.js';
 import type { Degradation } from './declarations.js';
 import { ScaleDeclaration, validateMeasurement, type Measurement } from './measurement.js';
@@ -117,10 +118,38 @@ export const Analysis = z.object({
 });
 export type Analysis = z.infer<typeof Analysis>;
 
+/**
+ * Which kind of rule a problem came from. **This is the boundary contract.**
+ *
+ * - `shape`         the document is not a document. Always an error.
+ * - `honesty`       the document asserts something a reader cannot check: a
+ *                   score with no rationale, an assertion by nobody, a blank
+ *                   whose code the document never defines, a verdict with no
+ *                   date. **Always an error, and it cannot be switched off.**
+ * - `completeness`  the document is unfinished. **Always a warning**, because
+ *                   "not yet assessed" is a first-class representable state and
+ *                   an analysis deliberately full of qualified blanks is a
+ *                   legitimate, finished-as-specified document.
+ *
+ * The split is the whole of the strictness decision: strict on honesty,
+ * forgiving on completeness. One global strictness knob cannot express it --
+ * turned up, you cannot save work in progress; turned down, "validates against
+ * the schema" stops being a claim worth making.
+ */
+export type RuleFamily = 'shape' | 'honesty' | 'completeness';
+
 export interface ValidationProblem {
   path: string;
   message: string;
   severity: 'error' | 'warning';
+  family: RuleFamily;
+  /**
+   * A stable id for the rule, so a caller can suppress, count or link one
+   * without matching on prose.
+   */
+  ruleId: string;
+  /** What would fix it. A problem with no remedy is a puzzle, not an error. */
+  fix?: string;
 }
 
 /**
@@ -132,7 +161,24 @@ export interface ValidationProblem {
  * the schema cannot express -- a cell pointing at a criterion that does not
  * exist, an ordinal criterion with no range -- come back from the checks below.
  */
-export function validateAnalysis(input: unknown): {
+export function validateAnalysis(
+  input: unknown,
+  {
+    includeCompleteness = true,
+  }: {
+    /**
+     * Whether to report completeness warnings.
+     *
+     * Note what is **not** here: a way to turn off honesty. That asymmetry is
+     * deliberate and is the decision, not an oversight -- an option to skip the
+     * honesty family would be reached for on the first inconvenient failure, and
+     * the guarantee would erode exactly where it matters. Completeness noise is
+     * suppressible because a partially-filled matrix is a normal working state
+     * and an authoring UI counting 400 warnings has learned nothing.
+     */
+    includeCompleteness?: boolean;
+  } = {},
+): {
   ok: boolean;
   analysis?: Analysis;
   problems: ValidationProblem[];
@@ -145,14 +191,34 @@ export function validateAnalysis(input: unknown): {
         path: i.path.join('.') || '(root)',
         message: i.message,
         severity: 'error' as const,
+        family: 'shape' as const,
+        ruleId: 'schema-shape',
       })),
     };
   }
 
   const a = parsed.data;
   const problems: ValidationProblem[] = [];
-  const err = (path: string, message: string) => problems.push({ path, message, severity: 'error' });
-  const warn = (path: string, message: string) => problems.push({ path, message, severity: 'warning' });
+
+  /** An honesty failure. Always an error; there is no switch. */
+  const honesty = (ruleId: string, path: string, message: string, fix: string) =>
+    problems.push({ path, message, severity: 'error', family: 'honesty', ruleId, fix });
+
+  /** An unfinished-ness. Always a warning, and suppressible as a set. */
+  const incomplete = (ruleId: string, path: string, message: string, fix: string) => {
+    if (includeCompleteness) {
+      problems.push({ path, message, severity: 'warning', family: 'completeness', ruleId, fix });
+    }
+  };
+
+  // Kept for the structural-integrity checks that predate the families: a
+  // document referring to ids that do not exist is malformed rather than
+  // dishonest, and calling it `shape` keeps the three families meaning what
+  // they say.
+  const err = (path: string, message: string) =>
+    problems.push({ path, message, severity: 'error', family: 'shape', ruleId: 'referential-integrity' });
+  const warn = (path: string, message: string) =>
+    problems.push({ path, message, severity: 'warning', family: 'shape', ruleId: 'shape-advisory' });
 
   if (a.schemaVersion > SCHEMA_VERSION) {
     err('schemaVersion', `document is version ${a.schemaVersion}; this build reads up to ${SCHEMA_VERSION}`);
@@ -205,7 +271,14 @@ export function validateAnalysis(input: unknown): {
     }
     cell.assertions.forEach((as, j) => {
       const atA = `${at}.assertions[${j}]`;
-      if (!authorIds.has(as.authorId)) err(atA, `unknown author "${as.authorId}"`);
+      if (!authorIds.has(as.authorId)) {
+        honesty(
+          'assertion-attributed', atA,
+          `unknown author "${as.authorId}". An assertion nobody is named for cannot be weighed, ` +
+            'and an agreement statistic over it cannot know how many heads produced it.',
+          'add the author to `authors`, or attribute the assertion to an existing one.',
+        );
+      }
       const hasValue = as.value !== undefined;
       const hasMissing = as.missing !== undefined;
       if (hasValue === hasMissing) {
@@ -214,7 +287,53 @@ export function validateAnalysis(input: unknown): {
           : 'an assertion carries neither a value nor a missing reason. No bare nulls: ' +
             'every absence names why (ADR-0009).');
       }
-      for (const p of validateEvidence(as.evidence, `${atA}.evidence`)) warn(p.path, p.message);
+
+      // A score with no reason is the thing this tool exists not to produce.
+      // The justification is the most-read field in the document and the only
+      // part of a cell a reader can argue with.
+      if (hasValue && !as.justification?.trim()) {
+        honesty(
+          'score-has-a-reason', `${atA}.justification`,
+          'a value with no justification. The number is unarguable without one, and a reader ' +
+            'has nothing to disagree with except taste.',
+          'write one line saying what the evidence shows, or record a qualified absence instead.',
+        );
+      }
+
+      // A blank whose code the document never defines. Distinct from a code
+      // this build does not implement: that one degrades honestly through
+      // `broader` and is a limitation of the reader. This is a document that
+      // does not say what its own blank means, which no reader can repair.
+      if (as.missing) {
+        const r = resolveMissingCode(as.missing.code, a.missingCodes);
+        if (r.source === 'undeclared') {
+          honesty(
+            'blank-is-defined', `${atA}.missing.code`,
+            `the code "${as.missing.code}" is neither a core code nor declared in this document, ` +
+              'so nothing anywhere says what this blank means.',
+            'use a core code, or declare this one in `missingCodes` with a `broader` parent and ' +
+              'what it means.',
+          );
+        }
+      }
+
+      // Not being finished is not a defect.
+      if (hasValue && as.evidence.length === 0) {
+        incomplete(
+          'value-has-evidence', `${atA}.evidence`,
+          'a value with no evidence reference. Legitimate for a considered human judgement; ' +
+            'worth checking for anything that claims to rest on a source.',
+          'cite the span the value rests on, if there is one.',
+        );
+      }
+
+      for (const p of validateEvidence(as.evidence, `${atA}.evidence`)) {
+        // Every rule in that module is an honesty rule. They were reported as
+        // warnings, which meant a document whose every supporting reference was
+        // the agent's own output validated cleanly -- the exact failure
+        // ADR-0006 names, passing the boundary written to catch it.
+        honesty(p.ruleId, p.path, p.message, p.fix);
+      }
     });
   });
 
