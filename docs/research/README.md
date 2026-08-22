@@ -165,11 +165,12 @@ so nobody re-derives them — are in
   allocation is recommended in [`../adr/README.md`](../adr/README.md); nothing in
   the content depends on the numbers, but they must be assigned once, in one pass, before any ADR
   is written.
-- **Re-verify the ELECTRE chapter's wording.** It underpins the most consequential correction in
-  this round (row 5), and the copy the quotations were transcribed from is no longer online. The
-  substance stands without it — the q/p/v triple is independently attested — but ADR-0015 should
-  not be amended *on the authority of a quotation nobody can currently check*. Someone with library
-  access should confirm it, or the amendment should cite Roy's foundational paper instead.
+- ~~**Re-verify the ELECTRE chapter's wording.**~~ **Settled 2026-08-22 — no longer needs a human.**
+  All four quotations underpinning row 5 were re-verified verbatim against a retrievable full-text
+  copy (§2.1, §2.2, §2.4 ×2), together with a fifth passage at §3.1.2 that independently corroborates
+  the correction. Section numbers are recorded in the reference entries in place of a URL, because
+  the copy is a third-party mirror and the last one rotted. ADR-0015 carries the record as its
+  2026-08-22 amendment; issue #36 is closed.
 - **Two further sources could not be reached at audit time** (a data-visualisation style guide
   behind the texture-reservation rule, and the ISO/IEC 25012 normative text). Both arguments survive
   without them; no ADR should quote them.

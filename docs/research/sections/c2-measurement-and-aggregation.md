@@ -630,12 +630,15 @@ per unit of insight.
    abstract [28] — sample sizes and replication counts confirmed, the distribution list corrected
    (§A.2). This does not change the recommendation, but if the ADR is going to quote Norman himself,
    someone should read his PDF.
-   **Higher priority: the ELECTRE chapter [11].** Its quotations underpin §B.5, the section's most
-   consequential correction, and the copy they were taken from no longer exists online. Someone with
-   library access should re-verify those four quotations against the printed chapter before ADR-0015
-   is amended on their authority. The *substance* of the correction does not depend on them — the
-   q/p/v threshold triple is independently attested by [24]'s title alone, and Roy [17] is the
-   foundational statement — but the section quotes wording it can no longer show anyone.
+   ~~**Higher priority: the ELECTRE chapter [11].**~~ **Done 2026-08-22.** All four quotations were
+   re-verified verbatim against a retrievable full-text copy, and each is now recorded with the
+   section it sits in so it can be found in any copy: the ordinal-scale remark at **§2.1** ("not
+   suitable for the comparison of differences"); the concordance and non-discordance conditions at
+   **§2.2**; the veto-threshold definition and the importance-coefficient wording, both at **§2.4**.
+   A fifth passage found in the same pass, at **§3.1.2**, independently corroborates §B.5's
+   correction: the chapter itself contrasts a discordance level "related to the scale of criterion
+   `g_j` in absolute terms" with a veto "related to the preference differences between `g_j(a)` and
+   `g_j(b)`". The section may quote what it quotes.
 3. **Whether the `q`-relaxed dominance relation is worth shipping at all.** It is strictly more
    useful on a coarse 1–5 scale and strictly less safe (cycles possible). A week of use on the messy
    example dataset from ADR-0016 would settle it: if the relaxation empties or tangles the front on
@@ -663,7 +666,7 @@ per unit of insight.
 8. [Analyzing Likert Data — Harry N. Boone Jr. & Deborah A. Boone (2012)](https://commons.joe.org/joe/vol50/iss2/48/)
 9. [Four Years in Review: Statistical Practices of Likert Scales in Human-Robot Interaction Studies — Mariah L. Schrum, Michael Johnson, Muyleng Ghuy & Matthew C. Gombolay (2020)](https://arxiv.org/abs/2001.03231)
 10. [Type — Vega-Lite documentation (n.d.)](https://vega.github.io/vega-lite/docs/type.html)
-11. [Electre Methods (chapter, *Multiple Criteria Decision Analysis: State of the Art Surveys*, pp. 133–153) — José Figueira, Vincent Mousseau & Bernard Roy (2005)](https://doi.org/10.1007/0-387-23081-5_4) — title, authors and page range verified via Crossref and OpenAlex. **Access caveat:** the copy originally consulted (a Paris-Dauphine institutional-repository handle) is gone — that host no longer resolves — and the chapter is closed access with no open-access copy indexed anywhere. The quotations attributed to [11] in §A.3(iv), §B.5 and §B.6 below were transcribed from that copy and **cannot currently be re-verified against an accessible source**. The substantive claims they support are independently corroborated (see [17] and [24]); the *wordings* are not.
+11. [Electre Methods (chapter, *Multiple Criteria Decision Analysis: State of the Art Surveys*, pp. 133–153) — José Figueira, Vincent Mousseau & Bernard Roy (2005)](https://doi.org/10.1007/0-387-23081-5_4) — title, authors and page range verified via Crossref and OpenAlex. **Access caveat, lifted 2026-08-22.** The copy originally consulted (a Paris-Dauphine institutional-repository handle) is gone — that host no longer resolves — and the chapter is closed access at the publisher. A retrievable third-party full-text mirror was located on 2026-08-22 and the quotations attributed to [11] in §A.3(iv), §B.5 and §B.6 below were **re-verified verbatim**, at §2.4 (importance coefficients and veto thresholds) and §3.1.2 (ELECTRE Iv). Section numbers are recorded in place of the mirror URL, since a mirror may rot as the last one did. The substantive claims remain independently corroborated (see [17] and [24]).
 12. [About Modeling Types — JMP documentation (n.d.)](https://www.jmp.com/support/help/en/19.0/jmp/about-modeling-types.shtml)
 13. [Note—A Preference Ranking Organisation Method: The PROMETHEE Method for Multiple Criteria Decision-Making — J. P. Brans & Ph. Vincke (1985)](https://pubsonline.informs.org/doi/10.1287/mnsc.31.6.647)
 14. [Remarks on the Analytic Hierarchy Process — James S. Dyer (1990)](https://doi.org/10.1287/mnsc.36.3.249) — *Management Science* 36(3):249–258. DOI now **verified** to resolve to this paper (title and author confirmed via Semantic Scholar; the INFORMS landing page bot-blocks automated fetches, hence the 403, but the record is real). The companion primary source is Belton, V. & Gear, T., ["On a short-coming of Saaty's method of analytic hierarchies"](https://doi.org/10.1016/0305-0483(83)90047-6), *Omega* 11(3):228–230, 1983 — DOI located and verified via Crossref (note the published title hyphenates "short-coming").

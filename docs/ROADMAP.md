@@ -83,10 +83,12 @@ against the old spellings. Settle it inside the intake half of `schema-v1`, and 
 the `rubricator` issue that sweeps the names. See
 [`cross-repo-coordination.md`](cross-repo-coordination.md) §7.1.
 
-Four items genuinely need a human rather than more reading: the number allocation; whether renaming
+Four items genuinely needed a human rather than more reading: the number allocation; whether renaming
 `unknown` → `indeterminate` is worth the churn; whether the ELECTRE quotation behind the ADR-0015
-correction can be re-verified (the substance survives without it, the quotation should not be cited
-until someone with library access checks it); and whether ADR-0008 is amended or superseded.
+correction could be re-verified; and whether ADR-0008 is amended or superseded. **All four are now
+settled** — the rename is adopted (see §7.1 and ADR-0009's amendments), and the ELECTRE quotations
+were re-verified verbatim on 2026-08-22 against a retrievable copy, recorded in ADR-0015's amendment
+of that date.
 
 **Done.** `adr/PENDING-ACTIONS.md` has been deleted; its content lives in the ADRs it named.
 

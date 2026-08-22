@@ -142,3 +142,11 @@ Clause 1's closing sentence goes with the definition: a **nominal** criterion ta
 The ELECTRE survey chapter that the research quotes for the `q`/`p`/`v` triple is closed access and
 the transcribed copy is gone, so it is cited here through Roy's foundational paper instead and is
 not quoted. Full provenance for every claim above: `docs/research/findings-terminology.md`.
+
+### 2026-08-22 — that caveat is lifted
+
+The chapter was re-verified against a retrievable full-text copy on 2026-08-22; the `q`/`p`/`v`
+wording is verbatim, the veto definition at **§2.4**. It may be quoted. The paragraph above stands as
+the record of what was true when this ADR was written. Full record: **ADR-0015, amendment of
+2026-08-22**. Nothing in this ADR's decision changes — it still ships `indifference` (`q`) and
+`preferenceThreshold` (`p`) only, and still proposes no ELECTRE-sense `v`.
