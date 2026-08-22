@@ -45,6 +45,20 @@ export const Subject = z.object({
   decision: z.optional(z.string()),
   decider: z.optional(z.string()),
   context: z.optional(z.string()),
+  /**
+   * What is still ambiguous about the question itself.
+   *
+   * "Adopt -- for the new service only, or everywhere?" is the kind of thing
+   * that changes every score in the matrix and is invisible once the scores
+   * exist. The producing agent is required to surface ambiguity rather than
+   * resolve it silently, and that rule needs somewhere to be *recorded*: an
+   * ambiguity raised in a conversation and settled off-document leaves an
+   * analysis whose readers cannot tell which reading it was scored under.
+   *
+   * An **empty array is meaningful** and is not the same as an absent one. It
+   * says someone looked and found none; absence says nobody looked.
+   */
+  ambiguities: z.optional(z.array(z.string())),
 });
 export type Subject = z.infer<typeof Subject>;
 

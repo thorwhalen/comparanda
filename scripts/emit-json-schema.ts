@@ -139,17 +139,28 @@ function manifest() {
 function main(): void {
   mkdirSync(outDir, { recursive: true });
 
-  const document = z.toJSONSchema(Analysis, { target: 'draft-2020-12' }) as Record<string, unknown>;
+  // `io: 'input'` -- what a PRODUCER must emit, not what a consumer sees after
+  // parsing. The two differ on every field with a default: zod's output type has
+  // the default applied, so emitting the output schema marks `groupIds`,
+  // `measurements` and a dozen others as *required of the producer*, which is
+  // false and which rejected the first real document this package validated.
+  const document = z.toJSONSchema(Analysis, {
+    target: 'draft-2020-12',
+    io: 'input',
+  }) as Record<string, unknown>;
   const schema = {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     $id: `https://github.com/thorwhalen/comparanda/schema/comparanda.v${SCHEMA_VERSION}.json`,
     title: `comparanda analysis, schema version ${SCHEMA_VERSION}`,
     description:
       'A structured comparison: alternatives x criteria, with qualified missingness, confidence, ' +
-      'evidence references to spans, and no default aggregation. Shape only -- the rules a shape ' +
-      'cannot express (a value with no justification, a blank whose code the document never ' +
-      'defines, an undated verdict) are the honesty family of validateAnalysis, and a document ' +
-      'that satisfies this schema can still fail them.',
+      'evidence references to spans, and no default aggregation. ' +
+      'This is the INPUT shape -- what a producer must emit. Fields with a default are not ' +
+      'required here and are present after parsing, so a consumer reading a parsed analysis will ' +
+      'see more than this schema demands. ' +
+      'Shape only: the rules a shape cannot express (a value with no justification, a blank whose ' +
+      'code the document never defines, an undated verdict) are the honesty family of ' +
+      'validateAnalysis, and a document that satisfies this schema can still fail them.',
     ...document,
   };
 
