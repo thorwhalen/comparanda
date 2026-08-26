@@ -1,0 +1,2250 @@
+{
+  "id": "video-generation",
+  "schemaVersion": 1,
+  "title": "AI video generation, on published capability and stated policy",
+  "subject": {
+    "question": "Which AI video generation product fits a team that needs an API, commercial rights, and a clear position on customer data?",
+    "decision": "picking a vendor to build a product on",
+    "context": "A DATED SNAPSHOT, retrieved 2026-08-26, of what each vendor's own documentation said on that day. This market changes monthly; treat every cell as of that date and re-check before relying on one. Every criterion is factual — a published capability or a stated policy — and no cell carries a quality judgement about any company. Where a cell is blank it is because the vendor's material did not settle it, and the blank says which kind. Each filled cell quotes the vendor's own words; the quotes were verified against the cited pages by a second pass, which corrected four of them.",
+    "ambiguities": [
+      "\"The product\" is ambiguous where a vendor ships several models under one name — Sora 2 and sora-2-pro differ on resolution, and the figure recorded depends on which one you mean.",
+      "\"Trains on customer content\" is recorded per the tier the product is actually sold on, which is not always the tier the terms lead with."
+    ]
+  },
+  "measures": [
+    {
+      "name": "score",
+      "label": "Value"
+    }
+  ],
+  "defaultReduction": "single",
+  "groups": [
+    {
+      "id": "g-capability",
+      "label": "Published capability",
+      "axis": "criteria",
+      "description": "What the vendor says the model can do."
+    },
+    {
+      "id": "g-policy",
+      "label": "Stated policy",
+      "axis": "criteria",
+      "description": "What the vendor's terms and policies say. Read from terms pages, never from marketing."
+    }
+  ],
+  "inapplicable": [],
+  "rejectedCriteria": [],
+  "alternatives": [
+    {
+      "id": "google-veo-3-1",
+      "label": "Google Veo 3.1",
+      "groupIds": []
+    },
+    {
+      "id": "kling-3-0-omni",
+      "label": "Kling 3.0 Omni",
+      "groupIds": []
+    },
+    {
+      "id": "luma-ray-3-2",
+      "label": "Luma Ray3.2",
+      "groupIds": [],
+      "description": "Recorded as Ray3.2 rather than Dream Machine: the vendor describes Ray3.2 as the current product, and every figure below comes from its documentation."
+    },
+    {
+      "id": "openai-sora-2",
+      "label": "OpenAI Sora 2",
+      "groupIds": [],
+      "description": "The vendor announced removal of the Videos API and the sora-2 model aliases from the API on 2026-09-24, three weeks after this snapshot."
+    },
+    {
+      "id": "pika-2-5",
+      "label": "Pika 2.5",
+      "groupIds": []
+    },
+    {
+      "id": "runway-gen-4-5",
+      "label": "Runway Gen-4.5",
+      "groupIds": []
+    }
+  ],
+  "criteria": [
+    {
+      "id": "max-clip-length",
+      "label": "Longest single clip",
+      "groupIds": [
+        "g-capability"
+      ],
+      "definition": {
+        "question": "The longest single generation the vendor publishes, in seconds, for the model named."
+      },
+      "defaultMeasurement": {
+        "level": "ratio",
+        "preference": "increasing",
+        "range": {
+          "min": 0,
+          "max": 60,
+          "unit": "seconds"
+        }
+      },
+      "missingCodes": []
+    },
+    {
+      "id": "max-output-height",
+      "label": "Maximum output height",
+      "groupIds": [
+        "g-capability"
+      ],
+      "definition": {
+        "question": "The vendor's highest published output resolution, expressed as pixel height so it is orderable. 720p = 720, 1080p = 1080, 4K = 2160."
+      },
+      "defaultMeasurement": {
+        "level": "ratio",
+        "preference": "increasing",
+        "range": {
+          "min": 0,
+          "max": 4320,
+          "unit": "pixels (height)"
+        }
+      },
+      "missingCodes": []
+    },
+    {
+      "id": "image-to-video",
+      "label": "Accepts a starting image",
+      "groupIds": [
+        "g-capability"
+      ],
+      "definition": {
+        "question": "Whether the product accepts a still image as the first frame."
+      },
+      "defaultMeasurement": {
+        "level": "nominal",
+        "preference": "none",
+        "levels": [
+          false,
+          true
+        ]
+      },
+      "missingCodes": []
+    },
+    {
+      "id": "native-audio",
+      "label": "Generates audio with the video",
+      "groupIds": [
+        "g-capability"
+      ],
+      "definition": {
+        "question": "Whether the model generates synchronised audio as part of the video, as distinct from a separate soundtrack or voiceover feature."
+      },
+      "defaultMeasurement": {
+        "level": "nominal",
+        "preference": "none",
+        "levels": [
+          false,
+          true
+        ]
+      },
+      "missingCodes": []
+    },
+    {
+      "id": "public-api",
+      "label": "Self-serve public API",
+      "groupIds": [
+        "g-capability"
+      ],
+      "definition": {
+        "question": "Whether a publicly documented API exists that anyone can sign up for."
+      },
+      "defaultMeasurement": {
+        "level": "nominal",
+        "preference": "none",
+        "levels": [
+          false,
+          true
+        ]
+      },
+      "missingCodes": []
+    },
+    {
+      "id": "commercial-use-stated",
+      "label": "Commercial use expressly granted",
+      "groupIds": [
+        "g-policy"
+      ],
+      "definition": {
+        "question": "Whether the terms expressly grant commercial use of outputs. Read from terms or licensing pages only, never from marketing copy."
+      },
+      "defaultMeasurement": {
+        "level": "nominal",
+        "preference": "none",
+        "levels": [
+          false,
+          true
+        ]
+      },
+      "missingCodes": []
+    },
+    {
+      "id": "training-data-disclosed",
+      "label": "Training data disclosed",
+      "groupIds": [
+        "g-policy"
+      ],
+      "definition": {
+        "question": "Whether the vendor publicly states what the model was trained on with any specificity — a dataset, a corpus, a licensor. Naming modalities is not a disclosure of sources."
+      },
+      "defaultMeasurement": {
+        "level": "nominal",
+        "preference": "none",
+        "levels": [
+          false,
+          true
+        ]
+      },
+      "missingCodes": []
+    },
+    {
+      "id": "trains-on-user-content",
+      "label": "States that it trains on customer content",
+      "groupIds": [
+        "g-policy"
+      ],
+      "definition": {
+        "question": "Whether the vendor states that customer uploads and prompts ARE used to train its models. The value carries the direction: false means the vendor states it does not. It does not mean the vendor is silent — that would be a blank."
+      },
+      "defaultMeasurement": {
+        "level": "nominal",
+        "preference": "none",
+        "levels": [
+          false,
+          true
+        ]
+      },
+      "missingCodes": []
+    }
+  ],
+  "authors": [
+    {
+      "id": "research-run-2026-08-26",
+      "displayName": "vendor-documentation research run",
+      "kind": "agent",
+      "attestation": {
+        "method": "unverified"
+      },
+      "agent": {
+        "name": "rubricator research",
+        "model": "example-model",
+        "promptVersion": "vendor-facts@1",
+        "runId": "2026-08-26"
+      }
+    }
+  ],
+  "missingCodes": [
+    {
+      "id": "disclosure-declined",
+      "broader": "not-evidenced",
+      "means": "The vendor addresses the question and explicitly declines to answer it.",
+      "params": {}
+    }
+  ],
+  "scales": [],
+  "reductions": [],
+  "renditions": [
+    {
+      "id": "r--luma-ray-3-2--max-clip-length",
+      "originalLocator": "https://lumalabs.ai/ray",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://lumalabs.ai/ray"
+    },
+    {
+      "id": "r--luma-ray-3-2--max-output-height",
+      "originalLocator": "https://lumalabs.ai/ray",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://lumalabs.ai/ray"
+    },
+    {
+      "id": "r--luma-ray-3-2--image-to-video",
+      "originalLocator": "https://lumalabs.ai/ray",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://lumalabs.ai/ray"
+    },
+    {
+      "id": "r--luma-ray-3-2--native-audio",
+      "originalLocator": "https://lumalabs.ai/ray",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://lumalabs.ai/ray"
+    },
+    {
+      "id": "r--luma-ray-3-2--public-api",
+      "originalLocator": "https://lumalabs.ai/ray",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://lumalabs.ai/ray"
+    },
+    {
+      "id": "r--luma-ray-3-2--commercial-use-stated",
+      "originalLocator": "https://lumalabs.ai/legal/terms-of-service",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://lumalabs.ai/legal/terms-of-service"
+    },
+    {
+      "id": "r--luma-ray-3-2--trains-on-user-content",
+      "originalLocator": "https://lumalabs.ai/legal/privacy-policy",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://lumalabs.ai/legal/privacy-policy"
+    },
+    {
+      "id": "r--google-veo-3-1--max-clip-length",
+      "originalLocator": "https://ai.google.dev/gemini-api/docs/veo",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://ai.google.dev/gemini-api/docs/veo"
+    },
+    {
+      "id": "r--google-veo-3-1--max-output-height",
+      "originalLocator": "https://ai.google.dev/gemini-api/docs/veo",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://ai.google.dev/gemini-api/docs/veo"
+    },
+    {
+      "id": "r--google-veo-3-1--image-to-video",
+      "originalLocator": "https://ai.google.dev/gemini-api/docs/veo",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://ai.google.dev/gemini-api/docs/veo"
+    },
+    {
+      "id": "r--google-veo-3-1--native-audio",
+      "originalLocator": "https://ai.google.dev/gemini-api/docs/veo",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://ai.google.dev/gemini-api/docs/veo"
+    },
+    {
+      "id": "r--google-veo-3-1--public-api",
+      "originalLocator": "https://ai.google.dev/gemini-api/docs/pricing",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://ai.google.dev/gemini-api/docs/pricing"
+    },
+    {
+      "id": "r--google-veo-3-1--trains-on-user-content",
+      "originalLocator": "https://ai.google.dev/gemini-api/terms",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://ai.google.dev/gemini-api/terms"
+    },
+    {
+      "id": "r--kling-3-0-omni--max-clip-length",
+      "originalLocator": "https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md"
+    },
+    {
+      "id": "r--kling-3-0-omni--max-output-height",
+      "originalLocator": "https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md"
+    },
+    {
+      "id": "r--kling-3-0-omni--image-to-video",
+      "originalLocator": "https://kling.ai/document-api/api/video/3-0-omni/image-to-video.md",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://kling.ai/document-api/api/video/3-0-omni/image-to-video.md"
+    },
+    {
+      "id": "r--kling-3-0-omni--native-audio",
+      "originalLocator": "https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md"
+    },
+    {
+      "id": "r--kling-3-0-omni--public-api",
+      "originalLocator": "https://kling.ai/document-api/guides/get-started/quick-start.md",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://kling.ai/document-api/guides/get-started/quick-start.md"
+    },
+    {
+      "id": "r--kling-3-0-omni--commercial-use-stated",
+      "originalLocator": "https://kling.ai/docs/payment-policy",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://kling.ai/docs/payment-policy"
+    },
+    {
+      "id": "r--kling-3-0-omni--trains-on-user-content",
+      "originalLocator": "https://kling.ai/docs/user-policy",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://kling.ai/docs/user-policy"
+    },
+    {
+      "id": "r--runway-gen-4-5--max-clip-length",
+      "originalLocator": "https://help.runwayml.com/hc/en-us/articles/46974685288467-Creating-with-Gen-4-5",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://help.runwayml.com/hc/en-us/articles/46974685288467-Creating-with-Gen-4-5"
+    },
+    {
+      "id": "r--runway-gen-4-5--max-output-height",
+      "originalLocator": "https://help.runwayml.com/hc/en-us/articles/26115194070675-Can-I-generate-videos-in-4K",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://help.runwayml.com/hc/en-us/articles/26115194070675-Can-I-generate-videos-in-4K"
+    },
+    {
+      "id": "r--runway-gen-4-5--image-to-video",
+      "originalLocator": "https://help.runwayml.com/hc/en-us/articles/46974685288467-Creating-with-Gen-4-5",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://help.runwayml.com/hc/en-us/articles/46974685288467-Creating-with-Gen-4-5"
+    },
+    {
+      "id": "r--runway-gen-4-5--public-api",
+      "originalLocator": "https://docs.dev.runwayml.com/guides/setup",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://docs.dev.runwayml.com/guides/setup"
+    },
+    {
+      "id": "r--runway-gen-4-5--commercial-use-stated",
+      "originalLocator": "https://runway.com/terms-of-use",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://runway.com/terms-of-use"
+    },
+    {
+      "id": "r--runway-gen-4-5--trains-on-user-content",
+      "originalLocator": "https://runway.com/terms-of-use",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://runway.com/terms-of-use"
+    },
+    {
+      "id": "r--openai-sora-2--max-clip-length",
+      "originalLocator": "https://developers.openai.com/api/docs/guides/video-generation",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://developers.openai.com/api/docs/guides/video-generation"
+    },
+    {
+      "id": "r--openai-sora-2--image-to-video",
+      "originalLocator": "https://developers.openai.com/api/docs/guides/video-generation",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://developers.openai.com/api/docs/guides/video-generation"
+    },
+    {
+      "id": "r--openai-sora-2--native-audio",
+      "originalLocator": "https://developers.openai.com/api/docs/models/sora-2",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://developers.openai.com/api/docs/models/sora-2"
+    },
+    {
+      "id": "r--openai-sora-2--public-api",
+      "originalLocator": "https://developers.openai.com/api/docs/guides/video-generation",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://developers.openai.com/api/docs/guides/video-generation"
+    },
+    {
+      "id": "r--openai-sora-2--trains-on-user-content",
+      "originalLocator": "https://developers.openai.com/api/docs/guides/your-data",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://developers.openai.com/api/docs/guides/your-data"
+    },
+    {
+      "id": "r--pika-2-5--max-output-height",
+      "originalLocator": "https://dev.pika.art/llms/pika/pika-2.5/text-to-video",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://dev.pika.art/llms/pika/pika-2.5/text-to-video"
+    },
+    {
+      "id": "r--pika-2-5--image-to-video",
+      "originalLocator": "https://dev.pika.art/models/pika/pika-2.5/image-to-video",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://dev.pika.art/models/pika/pika-2.5/image-to-video"
+    },
+    {
+      "id": "r--pika-2-5--public-api",
+      "originalLocator": "https://dev.pika.art/llms.txt",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://dev.pika.art/llms.txt"
+    },
+    {
+      "id": "r--pika-2-5--commercial-use-stated",
+      "originalLocator": "https://pika.art/faq",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://pika.art/faq"
+    },
+    {
+      "id": "r--pika-2-5--trains-on-user-content",
+      "originalLocator": "https://pika.art/terms-of-service",
+      "originalSha256": "sha256:not-computed-for-this-fixture",
+      "normaliserId": "nfc-v1",
+      "retrievedAt": "2026-08-26T00:00:00Z",
+      "label": "https://pika.art/terms-of-service"
+    }
+  ],
+  "procedures": [
+    {
+      "id": "p-research",
+      "describedAs": "one documentation pass per product, then a second pass that re-fetched every cited page and re-checked every quote character by character",
+      "repeats": 1,
+      "reduction": "single",
+      "startedAt": "2026-08-26T00:00:00Z"
+    }
+  ],
+  "rounds": [],
+  "threads": [
+    {
+      "id": "t-training-fairness",
+      "anchor": {
+        "scope": "criterion",
+        "criterionId": "training-data-disclosed",
+        "repairHint": "Training data disclosed"
+      },
+      "resolved": true,
+      "resolvedBy": "research-run-2026-08-26",
+      "resolvedAt": "2026-08-26T00:00:00Z",
+      "comments": [
+        {
+          "id": "c1",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "body": "The first pass filled this for one vendor and blanked it for another on strictly more specific wording — the weaker disclosure got the stronger verdict. Both are blank now. Neither names a dataset, a corpus or a licensor, and a criterion applied unevenly between named competitors is worse than one nobody filled in."
+        }
+      ]
+    },
+    {
+      "id": "t-audio-evidence",
+      "anchor": {
+        "scope": "criterion",
+        "criterionId": "native-audio",
+        "repairHint": "Generates audio with the video"
+      },
+      "resolved": false,
+      "comments": [
+        {
+          "id": "c2",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "body": "Only one false here rests on a vendor actually denying it. The other blanks are absence-of-a-parameter, which is inference from silence — and one vendor generates audio with no audio parameter at all. Worth settling what evidence a false requires before this column is used."
+        }
+      ]
+    }
+  ],
+  "suggestions": [],
+  "cells": [
+    {
+      "alternativeId": "google-veo-3-1",
+      "criterionId": "commercial-use-stated",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "google-veo-3-1--commercial-use-stated",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "indeterminate",
+            "note": "No Google terms page found that explicitly grants commercial use of Veo outputs. The Gemini API Additional Terms (https://ai.google.dev/gemini-api/terms) only disclaim ownership — \"Google won't claim ownership over that content\" — which is not the same as an express commercial-use grant. The Generative AI Additional Terms (https://policies.google.com/terms/generative-ai) are silent on both ownership and commercial use, deferring to the general Google Terms of Service. The Google Workspace Service Specific Terms do address Generated Output ownership, but govern Workspace generative AI, not Veo "
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "google-veo-3-1",
+      "criterionId": "image-to-video",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "google-veo-3-1--image-to-video",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--google-veo-3-1--image-to-video",
+              "target": "https://ai.google.dev/gemini-api/docs/veo",
+              "renditionId": "r--google-veo-3-1--image-to-video",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Veo uses the input image as the initial frame."
+                }
+              ],
+              "excerpt": "Veo uses the input image as the initial frame.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Veo uses the input image as the initial frame."
+        }
+      ]
+    },
+    {
+      "alternativeId": "google-veo-3-1",
+      "criterionId": "max-clip-length",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "google-veo-3-1--max-clip-length",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--google-veo-3-1--max-clip-length",
+              "target": "https://ai.google.dev/gemini-api/docs/veo",
+              "renditionId": "r--google-veo-3-1--max-clip-length",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Veo 3.1 is a model for generating 8-second videos (720p, 1080p, or 4k) with natively generated audio."
+                }
+              ],
+              "excerpt": "Veo 3.1 is a model for generating 8-second videos (720p, 1080p, or 4k) with natively generated audio.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 8,
+          "justification": "Veo 3.1 is a model for generating 8-second videos (720p, 1080p, or 4k) with natively generated audio."
+        }
+      ]
+    },
+    {
+      "alternativeId": "google-veo-3-1",
+      "criterionId": "max-output-height",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "google-veo-3-1--max-output-height",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--google-veo-3-1--max-output-height",
+              "target": "https://ai.google.dev/gemini-api/docs/veo",
+              "renditionId": "r--google-veo-3-1--max-output-height",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Veo 3.1 can also directly generate 720p, 1080p or 4k videos (4k not available for Veo 3.1 Lite)."
+                }
+              ],
+              "excerpt": "Veo 3.1 can also directly generate 720p, 1080p or 4k videos (4k not available for Veo 3.1 Lite).",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 2160,
+          "justification": "Veo 3.1 can also directly generate 720p, 1080p or 4k videos (4k not available for Veo 3.1 Lite)."
+        }
+      ]
+    },
+    {
+      "alternativeId": "google-veo-3-1",
+      "criterionId": "native-audio",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "google-veo-3-1--native-audio",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--google-veo-3-1--native-audio",
+              "target": "https://ai.google.dev/gemini-api/docs/veo",
+              "renditionId": "r--google-veo-3-1--native-audio",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Audio: Natively generates audio with video."
+                }
+              ],
+              "excerpt": "Audio: Natively generates audio with video.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Audio: Natively generates audio with video."
+        }
+      ]
+    },
+    {
+      "alternativeId": "google-veo-3-1",
+      "criterionId": "public-api",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "google-veo-3-1--public-api",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--google-veo-3-1--public-api",
+              "target": "https://ai.google.dev/gemini-api/docs/pricing",
+              "renditionId": "r--google-veo-3-1--public-api",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Our latest video generation model, available to developers on the paid tier of the Gemini API."
+                }
+              ],
+              "excerpt": "Our latest video generation model, available to developers on the paid tier of the Gemini API.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Our latest video generation model, available to developers on the paid tier of the Gemini API."
+        }
+      ]
+    },
+    {
+      "alternativeId": "google-veo-3-1",
+      "criterionId": "training-data-disclosed",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "google-veo-3-1--training-data-disclosed",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "indeterminate",
+            "note": "The Veo 3 model card says \"Veo 3 was trained on audio, video, and image data\". Two problems: no Veo 3.1 model card exists, so this describes a different model; and naming modalities is not naming sources — a video model trained on video data discloses close to nothing."
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "google-veo-3-1",
+      "criterionId": "trains-on-user-content",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "google-veo-3-1--trains-on-user-content",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--google-veo-3-1--trains-on-user-content",
+              "target": "https://ai.google.dev/gemini-api/terms",
+              "renditionId": "r--google-veo-3-1--trains-on-user-content",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "When you use Paid Services, including, for example, the paid quota of the Gemini API, Google doesn't use your prompts (including associated system instructions, cached content, and files such as images, videos, or documents) or responses to improve our products."
+                }
+              ],
+              "excerpt": "When you use Paid Services, including, for example, the paid quota of the Gemini API, Google doesn't use your prompts (including associated system instructions, cached content, and files such as images, videos, or documents) or responses to improve our products.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": false,
+          "justification": "When you use Paid Services, including, for example, the paid quota of the Gemini API, Google doesn't use your prompts (including associated system instructions, cached content, and files such as images, videos, or documents) or responses to improve our products. — The research cited the adjacent Unpaid Services clause, from mid-sentence, which dropped its scope. Veo 3.1 has no free tier — all three variants read \"Not available\" in the Free Tier column of the same pricing page — so the paid clause is the operative one, and it says the opposite."
+        }
+      ]
+    },
+    {
+      "alternativeId": "kling-3-0-omni",
+      "criterionId": "commercial-use-stated",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "kling-3-0-omni--commercial-use-stated",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--kling-3-0-omni--commercial-use-stated",
+              "target": "https://kling.ai/docs/payment-policy",
+              "renditionId": "r--kling-3-0-omni--commercial-use-stated",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "KLING AI members' use of the Output for commercial purposes is not restricted."
+                }
+              ],
+              "excerpt": "KLING AI members' use of the Output for commercial purposes is not restricted.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "KLING AI members' use of the Output for commercial purposes is not restricted."
+        }
+      ]
+    },
+    {
+      "alternativeId": "kling-3-0-omni",
+      "criterionId": "image-to-video",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "kling-3-0-omni--image-to-video",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--kling-3-0-omni--image-to-video",
+              "target": "https://kling.ai/document-api/api/video/3-0-omni/image-to-video.md",
+              "renditionId": "r--kling-3-0-omni--image-to-video",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Input type. Supports: prompt, first frame, last frame, Element"
+                }
+              ],
+              "excerpt": "Input type. Supports: prompt, first frame, last frame, Element",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Input type. Supports: prompt, first frame, last frame, Element"
+        }
+      ]
+    },
+    {
+      "alternativeId": "kling-3-0-omni",
+      "criterionId": "max-clip-length",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "kling-3-0-omni--max-clip-length",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--kling-3-0-omni--max-clip-length",
+              "target": "https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md",
+              "renditionId": "r--kling-3-0-omni--max-clip-length",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "`3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`, `12`, `13`, `14`, `15` | Video duration in seconds"
+                }
+              ],
+              "excerpt": "`3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`, `12`, `13`, `14`, `15` | Video duration in seconds",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 15,
+          "justification": "`3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`, `12`, `13`, `14`, `15` | Video duration in seconds"
+        }
+      ]
+    },
+    {
+      "alternativeId": "kling-3-0-omni",
+      "criterionId": "max-output-height",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "kling-3-0-omni--max-output-height",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--kling-3-0-omni--max-output-height",
+              "target": "https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md",
+              "renditionId": "r--kling-3-0-omni--max-output-height",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "`720p`, `1080p`, `4k` | The resolution of the generated video"
+                }
+              ],
+              "excerpt": "`720p`, `1080p`, `4k` | The resolution of the generated video",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 2160,
+          "justification": "`720p`, `1080p`, `4k` | The resolution of the generated video"
+        }
+      ]
+    },
+    {
+      "alternativeId": "kling-3-0-omni",
+      "criterionId": "native-audio",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "kling-3-0-omni--native-audio",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--kling-3-0-omni--native-audio",
+              "target": "https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md",
+              "renditionId": "r--kling-3-0-omni--native-audio",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "`settings.audio`: native: The generated video includes native audio matching the visuals."
+                }
+              ],
+              "excerpt": "`settings.audio`: native: The generated video includes native audio matching the visuals.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "`settings.audio`: native: The generated video includes native audio matching the visuals."
+        }
+      ]
+    },
+    {
+      "alternativeId": "kling-3-0-omni",
+      "criterionId": "public-api",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "kling-3-0-omni--public-api",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--kling-3-0-omni--public-api",
+              "target": "https://kling.ai/document-api/guides/get-started/quick-start.md",
+              "renditionId": "r--kling-3-0-omni--public-api",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Log in using your email. Your console account is the same as your Kling AI web account."
+                }
+              ],
+              "excerpt": "Log in using your email. Your console account is the same as your Kling AI web account.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Log in using your email. Your console account is the same as your Kling AI web account."
+        }
+      ]
+    },
+    {
+      "alternativeId": "kling-3-0-omni",
+      "criterionId": "training-data-disclosed",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "kling-3-0-omni--training-data-disclosed",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-evidenced",
+            "note": "Searched the Terms of Service (kling.ai/docs/user-policy), Privacy Policy (kling.ai/docs/privacy-policy), Terms of Paid Service, the API privacy policy and paid-service protocols, the API Video Capability Map, the model/API reference pages, and the vendor-authored kling.ai/llms.txt overview. All are silent on what the models were trained on: the vendor describes architecture (DiT, 3D VAE, the MVL multimodal framework) but never names a dataset, corpus, licensing arrangement, or data source."
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "kling-3-0-omni",
+      "criterionId": "trains-on-user-content",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "kling-3-0-omni--trains-on-user-content",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--kling-3-0-omni--trains-on-user-content",
+              "target": "https://kling.ai/docs/user-policy",
+              "renditionId": "r--kling-3-0-omni--trains-on-user-content",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "create, test, improve, train, or otherwise develop the artificial intelligence or machine learning models, systems, architecture, weights or related technology used by Kling AI"
+                }
+              ],
+              "excerpt": "create, test, improve, train, or otherwise develop the artificial intelligence or machine learning models, systems, architecture, weights or related technology used by Kling AI",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "create, test, improve, train, or otherwise develop the artificial intelligence or machine learning models, systems, architecture, weights or related technology used by Kling AI"
+        }
+      ]
+    },
+    {
+      "alternativeId": "luma-ray-3-2",
+      "criterionId": "commercial-use-stated",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "luma-ray-3-2--commercial-use-stated",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--luma-ray-3-2--commercial-use-stated",
+              "target": "https://lumalabs.ai/legal/terms-of-service",
+              "renditionId": "r--luma-ray-3-2--commercial-use-stated",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "it can only use the Outputs for commercial purposes if the Outputs were produced during an active Subscription Term under Customer's paid subscription"
+                }
+              ],
+              "excerpt": "it can only use the Outputs for commercial purposes if the Outputs were produced during an active Subscription Term under Customer's paid subscription",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "it can only use the Outputs for commercial purposes if the Outputs were produced during an active Subscription Term under Customer's paid subscription"
+        }
+      ]
+    },
+    {
+      "alternativeId": "luma-ray-3-2",
+      "criterionId": "image-to-video",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "luma-ray-3-2--image-to-video",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--luma-ray-3-2--image-to-video",
+              "target": "https://lumalabs.ai/ray",
+              "renditionId": "r--luma-ray-3-2--image-to-video",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "It powers four workflows in one: Modify Video, image2video, text2video, and Reframe."
+                }
+              ],
+              "excerpt": "It powers four workflows in one: Modify Video, image2video, text2video, and Reframe.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "It powers four workflows in one: Modify Video, image2video, text2video, and Reframe."
+        }
+      ]
+    },
+    {
+      "alternativeId": "luma-ray-3-2",
+      "criterionId": "max-clip-length",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "luma-ray-3-2--max-clip-length",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--luma-ray-3-2--max-clip-length",
+              "target": "https://lumalabs.ai/ray",
+              "renditionId": "r--luma-ray-3-2--max-clip-length",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "text2video and image2video produce 5 or 10-second native clips"
+                }
+              ],
+              "excerpt": "text2video and image2video produce 5 or 10-second native clips",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 10,
+          "justification": "text2video and image2video produce 5 or 10-second native clips"
+        }
+      ]
+    },
+    {
+      "alternativeId": "luma-ray-3-2",
+      "criterionId": "max-output-height",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "luma-ray-3-2--max-output-height",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--luma-ray-3-2--max-output-height",
+              "target": "https://lumalabs.ai/ray",
+              "renditionId": "r--luma-ray-3-2--max-output-height",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "You can generate in 360p, 540p, 720p (default), and 1080p."
+                }
+              ],
+              "excerpt": "You can generate in 360p, 540p, 720p (default), and 1080p.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 1080,
+          "justification": "You can generate in 360p, 540p, 720p (default), and 1080p."
+        }
+      ]
+    },
+    {
+      "alternativeId": "luma-ray-3-2",
+      "criterionId": "native-audio",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "luma-ray-3-2--native-audio",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--luma-ray-3-2--native-audio",
+              "target": "https://lumalabs.ai/ray",
+              "renditionId": "r--luma-ray-3-2--native-audio",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "text2video and image2video: No, there's no natively-generated audio, so voiceover, music, and sound effects are added as a separate step."
+                }
+              ],
+              "excerpt": "text2video and image2video: No, there's no natively-generated audio, so voiceover, music, and sound effects are added as a separate step.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": false,
+          "justification": "text2video and image2video: No, there's no natively-generated audio, so voiceover, music, and sound effects are added as a separate step."
+        }
+      ]
+    },
+    {
+      "alternativeId": "luma-ray-3-2",
+      "criterionId": "public-api",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "luma-ray-3-2--public-api",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--luma-ray-3-2--public-api",
+              "target": "https://lumalabs.ai/ray",
+              "renditionId": "r--luma-ray-3-2--public-api",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Yes, the Ray3.2 model is available as an API."
+                }
+              ],
+              "excerpt": "Yes, the Ray3.2 model is available as an API.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Yes, the Ray3.2 model is available as an API."
+        }
+      ]
+    },
+    {
+      "alternativeId": "luma-ray-3-2",
+      "criterionId": "training-data-disclosed",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "luma-ray-3-2--training-data-disclosed",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-evidenced",
+            "note": "Searched lumalabs.ai/llm-info, /ray, /ray2, /ray3, the Ray3.2 and Ray3 news posts, docs.agents.lumalabs.ai, the Terms of Service and the Privacy Policy. No model card, dataset list, or statement of training sources. The vendor's only training-related language is directional rather than specific (e.g. the Series C post's claim that AI should be 'jointly trained over all signal modalities'), which does not name any data source, corpus, or licensing arrangement."
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "luma-ray-3-2",
+      "criterionId": "trains-on-user-content",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "luma-ray-3-2--trains-on-user-content",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--luma-ray-3-2--trains-on-user-content",
+              "target": "https://lumalabs.ai/legal/privacy-policy",
+              "renditionId": "r--luma-ray-3-2--trains-on-user-content",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Train, develop, and improve the artificial intelligence, machine learning, and models that we use to support our Services"
+                }
+              ],
+              "excerpt": "Train, develop, and improve the artificial intelligence, machine learning, and models that we use to support our Services",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Train, develop, and improve the artificial intelligence, machine learning, and models that we use to support our Services"
+        }
+      ]
+    },
+    {
+      "alternativeId": "openai-sora-2",
+      "criterionId": "commercial-use-stated",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "openai-sora-2--commercial-use-stated",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "indeterminate",
+            "note": "OpenAI's Terms of Use (https://openai.com/policies/row-terms-of-use/, read via the 2026-08-01 Wayback snapshot because the live page returns 403 to automated fetch) states: \"you (a) retain your ownership rights in Input and (b) own the Output. We hereby assign to you all our right, title, and interest, if any, in and to Output.\" That grants ownership to ALL users with no paid-plan condition, and the word \"commercial\" appears 0 times in those Terms. The Service Terms (https://openai.com/policies/service-terms/) use \"commercial\" exactly once, and as a restriction on a different feature: ChatGPT "
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "openai-sora-2",
+      "criterionId": "image-to-video",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "openai-sora-2--image-to-video",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--openai-sora-2--image-to-video",
+              "target": "https://developers.openai.com/api/docs/guides/video-generation",
+              "renditionId": "r--openai-sora-2--image-to-video",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "You can guide a generation with an input image, which acts as the first frame of your video."
+                }
+              ],
+              "excerpt": "You can guide a generation with an input image, which acts as the first frame of your video.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "You can guide a generation with an input image, which acts as the first frame of your video."
+        }
+      ]
+    },
+    {
+      "alternativeId": "openai-sora-2",
+      "criterionId": "max-clip-length",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "openai-sora-2--max-clip-length",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--openai-sora-2--max-clip-length",
+              "target": "https://developers.openai.com/api/docs/guides/video-generation",
+              "renditionId": "r--openai-sora-2--max-clip-length",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Both sora-2 and sora-2-pro support 16- and 20-second generations."
+                }
+              ],
+              "excerpt": "Both sora-2 and sora-2-pro support 16- and 20-second generations.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 20,
+          "justification": "Both sora-2 and sora-2-pro support 16- and 20-second generations."
+        }
+      ]
+    },
+    {
+      "alternativeId": "openai-sora-2",
+      "criterionId": "max-output-height",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "openai-sora-2--max-output-height",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "indeterminate",
+            "note": "The vendor documents two models under one product name and they differ. The generation guide says \"Use sora-2-pro when you need 1080p exports in 1920x1080 or 1080x1920\", and the sora-2 pricing table lists only 1280x720. Asked of the product rather than of one model, the sources do not settle it."
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "openai-sora-2",
+      "criterionId": "native-audio",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "openai-sora-2--native-audio",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--openai-sora-2--native-audio",
+              "target": "https://developers.openai.com/api/docs/models/sora-2",
+              "renditionId": "r--openai-sora-2--native-audio",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Sora 2 is our new powerful media generation model, generating videos with synced audio."
+                }
+              ],
+              "excerpt": "Sora 2 is our new powerful media generation model, generating videos with synced audio.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Sora 2 is our new powerful media generation model, generating videos with synced audio."
+        }
+      ]
+    },
+    {
+      "alternativeId": "openai-sora-2",
+      "criterionId": "public-api",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "openai-sora-2--public-api",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--openai-sora-2--public-api",
+              "target": "https://developers.openai.com/api/docs/guides/video-generation",
+              "renditionId": "r--openai-sora-2--public-api",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Start by calling POST /videos with a text prompt and the required parameters."
+                }
+              ],
+              "excerpt": "Start by calling POST /videos with a text prompt and the required parameters.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Start by calling POST /videos with a text prompt and the required parameters."
+        }
+      ]
+    },
+    {
+      "alternativeId": "openai-sora-2",
+      "criterionId": "training-data-disclosed",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "openai-sora-2--training-data-disclosed",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "indeterminate",
+            "note": "OpenAI does publish a training-data statement, but only at category level. The Sora 2 System Card PDF (https://cdn.openai.com/pdf/50d5973c-c4ff-4c2d-986f-c72b5d0ff069/sora_2_system_card.pdf, retrieved and text-extracted in this task) says Sora 2 \"was trained on diverse datasets, including information that is publicly available on the internet, information that we partner with third parties to access, and information that our users or human trainers and researchers provide or generate.\" The API guide similarly says only \"trained on diverse visual data\". No specific dataset, source, licensor, or"
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "openai-sora-2",
+      "criterionId": "trains-on-user-content",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "openai-sora-2--trains-on-user-content",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--openai-sora-2--trains-on-user-content",
+              "target": "https://developers.openai.com/api/docs/guides/your-data",
+              "renditionId": "r--openai-sora-2--trains-on-user-content",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "data sent to the OpenAI API is not used to train or improve OpenAI models"
+                }
+              ],
+              "excerpt": "data sent to the OpenAI API is not used to train or improve OpenAI models",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "data sent to the OpenAI API is not used to train or improve OpenAI models"
+        }
+      ]
+    },
+    {
+      "alternativeId": "pika-2-5",
+      "criterionId": "commercial-use-stated",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "pika-2-5--commercial-use-stated",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--pika-2-5--commercial-use-stated",
+              "target": "https://pika.art/faq",
+              "renditionId": "r--pika-2-5--commercial-use-stated",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "If you have a Pro or Fancy subscription, whatever you create using Pika can be used commercially, or non-commercially."
+                }
+              ],
+              "excerpt": "If you have a Pro or Fancy subscription, whatever you create using Pika can be used commercially, or non-commercially.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "If you have a Pro or Fancy subscription, whatever you create using Pika can be used commercially, or non-commercially."
+        }
+      ]
+    },
+    {
+      "alternativeId": "pika-2-5",
+      "criterionId": "image-to-video",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "pika-2-5--image-to-video",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--pika-2-5--image-to-video",
+              "target": "https://dev.pika.art/models/pika/pika-2.5/image-to-video",
+              "renditionId": "r--pika-2-5--image-to-video",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Turn photos into mind-blowing, dynamic videos in up to 1080p."
+                }
+              ],
+              "excerpt": "Turn photos into mind-blowing, dynamic videos in up to 1080p.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Turn photos into mind-blowing, dynamic videos in up to 1080p."
+        }
+      ]
+    },
+    {
+      "alternativeId": "pika-2-5",
+      "criterionId": "max-clip-length",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "pika-2-5--max-clip-length",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "indeterminate",
+            "note": "Three vendor surfaces give different ceilings. pika.art/faq: \"For Pika Model 2.2, Pikaframes generations can be up to 25 seconds\" — but that names the superseded Model 2.2. pika.art/pricing bills Pikaframes on Model 2.5 in duration bands topping out at \"20-25s\". The API spec for the same feature (dev.pika.art/llms/pika/pikaframes/image-to-video) caps transition_duration_s at 10 with 2-5 keyframes and states \"Over 5 seconds needs exactly 2 keyframes\", which yields at most 20s. Meanwhile Pika 2.5 text-to-video is fixed at 5s (duration_s const 5) and image-to-video at 5 or 10s. No single publishe"
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "pika-2-5",
+      "criterionId": "max-output-height",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "pika-2-5--max-output-height",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--pika-2-5--max-output-height",
+              "target": "https://dev.pika.art/llms/pika/pika-2.5/text-to-video",
+              "renditionId": "r--pika-2-5--max-output-height",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Max resolution: 1080p"
+                }
+              ],
+              "excerpt": "Max resolution: 1080p",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 1080,
+          "justification": "Max resolution: 1080p"
+        }
+      ]
+    },
+    {
+      "alternativeId": "pika-2-5",
+      "criterionId": "native-audio",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "pika-2-5--native-audio",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "indeterminate",
+            "note": "The cited quote describes a separate Soundtrack product, which establishes that one exists rather than that video generation lacks audio. No vendor page states the absence, and the request schema having no audio field is inference from silence — Veo 3.1 generates audio with no audio parameter at all."
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "pika-2-5",
+      "criterionId": "public-api",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "pika-2-5--public-api",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--pika-2-5--public-api",
+              "target": "https://dev.pika.art/llms.txt",
+              "renditionId": "r--pika-2-5--public-api",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Create a Pika API account, manage membership, and access the dashboard."
+                }
+              ],
+              "excerpt": "Create a Pika API account, manage membership, and access the dashboard.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Create a Pika API account, manage membership, and access the dashboard."
+        }
+      ]
+    },
+    {
+      "alternativeId": "pika-2-5",
+      "criterionId": "training-data-disclosed",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "pika-2-5--training-data-disclosed",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "disclosure-declined",
+            "note": "The vendor addresses provenance and declines to answer: \"We could tell you, but then we'd have to… have you sign an NDA.\" That is materially different from silence, which is what the other four blanks in this column are."
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "pika-2-5",
+      "criterionId": "trains-on-user-content",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "pika-2-5--trains-on-user-content",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--pika-2-5--trains-on-user-content",
+              "target": "https://pika.art/terms-of-service",
+              "renditionId": "r--pika-2-5--trains-on-user-content",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Pika may use Content—including Inputs, Outputs, and your interactions with the Service—to train, improve, and develop its machine learning models"
+                }
+              ],
+              "excerpt": "Pika may use Content—including Inputs, Outputs, and your interactions with the Service—to train, improve, and develop its machine learning models",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Pika may use Content—including Inputs, Outputs, and your interactions with the Service—to train, improve, and develop its machine learning models"
+        }
+      ]
+    },
+    {
+      "alternativeId": "runway-gen-4-5",
+      "criterionId": "commercial-use-stated",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "runway-gen-4-5--commercial-use-stated",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--runway-gen-4-5--commercial-use-stated",
+              "target": "https://runway.com/terms-of-use",
+              "renditionId": "r--runway-gen-4-5--commercial-use-stated",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "the Company does not restrict your commercial use of your Outputs."
+                }
+              ],
+              "excerpt": "the Company does not restrict your commercial use of your Outputs.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "the Company does not restrict your commercial use of your Outputs. — From the Terms of Use, last updated May 11, 2026. Corroborated by the Usage rights help article (help.runwayml.com/hc/en-us/articles/18927776141715), which states the grant applies on 'any of our plans (Free, Standard, Pro, Max, or Unlimited)'."
+        }
+      ]
+    },
+    {
+      "alternativeId": "runway-gen-4-5",
+      "criterionId": "image-to-video",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "runway-gen-4-5--image-to-video",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--runway-gen-4-5--image-to-video",
+              "target": "https://help.runwayml.com/hc/en-us/articles/46974685288467-Creating-with-Gen-4-5",
+              "renditionId": "r--runway-gen-4-5--image-to-video",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Gen-4.5 currently offers Text to Video and Image to Video control, with support for additional inputs coming soon."
+                }
+              ],
+              "excerpt": "Gen-4.5 currently offers Text to Video and Image to Video control, with support for additional inputs coming soon.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Gen-4.5 currently offers Text to Video and Image to Video control, with support for additional inputs coming soon. — Corroborated by the API: /v1/image_to_video accepts model 'gen4.5' with a required 'promptImage' parameter."
+        }
+      ]
+    },
+    {
+      "alternativeId": "runway-gen-4-5",
+      "criterionId": "max-clip-length",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "runway-gen-4-5--max-clip-length",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--runway-gen-4-5--max-clip-length",
+              "target": "https://help.runwayml.com/hc/en-us/articles/46974685288467-Creating-with-Gen-4-5",
+              "renditionId": "r--runway-gen-4-5--max-clip-length",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Select a duration between 2 and 10 seconds."
+                }
+              ],
+              "excerpt": "Select a duration between 2 and 10 seconds.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 10,
+          "justification": "Select a duration between 2 and 10 seconds. — Same 2-10s range for both Text to Video and Image to Video; the Gen-4.5 spec table lists 'Supported durations 2 - 10 seconds' with no plan variation (Gen-4.5 itself requires 'Standard and higher'). The API OpenAPI schema at https://docs.dev.runwayml.com/openapi.json agrees: duration for model 'gen4.5' is 'an integer from 2 to 10'. Longer durations on Runway (e.g. Seedance 2.5 at 4-30s) belong to third-party models Runway hosts, not to Gen-4.5."
+        }
+      ]
+    },
+    {
+      "alternativeId": "runway-gen-4-5",
+      "criterionId": "max-output-height",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "runway-gen-4-5--max-output-height",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--runway-gen-4-5--max-output-height",
+              "target": "https://help.runwayml.com/hc/en-us/articles/26115194070675-Can-I-generate-videos-in-4K",
+              "renditionId": "r--runway-gen-4-5--max-output-height",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Generative video outputs are created in 720p, but can be upscaled to 4K."
+                }
+              ],
+              "excerpt": "Generative video outputs are created in 720p, but can be upscaled to 4K.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": 720,
+          "justification": "Generative video outputs are created in 720p, but can be upscaled to 4K. — The Gen-4.5 article's spec table states 'Output resolution: 720p'. 4K is a post-generation Upscale step, not a generation resolution. The API ratio enum for gen4.5 tops out at 1280:720 / 1584:672, consistent with 720p generation."
+        }
+      ]
+    },
+    {
+      "alternativeId": "runway-gen-4-5",
+      "criterionId": "native-audio",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "runway-gen-4-5--native-audio",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "indeterminate",
+            "note": "Two Runway sources pull in opposite directions and neither settles it. (a) The Gen-4.5 help article (help.runwayml.com/hc/en-us/articles/46974685288467, updated 2026-08-13) has a full spec table covering durations, aspect ratios, output resolution and frame rate, and never mentions audio; the Gen-4.5 help section contains no audio article. (b) The API schema (docs.dev.runwayml.com/openapi.json) exposes an explicit 'audio' boolean for veo3.1 and native-audio wording for grok_imagine_1_5, but no audio parameter for gen4.5 — while the same doc's outputFormat description for gen4.5 says PNG-sequen"
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "runway-gen-4-5",
+      "criterionId": "public-api",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "runway-gen-4-5--public-api",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--runway-gen-4-5--public-api",
+              "target": "https://docs.dev.runwayml.com/guides/setup",
+              "renditionId": "r--runway-gen-4-5--public-api",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "First, sign up for an account in the developer portal."
+                }
+              ],
+              "excerpt": "First, sign up for an account in the developer portal.",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "First, sign up for an account in the developer portal. — Self-serve: a public OpenAPI spec is published at https://docs.dev.runwayml.com/openapi.json, gen4.5 is a documented model on /v1/text_to_video and /v1/image_to_video, and the pricing guide states credits cost $0.01 each with a $10 minimum to start."
+        }
+      ]
+    },
+    {
+      "alternativeId": "runway-gen-4-5",
+      "criterionId": "training-data-disclosed",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "runway-gen-4-5--training-data-disclosed",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "missing": {
+            "code": "not-evidenced",
+            "note": "Runway's own material never states what Gen-4.5 was trained on. Checked: the Gen-4.5 research announcement (runway.com/research/introducing-runway-gen-4.5), which says only that it 'represents significant advances in both pre-training data efficiency and post-training techniques' and names NVIDIA GPUs as the compute, with no dataset description; the Gen-4.5 help article and its whole help-centre section; the Runway Dev docs (llms-full.txt, openapi.json); the Terms of Use; the Privacy Policy; and the Data Security page. I also probed for a training-content transparency page at runway.com/{ai-ac"
+          }
+        }
+      ]
+    },
+    {
+      "alternativeId": "runway-gen-4-5",
+      "criterionId": "trains-on-user-content",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "runway-gen-4-5--trains-on-user-content",
+          "authorId": "research-run-2026-08-26",
+          "at": "2026-08-26T00:00:00Z",
+          "evidence": [
+            {
+              "id": "e--runway-gen-4-5--trains-on-user-content",
+              "target": "https://runway.com/terms-of-use",
+              "renditionId": "r--runway-gen-4-5--trains-on-user-content",
+              "normaliserId": "nfc-v1",
+              "sourceType": "primary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Inputs and Outputs may be used by the Company to train and improve its AI models"
+                }
+              ],
+              "excerpt": "Inputs and Outputs may be used by the Company to train and improve its AI models",
+              "retrievedAt": "2026-08-26T00:00:00Z",
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-26T00:00:00Z",
+                "checkerVersion": "cross-check/2026-08-26",
+                "detail": "quote confirmed verbatim against the cited page"
+              }
+            }
+          ],
+          "version": 1,
+          "value": true,
+          "justification": "Inputs and Outputs may be used by the Company to train and improve its AI models — The vendor does state a policy, and it is affirmative: user inputs and outputs may be used for training. Full clause continues '...algorithms and related technology, products and services (including for labeling, classification, content moderation and model training purposes)', followed by a licence grant. The Privacy Policy (effective May 11, 2026) contains no occurrence of 'train' at all, so the Terms of Use is the only source. I found no self-serve opt-out on any vendor page; the Data Security page mentions '"
+        }
+      ]
+    }
+  ]
+}

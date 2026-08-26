@@ -212,3 +212,118 @@ describe('languages.json — the clean fixture', () => {
     expect(reader.read('python', 'learning-curve')?.value).toBe(5);
   });
 });
+
+describe('video-generation.json — real vendors, real blanks', () => {
+  const doc = () => Analysis.parse(load('video-generation.json'));
+
+  it('validates with no errors', () => {
+    const r = validateAnalysis(load('video-generation.json'));
+    const errors = r.problems.filter((p) => p.severity === 'error');
+    expect(errors, errors.map((p) => `${p.ruleId} @ ${p.path}`).join('\n')).toEqual([]);
+  });
+
+  // ---------------------------------------------------------------------
+  // These assert the DISCIPLINE, never the DATA. Every figure here is a dated
+  // snapshot of a market that moves monthly, so a test that pinned "Kling is
+  // 4K" would go red on a refresh and teach the next person to weaken it. What
+  // must survive a refresh is the standard each cell is held to.
+  // ---------------------------------------------------------------------
+
+  it('every filled cell quotes a source and says why', () => {
+    for (const cell of doc().cells) {
+      for (const a of cell.assertions) {
+        if (a.value === undefined) continue;
+        const where = `${cell.alternativeId}/${cell.criterionId}`;
+        expect(a.justification?.trim(), `${where} has no justification`).toBeTruthy();
+        expect(a.evidence.length, `${where} cites nothing`).toBeGreaterThan(0);
+        for (const e of a.evidence) {
+          const quote = e.selectors.find((s) => s.type === 'TextQuoteSelector');
+          expect(quote, `${where} has no quote selector`).toBeDefined();
+          expect((quote as { exact: string }).exact.trim(), `${where} quotes nothing`).toBeTruthy();
+          expect(e.renditionId, `${where} names no rendition`).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  it('every stored verdict carries its stamp', () => {
+    // The rule that makes a check displayable at all: an undated verdict reads
+    // as current forever.
+    for (const cell of doc().cells) {
+      for (const a of cell.assertions) {
+        for (const e of a.evidence) {
+          if (!e.check || e.check.status === 'unchecked') continue;
+          expect(e.check.checkedAt, `${cell.criterionId} check has no date`).toBeTruthy();
+          expect(e.check.checkerVersion, `${cell.criterionId} check has no checker`).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  it('every blank says what was looked for and what was found', () => {
+    // A blank with no note is the thing this whole vocabulary exists to
+    // prevent: it looks like a finding and carries none.
+    const blanks = doc().cells.flatMap((c) => c.assertions.filter((a) => a.missing));
+    expect(blanks.length).toBeGreaterThan(0);
+    for (const a of blanks) {
+      expect(a.missing!.note?.trim(), `blank with code ${a.missing!.code} has no note`).toBeTruthy();
+      expect(a.missing!.note!.length).toBeGreaterThan(40);
+    }
+  });
+
+  it('carries no subjective scale, so no cell can be a judgement about a company', () => {
+    // The structural proxy for "capability and stated policy only". A quality
+    // score lives on an anchored ordinal; every criterion here is either a
+    // measured quantity (ratio) or a stated fact (nominal), and a nominal
+    // criterion has no direction of preference at all.
+    for (const c of doc().criteria) {
+      const m = c.defaultMeasurement!;
+      expect(['ratio', 'nominal'], `${c.id} is ${m.level}`).toContain(m.level);
+      expect(m.anchors, `${c.id} carries anchors, which means it is scored`).toBeUndefined();
+      if (m.level === 'nominal') expect(m.preference).toBe('none');
+    }
+  });
+
+  it('distinguishes an explicit refusal from silence, using a declared code', () => {
+    // The extension earns its place: "the vendor declines to say" and "the
+    // vendor is silent" are different findings, and the core cannot tell them
+    // apart. A reader whose build never heard of it sees `not-evidenced`,
+    // which is correct — just less precise.
+    const a = doc();
+    const declared = a.missingCodes.find((d) => d.id === 'disclosure-declined');
+    expect(declared?.broader).toBe('not-evidenced');
+
+    const r = vocabularyOf(a).resolve('disclosure-declined');
+    expect(r.known).toBe(true);
+    expect(r.facts?.informative).toBe(true);   // inherited: a refusal is about the subject
+    expect(r.facts?.terminal).toBe(true);
+
+    const used = a.cells.flatMap((c) => c.assertions).filter(
+      (s) => s.missing?.code === 'disclosure-declined',
+    );
+    expect(used.length).toBeGreaterThan(0);
+  });
+
+  it('has both kinds of core blank, because both really occurred', () => {
+    const codes = new Set(
+      doc().cells.flatMap((c) => c.assertions.map((a) => a.missing?.code)).filter(Boolean),
+    );
+    expect(codes).toContain('not-evidenced');   // searched; the vendor is silent
+    expect(codes).toContain('indeterminate');   // found material; it does not settle it
+  });
+
+  it('is finished, not abandoned — nothing outstanding', () => {
+    // Every cell was looked at. That is what makes silenceRate mean something:
+    // the blanks are findings rather than work nobody did.
+    const c = completeness(doc(), { measure: 'score' });
+    expect(c.outstanding).toBe(0);
+    expect(c.informativeAbsent).toBe(c.settledAbsent);
+    expect(c.silenceRate).toBeGreaterThan(0);
+  });
+
+  it('says it is a dated snapshot, in the document rather than in a README', () => {
+    const s = doc().subject;
+    expect(s.context).toMatch(/DATED SNAPSHOT/);
+    expect(s.ambiguities?.length, 'ambiguities were considered').toBeGreaterThan(0);
+  });
+});
