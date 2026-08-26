@@ -283,7 +283,7 @@ Which is to say: nearly all of it, once Gate 2a is closed.
 - **`MatrixProps`.** `comparanda` publishes the type before the matrix component exists, so
   `rubricator`'s interim table and `comparanda`'s eventual `mountMatrix` consume one shape and the
   interim table is deleted rather than refactored (`comparanda: docs/adr/0032-…`).
-- **Golden merge fixtures.** `comparanda` authors them (ADR-0016 governs their content);
+- **Golden merge fixtures.** `comparanda` authors them (ADR-0033 governs their content);
   `rubricator` runs its merge against them. Key parity is not semantic parity, and these are the
   only thing that catches two implementations that agree by inspection.
 

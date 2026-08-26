@@ -1,6 +1,6 @@
 # ADR-0016: Public repository — no proprietary content in tests, examples or fixtures
 
-- **Status:** accepted
+- **Status:** superseded by ADR-0033
 - **Date:** 2026-08-18
 
 ## Context
@@ -90,3 +90,17 @@ for deletion.
 The open questions this note reprioritises: `docs/research/README.md` § "Open questions". The
 citation caveats: the same file's § "Needs a human, not more research", and the verification notes
 in `docs/research/findings-terminology.md` and `docs/research/findings-visualisation.md`.
+
+### 2026-08-26 — Superseded by ADR-0033
+
+This ADR's Context describes the package as originating from a private strategic analysis, and its
+Decision derives a denylist check from that description. **The description is wrong**: this is a
+general tool that such a study motivated, not a sanitised derivative of one. Checked on 2026-08-26
+across both repositories, tree and full history: zero occurrences of anything from it.
+
+ADR-0033 keeps the rule and generalises it — no content from *any* private engagement, and example
+domains are **invented** rather than anonymised — and withdraws the denylist check, which would
+have had to cover every engagement its author has ever run.
+
+Nothing above this line is edited. The Decision's substance is carried forward by ADR-0033; what is
+withdrawn is the mechanism in its second-to-last paragraph.

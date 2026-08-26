@@ -155,9 +155,12 @@ One npm package, subpath exports (`comparanda`, `/view`, `/store`), TypeScript t
 runner, and the two lint rules that are correctness requirements rather than style: no DOM in
 `core`, no classic Zod barrel in a browser entry point.
 
-The pre-publish denylist check (ADR-0016) lands here. **The denylist file is gitignored and never
-committed** — it names the terms it exists to protect. CI reads it from a secret; a missing denylist
-fails the publish rather than passing it.
+**The pre-publish denylist check is withdrawn** (ADR-0033 supersedes ADR-0016). It was scoped to
+one private analysis, and this package is a general tool that such a study motivated rather than a
+sanitised derivative of it — so the list would have had to cover every engagement its author has
+ever run, be maintained forever, and never be demonstrably complete. Checked across both
+repositories, tree and full history: zero occurrences. What remains in CI is the pair of checks that
+are generic and satisfiable — no absolute local paths, and no NUL bytes in tracked files.
 
 **The guard-integrity work this epic owns is half done, and the remaining half is what matters
 most.** A NUL byte in a tracked file makes `grep -I` and `ripgrep` classify it as binary and skip
