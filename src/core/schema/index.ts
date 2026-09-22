@@ -8,3 +8,5 @@ export * from './values.js';
 export * from './annotations.js';
 export * from './analysis.js';
 export * from './groups.js';
+export * from './anchors.js';
+export * from './redaction.js';

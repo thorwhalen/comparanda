@@ -92,7 +92,13 @@ export const Suggestion = z.object({
 });
 export type Suggestion = z.infer<typeof Suggestion>;
 
-/** Whether an anchor still resolves against the current structure. */
+/**
+ * Whether an anchor still resolves against the current structure.
+ *
+ * The id-set form. `resolveAnchor` / `orphanedThreadsOf` in `anchors.ts` resolve
+ * against a whole analysis, count a tombstoned entity as orphaning its threads,
+ * and say why.
+ */
 export function anchorResolves(
   anchor: Anchor,
   known: { alternativeIds: ReadonlySet<string>; criterionIds: ReadonlySet<string>; groupIds: ReadonlySet<string> },
