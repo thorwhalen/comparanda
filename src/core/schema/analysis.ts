@@ -13,7 +13,7 @@ import {
   measurementFor,
 } from './structure.js';
 import {
-  Cell, Reduction, ReductionDeclaration, CORE_REDUCTIONS, reduce, type Reduced,
+  Cell, Reduction, ReductionDeclaration, CORE_REDUCTIONS, reduce, isWidenedByDisclosure, type Reduced,
 } from './values.js';
 import { Author, Procedure, Round } from './provenance.js';
 import { Thread, Suggestion } from './annotations.js';
@@ -846,9 +846,10 @@ export function completeness(
 ): Completeness {
   const alts = scope.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id);
   const crits = scope.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
-  const cells: { hasValue: boolean; code?: string; criterionId?: string }[] = [];
+  const cells: { hasValue: boolean; code?: string; criterionId?: string; widened?: boolean }[] = [];
   const reader = makeCellReader(a, scope.measure);
   const inapplicable = makeInapplicability(a);
+  const index = cellIndex(a);
 
   for (const altId of alts) {
     for (const critId of crits) {
@@ -856,10 +857,12 @@ export function completeness(
         cells.push({ hasValue: false, code: NOT_APPLICABLE, criterionId: critId });
         continue;
       }
+      const cell = index.get(cellKey(altId, critId, scope.measure));
+      const widened = cell !== undefined && isWidenedByDisclosure(cell);
       const r = reader.read(altId, critId);
-      if (r?.value !== undefined) cells.push({ hasValue: true, criterionId: critId });
-      else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code, criterionId: critId });
-      else cells.push({ hasValue: false, code: NOT_ASSESSED, criterionId: critId });
+      if (r?.value !== undefined) cells.push({ hasValue: true, criterionId: critId, widened });
+      else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code, criterionId: critId, widened });
+      else cells.push({ hasValue: false, code: NOT_ASSESSED, criterionId: critId, widened });
     }
   }
   // The facade, not the flat list: each cell carries its criterion, so a

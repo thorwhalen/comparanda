@@ -32,7 +32,7 @@ const coreDir = join(root, 'src', 'core');
 
 const CODES = Object.keys(CORE_MISSING_CODES);
 /** Exported constants whose value is a core code. Kept in step by a test below. */
-const CODE_CONSTANTS = ['NOT_ASSESSED', 'NOT_APPLICABLE'];
+const CODE_CONSTANTS = ['NOT_ASSESSED', 'NOT_APPLICABLE', 'WITHHELD'];
 
 /**
  * Comparisons that are declaration invariants rather than behaviour keyed on a

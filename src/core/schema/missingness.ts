@@ -63,6 +63,14 @@ export const NOT_ASSESSED = 'not-assessed' as const;
 /** The core code for a cell that a structural rule says should be empty. */
 export const NOT_APPLICABLE = 'not-applicable' as const;
 
+/**
+ * The core code a disclosure projection writes in place of a value the reader
+ * may not see (ADR-0021: `withheld` "is the representation of a projected-out
+ * cell"). Written, never branched on: whether a cell was widened by disclosure
+ * is read from `Assertion.disclosure.withheldFromReader`, not from this code.
+ */
+export const WITHHELD = 'withheld' as const;
+
 export const MissingCode = z.enum([
   'not-applicable',
   'not-assessed',
@@ -298,13 +306,20 @@ export interface Completeness {
    * accident and read as the same thing.
    */
   silenceRate: number;
+  /**
+   * Cells whose content a disclosure projection withheld from this reader
+   * (ADR-0021). They are counted in `settledAbsent` like any `withheld` cell;
+   * this says how many of those the reader *could* see with more access.
+   * Required, so a view cannot report completeness and forget to say it.
+   */
+  widenedByDisclosure: number;
 }
 
 export function emptyCompleteness(): Completeness {
   return {
     total: 0, structural: 0, applicable: 0, present: 0,
     settledAbsent: 0, informativeAbsent: 0, outstanding: 0,
-    examinedRate: 0, valuedRate: 0, silenceRate: 0,
+    examinedRate: 0, valuedRate: 0, silenceRate: 0, widenedByDisclosure: 0,
   };
 }
 
@@ -316,7 +331,7 @@ export function emptyCompleteness(): Completeness {
  * be reused at analysis, row, column and group scope without four variants.
  */
 export function tallyCompleteness(
-  cells: Iterable<{ hasValue: boolean; code?: string; criterionId?: string }>,
+  cells: Iterable<{ hasValue: boolean; code?: string; criterionId?: string; widened?: boolean }>,
   /**
    * Either a flat declaration list, or the vocabulary facade.
    *
@@ -347,6 +362,7 @@ export function tallyCompleteness(
   for (const cell of cells) {
     i += 1;
     c.total += 1;
+    if (cell.widened) c.widenedByDisclosure += 1;
     if (cell.hasValue) {
       c.present += 1;
       continue;

@@ -35,6 +35,32 @@ export type ScalarValue = z.infer<typeof ScalarValue>;
  * assertion that says nothing is not an assertion. That is the "no bare nulls"
  * rule at the level where it actually bites.
  */
+/**
+ * Who may see an assertion is not the same fact as whether it exists (ADR-0021).
+ *
+ * Presence lives in `value` / `missing`; disclosure lives here, beside it, the
+ * way SDMX keeps confidentiality status beside observation status. Redaction is
+ * therefore a **projection** (`projectForReader`), never an edit: the owner's
+ * document and a reviewer's are the same document under two projections.
+ *
+ * `comparanda` invents no permission model. `label` is the host's own
+ * classification, opaque here, and the host's disclosure decision is supplied at
+ * projection time; the schema only carries what the decision needs and what the
+ * projection leaves behind.
+ */
+export const Disclosure = z.object({
+  /** The host's confidentiality label for this assertion, e.g. "confidential". Opaque here. */
+  label: z.optional(z.string()),
+  /**
+   * Set by `projectForReader`, never by an author: this assertion's content was
+   * projected out for the reader of this document. Its value, justification and
+   * evidence are gone and it carries the `withheld` missingness code; this flag
+   * is what lets every analysis over the projection count the cells it widened.
+   */
+  withheldFromReader: z.optional(z.boolean()),
+});
+export type Disclosure = z.infer<typeof Disclosure>;
+
 export const Assertion = z.object({
   id: z.string(),
   authorId: z.string(),
@@ -71,8 +97,22 @@ export const Assertion = z.object({
   version: z._default(z.number(), 1),
   /** Superseded assertions are retained, never deleted. */
   supersededBy: z.optional(z.string()),
+  /** Disclosure, orthogonal to presence. Absent means no restriction declared. See `Disclosure`. */
+  disclosure: z.optional(Disclosure),
 });
 export type Assertion = z.infer<typeof Assertion>;
+
+/**
+ * Whether a disclosure projection widened this cell for its reader: some live
+ * assertion in it was projected out (ADR-0021).
+ *
+ * Reads the flag the projection writes, never the `withheld` code: an author may
+ * legitimately store `withheld` when nobody may store the value, and that cell
+ * was not widened by *this reader's* access.
+ */
+export function isWidenedByDisclosure(cell: { assertions: readonly Assertion[] }): boolean {
+  return cell.assertions.some((s) => !s.supersededBy && s.disclosure?.withheldFromReader === true);
+}
 
 /**
  * How a cell's assertions reduce to one displayed value.

@@ -11,7 +11,8 @@
  * needs to see the thing that failed in order to argue about the threshold.
  */
 import type { Analysis } from '../schema/analysis.js';
-import { reducedValue } from '../schema/analysis.js';
+import { reducedValue, cellIndex, cellKey } from '../schema/analysis.js';
+import { isWidenedByDisclosure } from '../schema/values.js';
 import { measurementFor } from '../schema/structure.js';
 
 export interface ScreeningFlag {
@@ -30,6 +31,12 @@ export interface ScreeningResult {
   flaggedAlternatives: string[];
   /** Criteria carrying an acceptability floor, so a reader can see the rules. */
   screenedOn: string[];
+  /**
+   * Screened cells whose content a disclosure projection withheld from this
+   * reader: they show as untested here and may pass or fail with more access
+   * (ADR-0021). Required, so no view can omit it.
+   */
+  widenedByDisclosure: number;
   notes: string[];
 }
 
@@ -37,6 +44,8 @@ export function screen(a: Analysis, measure: string): ScreeningResult {
   const flags: ScreeningFlag[] = [];
   const screenedOn: string[] = [];
   const notes: string[] = [];
+  const index = cellIndex(a);
+  let widenedByDisclosure = 0;
 
   for (const crit of a.criteria) {
     if (crit.tombstoned) continue;
@@ -48,6 +57,8 @@ export function screen(a: Analysis, measure: string): ScreeningResult {
 
     for (const alt of a.alternatives) {
       if (alt.tombstoned) continue;
+      const cell = index.get(cellKey(alt.id, crit.id, measure));
+      if (cell && isWidenedByDisclosure(cell)) widenedByDisclosure += 1;
       const r = reducedValue(a, alt.id, crit.id, measure);
       const v = typeof r?.value === 'number' ? r.value : undefined;
       if (v === undefined) {
@@ -79,10 +90,18 @@ export function screen(a: Analysis, measure: string): ScreeningResult {
     notes.push('no criterion declares an acceptability floor, so nothing was screened.');
   }
 
+  if (widenedByDisclosure > 0) {
+    notes.push(
+      `${widenedByDisclosure} screened cell(s) are withheld from you, so their floors could not be ` +
+      'tested for this reader.',
+    );
+  }
+
   return {
     flagged: flags,
     flaggedAlternatives: [...new Set(hard.map((f) => f.alternativeId))],
     screenedOn,
+    widenedByDisclosure,
     notes,
   };
 }
