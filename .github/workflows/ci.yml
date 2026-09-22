@@ -57,6 +57,32 @@ jobs:
         # metafile can be read. This is the half that actually proves it.
         run: pnpm lint:boundaries
 
+  browser:
+    # A real browser, provisioned now because the accessibility gate (ADR-0029)
+    # needs one and a Phase 3 rewrite of the workflow is the alternative (#41).
+    # New browser tests are new files under tests/browser/; this job's shape
+    # does not change when they arrive.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: pnpm test:browser
+
   hygiene:
     runs-on: ubuntu-latest
     steps:

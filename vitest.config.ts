@@ -6,5 +6,7 @@ export default defineConfig({
     // (ADR-0005). Tests that need a DOM live under tests/view/ and opt in.
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Real-browser tests run under vitest.browser.config.ts (`pnpm test:browser`).
+    exclude: ['tests/browser/**', '**/node_modules/**'],
   },
 });

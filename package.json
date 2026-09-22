@@ -68,6 +68,7 @@
     "emit-schema": "tsx scripts/emit-json-schema.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint:boundaries": "tsx scripts/check-boundaries.ts",
     "check": "pnpm typecheck && pnpm lint:boundaries && pnpm test",
@@ -89,7 +90,9 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@types/node": "^22.0.0",
+    "@vitest/browser": "^3.2.7",
     "ajv": "^8.20.0",
+    "playwright": "^1.63.0",
     "preact": "^10.24.0",
     "publint": "^0.3.24",
     "tsup": "^8.0.0",
