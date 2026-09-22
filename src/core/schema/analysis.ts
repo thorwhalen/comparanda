@@ -26,6 +26,7 @@ import { degradationOf, type Degradation } from './declarations.js';
 import {
   ScaleDeclaration, isOrdered, resolveScale, validateMeasurement, type Measurement,
 } from './measurement.js';
+import { axisGroups, makeInapplicability } from './groups.js';
 import { Rendition, validateEvidence, type EvidenceRuleId } from './evidence.js';
 
 /**
@@ -184,6 +185,8 @@ export const RULE_SOURCES = Object.freeze({
   'cell-coordinates-exist': 'ADR-0031',
   'cell-measure-declared': 'ADR-0031',
   'group-exists': 'ADR-0008',
+  'group-on-its-axis': 'ADR-0008',
+  'group-nesting-acyclic': 'ADR-0008',
   // Measurement: level, preference, range, thresholds.
   'criterion-has-a-measurement': 'ADR-0018',
   'measurement-well-formed': 'ADR-0018',
@@ -533,7 +536,48 @@ export function validateAnalysis(
     });
   });
 
+  // Groups belong to one axis, and nest as a tree (ADR-0008, the `labels`
+  // profile). A row tagged with the other axis's group, or a block naming one,
+  // is silently ignored by every reader -- which is why it is refused here.
+  const axisOf = new Map(a.groups.map((g) => [g.id, g.axis]));
+  const wrongAxis = (at: string, gid: string, want: 'alternatives' | 'criteria', fix: string) => {
+    const got = axisOf.get(gid);
+    if (got !== undefined && got !== want) {
+      err('group-on-its-axis', at, `group "${gid}" is a group of ${got}, used here on ${want}`, fix);
+    }
+  };
+  a.alternatives.forEach((alt, i) => alt.groupIds.forEach((g) => wrongAxis(
+    `alternatives[${i}].groupIds`, g, 'alternatives', `tag this alternative with a group whose axis is "alternatives".`,
+  )));
+  a.criteria.forEach((c, i) => c.groupIds.forEach((g) => wrongAxis(
+    `criteria[${i}].groupIds`, g, 'criteria', `tag this criterion with a group whose axis is "criteria".`,
+  )));
+  a.groups.forEach((g, i) => {
+    if (g.parentId === undefined) return;
+    if (!groupIds.has(g.parentId)) {
+      err('group-exists', `groups[${i}].parentId`, `unknown group "${g.parentId}"`,
+        `add a group with id "${g.parentId}", or remove the parentId.`);
+    } else {
+      wrongAxis(`groups[${i}].parentId`, g.parentId, g.axis, 'nest a group only under a group on the same axis.');
+    }
+  });
+  for (const axis of ['alternatives', 'criteria'] as const) {
+    for (const r of axisGroups(a, axis).refused) {
+      if (r.kind === 'nesting' && r.codes.includes('cycle')) {
+        err(
+          'group-nesting-acyclic', `groups[${a.groups.findIndex((g) => g.id === r.childId)}].parentId`,
+          `nesting "${r.childId}" under "${r.groupId}" closes a cycle; a group cannot contain itself`,
+          `remove one parentId on the cycle through "${r.childId}".`,
+        );
+      }
+    }
+  }
+
   for (const [i, b] of a.inapplicable.entries()) {
+    wrongAxis(`inapplicable[${i}].alternativeGroupId`, b.alternativeGroupId, 'alternatives',
+      'name a group of alternatives here.');
+    wrongAxis(`inapplicable[${i}].criterionGroupId`, b.criterionGroupId, 'criteria',
+      'name a group of criteria here.');
     if (!groupIds.has(b.alternativeGroupId)) {
       err('group-exists', `inapplicable[${i}]`, `unknown group "${b.alternativeGroupId}"`,
         'add the group, or remove the inapplicable block.');
@@ -784,12 +828,10 @@ export function reducedValue(
 
 /** Whether a (alternative, criterion) pair falls in a declared inapplicable block. */
 export function isInapplicable(a: Analysis, alternativeId: string, criterionId: string): boolean {
-  const alt = a.alternatives.find((x) => x.id === alternativeId);
-  const crit = a.criteria.find((x) => x.id === criterionId);
-  if (!alt || !crit) return false;
-  return a.inapplicable.some(
-    (b) => alt.groupIds.includes(b.alternativeGroupId) && crit.groupIds.includes(b.criterionGroupId),
-  );
+  // Delegates to the group adapter, which reads membership by closure through
+  // `@zodal/groups-core`: a block on a group covers its sub-groups' members.
+  // A whole-matrix walk should call `makeInapplicability` once instead.
+  return makeInapplicability(a)(alternativeId, criterionId);
 }
 
 /**
@@ -804,10 +846,11 @@ export function completeness(
   const crits = scope.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
   const cells: { hasValue: boolean; code?: string; criterionId?: string }[] = [];
   const reader = makeCellReader(a, scope.measure);
+  const inapplicable = makeInapplicability(a);
 
   for (const altId of alts) {
     for (const critId of crits) {
-      if (isInapplicable(a, altId, critId)) {
+      if (inapplicable(altId, critId)) {
         cells.push({ hasValue: false, code: NOT_APPLICABLE, criterionId: critId });
         continue;
       }

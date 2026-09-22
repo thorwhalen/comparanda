@@ -75,6 +75,7 @@
     "lint:package": "publint --strict && attw --pack . --profile node16"
   },
   "dependencies": {
+    "@zodal/groups-core": "^0.1.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {

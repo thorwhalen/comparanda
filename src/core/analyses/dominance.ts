@@ -29,7 +29,8 @@
  * missing data, measured in alternatives you cannot yet set aside.
  */
 import type { Analysis } from '../schema/analysis.js';
-import { isInapplicable, reducedValue, makeCellReader } from '../schema/analysis.js';
+import { reducedValue, makeCellReader } from '../schema/analysis.js';
+import { makeInapplicability } from '../schema/groups.js';
 import { measurementFor } from '../schema/structure.js';
 import { admitsDominance, isOrdered, type Measurement } from '../schema/measurement.js';
 import { resolveMissingCode } from '../schema/missingness.js';
@@ -92,8 +93,9 @@ export interface DominanceResult {
 /** The interval a cell contributes, or `undefined` if it leaves the comparison. */
 function intervalFor(
   a: Analysis, altId: string, critId: string, m: Measurement, measure: string,
+  inapplicable: (altId: string, critId: string) => boolean,
 ): Interval | undefined | 'excluded' {
-  if (isInapplicable(a, altId, critId)) return 'excluded';
+  if (inapplicable(altId, critId)) return 'excluded';
 
   const r = reducedValue(a, altId, critId, measure);
   const range = m.range;
@@ -193,13 +195,15 @@ function prepare(a: Analysis, opts: DominanceOptions): Prepared {
     measurements.set(cid, m);
   }
 
-  // Materialise the oriented intervals once.
+  // Materialise the oriented intervals once, reading group-pair inapplicability
+  // through one prepared lookup rather than rebuilding group closure per cell.
+  const inapplicable = makeInapplicability(a);
   const rows = new Map<string, Row>();
   for (const altId of altIds) {
     const row: Row = new Map();
     for (const cid of basis) {
       const m = measurements.get(cid)!;
-      const raw = intervalFor(a, altId, cid, m, opts.measure);
+      const raw = intervalFor(a, altId, cid, m, opts.measure, inapplicable);
       if (raw === 'excluded') { row.set(cid, 'structural'); continue; }
       if (raw === undefined) { row.set(cid, 'non-numeric'); continue; }
       const o = orient(raw, m);
@@ -556,6 +560,7 @@ export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlankWo
   const reader = makeCellReader(a, opts.measure);
 
   // Rebuild the oriented intervals once, exactly as `dominance` does.
+  const inapplicable = makeInapplicability(a);
   type Row = Map<string, Interval | 'excluded'>;
   const rows = new Map<string, Row>();
   const measurements = new Map<string, Measurement>();
@@ -567,7 +572,7 @@ export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlankWo
     const row: Row = new Map();
     for (const cid of result.basis) {
       const m = measurements.get(cid)!;
-      const raw = intervalFor(a, altId, cid, m, opts.measure);
+      const raw = intervalFor(a, altId, cid, m, opts.measure, inapplicable);
       row.set(cid, raw === 'excluded' || raw === undefined ? 'excluded' : (orient(raw, m) ?? 'excluded'));
     }
     rows.set(altId, row);
@@ -600,7 +605,7 @@ export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlankWo
     const row = rows.get(altId)!;
     for (const cid of result.basis) {
       if (reader.read(altId, cid)?.value !== undefined) continue;
-      if (isInapplicable(a, altId, cid)) continue;
+      if (inapplicable(altId, cid)) continue;
       const current = row.get(cid);
       if (current === 'excluded' || !current) continue;
 

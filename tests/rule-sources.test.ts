@@ -65,7 +65,13 @@ const hostile = {
   schemaVersion: 99,
   subject: { question: 'which one?' },
   authors: [AUTHOR],
-  alternatives: [{ id: 'x', label: 'X', groupIds: ['ghost-group'] }, { id: 'x', label: 'X again' }],
+  alternatives: [{ id: 'x', label: 'X', groupIds: ['ghost-group', 'gc'] }, { id: 'x', label: 'X again' }],
+  groups: [
+    // A nesting cycle, and a criteria group used on an alternative.
+    { id: 'ga', label: 'A', axis: 'alternatives', parentId: 'gb' },
+    { id: 'gb', label: 'B', axis: 'alternatives', parentId: 'ga' },
+    { id: 'gc', label: 'C', axis: 'criteria' },
+  ],
   criteria: [
     { id: 'c', label: 'C', defaultMeasurement: ORDINAL },
     { id: 'bare', label: 'No measurement', weights: { substitution: 1 } },
