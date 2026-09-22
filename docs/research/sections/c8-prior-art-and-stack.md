@@ -1,5 +1,8 @@
 # Prior art, and the view framework under the standalone-bundle constraint
 
+> [!IMPORTANT]
+> **Superseded on two points.** (1) The reorder keybinding: this section suggests `Alt`+arrows, which is browser Back/Forward on Windows and Linux; never bind bare `Alt+Arrow` ([`findings-visualisation.md` § 7.2](../findings-visualisation.md), and § 4.1 for the two-route specification). (2) The drag dependency: this section adopts `@atlaskit/pragmatic-drag-and-drop` only if auto-scroll turns out to be needed; the findings adopt it for the pointer path, because a scroll container in both axes with sticky headers requires auto-scroll — still as a thin second path over `moveTo`, deletable without touching the keyboard path ([§ 7.1](../findings-visualisation.md)). The evidence below stands, the recommendation does not; the `dnd-kit` withdrawal and the keyboard-first ordering are kept.
+
 **Research question(s):**
 (A) For each named piece of prior art — Airtable / Notion / Coda, Loomio and Polis, Google Docs,
 Miro, Figma, Observable, Jupyter/Quarto, dedicated MCDA tools, and academic reorderable-matrix

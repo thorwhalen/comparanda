@@ -22,24 +22,39 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./view": {
-      "types": "./dist/view/index.d.ts",
-      "import": "./dist/view/index.js",
-      "require": "./dist/view/index.cjs"
+      "import": {
+        "types": "./dist/view/index.d.ts",
+        "default": "./dist/view/index.js"
+      },
+      "require": {
+        "types": "./dist/view/index.d.cts",
+        "default": "./dist/view/index.cjs"
+      }
     },
     "./store": {
-      "types": "./dist/store/index.d.ts",
-      "import": "./dist/store/index.js",
-      "require": "./dist/store/index.cjs"
+      "import": {
+        "types": "./dist/store/index.d.ts",
+        "default": "./dist/store/index.js"
+      },
+      "require": {
+        "types": "./dist/store/index.d.cts",
+        "default": "./dist/store/index.cjs"
+      }
     }
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/index.d.cts",
   "sideEffects": false,
   "files": [
     "dist",
@@ -56,7 +71,8 @@
     "typecheck": "tsc --noEmit",
     "lint:boundaries": "tsx scripts/check-boundaries.ts",
     "check": "pnpm typecheck && pnpm lint:boundaries && pnpm test",
-    "prepublishOnly": "pnpm check && pnpm build && pnpm emit-schema"
+    "prepublishOnly": "pnpm check && pnpm build && pnpm emit-schema && pnpm lint:package",
+    "lint:package": "publint --strict && attw --pack . --profile node16"
   },
   "dependencies": {
     "zod": "^4.3.6"
@@ -70,9 +86,11 @@
     }
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@types/node": "^22.0.0",
     "ajv": "^8.20.0",
     "preact": "^10.24.0",
+    "publint": "^0.3.24",
     "tsup": "^8.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",

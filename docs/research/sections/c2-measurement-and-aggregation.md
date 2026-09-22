@@ -1,5 +1,10 @@
 # Levels of measurement, the Likert-averaging argument, and aggregation methods
 
+> [!IMPORTANT]
+> **Superseded on four points.** (1) `certainlyDominates` is renamed `necessarilyDominates` (Conflict A). (2) The dominance rules are written against `pending` and `unknown`, since renamed `deferred` and `indeterminate`, with `not-evidenced` added (Conflict C). (3) `direction` is deleted from `range`; direction of preference is carried by `preference` alone (Conflict F, and § 2 for the merged field design). (4) Dropping a `not-applicable` criterion per pair is the non-transitive common-dimensions rule; dominance is computed over a fixed criterion set applicable to every alternative in scope, and the per-pair "9 of 12; 3 not applicable" wording survives only as an explanation (Conflict G). See [`findings-terminology.md` § 7](../findings-terminology.md); the evidence below stands, the recommendation does not.
+>
+> The transitivity proof and the 200,000-triple verification carry over unchanged, and the recommendation to widen `withheld` to the declared range is kept for readers without access (Conflict B).
+
 **Research question(s):** What arithmetic is legal on `comparanda`'s data, and what aggregation and
 reduction methods should the core actually ship? Specifically: (A) is the "1–5 ratings are ordinal,
 do not average them" position defensible against the robustness literature, and does the

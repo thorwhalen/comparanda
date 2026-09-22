@@ -43,6 +43,15 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Packed tarball resolves (publint, arethetypeswrong)
+        # Packs the tarball npm would publish and checks that every subpath in
+        # the exports map resolves to JavaScript AND to types, for ESM and CJS
+        # consumers alike. The exports map is otherwise only ever exercised by
+        # the first person to install the package. Profile node16: the
+        # `engines` floor is Node 20, so node10 resolution (which cannot read
+        # subpath exports at all) is ignored rather than papered over.
+        run: pnpm lint:package
+
       - name: Core bundle contains no view code
         # The static check above runs again against the real build, where the
         # metafile can be read. This is the half that actually proves it.
