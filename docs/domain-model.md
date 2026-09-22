@@ -1,5 +1,9 @@
 # Domain model and glossary
 
+**Version: schema v1, as of 2026-08-22.** Bump this line whenever a schema version change or a
+vocabulary rename lands here, so a consumer (e.g. `rubricator`) can state which domain-model
+version an artifact was derived from (see `docs/cross-repo-coordination.md`).
+
 This file fixes the vocabulary. Implementers and agents should use these words in code, docs and
 prompts, so that `comparanda`, `rubricator` and any downstream tool mean the same thing by them.
 
