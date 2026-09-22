@@ -44,6 +44,7 @@ import type { Analysis } from '../schema/analysis.js';
 import { measurementFor } from '../schema/structure.js';
 import { isOrdered, type Measurement } from '../schema/measurement.js';
 import { makeReadings, widenedCells } from './readings.js';
+import type { AnalysisResult } from './registry.js';
 
 /** The working default of the coverage floor (ADR-0015). Provisional; see `coverageFloor`. */
 export const DEFAULT_COVERAGE_FLOOR = 2 / 3;
@@ -61,10 +62,11 @@ export interface WeightedSumOptions {
   coverageFloor?: number;
 }
 
-export type WeightedSumExclusionReason = 'no-substitution-weight' | 'no-measurement';
+export type WeightedSumExclusionReason = 'no-substitution-weight';
 
 export type WeightedSumRefusalReason =
-  | 'no-declared-range' | 'no-preference-direction' | 'target-preference' | 'negative-weight' | 'no-weighted-criteria';
+  | 'no-declared-range' | 'no-preference-direction' | 'target-preference' | 'negative-weight' | 'no-weighted-criteria'
+  | 'no-measurement' | 'non-numeric-levels';
 
 export interface WeightedSumRefusal {
   /** The criterion that stopped the analysis, when one did. */
@@ -107,7 +109,7 @@ export interface Renormalisation {
   label: string;
 }
 
-export interface WeightedSumResult {
+export interface WeightedSumResult extends AnalysisResult {
   method: 'weighted-sum';
   /** Set when the analysis refused to run. `rows` is then empty. */
   refused?: WeightedSumRefusal;
@@ -117,7 +119,7 @@ export interface WeightedSumResult {
   coverageFloor: number;
   rows: WeightedSumRow[];
   /** The method and what it assumes, for display at the point of use. Never empty. */
-  assumptions: string[];
+  assumptions: readonly [string, ...string[]];
   /** Warnings that are true of the numbers; not suppressible. */
   warnings: string[];
   widenedByDisclosure: number;
@@ -131,6 +133,9 @@ const ORDINAL_WARNING =
   'Ordinal criteria are in this sum. Their levels are positions, not quantities; treating the gap ' +
   'between 1 and 2 as equal to the gap between 4 and 5 is a modelling choice this aggregate makes ' +
   'for you. Prefer dominance or the datum tally where the ordinal criteria decide the question.';
+
+/** Floating-point slack for the coverage comparison; far below any meaningful weight. */
+const COVERAGE_TOLERANCE = 1e-9;
 
 function refusalOf(m: Measurement | undefined, weight: number, cid: string): WeightedSumRefusal | undefined {
   if (weight < 0) {
@@ -156,6 +161,14 @@ function refusalOf(m: Measurement | undefined, weight: number, cid: string): Wei
         'never observed extremes -- those move every score when an alternative is added (ADR-0015, ADR-0018, ADR-0020).',
     };
   }
+  if (m.levels && m.levels.some((l) => typeof l !== 'number')) {
+    // Otherwise every value reads as a blank and the row is silently labelled
+    // "insufficient coverage" with its data present. (Review finding.)
+    return {
+      criterionId: cid, reason: 'non-numeric-levels',
+      message: `criterion "${cid}" has non-numeric levels, which have no position in a numeric range to weight.`,
+    };
+  }
   return undefined;
 }
 
@@ -179,7 +192,12 @@ export function weightedSum(a: Analysis, opts: WeightedSumOptions): WeightedSumR
     const weight = crit?.weights?.substitution;
     if (weight === undefined) { excluded.push({ criterionId: cid, reason: 'no-substitution-weight' }); continue; }
     const m = crit ? measurementFor(crit, opts.measure) : undefined;
-    if (!m) { excluded.push({ criterionId: cid, reason: 'no-measurement' }); continue; }
+    // A weighted criterion the method cannot place stops the analysis rather
+    // than being dropped: dropping it changes the sum the author asked for.
+    if (!m) {
+      refused = { criterionId: cid, reason: 'no-measurement', message: `criterion "${cid}" carries a substitution weight but declares no measurement for "${opts.measure}".` };
+      break;
+    }
     const r = refusalOf(m, weight, cid);
     if (r) { refused = r; break; }
     basis.push({ criterionId: cid, weight, m });
@@ -191,7 +209,7 @@ export function weightedSum(a: Analysis, opts: WeightedSumOptions): WeightedSumR
     };
   }
 
-  const assumptions = [
+  const assumptions: [string, ...string[]] = [
     'Weighted sum of each criterion\'s position within its declared range (0 = worst end, 1 = best end), ' +
       'weighted by substitution weights. Compensatory: a gain on one criterion buys off a loss on another ' +
       'at the declared rate.',
@@ -248,7 +266,9 @@ export function weightedSum(a: Analysis, opts: WeightedSumOptions): WeightedSumR
     }
     const coverage = observed / applicable;
     const renormalised = notApplicable.length > 0 ? { criteria: notApplicable, label: IMPUTATION_LABEL } : undefined;
-    if (coverage < coverageFloor) {
+    // A small tolerance, so a row sitting exactly on the floor is not lost to
+    // floating-point (0.225 + 0.15 + 0.3 of 0.675 reads 0.6666666666666665).
+    if (coverage < coverageFloor - COVERAGE_TOLERANCE) {
       rows.push({ alternativeId: alt, status: 'not-scored', label: 'not scored -- insufficient coverage', coverage });
       continue;
     }

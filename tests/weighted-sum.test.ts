@@ -174,3 +174,35 @@ describe('the coverage-floor simulation (#84, item 4)', () => {
     }
   });
 });
+
+describe('review findings (#152)', () => {
+  it('scores a row that sits exactly on the 2/3 floor, despite floating point', () => {
+    // 0.225 blank + 0.15 + 0.3 observed: 0.45 / 0.675 = 2/3, computed as 0.6666666666666665.
+    const r = run(doc([{ m: ORD, w: 0.225 }, { m: ORD, w: 0.15 }, { m: ORD, w: 0.3 }], { x: [undefined, 3, 4] }));
+    expect(row(r, 'x').status).toBe('interval');
+  });
+
+  it('refuses a weighted criterion with no measurement instead of dropping it', () => {
+    const a = doc([{ m: ORD, w: 1 }], { x: [3] });
+    const withBare = { ...a, criteria: [...a.criteria, { ...a.criteria[0]!, id: 'bare', defaultMeasurement: undefined, measurements: {} }] };
+    const r = weightedSum(withBare as Analysis, { measure: 'score' });
+    expect(r.refused?.reason).toBe('no-measurement');
+    expect(r.rows).toEqual([]);
+  });
+
+  it('refuses an ordinal criterion whose levels are not numbers, rather than reading every value as a blank', () => {
+    const r = run(doc([{ m: { level: 'ordinal', preference: 'increasing', range: { min: 1, max: 3 }, levels: ['low', 'mid', 'high'] }, w: 1 }], { x: [undefined] }));
+    expect(r.refused?.reason).toBe('non-numeric-levels');
+  });
+
+  it('carries an interval for a decreasing criterion with a blank, oriented best-high', () => {
+    const r = run(doc([{ m: COST, w: 1 }, { m: ORD, w: 2 }], { x: [undefined, 5] }));
+    const x = row(r, 'x');
+    expect(x.status).toBe('interval');
+    if (x.status === 'interval') {
+      // c1 contributes 2/3 fully; the blank cost contributes [0, 1/3].
+      expect(x.interval[0]).toBeCloseTo(2 / 3, 12);
+      expect(x.interval[1]).toBeCloseTo(1, 12);
+    }
+  });
+});

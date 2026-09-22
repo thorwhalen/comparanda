@@ -14,6 +14,7 @@ import { screen } from './screening.js';
 import { pughTally, type PughOptions } from './pugh.js';
 import { findNonDiscriminatingCriteria, type NonDiscriminatingOptions } from './non-discriminating.js';
 import { agreement, type AgreementOptions } from './agreement.js';
+import { weightedSum, type WeightedSumOptions } from './weighted-sum.js';
 
 export const dominanceAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'dominance', label: 'Dominance',
@@ -34,4 +35,8 @@ export const nonDiscriminatingAnalysis = /* @__PURE__ */ defineAnalysis({
 export const agreementAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'agreement', label: 'Agreement',
   run: (a, o: AgreementOptions) => agreement(a, o),
+});
+export const weightedSumAnalysis = /* @__PURE__ */ defineAnalysis({
+  id: 'weighted-sum', label: 'Weighted sum (opt-in)',
+  run: (a, o: WeightedSumOptions) => weightedSum(a, o),
 });
