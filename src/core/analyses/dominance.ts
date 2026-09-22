@@ -37,13 +37,20 @@ import { admitsDominance, isOrdered, type Measurement } from '../schema/measurem
 import type { AnalysisResult } from './registry.js';
 
 /** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
-export const DOMINANCE_ASSUMPTIONS: readonly string[] = Object.freeze([
+export const DOMINANCE_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
   "A contingently missing cell could be anything in its criterion's declared range, and is compared over that whole interval (ADR-0019).",
   "The comparison basis is fixed across the whole scope; nominal, range-less, and preference none/ordered/target criteria are excluded and named.",
   "A structurally absent cell leaves the comparison for the pairs it is in.",
   "Only necessary dominance builds the front; possible dominance is used only as a filter.",
   "With the practical tolerance on, the relation is no longer transitive, and cycles are reported rather than assumed away.",
-]);
+] as const);
+
+/** What a single pair's explanation rests on: the same readings, no front and no cycles. */
+export const EXPLANATION_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
+  "A contingently missing cell could be anything in its criterion's declared range, and is compared over that whole interval (ADR-0019).",
+  "The pair is compared over the same fixed basis dominance() uses for this scope; excluded criteria are named.",
+  "The explanation is for display: it reports the relation dominance() computes and never computes a different one.",
+] as const);
 
 export interface Interval { lo: number; hi: number }
 
@@ -575,7 +582,7 @@ export function explainDominance(
       'withheld from you and compared at their widest possible values.)';
   }
 
-  return { assumptions: DOMINANCE_ASSUMPTIONS,
+  return { assumptions: EXPLANATION_ASSUMPTIONS,
     x, y, necessarilyDominates: nec, possiblyDominates: nec || pos, criteria,
     basis: p.basis, excluded: p.excluded, basisDescription: describeBasis(a, p), summary,
     widenedByDisclosure,

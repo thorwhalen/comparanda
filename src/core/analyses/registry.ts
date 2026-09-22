@@ -24,9 +24,10 @@ import type { Analysis } from '../schema/analysis.js';
 export interface AnalysisResult {
   /**
    * The assumptions the result rests on, in words a reader can check -- shown
-   * beside the result, never only in documentation.
+   * beside the result, never only in documentation. A non-empty tuple, so
+   * `assumptions: []` does not typecheck either.
    */
-  readonly assumptions: readonly string[];
+  readonly assumptions: readonly [string, ...string[]];
   /** Cells a disclosure projection withheld from this reader (ADR-0021). */
   readonly widenedByDisclosure: number;
 }

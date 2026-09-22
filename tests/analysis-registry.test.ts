@@ -41,8 +41,13 @@ describe('a result without assumptions does not typecheck', () => {
       // @ts-expect-error -- the result has no `assumptions`, so this is not an analysis.
       run: () => ({ widenedByDisclosure: 0 }),
     });
-    // The line above is checked by `tsc` (pnpm typecheck); if it ever compiled,
-    // the unused @ts-expect-error would fail the typecheck.
+    defineAnalysis({
+      id: 'empty', label: 'Empty',
+      // @ts-expect-error -- an empty assumptions list is not a statement of assumptions.
+      run: () => ({ assumptions: [], widenedByDisclosure: 0 }),
+    });
+    // The lines above are checked by `tsc` (pnpm typecheck); if either ever
+    // compiled, the unused @ts-expect-error would fail the typecheck.
     expect(true).toBe(true);
   });
 });

@@ -26,11 +26,11 @@ import { indifferenceOf, makeReadings, widenedCells } from './readings.js';
 import type { AnalysisResult } from './registry.js';
 
 /** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
-export const NON_DISCRIMINATING_ASSUMPTIONS: readonly string[] = Object.freeze([
+export const NON_DISCRIMINATING_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
   "A criterion does no work when every compared alternative lies within its declared indifference threshold (exact equality when none is declared).",
   "A blank could be anything in the declared range, so a column with blanks is undetermined unless the range itself is narrower than the threshold.",
   "This proposes; it never removes a criterion.",
-]);
+] as const);
 
 export interface NonDiscriminatingOptions {
   measure: string;

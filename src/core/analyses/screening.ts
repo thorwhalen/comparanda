@@ -17,11 +17,11 @@ import { measurementFor } from '../schema/structure.js';
 import type { AnalysisResult } from './registry.js';
 
 /** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
-export const SCREENING_ASSUMPTIONS: readonly string[] = Object.freeze([
+export const SCREENING_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
   "Each acceptability floor is absolute and non-compensatory: strength elsewhere does not offset a failure here.",
   "An alternative below a floor is flagged, never removed.",
-  "A blank cannot be tested against its floor and is reported as untested, not as a pass.",
-]);
+  "A blank or non-numeric cell cannot be tested against its floor and is reported as untested, not as a pass.",
+] as const);
 
 export interface ScreeningFlag {
   alternativeId: string;
