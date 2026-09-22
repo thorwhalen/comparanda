@@ -1,5 +1,8 @@
 # Inter-rater agreement, Delphi, and displaying disagreement without implying a mean
 
+> [!IMPORTANT]
+> **Superseded on two points.** (1) The missingness-to-alpha table is written against `pending` and `unknown`, since renamed `deferred` and `indeterminate`, with `not-evidenced` added and counted separately; the restated table is in [`findings-terminology.md` § 7, Conflict C](../findings-terminology.md). (2) The ADR numbers proposed here (0017, 0018, 0019) collided with other sections and are not reserved — "numbers below are proposals, and must be allocated once, in one place" ([§ 7, Conflict H](../findings-terminology.md)); these decisions were settled as ADR-0022 (agreement statistics), ADR-0024 (the rater dot strip) and ADR-0023 (rounds). The evidence below stands, the recommendation does not.
+
 **Research question(s):** Does Krippendorff's alpha actually handle ordinal data with missing
 values (comparanda's exact case), and what is the real computation, its pitfalls, and its
 acceptable range? Why are Cohen's/Fleiss's kappa, ICC and Gwet's AC1/AC2 right or wrong here?

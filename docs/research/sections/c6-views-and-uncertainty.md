@@ -1,5 +1,8 @@
 # Which views to ship, and how to encode uncertainty honestly
 
+> [!IMPORTANT]
+> **Superseded on one point.** This section recommends evaluating `lineupjs` against the bundle budget before building `RankFlow`; the findings decline it as a dependency — read the paper as prior art, build `RankFlow` ourselves. See [`findings-visualisation.md` § 7.3](../findings-visualisation.md) (and § 2.4); the evidence below stands, the recommendation does not.
+
 **Research question(s):** Which views beyond the matrix earn a place in v1 — parallel coordinates,
 Pareto scatter, slope/bump charts, small multiples of dot plots, radar, rank-flow under weight
 changes, diverging bars for multi-rater spread — and for each, what does it answer better than the

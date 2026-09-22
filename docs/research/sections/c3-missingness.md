@@ -1,5 +1,8 @@
 # Missingness vocabularies and incomplete decision matrices
 
+> [!IMPORTANT]
+> **Superseded on one point.** § 3.3 drops a criterion from the comparison for an alternative whose cell is structurally missing; per pair, that is the common-dimensions rule, which is non-transitive. Dominance is instead computed over a fixed criterion set applicable to every alternative in scope, with the excluded criteria named in the result. See [`findings-terminology.md` § 7, Conflict G](../findings-terminology.md); the evidence below stands, the recommendation does not.
+
 **Research question(s):** What are the standard vocabularies for observation status (SDMX, survey
 research, DDI, and others), and how does `comparanda`'s set — `not-applicable`, `not-assessed`,
 `pending`, `unknown`, `withheld` — map against them? What is missing, what is named badly, and

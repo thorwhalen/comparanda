@@ -1,5 +1,8 @@
 # Interaction and accessibility: reordering, grid semantics, sticky layout, progressive disclosure
 
+> [!IMPORTANT]
+> **Superseded on one point.** The ADR numbers proposed here (0017, 0018, 0019) collided with the terminology sections and are not reserved; [`findings-visualisation.md` § 7.7](../findings-visualisation.md) leaves 0017–0019 to the terminology findings. These decisions were settled as ADR-0027 (matrix accessibility semantics), ADR-0028 (non-colour channels) and ADR-0029 (accessibility acceptance criteria). The evidence and the recommendations below stand.
+
 **Research question(s):** How do we make reordering of alternatives (rows) and criteria (columns)
 genuinely accessible — keyboard and screen reader, not just pointer? What is the right ARIA pattern
 for a 2-D matrix, given real screen-reader behaviour rather than the spec? How do we build sticky
