@@ -102,17 +102,52 @@ describe('each rule catches its deliberately violating fixture', () => {
 
   it('sees view imports however they are written', () => {
     for (const src of [
-      "export { x } from '../view/index.js';",
+      "export { x } from '../../view/index.js';",
+      "export * from '../../view/index.js';",
       "const v = await import('../../view/matrix.js');",
-      "import type { Props } from '../view';",
+      "import type { Props } from '../../view';",
     ]) {
-      expect(rulesHit('src/core/a.ts', src), src).toContain('core-must-not-import-view');
+      expect(rulesHit('src/core/analyses/a.ts', src), src).toContain('core-must-not-import-view');
     }
+  });
+
+  it('resolves the path rather than matching the word "view"', () => {
+    for (const src of [
+      "import { x } from './view/helpers.js';", // a core subdirectory that happens to be called view
+      "import { x } from '../preview.js';",
+      "import { x } from '../viewport.js';",
+    ]) {
+      expect(rulesHit('src/core/analyses/a.ts', src), src).not.toContain('core-must-not-import-view');
+    }
+  });
+
+  it('finds registration wherever it runs at import, and nowhere else', () => {
+    const atImport = [
+      'registerEncoding(heat);',
+      'export const heat = registerEncoding({ id: "heat" });',
+      'const _ = register(impl);',
+      'export default register(impl);',
+      '(() => { registerMigration(m); })();',
+      'if (ready) registerMigration(m);',
+      'ENCODING_REGISTRY.set("heat", heat);',
+      'encodings.registry.add(heat);',
+    ];
+    for (const src of atImport) {
+      expect(rulesHit('src/view/x.ts', src), src).toEqual(['no-self-registration']);
+    }
+    const later = [
+      'export function compose() { registerEncoding(heat); }',
+      'export const compose = () => registerEncoding(heat);',
+      'class Root { start() { registerEncoding(heat); } }',
+      'const n = registeredMigrations().length;',
+      'const map = new Map(); map.set("heat", heat);',
+    ];
+    for (const src of later) expect(rulesHit('src/view/x.ts', src), src).toEqual([]);
   });
 
   it('tells classic zod from zod/mini', () => {
     for (const s of ['zod', 'zod/v4', 'zod/v3', 'zod/v4/classic']) expect(isClassicZod(s), s).toBe(true);
-    for (const s of ['zod/mini', 'zod/v4/mini', 'zod/v4/core', 'zodal', '@zodal/groups-core']) {
+    for (const s of ['zod/mini', 'zod/v4/mini', 'zod/v4/core', 'zod/v4/locales/en.js', 'zodal', '@zodal/groups-core']) {
       expect(isClassicZod(s), s).toBe(false);
     }
   });
@@ -204,6 +239,31 @@ describe('core bundle isolation', () => {
     // A metafile whose entry is not where we look must not read as clean.
     const drifted = meta({ outputs: { 'dist/index.js': { inputs: { 'src/view/x.ts': {} } } } });
     expect(bundleViolations(drifted).map((x) => x.rule)).toEqual(['bundle-check-cannot-run']);
+  });
+
+  it('follows dynamic imports: a lazy view import from core still reaches core consumers', () => {
+    const lazy = meta({
+      outputs: {
+        'dist/index.js': { entryPoint: 'src/index.ts', inputs: {}, imports: [{ path: 'dist/matrix-X.js', kind: 'dynamic-import' }] },
+        'dist/matrix-X.js': { inputs: { 'src/view/matrix.ts': {} } },
+      },
+    });
+    expect(bundleViolations(lazy).map((x) => x.rule)).toEqual(['core-bundle-contains-view']);
+  });
+
+  it('names the core-side importer of classic zod, not a view file that also imports it', () => {
+    const both = meta({
+      inputs: {
+        'src/view/a.ts': { imports: [{ path: 'zod' }] },
+        'src/index.ts': { imports: [{ path: 'src/core/x.ts' }] },
+        'src/core/x.ts': { imports: [{ path: 'zod' }] },
+      },
+      outputs: {
+        'dist/index.js': { entryPoint: 'src/index.ts', inputs: { 'src/core/x.ts': {} }, imports: [{ path: 'zod' }] },
+      },
+    });
+    // The view file is listed first; a first-match lookup would name it.
+    expect(bundleViolations(both)[0]!.text).toBe('src/index.ts -> src/core/x.ts -> zod');
   });
 
   it('names a chain it cannot connect by the input alone', () => {

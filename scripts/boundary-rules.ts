@@ -27,6 +27,7 @@
  * The bundle rules re-check the first and fourth against what the build actually
  * contains, following chunk imports, and name the import chain that got there.
  */
+import { posix } from 'node:path';
 import ts from 'typescript';
 
 export interface Violation { file: string; line: number; rule: string; text: string }
@@ -48,7 +49,9 @@ export const NETWORK = ['fetch(', 'XMLHttpRequest', 'WebSocket', 'EventSource', 
  */
 export function isClassicZod(specifier: string): boolean {
   if (specifier !== 'zod' && !specifier.startsWith('zod/')) return false;
-  return !/^zod\/(?:mini|v4\/mini|v4\/core|v4-mini)(?:\/|$)/.test(specifier);
+  // Locales are zod's own tree-shakable per-language message maps, meant for
+  // mini users too.
+  return !/^zod\/(?:mini|v4\/mini|v4\/core|v4-mini|locales|v4\/locales)(?:\/|$)/.test(specifier);
 }
 
 /** Strip comments and string literals so a mention in prose is not a violation. */
@@ -89,25 +92,59 @@ export function moduleSpecifiers(sf: ts.SourceFile): { specifier: string; node: 
 }
 
 /**
- * Calls at module scope that register something: a call statement at the top
- * level of a file whose callee is `register…` or `….register…(…)`.
+ * Calls that run at module scope and register something.
  *
- * Only the top level: a composition root calling `registerMigration(…)` inside a
- * function is exactly the intended pattern, and is not flagged.
+ * "At module scope" means: anywhere in the file that executes on import --
+ * a bare statement, an initialiser (`export const heat = registerEncoding(...)`),
+ * `export default register(...)`, a condition, a comma expression, or the body
+ * of an immediately invoked function. Not inside a function, method or class
+ * member that runs later: a composition root calling `registerMigration(...)`
+ * inside a function is exactly the intended pattern.
+ *
+ * "Registers" means a callee named `register` / `registerX` (not `registered…`
+ * or `registry…`), or `set` / `add` / `register` called on something named like
+ * a registry.
  */
 export function moduleScopeRegistrations(sf: ts.SourceFile): ts.CallExpression[] {
   const out: ts.CallExpression[] = [];
-  const isRegister = (name: string) => /^register/i.test(name);
-  for (const stmt of sf.statements) {
-    if (!ts.isExpressionStatement(stmt)) continue;
-    let e: ts.Expression = stmt.expression;
-    while (ts.isAwaitExpression(e) || ts.isVoidExpression(e) || ts.isParenthesizedExpression(e)) e = e.expression;
-    if (!ts.isCallExpression(e)) continue;
+  const isRegisterName = (name: string) => /^[Rr]egister(?![a-z])/.test(name);
+  const registers = (e: ts.CallExpression): boolean => {
     const callee = e.expression;
-    const name = ts.isIdentifier(callee) ? callee.text
-      : ts.isPropertyAccessExpression(callee) ? callee.name.text : '';
-    if (isRegister(name)) out.push(e);
-  }
+    if (ts.isIdentifier(callee)) return isRegisterName(callee.text);
+    if (ts.isPropertyAccessExpression(callee)) {
+      if (isRegisterName(callee.name.text)) return true;
+      const target = callee.expression;
+      const targetName = ts.isIdentifier(target) ? target.text
+        : ts.isPropertyAccessExpression(target) ? target.name.text : '';
+      return /registry/i.test(targetName) && ['set', 'add', 'register'].includes(callee.name.text);
+    }
+    return false;
+  };
+  const isFunctionLike = (n: ts.Node) =>
+    ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) || ts.isArrowFunction(n) ||
+    ts.isMethodDeclaration(n) || ts.isGetAccessor(n) || ts.isSetAccessor(n) || ts.isConstructorDeclaration(n) ||
+    ts.isPropertyDeclaration(n);
+  const isIife = (n: ts.Node): n is ts.CallExpression => {
+    if (!ts.isCallExpression(n)) return false;
+    let callee: ts.Expression = n.expression;
+    while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
+    return ts.isFunctionExpression(callee) || ts.isArrowFunction(callee);
+  };
+  const visit = (n: ts.Node): void => {
+    if (ts.isCallExpression(n) && registers(n)) out.push(n);
+    if (isIife(n)) {
+      // Its body runs now, at import.
+      let callee: ts.Expression = n.expression;
+      while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
+      const fn = callee as ts.FunctionExpression | ts.ArrowFunction;
+      if (fn.body) visit(fn.body);
+      n.arguments.forEach(visit);
+      return;
+    }
+    if (isFunctionLike(n)) return;
+    n.forEachChild(visit);
+  };
+  sf.statements.forEach(visit);
   return out;
 }
 
@@ -145,7 +182,8 @@ export function sourceViolations(file: string, text: string): Violation[] {
   for (const { specifier, node } of moduleSpecifiers(sf)) {
     // Read from the parse tree, not the stripped text: stripping blanks string
     // literals, so a specifier is exactly what a text scan cannot see.
-    if (inCore && /(^|\/)view(\/|$)/.test(specifier) && specifier.startsWith('.')) {
+    if (inCore && specifier.startsWith('.') &&
+      /^src\/view(\/|$)/.test(posix.normalize(posix.join(posix.dirname(file), specifier)))) {
       add(lineOf(node), 'core-must-not-import-view');
     }
     if (inSrc && isClassicZod(specifier)) {
@@ -193,6 +231,18 @@ export function importChain(meta: Metafile, from: string, to: string): string {
   return chain.join(' -> ');
 }
 
+/** Inputs reachable from `from` through the metafile's input graph, `from` included. */
+function reachableInputs(meta: Metafile, from: string): Set<string> {
+  const seen = new Set<string>([from]);
+  const queue = [from];
+  while (queue.length > 0) {
+    for (const imp of meta.inputs?.[queue.shift()!]?.imports ?? []) {
+      if (!seen.has(imp.path)) { seen.add(imp.path); queue.push(imp.path); }
+    }
+  }
+  return seen;
+}
+
 /**
  * ADR-0005's condition of acceptance and ADR-0017's size rule, checked against
  * the real build: what reaches a core consumer?
@@ -221,7 +271,9 @@ export function bundleViolations(meta: Metafile, { coreEntry = 'src/index.ts' } 
       if (reached.has(out)) continue;
       reached.add(out);
       for (const imp of meta.outputs[out]?.imports ?? []) {
-        if (imp.kind !== 'dynamic-import' && meta.outputs[imp.path]) queue.push(imp.path);
+        // Dynamic imports too: a lazy import of view code from core still puts
+        // view code one await away from every core consumer.
+        if (meta.outputs[imp.path]) queue.push(imp.path);
       }
     }
     for (const out of reached) {
@@ -230,8 +282,8 @@ export function bundleViolations(meta: Metafile, { coreEntry = 'src/index.ts' } 
       // source file that asked for it.
       for (const imp of meta.outputs[out]?.imports ?? []) {
         if (meta.outputs[imp.path] || !isClassicZod(imp.path)) continue;
-        const importer = Object.entries(meta.inputs ?? {})
-          .find(([, i]) => (i.imports ?? []).some((x) => x.path === imp.path))?.[0];
+        const importer = [...reachableInputs(meta, coreEntry)]
+          .find((path) => (meta.inputs?.[path]?.imports ?? []).some((x) => x.path === imp.path));
         v.push({
           file: out, line: 0, rule: 'core-bundle-imports-classic-zod',
           text: importer ? `${importChain(meta, coreEntry, importer)} -> ${imp.path}` : imp.path,
