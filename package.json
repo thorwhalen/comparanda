@@ -71,6 +71,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "ajv": "^8.20.0",
     "preact": "^10.24.0",
     "tsup": "^8.0.0",
     "tsx": "^4.19.0",
