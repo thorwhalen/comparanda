@@ -747,16 +747,23 @@ export interface ContradictedCell {
 /**
  * Which cells cite evidence that contradicts what they assert.
  *
- * "n cells cite contradicting evidence" is the count ADR-0014's `stance` field
- * exists to make possible (#65): without it, three supporting sources and one
+ * "n cells cite contradicting evidence" is the count the evidence reference's
+ * `stance` field exists to make possible (#65, requested by the companion repo;
+ * no ADR here decides `stance`): without it, three supporting sources and one
  * contradicting one collapse into "four citations". A contradicting reference is
  * not a defect -- recording it is the honest thing to do -- so this is a report,
  * not a validation rule.
  *
  * Counts only **live** assertions (a superseded one no longer speaks for the
- * cell) and skips tombstoned alternatives and criteria, the same scope
- * `completeness` uses. `measure` narrows to one measure; omitted, every cell
- * counts.
+ * cell) and skips tombstoned alternatives and criteria. Unlike `completeness`,
+ * it does not rewrite cells inside a declared inapplicable block: a reference
+ * that was recorded is reported wherever it sits. A live assertion that records
+ * a qualified absence and cites contradicting evidence counts too -- the
+ * contradiction is about the evidence, not about whether a value was given.
+ * `measure` narrows to one measure; omitted, every cell counts.
+ *
+ * `referenceIds` is per cell, flattened across its live assertions; with
+ * several raters it does not say whose assertion a reference contradicts.
  */
 export function contradictedCells(
   a: Analysis,

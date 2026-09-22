@@ -1,5 +1,5 @@
 /**
- * "n cells cite contradicting evidence" (#65, ADR-0014).
+ * "n cells cite contradicting evidence" (#65).
  *
  * The stance field exists so that contradicting evidence is countable rather
  * than folded into a citation total. These tests pin what counts: live
@@ -76,6 +76,16 @@ describe('contradictedCells', () => {
       ],
     });
     expect(contradictedCells(a).count).toBe(0);
+  });
+
+  it('counts a qualified absence that cites contradicting evidence', () => {
+    // The contradiction is about the evidence, not about whether a value was
+    // given: "not-evidenced, and here is the source that says otherwise" is
+    // exactly the cell a reader needs to find.
+    const a = build([cell('x', 'c1', [
+      assertion('s', [ref('e', 'contradicts')], { value: undefined, missing: { code: 'indeterminate' } }),
+    ])]);
+    expect(contradictedCells(a).count).toBe(1);
   });
 
   it('narrows to one measure when asked', () => {

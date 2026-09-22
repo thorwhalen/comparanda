@@ -483,6 +483,7 @@
                 "checkedAt": "2026-08-22T09:00:00Z",
                 "checkerVersion": "comparanda-check/1.0.0"
               },
+              "normaliserId": "nfc-v1",
               "excerpt": "Angebotsmieten im Median 19,60 EUR je Quadratmeter",
               "label": "Quarterly asking-rent report, Q2 2026"
             }
