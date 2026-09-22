@@ -8,3 +8,4 @@
 export * from './core/schema/index.js';
 export * from './core/migrations.js';
 export * from './core/analyses/index.js';
+export * from './core/view-state.js';
