@@ -151,8 +151,8 @@ describe('pins and locked runs are inputs, so a manual arrangement survives a re
 
   it('a locked run stays contiguous and in the order it was locked in', () => {
     // w and x are the two ends of the scale, so nothing but the lock would put
-    // them side by side: the plain run orders them x, y, z, w.
-    expect(run(a()).order).toEqual(['x', 'y', 'z', 'w']);
+    // them side by side: the plain run walks the scale, w z y x.
+    expect(run(a()).order).toEqual(['w', 'z', 'y', 'x']);
     const r = run(a(), { constraints: { lockedRuns: [['w', 'x']] } });
     const i = r.order.indexOf('w');
     expect(r.order[i + 1]).toBe('x');
@@ -258,5 +258,94 @@ describe('over the messy fixture', () => {
     const before = JSON.stringify(a);
     seriate(a, { measure: 'score', constraints: { pins: [{ id: 'berlin', position: 0 }] } });
     expect(JSON.stringify(a)).toBe(before);
+  });
+});
+
+describe('what the review found (#155)', () => {
+  const four = () => doc([ORD, ORD, ORD], { x: [1, 1, 1], y: [2, 2, 2], z: [4, 4, 4], w: [5, 5, 5] });
+
+  it('a pin never cuts through a locked run: the run moves as a block', () => {
+    const r = run(four(), { constraints: { lockedRuns: [['x', 'y']], pins: [{ id: 'w', position: 1 }] } });
+    const i = r.order.indexOf('x');
+    expect(r.order[i + 1], r.order.join(',')).toBe('y');
+    expect(r.order).toHaveLength(4);
+    expect(new Set(r.order).size).toBe(4);
+  });
+
+  it('a pin inside a locked run moves the whole run, and says the lock decided where', () => {
+    const r = run(four(), { constraints: { lockedRuns: [['x', 'y']], pins: [{ id: 'y', position: 0 }] } });
+    // y cannot be first without cutting the run, so the run leads and the
+    // conflict is reported rather than silently resolved.
+    expect(r.order.slice(0, 2)).toEqual(['x', 'y']);
+    expect(r.notes.join(' ')).toMatch(/locked run/);
+    if (r.provenance.kind === 'seriated') expect(r.provenance.params.pinConflicts).toBeDefined();
+  });
+
+  it('sorting on a criterion it cannot score excludes and names it, and does not throw', () => {
+    const a = doc([{ level: 'ordinal', preference: 'increasing' }], { x: [1], y: [3] });
+    const r = seriate(a, { measure: 'score', sortBy: { criterionId: 'c0', direction: 'best-first' } });
+    expect(r.excludedFeatures.map((e) => [e.featureId, e.reason])).toEqual([['c0', 'unscoreable-level']]);
+    expect(r.notes.join(' ')).toMatch(/could not be scored/);
+    // Nothing is lost: both alternatives come back, parked.
+    expect([...r.order].sort()).toEqual(['x', 'y']);
+    expect(r.parked.map((p) => p.id).sort()).toEqual(['x', 'y']);
+  });
+
+  it('says so when the sort criterion has no direction of preference', () => {
+    const a = doc([{ level: 'nominal', preference: 'none', levels: ['red', 'blue'] }], { x: [1], y: [1] });
+    const r = seriate(a, { measure: 'score', minOverlap: 1, sortBy: { criterionId: 'c0', direction: 'best-first' } });
+    expect(r.notes.join(' ')).toMatch(/no direction of preference/);
+  });
+
+  it('reports the path length of the order it returned, pins included', () => {
+    const constraints = { pins: [{ id: 'w', position: 0 }] };
+    const r = run(four(), { constraints });
+    const index = new Map(r.distances.ids.map((id, i) => [id, i]));
+    let expected = 0;
+    for (let i = 1; i < r.order.length; i += 1) {
+      expected += r.distances.distance[index.get(r.order[i - 1]!)!]![index.get(r.order[i]!)!]!;
+    }
+    expect(r.pathLength).toBeCloseTo(expected, 12);
+    if (r.provenance.kind === 'seriated') expect(r.provenance.pathLength).toBeCloseTo(expected, 12);
+  });
+
+  it('arranges a document the same way however its alternatives are listed', () => {
+    // The vacuous version of this test called a pure function twice on one
+    // object. This one shuffles the input, which is what input-order dependence
+    // would show up in.
+    const a = relocation();
+    const base = seriate(a, { measure: 'score' });
+    const rotate = <T>(xs: readonly T[], by: number) => [...xs.slice(by), ...xs.slice(0, by)];
+    for (let by = 1; by < a.alternatives.length; by += 1) {
+      const shuffled = { ...a, alternatives: rotate(a.alternatives, by), cells: rotate(a.cells, by * 3) };
+      const r = seriate(shuffled, { measure: 'score' });
+      expect(r.order, `rotated by ${by}`).toEqual(base.order);
+      expect(r.pathLength).toBeCloseTo(base.pathLength, 12);
+    }
+  });
+
+  it('returns criteria it could not score on the criteria axis, never dropping them', () => {
+    const a = doc([ORD, { level: 'ordinal', preference: 'increasing' }, ORD], { x: [1, 2, 3], y: [5, 4, 3] });
+    const r = seriate(a, { measure: 'score', axis: 'criteria', minOverlap: 1 });
+    expect([...r.order].sort()).toEqual(['c0', 'c1', 'c2']);
+    expect(r.excludedFeatures.map((e) => e.featureId)).toEqual(['c1']);
+    expect(r.order[r.order.length - 1]).toBe('c1');
+  });
+
+  it('honours a pin on a parked item and keeps it flagged as parked', () => {
+    const a = doc([ORD, ORD, ORD, ORD], {
+      x: [1, 2, 3, 4], y: [2, 3, 4, 5], z: [5, 4, 3, 2], thin: [3, undefined, undefined, undefined],
+    });
+    const r = run(a, { minOverlap: 3, constraints: { pins: [{ id: 'thin', position: 0 }] } });
+    expect(r.order[0]).toBe('thin');
+    expect(r.parked.map((p) => p.id)).toEqual(['thin']);
+    expect(r.notes.join(' ')).toMatch(/parked/);
+  });
+
+  it('keeps the first of two pins on one id, and loses nobody', () => {
+    const r = run(four(), { constraints: { pins: [{ id: 'w', position: 0 }, { id: 'w', position: 3 }] } });
+    expect(r.order[0]).toBe('w');
+    expect(new Set(r.order).size).toBe(4);
+    expect(r.notes.join(' ')).toMatch(/pinned more than once/);
   });
 });

@@ -98,16 +98,25 @@ export interface ExcludedFeature {
 
 export interface SeriationResult extends AnalysisResult {
   axis: 'alternatives' | 'criteria';
-  /** The ordered ids, with parked items appended at the end, in their input order. */
+  /**
+   * Every id this run looked at: the arrangement, then parked items, then (on the
+   * criteria axis) criteria that could not be scored. Nothing is dropped, and
+   * pins index *this* sequence.
+   */
   order: string[];
   /** Items the minimum-overlap guard would not place. Returned, never dropped. */
   parked: ParkedItem[];
   /** Features that could not enter the distance, each with its reason (ADR-0025 amendment). */
   excludedFeatures: ExcludedFeature[];
-  /** The linkage actually used, and the path length it achieved. */
+  /** The linkage actually used. */
   linkage: Linkage;
+  /** The path length of the order actually returned, over the items that were placed. */
   pathLength: number;
-  /** Path length per linkage tried, so "measured, not guessed" is checkable. */
+  /**
+   * Path length per linkage tried, so "measured, not guessed" is checkable. These
+   * are the lengths *before* pins moved anything: they compare linkages, while
+   * `pathLength` describes the returned order.
+   */
   pathLengths: Partial<Record<Linkage, number>>;
   minOverlap: number;
   missingPolicy: MissingPolicy;
@@ -389,6 +398,11 @@ export function seriate(a: Analysis, opts: SeriationOptions): SeriationResult {
     }
   });
 
+  // Placed items are ordered by id before anything is measured, so a tie in the
+  // clustering or in OLO resolves the same way whatever order the document
+  // happens to list its alternatives in. Input order is not information.
+  placedIndices.sort((x, y) => (items[x]! < items[y]! ? -1 : items[x]! > items[y]! ? 1 : 0));
+
   // Gower distance over the placed items, with the per-pair comparison count
   // carried out rather than discarded.
   const n = placedIndices.length;
@@ -440,6 +454,13 @@ export function seriate(a: Analysis, opts: SeriationOptions): SeriationResult {
     return best;
   }));
 
+  /** Re-expand a unit order into items, each run in the order it was locked in. */
+  const expandUnits = (unitOrder: readonly number[]): number[] => {
+    const out: number[] = [];
+    for (const u of unitOrder) out.push(...units[u]!);
+    return out;
+  };
+
   const pathLengths: Partial<Record<Linkage, number>> = {};
   let chosen: { linkage: Linkage; order: number[]; length: number } | undefined;
   const tried: readonly Linkage[] = units.length > sizeLimit ? ['complete'] : LINKAGES;
@@ -452,40 +473,148 @@ export function seriate(a: Analysis, opts: SeriationOptions): SeriationResult {
   for (const linkage of tried) {
     const root = cluster(unitDistance, linkage);
     if (!root) break;
-    const order = units.length > sizeLimit ? greedyLeafOrder(root, unitDistance) : optimalLeafOrder(root, unitDistance);
-    const length = pathLengthOf(order, unitDistance);
+    const found = units.length > sizeLimit
+      ? greedyLeafOrder(root, unitDistance)
+      : optimalLeafOrder(root, unitDistance);
+    // An order and its reverse have the same path length, so the choice between
+    // them is a tie. Settle it by id -- at the *unit* level, so a locked run is
+    // never turned around -- rather than leaving it to how the tree was built.
+    const firstId = items[placedIndices[units[found[0]!]![0]!]!]!;
+    const lastId = items[placedIndices[units[found[found.length - 1]!]![0]!]!]!;
+    const unitOrder = lastId < firstId ? [...found].reverse() : found;
+    // Measured over the *expanded* order, in item distances: that is the order a
+    // reader gets, and a length reported over collapsed units would not describe it.
+    const expandedOrder = expandUnits(unitOrder);
+    const length = pathLengthOf(expandedOrder, distance);
     pathLengths[linkage] = length;
     // Strictly lower, so a tie keeps the earlier linkage: the same document must
     // arrange identically twice.
-    if (!chosen || length < chosen.length - 1e-12) chosen = { linkage, order, length };
+    if (!chosen || length < chosen.length - 1e-12) chosen = { linkage, order: expandedOrder, length };
   }
 
-  // Re-expand each run in the order it was locked in. `OrderConstraints` says a
-  // locked run is "kept contiguous and in this order", so the run's own
-  // direction is the user's input too, not something the run may flip.
-  const expanded: number[] = [];
-  for (const u of chosen?.order ?? units.map((_, i) => i)) expanded.push(...units[u]!);
-
+  const expanded = chosen?.order ?? expandUnits(units.map((_, i) => i));
   let order = expanded.map((i) => items[placedIndices[i]!]!);
 
   // A single-criterion sort is this same path; only the orientation is the
   // sort's own, from the criterion's declared direction of preference.
   if (opts.sortBy) {
     const crit = usableCriteria[0];
-    const value = (id: string) => {
-      const c = scored[items.indexOf(id)!]![0]!;
-      return c.kind === 'number' ? c.value : undefined;
-    };
-    const decreasing = crit?.m.preference === 'decreasing';
-    const bestFirst = opts.sortBy.direction === 'best-first';
-    const first = value(order[0] ?? '');
-    const last = value(order[order.length - 1] ?? '');
-    if (first !== undefined && last !== undefined && first !== last) {
-      // "Best" is the high end unless the criterion says lower is better.
-      const highFirst = bestFirst !== decreasing;
-      if ((first < last) === highFirst) order = [...order].reverse();
+    if (!crit) {
+      // ADR-0025's amendment: a criterion this run cannot score is excluded and
+      // named, never a crash and never a silent degradation to nominal. With the
+      // only criterion excluded there is nothing to sort on, and every item is
+      // parked -- which is what the result already says.
+      notes.push(
+        `the sort criterion "${opts.sortBy.criterionId}" could not be scored, so nothing was sorted; ` +
+        'it is named in `excludedFeatures` with the reason.',
+      );
+    } else {
+      const value = (id: string) => {
+        const c = scored[items.indexOf(id)]?.[0];
+        return c && c.kind === 'number' ? c.value : undefined;
+      };
+      const decreasing = crit.m.preference === 'decreasing';
+      const bestFirst = opts.sortBy.direction === 'best-first';
+      const first = value(order[0] ?? '');
+      const last = value(order[order.length - 1] ?? '');
+      if (first !== undefined && last !== undefined && first !== last) {
+        // "Best" is the high end unless the criterion says lower is better.
+        const highFirst = bestFirst !== decreasing;
+        if ((first < last) === highFirst) order = [...order].reverse();
+      } else if (!isOrdered(crit.m.level) || crit.m.preference === 'none' || crit.m.preference === 'ordered') {
+        notes.push(
+          `"${opts.sortBy.criterionId}" has no direction of preference, so its values cannot be ranked: the ` +
+          'order groups equal values together rather than sorting them best-first.',
+        );
+      }
     }
   }
+
+  // Everything this run looked at comes back, in one sequence: the arrangement,
+  // then the items the overlap guard would not place, then (on the criteria
+  // axis) the criteria that could not be scored. Nothing is dropped (#80).
+  const tail = [
+    ...parked.map((p) => p.id),
+    ...(axis === 'criteria' ? excludedFeatures.map((e) => e.featureId) : []),
+  ];
+
+  // Pins are re-applied on every run, from the same input, so a manual
+  // arrangement survives re-running rather than being discarded by it. They move
+  // whole *blocks*: a locked run is one block, so pinning a member moves the run
+  // and cannot cut through it (`OrderConstraints`: contiguous, and in this order).
+  // Positions index the returned order, parked items included -- what a reader
+  // sees is what a pin refers to.
+  const pinConflicts: string[] = [];
+  const seenPins = new Set<string>();
+  const pins = (opts.constraints?.pins ?? [])
+    .filter((pin) => {
+      if (!order.includes(pin.id) && !tail.includes(pin.id)) return false;
+      if (seenPins.has(pin.id)) {
+        pinConflicts.push(`"${pin.id}" is pinned more than once; the first pin was used and the rest ignored`);
+        return false;
+      }
+      seenPins.add(pin.id);
+      return true;
+    })
+    .sort((x, y) => x.position - y.position);
+
+  let finalOrder = [...order, ...tail];
+  if (pins.length > 0) {
+    const runOfId = new Map<string, number>();
+    lockedRuns.forEach((run, i) => { for (const id of run) runOfId.set(id, i); });
+    const blocks: string[][] = [];
+    const emitted = new Set<number>();
+    for (const id of finalOrder) {
+      const r = runOfId.get(id);
+      if (r === undefined) { blocks.push([id]); continue; }
+      if (emitted.has(r)) continue;
+      emitted.add(r);
+      blocks.push([...lockedRuns[r]!]);
+    }
+    for (const pin of pins) {
+      const bi = blocks.findIndex((b) => b.includes(pin.id));
+      if (bi < 0) continue;
+      const block = blocks[bi]!;
+      const offset = block.indexOf(pin.id);
+      blocks.splice(bi, 1);
+      const target = Math.trunc(pin.position) - offset;
+      let cumulative = 0;
+      let bestAt = 0;
+      let bestGap = Infinity;
+      for (let i = 0; i <= blocks.length; i += 1) {
+        const gap = Math.abs(cumulative - target);
+        if (gap < bestGap) { bestGap = gap; bestAt = i; }
+        if (i < blocks.length) cumulative += blocks[i]!.length;
+      }
+      blocks.splice(bestAt, 0, block);
+      if (bestGap > 0 && block.length > 1) {
+        pinConflicts.push(
+          `"${pin.id}" is pinned to position ${pin.position} and is inside a locked run; the run moved as a ` +
+          `block, which is the nearest position the lock allows`,
+        );
+      } else if (bestGap > 0) {
+        pinConflicts.push(
+          `"${pin.id}" could not sit at position ${pin.position}: another pin or a locked run holds it`,
+        );
+      }
+      if (parked.some((x) => x.id === pin.id)) {
+        pinConflicts.push(
+          `"${pin.id}" is pinned but was parked (too few comparisons); it is placed where you pinned it and ` +
+          'stays flagged as parked',
+        );
+      }
+    }
+    finalOrder = blocks.flat();
+    notes.push(`${pins.length} pin(s) were applied as inputs to this run; re-running with them gives the same positions.`);
+  }
+  notes.push(...pinConflicts);
+
+  // The length of the order actually returned, over the items that were placed:
+  // a provenance record exists to explain *this* arrangement.
+  const finalPathLength = pathLengthOf(
+    finalOrder.filter((id) => indexOfPlaced.has(id)).map((id) => indexOfPlaced.get(id)!),
+    distance,
+  );
 
   const provenance: OrderProvenance = opts.sortBy
     ? {
@@ -500,36 +629,28 @@ export function seriate(a: Analysis, opts: SeriationOptions): SeriationResult {
       distance: `gower/${policy}`,
       missingPolicy: policy,
       minOverlap,
-      pathLength: chosen?.length ?? 0,
+      pathLength: finalPathLength,
       parked: parked.map((p) => p.id),
       params: {
         sizeLimit,
+        tieBreak: 'id',
         pathLengths,
         pins: (opts.constraints?.pins ?? []).map((p) => ({ ...p })),
         lockedRuns: lockedRuns.map((r) => [...r]),
         excludedFeatures: excludedFeatures.map((e) => e.featureId),
+        ...(pinConflicts.length > 0 ? { pinConflicts: [...pinConflicts] } : {}),
       },
       ...(opts.at === undefined ? {} : { at: opts.at }),
     };
 
-  // Pins are re-applied on every run, from the same input, so a manual
-  // arrangement survives re-running rather than being discarded by it.
-  const pins = (opts.constraints?.pins ?? []).filter((p) => order.includes(p.id));
-  if (pins.length > 0) {
-    const rest = order.filter((id) => !pins.some((p) => p.id === id));
-    const placed: (string | undefined)[] = Array.from({ length: order.length }, () => undefined);
-    for (const pin of [...pins].sort((x, y) => x.position - y.position)) {
-      let at = Math.min(Math.max(0, Math.trunc(pin.position)), order.length - 1);
-      while (placed[at] !== undefined) at = (at + 1) % order.length;
-      placed[at] = pin.id;
-    }
-    let next = 0;
-    order = placed.map((id) => id ?? rest[next++]!);
-    notes.push(`${pins.length} pin(s) were applied as inputs to this run; re-running with them gives the same positions.`);
-  }
-
   if (parked.length > 0) {
     notes.push(`${parked.length} item(s) could not be placed and are parked at the end, with their comparison counts.`);
+  }
+  if (!chosen) {
+    notes.push(
+      'nothing was clustered: no item cleared the minimum overlap, so the linkage and path length reported ' +
+      'here describe no arrangement.',
+    );
   }
   if (excludedFeatures.length > 0) {
     notes.push(`${excludedFeatures.length} criterion/criteria could not be scored and were excluded from the distance.`);
@@ -544,11 +665,11 @@ export function seriate(a: Analysis, opts: SeriationOptions): SeriationResult {
 
   return {
     axis,
-    order: [...order, ...parked.map((p) => p.id)],
+    order: finalOrder,
     parked,
     excludedFeatures,
     linkage: chosen?.linkage ?? 'complete',
-    pathLength: chosen?.length ?? 0,
+    pathLength: finalPathLength,
     pathLengths,
     minOverlap,
     missingPolicy: policy,
