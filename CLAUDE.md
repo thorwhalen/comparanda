@@ -14,7 +14,8 @@ see ADR-0003. Display aliases are a per-analysis setting, never hard-coded.
 
 ## Standing constraints
 
-- **Public repo.** No content from the private analysis this originated in. ADR-0016.
+- **Public repo.** No content from **any** private engagement, and example domains are *invented*
+  rather than anonymised — an anonymised matrix keeps the shape, and shape identifies. ADR-0033.
 - **Measures are stored; encodings are derived.** Do not add a stored measure for something
   computed.
 - **1–5 ratings are ordinal.** Do not average them by default; the schema records the level of
@@ -31,7 +32,7 @@ see ADR-0003. Display aliases are a per-analysis setting, never hard-coded.
     docs/adr/README.md       the ADR index, grouped by theme
     docs/research/README.md  the research ledger — start here to find out what is known
     docs/research/           briefs (questions), sections/ (working notes), findings-*.md (synthesis)
-    examples/                public-domain example datasets (ADR-0016)
+    examples/                invented public-domain example datasets (ADR-0033)
     skills/                  dev skills — tooling for the agent building this repo
 
 ## Dev skills

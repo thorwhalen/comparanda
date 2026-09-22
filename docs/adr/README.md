@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
 **Read them in numeric order for the history; read them by theme for orientation.** The numbers
-record when a decision was taken and nothing else, so a first-time reader following 0001 → 0032
+record when a decision was taken and nothing else, so a first-time reader following 0001 → 0033
 learns how the project arrived where it is, while a reader who needs to know *what is true now
 about missingness* is better served by the grouping below. Both routes cover the same thirty-three
 files.
@@ -19,7 +19,7 @@ Companion reading: [`../../BRIEF.md`](../../BRIEF.md) for what the project is,
 and [`../research/`](../research/) for the evidence the 2026-08-21 amendments rest on. The
 2026-08-22 amendments — which touch ADRs 0003, 0004, 0006, 0009, 0010, 0011, 0012, 0014, 0015, 0018,
 0020 — rest on nine decisions settled by the owner on that date and on reads of the shipped code;
-ADRs 0030–0032 are the new decisions those settlements required.
+ADRs 0030–0032 are the new decisions those settlements required, and 0033 corrects a framing 0016 got wrong.
 
 ---
 
@@ -32,7 +32,7 @@ The four documents that decide what kind of thing this is and what words it uses
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | accepted | Nygard-format ADRs, immutable once accepted; change direction with a new file, never a quiet edit. ADRs 0002–0029 are pre-implementation specification; 0030–0032 were taken against a partly-built schema and say so. |
 | [0002](0002-scope-and-non-goals.md) | Scope and non-goals | accepted | Not a spreadsheet, not a BI tool, not a decision engine; matrices of tens to low hundreds of alternatives — a cap that later licenses no-virtualisation and affordable seriation. |
 | [0003](0003-domain-model-and-terminology.md) | Adopt MCDA terminology, and separate measures from encodings | accepted | **alternatives / criteria / subject**; stored **measures** vs derived **encodings**; a level of measurement on every value. The grid is a *performance matrix*, displayed by default as "options". |
-| [0016](0016-public-repo-hygiene.md) | Public repository — no proprietary content | accepted | No content from the originating private analysis anywhere, ever; examples come from public self-explanatory domains, and at least one is deliberately messy. No ADR quotes a source that could not be reached. |
+| [0016](0016-public-repo-hygiene.md) | Public repository — no proprietary content | **superseded by [0033](0033-example-domains-are-invented-not-sanitised.md)** | Its rule was right and its framing was not: it described the package as originating from one private analysis and derived a denylist from that. Kept readable as the question that was asked. |
 
 ## The schema — what a cell is allowed to say
 
@@ -80,6 +80,7 @@ How a measure becomes ink, and which pictures earn their place beside the matrix
 | [0010](0010-encodings-and-uncertainty.md) | Encodings are pluggable; uncertainty is encoded, not annotated | accepted | Eight registered encodings, a parameterised value-suppressing palette with an ordinal merge tree, suppression toward the theme surface rather than white, and contrast gated on WCAG at build time. **Amended:** the roster is nine; palette arity derives from the resolved scale rather than a fixed level count. |
 | [0024](0024-disagreement-rater-dot-strip.md) | The disagreement encoding is a rater dot strip | accepted | One dot per assertion on the criterion's levels — no mark ever sits where a mean would be; `disagreement-spread` is the zoom-out ramp over `(1 − A) / 2` and `consensus-suppressed` a re-parameterisation. |
 | [0032](0032-text-only-encoding-and-the-matrix-props-contract.md) | `text-only` is v1's encoding, and `MatrixProps` ships before the matrix | accepted | A ninth encoding with no palette, therefore no arity, therefore no scale assumption — correct under a declared scale and accessible by construction. `MatrixProps` is published before the matrix component exists so the first consumer's interim table is deletable rather than refactorable; `standing` is injected so the view owns no clock. |
+| [0033](0033-example-domains-are-invented-not-sanitised.md) | Example domains are invented, not sanitised — and the denylist is withdrawn | accepted | Supersedes 0016. This is a general tool that a private study *motivated*, not a sanitised derivative of one, and a denylist would have had to cover every engagement its author has ever run. The rule is kept and generalised — nothing from **any** private engagement, and examples are **invented** rather than anonymised, because an anonymised matrix keeps a shape that identifies. Where an example names a real third party it carries only factual, cited, dated claims and no subjective score. |
 | [0026](0026-views-shipped-and-declined.md) | Views shipped in v1, and the ones deliberately declined | accepted | Five views ship, each repairing a named weakness of the matrix. Parallel coordinates deferred; radar declined outright on three arguments a caveat cannot fix. |
 
 ## Analyses, and what the tool refuses to compute

@@ -120,27 +120,3 @@ jobs:
             exit 1
           fi
           echo "no absolute local paths anywhere in the tree"
-
-      - name: Pre-publish denylist (ADR-0016)
-        # The denylist names terms from the private analysis this originated in,
-        # so the file itself must never be committed -- committing it would leak
-        # exactly what it protects. It is supplied out of band as a secret.
-        # Absent secret => skipped, and the step says so rather than passing
-        # silently, because a hygiene check that quietly does nothing is worse
-        # than no check.
-        env:
-          DENYLIST: ${{ secrets.ADR_0016_DENYLIST }}
-        run: |
-          set -euo pipefail
-          if [ -z "${DENYLIST:-}" ]; then
-            echo "::warning::ADR_0016_DENYLIST secret is not set; the pre-publish check did NOT run."
-            echo "ADR-0016 requires this before first publish. Set it as a newline-separated list."
-            exit 0
-          fi
-          printf '%s\n' "$DENYLIST" | grep -v '^[[:space:]]*$' > /tmp/denylist.txt
-          if grep -rIinf /tmp/denylist.txt \
-               --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist . ; then
-            echo "::error::denylisted term found. ADR-0016 is a hard constraint, not a preference."
-            exit 1
-          fi
-          echo "denylist clean ($(wc -l < /tmp/denylist.txt) terms checked)"

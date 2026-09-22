@@ -19,9 +19,11 @@ so `rubricator`'s Python side can validate against the identical contract.
 
 ## Non-negotiables
 
-- **Public repository.** Nothing from the private analysis this originated in — no company names,
-  product names, personal names or initials — in code, tests, fixtures, docs, examples, or commit
-  messages. Read ADR-0016 and build the examples it describes. This one is a hard constraint.
+- **Public repository.** Nothing from **any** private engagement — no company names, product
+  names, personal names or initials — in code, tests, fixtures, docs, examples, or commit messages.
+  Example domains are **invented**, not anonymised: an anonymised matrix keeps the criteria and the
+  disagreements of the original, and that shape is identifying to anyone who was in the room. Read
+  ADR-0033 and build the examples it describes. This one is a hard constraint.
 - **No default aggregation.** ADR-0015. A total column is opt-in, labelled, and warns on ordinal
   data.
 - **Absence is qualified.** ADR-0009. No bare nulls.
@@ -40,7 +42,7 @@ evidence.
 
 **Phase 1 — schema.** The zodal schema, JSON Schema emission, validation, versioning and the
 migration harness. Write the migration harness now, with version 1, not when it is first needed.
-Ship the messy example dataset from ADR-0016 alongside, because the clean one will not exercise
+Ship the messy example dataset from ADR-0033 alongside, because the clean one will not exercise
 the parts that matter.
 
 **Phase 2 — core logic.** View state, saved views and dirty-state comparison (ADR-0007), store
