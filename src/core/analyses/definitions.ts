@@ -16,6 +16,7 @@ import { findNonDiscriminatingCriteria, type NonDiscriminatingOptions } from './
 import { agreement, type AgreementOptions } from './agreement.js';
 import { weightedSum, type WeightedSumOptions } from './weighted-sum.js';
 import { seriate, type SeriationOptions } from './seriation.js';
+import { sensitivity, type SensitivityOptions } from './sensitivity.js';
 
 export const dominanceAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'dominance', label: 'Dominance',
@@ -45,4 +46,9 @@ export const weightedSumAnalysis = /* @__PURE__ */ defineAnalysis({
 export const seriationAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'seriation', label: 'Automatic ordering (seriation)',
   run: (a, o: SeriationOptions) => seriate(a, o),
+});
+
+export const sensitivityAnalysis = /* @__PURE__ */ defineAnalysis({
+  id: 'sensitivity', label: 'Stability of the weighted order (opt-in)',
+  run: (a, o: SensitivityOptions) => sensitivity(a, o),
 });
