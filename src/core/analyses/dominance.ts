@@ -543,12 +543,25 @@ export function explainDominance(
     summary = `${x} does not dominate ${y}: it cannot be better on any compared criterion.`;
   }
 
-  const widenedByDisclosure = x === y
-    ? widenedIn(a, [x], p.basis, opts.measure)
-    : widenedIn(a, [x, y], p.basis, opts.measure);
+  // Only cells that entered this pair's comparison, and only those that
+  // actually lost their value to the projection (a withheld peer beside a
+  // visible consensus still compares at that value). (Review finding.)
+  let widenedByDisclosure = 0;
+  if (x !== y) {
+    const stored = cellIndex(a);
+    for (const c of criteria) {
+      if (c.standing === 'excluded') continue;
+      for (const id of [x, y]) {
+        const cell = stored.get(cellKey(id, c.criterionId, opts.measure));
+        if (cell && isWidenedByDisclosure(cell) && reducedValue(a, id, c.criterionId, opts.measure)?.value === undefined) {
+          widenedByDisclosure += 1;
+        }
+      }
+    }
+  }
   if (widenedByDisclosure > 0) {
-    summary += ` (${widenedByDisclosure} of the compared cell${widenedByDisclosure === 1 ? ' is' : 's are'} ` +
-      'withheld from you, so this verdict is over their widest possible values.)';
+    summary += ` (${widenedByDisclosure} of the compared cells ${widenedByDisclosure === 1 ? 'is' : 'are'} ` +
+      'withheld from you and compared at their widest possible values.)';
   }
 
   return {
