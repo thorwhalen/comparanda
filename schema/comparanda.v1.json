@@ -1029,6 +1029,17 @@
                 },
                 "supersededBy": {
                   "type": "string"
+                },
+                "disclosure": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "withheldFromReader": {
+                      "type": "boolean"
+                    }
+                  }
                 }
               },
               "required": [

@@ -10,3 +10,4 @@ export * from './analysis.js';
 export * from './groups.js';
 export * from './anchors.js';
 export * from './redaction.js';
+export * from './disclosure.js';

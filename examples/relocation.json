@@ -534,6 +534,9 @@
       "assertions": [
         {
           "id": "a-rent-tai-ana",
+          "disclosure": {
+            "label": "household-finances"
+          },
           "authorId": "ana",
           "at": "2026-08-22T09:00:00Z",
           "evidence": [],
@@ -587,6 +590,9 @@
       "assertions": [
         {
           "id": "a-tax-lis",
+          "disclosure": {
+            "label": "household-finances"
+          },
           "authorId": "ana",
           "at": "2026-08-22T09:00:00Z",
           "evidence": [

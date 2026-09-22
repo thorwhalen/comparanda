@@ -13,7 +13,7 @@ import {
   measurementFor,
 } from './structure.js';
 import {
-  Cell, Reduction, ReductionDeclaration, CORE_REDUCTIONS, reduce, type Reduced,
+  Cell, Reduction, ReductionDeclaration, CORE_REDUCTIONS, reduce, isWidenedByDisclosure, type Reduced,
 } from './values.js';
 import { Author, Procedure, Round } from './provenance.js';
 import { Thread, Suggestion } from './annotations.js';
@@ -203,6 +203,8 @@ export const RULE_SOURCES = Object.freeze({
   'score-has-a-reason': 'ADR-0031',
   'assertion-attributed': 'ADR-0012',
   'value-has-evidence': 'ADR-0014',
+  // Disclosure.
+  'disclosure-flag-is-projection-only': 'ADR-0021',
   // Evidence references.
   'cite-a-span': 'ADR-0014',
   'check-dated': 'ADR-0014',
@@ -514,6 +516,23 @@ export function validateAnalysis(
               'what it means.',
           );
         }
+      }
+
+      // `withheldFromReader` is written by the projection, and only on what it
+      // emptied. On an assertion that still carries content it is either a
+      // producer mistaking it for a request to withhold, or an attempt to
+      // inflate the widened-cell count -- and a projection that trusted it
+      // would pass the content straight through (ADR-0021).
+      if (as.disclosure?.withheldFromReader === true &&
+        (hasValue || !!as.justification?.trim() || as.evidence.length > 0 || !!as.missing?.note)) {
+        honesty(
+          'disclosure-flag-is-projection-only', `${atA}.disclosure.withheldFromReader`,
+          'marked as projected out for its reader, but it still carries a value, a justification, ' +
+            'a note or evidence. The flag records what a projection removed; it is not a request to ' +
+            'withhold, and it cannot be true of an assertion with content.',
+          'remove withheldFromReader and let projectForReader decide what this reader sees; to keep ' +
+            'the value from every reader, record a `withheld` absence instead.',
+        );
       }
 
       // Not being finished is not a defect.
@@ -846,9 +865,10 @@ export function completeness(
 ): Completeness {
   const alts = scope.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id);
   const crits = scope.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
-  const cells: { hasValue: boolean; code?: string; criterionId?: string }[] = [];
+  const cells: { hasValue: boolean; code?: string; criterionId?: string; widened?: boolean }[] = [];
   const reader = makeCellReader(a, scope.measure);
   const inapplicable = makeInapplicability(a);
+  const index = cellIndex(a);
 
   for (const altId of alts) {
     for (const critId of crits) {
@@ -856,10 +876,12 @@ export function completeness(
         cells.push({ hasValue: false, code: NOT_APPLICABLE, criterionId: critId });
         continue;
       }
+      const cell = index.get(cellKey(altId, critId, scope.measure));
+      const widened = cell !== undefined && isWidenedByDisclosure(cell);
       const r = reader.read(altId, critId);
-      if (r?.value !== undefined) cells.push({ hasValue: true, criterionId: critId });
-      else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code, criterionId: critId });
-      else cells.push({ hasValue: false, code: NOT_ASSESSED, criterionId: critId });
+      if (r?.value !== undefined) cells.push({ hasValue: true, criterionId: critId, widened });
+      else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code, criterionId: critId, widened });
+      else cells.push({ hasValue: false, code: NOT_ASSESSED, criterionId: critId, widened });
     }
   }
   // The facade, not the flat list: each cell carries its criterion, so a

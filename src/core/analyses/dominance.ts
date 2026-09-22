@@ -29,7 +29,8 @@
  * missing data, measured in alternatives you cannot yet set aside.
  */
 import type { Analysis } from '../schema/analysis.js';
-import { reducedValue, makeCellReader } from '../schema/analysis.js';
+import { reducedValue, makeCellReader, cellIndex, cellKey } from '../schema/analysis.js';
+import { isWidenedByDisclosure } from '../schema/values.js';
 import { makeInapplicability } from '../schema/groups.js';
 import { measurementFor } from '../schema/structure.js';
 import { admitsDominance, isOrdered, type Measurement } from '../schema/measurement.js';
@@ -87,7 +88,28 @@ export interface DominanceResult {
   uncertaintyCost: number;
   /** Only ever non-empty under `usePracticalTolerance`, which is not transitive. */
   cycles: string[][];
+  /**
+   * Cells in the comparison (alternatives in scope x basis criteria) whose
+   * content a disclosure projection withheld from this reader. They were
+   * compared over their widened interval, so this reader's front is the
+   * conservative one (ADR-0021). Required, so no view can omit it.
+   */
+  widenedByDisclosure: number;
   notes: string[];
+}
+
+/** How many (alternative, criterion) cells for `measure` a disclosure projection widened. */
+function widenedIn(a: Analysis, altIds: readonly string[], critIds: readonly string[], measure: string): number {
+  if (!a.cells.some(isWidenedByDisclosure)) return 0;
+  const index = cellIndex(a);
+  let n = 0;
+  for (const alt of altIds) {
+    for (const crit of critIds) {
+      const c = index.get(cellKey(alt, crit, measure));
+      if (c && isWidenedByDisclosure(c)) n += 1;
+    }
+  }
+  return n;
 }
 
 /** The interval a cell contributes, or `undefined` if it leaves the comparison. */
@@ -370,6 +392,13 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
   const p = prepare(a, opts);
   const { altIds, basis, excluded } = p;
   const basisDescription = describeBasis(a, p);
+  const widenedByDisclosure = widenedIn(a, altIds, basis, opts.measure);
+  if (widenedByDisclosure > 0) {
+    notes.push(
+      `computed with ${widenedByDisclosure} cell${widenedByDisclosure === 1 ? '' : 's'} withheld from you; ` +
+      'they were compared over their full declared range, so this front is the conservative one.',
+    );
+  }
 
   if (excluded.length > 0) {
     notes.push(
@@ -381,7 +410,7 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
     notes.push('no criterion admits a dominance comparison, so nothing can be dominated.');
     return {
       nonDominated: altIds, dominated: [], provisional: [], edges: [],
-      basis, excluded, basisDescription, uncertaintyCost: 0, cycles: [], notes,
+      basis, excluded, basisDescription, uncertaintyCost: 0, cycles: [], widenedByDisclosure, notes,
     };
   }
 
@@ -444,7 +473,7 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
 
   return {
     nonDominated, dominated, provisional, edges, basis, excluded, basisDescription,
-    uncertaintyCost: provisional.length, cycles, notes,
+    uncertaintyCost: provisional.length, cycles, widenedByDisclosure, notes,
   };
 }
 

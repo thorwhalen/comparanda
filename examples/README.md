@@ -88,7 +88,8 @@ It exercises what the clean example does not:
   `unresolvable` target (the page is gone), both dated and attributed like any other verdict;
 - two rejected criteria kept in `rejectedCriteria` rather than discarded: one `merged` into rent,
   one `not-discriminating`;
-- three annotation threads: one resolved, one open, one anchored to a criterion rather than a cell.
+- three annotation threads: one resolved, one open, one anchored to a criterion rather than a cell;
+- two assertions carrying a host `disclosure` label (`household-finances`: the Lisbon income-tax score and one Taipei rent figure), so a reviewer's projection (`projectForReader`) withholds them and every analysis reports the cells widened for that reader — distinct from the Taipei income-tax cell, which its author stored as `withheld` outright.
 
 ### It is also the falsification fixture
 
