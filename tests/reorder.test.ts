@@ -60,13 +60,37 @@ describe('moveTo (#75)', () => {
     expect(isDirty(state, snap)).toBe(false);
   });
 
-  it('keeps pins attached to their entries, at the positions the reader just made', () => {
+  it('leaves pins exactly as set, and reports the ones it left describing somebody else', () => {
+    // A pin is an input to the next seriation run (ADR-0025), not a description
+    // of the hand arrangement, so a move must not rewrite what it asks for.
     const v = pin(pin(initialViewState(relocation()), 'alternatives', 'berlin', 1), 'alternatives', 'montreal', 4);
-    const { state } = moveTo(v, 'alternatives', 1, 3, ANA);
+    const { state, report } = moveTo(v, 'alternatives', 1, 3, ANA);
     expect(orderOf(state)).toEqual(['lisbon', 'taipei', 'seoul', 'berlin', 'montreal']);
     expect(state.alternativeOrder.constraints.pins).toEqual([
-      { id: 'berlin', position: 3 }, { id: 'montreal', position: 4 },
+      { id: 'berlin', position: 1 }, { id: 'montreal', position: 4 },
     ]);
+    // Berlin's pin now names a position Taipei occupies; Montreal's still holds.
+    expect(report.pinsDisplaced).toEqual([{ id: 'berlin', pinnedTo: 1, nowAt: 3 }]);
+  });
+
+  it('away and back restores the view, pins included, so it cannot stay dirty for ever (ADR-0007)', () => {
+    const v = pin(initialViewState(relocation()), 'alternatives', 'berlin', 4);
+    const snap = snapshotOf(v);
+    const away = moveTo(v, 'alternatives', 0, 1, ANA).state;
+    expect(isDirty(away, snap)).toBe(true);
+    const back = moveTo(away, 'alternatives', 1, 0, ANA).state;
+    expect(orderOf(back)).toEqual(ALTS);
+    expect(back.alternativeOrder.constraints.pins).toEqual([{ id: 'berlin', position: 4 }]);
+    expect(isDirty(back, snap)).toBe(false);
+  });
+
+  it('says in the announcement when a move displaced a pin', () => {
+    const v = pin(initialViewState(relocation()), 'alternatives', 'lisbon', 0);
+    const { report } = moveTo(v, 'alternatives', 3, 0, ANA);
+    expect(orderOf(moveTo(v, 'alternatives', 3, 0, ANA).state)).toEqual(['seoul', 'lisbon', 'berlin', 'taipei', 'montreal']);
+    expect(describeMove(relocation(), report)).toBe(
+      'Alternative Seoul moved to row 1 of 5, first. Lisbon is pinned to row 1 and now sits at row 2.',
+    );
   });
 });
 
@@ -84,7 +108,7 @@ describe('locked runs are constraints, not decoration', () => {
     // taipei cannot be first while berlin is locked in front of it.
     const { state, report } = moveTo(locked(), 'alternatives', 2, 0, ANA);
     expect(orderOf(state)).toEqual(['berlin', 'taipei', 'lisbon', 'seoul', 'montreal']);
-    expect(report).toMatchObject({ id: 'taipei', to: 1, clamped: 'locked-run', carried: ['berlin'] });
+    expect(report).toMatchObject({ id: 'taipei', to: 1, clamped: 'locked-run-block', carried: ['berlin'] });
   });
 
   it('stops at a locked run\'s edge rather than splitting it', () => {
@@ -92,7 +116,7 @@ describe('locked runs are constraints, not decoration', () => {
     // Asking to land between taipei and seoul: the run cannot be opened, and a
     // tie between its two edges goes to the earlier one.
     const { state, report } = moveTo(v, 'alternatives', 0, 2, ANA);
-    expect(report.clamped).toBe('locked-run');
+    expect(report.clamped).toBe('locked-run-split');
     expect(orderOf(state)).toEqual(['berlin', 'lisbon', 'taipei', 'seoul', 'montreal']);
     const runIndexes = ['taipei', 'seoul'].map((id) => orderOf(state).indexOf(id));
     expect(runIndexes[1]! - runIndexes[0]!).toBe(1);
@@ -150,6 +174,44 @@ describe('every route goes through the same move (#75, ADR-0027)', () => {
   });
 });
 
+describe('the routes agree on an axis that carries constraints (review finding)', () => {
+  const a = relocation();
+  const locked = () => lockRun(initialViewState(a), 'alternatives', ['lisbon', 'berlin']);
+  const logical = (r: MoveReport) => ({ ...r, route: undefined });
+
+  it('"before" puts the whole run before the anchor, whatever route asked', () => {
+    // Two entries leave the order, so a fixed +/-1 anchor nudge lands on the
+    // wrong side of Montreal -- and the sentence would then contradict the menu.
+    const menu = moveByMenu(locked(), 'alternatives', 0, { kind: 'before', id: 'montreal' }, ANA);
+    const order = orderOf(menu.state);
+    expect(order).toEqual(['taipei', 'seoul', 'lisbon', 'berlin', 'montreal']);
+    expect(order.indexOf('lisbon')).toBeLessThan(order.indexOf('montreal'));
+    const said = describeMove(a, menu.report);
+    expect(said).toBe('Alternative Lisbon moved to row 3 of 5, after Seoul, with Berlin kept beside it.');
+    // The same landing asked for as a drop and as a keyboard jump says the same.
+    const drag = moveByPointer(locked(), 'alternatives', 0, 2, ANA);
+    const keys = moveByKeyboard(moveByKeyboard(locked(), 'alternatives', 0, 'later', ANA).state, 'alternatives', 1, 'later', ANA);
+    expect(orderOf(drag.state)).toEqual(order);
+    expect(orderOf(keys.state)).toEqual(order);
+    expect(logical(drag.report)).toEqual(logical(menu.report));
+    expect(describeMove(a, drag.report)).toBe(said);
+    expect(describeMove(a, keys.report)).toBe(said);
+  });
+
+  it('"after" puts it immediately after the anchor, not after the anchor\'s neighbour', () => {
+    const menu = moveByMenu(locked(), 'alternatives', 0, { kind: 'after', id: 'taipei' }, ANA);
+    expect(orderOf(menu.state)).toEqual(['taipei', 'lisbon', 'berlin', 'seoul', 'montreal']);
+    expect(describeMove(a, menu.report)).toContain('after Taipei');
+    const drag = moveByPointer(locked(), 'alternatives', 0, 1, ANA);
+    expect(describeMove(a, drag.report)).toBe(describeMove(a, menu.report));
+  });
+
+  it('refuses to move something before an entry locked to it', () => {
+    expect(() => moveByMenu(locked(), 'alternatives', 0, { kind: 'before', id: 'berlin' }, ANA))
+      .toThrow(/locked together/);
+  });
+});
+
 describe('describeMove is the only source of the sentence, and needs no DOM (#75)', () => {
   const a = relocation();
 
@@ -196,6 +258,23 @@ describe('describeMove is the only source of the sentence, and needs no DOM (#75
   it('says so when nothing moved, rather than announcing a move that did not happen', () => {
     const { report } = moveTo(initialViewState(a), 'alternatives', 4, 4, ANA);
     expect(describeMove(a, report)).toBe('Alternative Montreal is already row 5 of 5.');
+  });
+
+  it('a refused move explains itself rather than reading as a reader\'s own no-op', () => {
+    const run = lockRun(initialViewState(a), 'alternatives', ['seoul', 'montreal']);
+    const { report } = moveTo(run, 'alternatives', 3, 4, ANA);
+    expect(report).toMatchObject({ noOp: true, clamped: 'locked-run-block' });
+    expect(describeMove(a, report)).toBe(
+      'Alternative Seoul did not move: the alternatives locked to it come with it. It is still row 4 of 5.',
+    );
+  });
+
+  it('counts what travelled in the analysis\'s plural, never a bare numeral', () => {
+    const run = lockRun(initialViewState(a), 'alternatives', ['berlin', 'taipei', 'seoul', 'montreal']);
+    const { report } = moveTo(run, 'alternatives', 1, 0, ANA);
+    expect(describeMove(a, report)).toBe(
+      'Alternative Berlin moved to row 1 of 5, first, with 3 more alternatives kept beside it.',
+    );
   });
 
   it('falls back to the id for an entry the document no longer lists', () => {

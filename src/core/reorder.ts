@@ -25,11 +25,14 @@
  *   quietly re-forming a run the reader took apart.
  * - A move that would land **inside** another locked run stops at that run's
  *   near edge rather than splitting it, and says so.
- * - A **pin** is `{ id, position }`, so a move that shifts a pinned entry would
- *   leave its recorded position describing somebody else. Pins stay attached to
- *   their ids and their positions are rewritten to the arrangement the reader
- *   just made -- the pin survives the move, which is what makes it an input to
- *   the next seriation run rather than an override of this one.
+ * - A **pin** is `{ id, position }` and is an *input to the next seriation run*
+ *   (ADR-0025), not a description of the current hand arrangement. A move
+ *   therefore leaves every pin exactly as the reader set it: rewriting them to
+ *   the new indices would both discard what the pin was asking for and break
+ *   ADR-0007 clause 2, since moving something away and back would restore the
+ *   order while leaving the pins changed, marking a clean view modified for
+ *   ever. What the move does instead is *report* the pins it left describing
+ *   somebody else's position, in `pinsDisplaced`, and `describeMove` says so.
  *
  * **A no-op move records nothing.** Asking for the position a thing already
  * occupies leaves the order *and its provenance* untouched, so it cannot mark a
@@ -61,8 +64,22 @@ export interface MoveReport {
   carried: string[];
   /** A locked run covering `id` that the current order had already broken. */
   brokenRun?: string[];
-  /** Set when the requested index could not be honoured, and why. */
-  clamped?: 'range' | 'locked-run';
+  /**
+   * Set when the requested index could not be honoured, and why:
+   *
+   * - `range`             past the first or last position.
+   * - `locked-run-split`  the landing point was inside another locked run, so
+   *                       it stopped at that run's near edge.
+   * - `locked-run-block`  the entries locked to this one travel with it, and
+   *                       they have to occupy the positions it asked for.
+   */
+  clamped?: 'range' | 'locked-run-split' | 'locked-run-block';
+  /**
+   * Pins this move left describing somebody else's position: they named the
+   * index their entry sat at, and it no longer does. Pins are **not** rewritten
+   * (see the module note), so this is what a reader has to be told.
+   */
+  pinsDisplaced: { id: string; pinnedTo: number; nowAt: number }[];
   /** True when nothing moved; no provenance was recorded. */
   noOp: boolean;
   route: MoveRoute;
@@ -154,36 +171,47 @@ export function moveTo(
 
   // Never split another locked run: stop at its near edge instead. A tie goes
   // to the earlier edge, so the same request always lands in the same place.
-  for (const b of runBlocks(rest, lockedRuns.filter((r) => !r.some((x) => moving.has(x))))) {
-    if (insertAt > b.start && insertAt <= b.end) {
-      insertAt = insertAt - b.start <= b.end + 1 - insertAt ? b.start : b.end + 1;
-      clamped = 'locked-run';
-    }
+  // Run to a fixpoint: stepping to one run's edge can land inside the next run
+  // along, and a single pass in declaration order would leave it there.
+  const others = runBlocks(rest, lockedRuns.filter((r) => !r.some((x) => moving.has(x))));
+  for (let pass = 0; pass <= others.length; pass += 1) {
+    const inside = others.find((b) => insertAt > b.start && insertAt <= b.end);
+    if (!inside) break;
+    insertAt = insertAt - inside.start <= inside.end + 1 - insertAt ? inside.start : inside.end + 1;
+    clamped = 'locked-run-split';
   }
 
   const order = [...rest.slice(0, insertAt), ...ids, ...rest.slice(insertAt)];
   const landed = insertAt + offset;
-  // Dragging a middle member of a run to the very start asks for a position the
-  // members before it must occupy. The run wins, and the report says so.
-  if (landed !== bounded && clamped === undefined) clamped = 'locked-run';
+  // Dragging a member of a run to a position its own run has to occupy: the run
+  // wins, nothing was split, and the report says which of the two it was.
+  if (landed !== bounded && clamped === undefined) clamped = 'locked-run-block';
   const noOp = order.every((x, i) => x === current[i]);
   if (noOp) {
     return {
       state: v,
       report: {
-        axis, id: current[from]!, from, to: from, total, carried: [], noOp: true, route,
-        transposed: v.transposed,
-        ...(landed > 0 ? { before: order[landed - 1]! } : {}),
+        axis, id: current[from]!, from, to: from, total, carried: [], pinsDisplaced: [],
+        noOp: true, route, transposed: v.transposed,
+        ...(from > 0 ? { before: current[from - 1]! } : {}),
         ...(clamped ? { clamped } : {}),
         ...(brokenRun ? { brokenRun: [...brokenRun] } : {}),
       },
     };
   }
 
-  // Pins stay attached to their ids: rewrite each to where the reader put it.
-  const movedPins = pins.map((p) => {
-    const i = order.indexOf(p.id);
-    return i < 0 ? { ...p } : { id: p.id, position: i };
+  // Pins are left exactly as set (see the module note). What changed is which
+  // entry sits at the index a pin names, and that is reported, not repaired.
+  const was = new Map(current.map((id, i) => [id, i]));
+  const now = new Map(order.map((id, i) => [id, i]));
+  const pinsDisplaced = pins.flatMap((p) => {
+    const before = was.get(p.id);
+    const after = now.get(p.id);
+    // Only pins this move displaced: one that already disagreed with the order
+    // is not news, and one still at its pinned index is not displaced.
+    if (before === undefined || after === undefined) return [];
+    if (before !== p.position || after === p.position) return [];
+    return [{ id: p.id, pinnedTo: p.position, nowAt: after }];
   });
 
   const state: ViewState = {
@@ -192,7 +220,6 @@ export function moveTo(
       ...v[key],
       order,
       provenance: { kind: 'manual' as const, by, ...(at === undefined ? {} : { at }) },
-      constraints: { ...v[key].constraints, pins: movedPins },
     },
   };
 
@@ -201,6 +228,7 @@ export function moveTo(
     report: {
       axis, id: current[from]!, from, to: landed, total,
       carried: ids.filter((x) => x !== current[from]),
+      pinsDisplaced,
       noOp: false, route, transposed: v.transposed,
       ...(landed > 0 ? { before: order[landed - 1]! } : {}),
       ...(clamped ? { clamped } : {}),
@@ -232,25 +260,46 @@ export function moveByKeyboard(
   return moveTo(v, axis, from, to, { ...who, route: 'keyboard' });
 }
 
-/** The move menu. Its "before"/"after" entries name an id; the rest are positions. */
+/**
+ * The move menu. Its "before"/"after" entries name an id; the rest are positions.
+ *
+ * "Before X" is resolved against the order **with the moving block taken out**,
+ * not by nudging an index by one: when a locked run travels with the handle,
+ * `k` entries leave, and a fixed +/-1 lands the handle on the wrong side of the
+ * anchor -- saying "after Montreal" while putting it before, which is precisely
+ * the drift a single `describeMove` exists to prevent.
+ */
 export function moveByMenu(
   v: ViewState, axis: Axis, from: number, target: MenuMove, who: MoveAttribution,
 ): MoveOutcome {
-  const order = v[orderKeyOf(axis)].order;
-  const anchorOf = (id: string) => {
-    const i = order.indexOf(id);
-    if (i < 0) throw new Error(`cannot move ${axis} position ${from}: "${id}" is not on this axis.`);
-    return i;
+  const key = orderKeyOf(axis);
+  const order = v[key].order;
+  if (!Number.isInteger(from) || from < 0 || from >= order.length) {
+    // Let `moveTo` own the message for a position that does not exist.
+    return moveTo(v, axis, from, from, { ...who, route: 'menu' });
+  }
+  const to = (): number => {
+    if (target.kind === 'to-start') return 0;
+    if (target.kind === 'to-end') return order.length - 1;
+    if (target.kind === 'earlier') return from - 1;
+    if (target.kind === 'later') return from + 1;
+
+    const { ids, offset } = blockAt(order, from, v[key].constraints.lockedRuns);
+    const moving = new Set(ids);
+    if (moving.has(target.id)) {
+      throw new Error(
+        `cannot move ${axis} position ${from} ${target.kind} "${target.id}": ` +
+          'they are locked together and move as one.',
+      );
+    }
+    const rest = order.filter((x) => !moving.has(x));
+    const anchor = rest.indexOf(target.id);
+    if (anchor < 0) throw new Error(`cannot move ${axis} position ${from}: "${target.id}" is not on this axis.`);
+    // The block's first entry goes at the anchor (before) or just past it
+    // (after); the handle lands `offset` further along, whatever k is.
+    return (target.kind === 'before' ? anchor : anchor + 1) + offset;
   };
-  const to = target.kind === 'to-start' ? 0
-    : target.kind === 'to-end' ? order.length - 1
-      : target.kind === 'earlier' ? from - 1
-        : target.kind === 'later' ? from + 1
-          // Landing *before* an anchor that sits after us means taking the place
-          // in front of it, which is one lower once we have left our own slot.
-          : target.kind === 'before' ? anchorOf(target.id) - (anchorOf(target.id) > from ? 1 : 0)
-            : anchorOf(target.id) + (anchorOf(target.id) > from ? 0 : 1);
-  return moveTo(v, axis, from, to, { ...who, route: 'menu' });
+  return moveTo(v, axis, from, to(), { ...who, route: 'menu' });
 }
 
 /** Pointer drag: a drop index, and nothing else. Deletable without touching the keyboard path. */
@@ -276,6 +325,12 @@ function singularNoun(a: Analysis, axis: Axis): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
+/** The plural in the analysis's own vocabulary, for counts a numeral alone would leave bare. */
+function pluralNoun(a: Analysis, axis: Axis): string {
+  const al = a.aliases;
+  return axis === 'alternatives' ? al?.alternatives ?? 'alternatives' : al?.criteria ?? 'criteria';
+}
+
 /**
  * The announcement, and the only place it is written (ADR-0027).
  *
@@ -297,16 +352,30 @@ export function describeMove(a: Analysis, report: MoveReport): string {
   const geo = geometryWord(report.axis, report.transposed);
   const at = `${geo} ${report.to + 1} of ${report.total}`;
 
-  if (report.noOp) return `${noun} ${label(report.id)} is already ${at}.`;
+  // Why a requested position was not reached. A run that came along is not a
+  // run that was split, and saying the wrong one is worse than saying neither.
+  const refusal = report.clamped === 'locked-run-split' ? 'a locked run cannot be split'
+    : report.clamped === 'locked-run-block' ? `the ${pluralNoun(a, report.axis)} locked to it come with it`
+      : undefined;
+
+  const pins = report.pinsDisplaced;
+  const pinNote = pins.length === 0 ? ''
+    : pins.length === 1
+      ? ` ${label(pins[0]!.id)} is pinned to ${geo} ${pins[0]!.pinnedTo + 1} and now sits at ${geo} ${pins[0]!.nowAt + 1}.`
+      : ` ${pins.length} pins no longer name the ${geo} their ${pluralNoun(a, report.axis)} sit at.`;
+
+  if (report.noOp) {
+    return refusal === undefined
+      ? `${noun} ${label(report.id)} is already ${at}.`
+      : `${noun} ${label(report.id)} did not move: ${refusal}. It is still ${at}.`;
+  }
 
   const carried = report.carried.length === 0 ? ''
     : report.carried.length <= 2
       ? `, with ${report.carried.map(label).join(' and ')} kept beside it`
-      : `, with ${report.carried.length} kept beside it`;
+      : `, with ${report.carried.length} more ${pluralNoun(a, report.axis)} kept beside it`;
   const place = report.before === undefined ? ', first' : `, after ${label(report.before)}`;
-  const stopped = report.clamped === 'locked-run'
-    ? ' It stopped there: a locked run cannot be split.'
-    : '';
+  const stopped = refusal === undefined ? '' : ` It stopped there: ${refusal}.`;
 
-  return `${noun} ${label(report.id)} moved to ${at}${place}${carried}.${stopped}`;
+  return `${noun} ${label(report.id)} moved to ${at}${place}${carried}.${stopped}${pinNote}`;
 }
