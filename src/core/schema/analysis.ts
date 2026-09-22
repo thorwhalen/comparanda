@@ -909,8 +909,14 @@ export function completeness(
       // value, and counting it as not-assessed would report finished work as
       // outstanding. (It did: every nominal and boolean cell in the messy
       // fixture read as outstanding under its lower-median default.)
+      //
+      // Only when the refusal is about the *type* of the values, though: every
+      // live assertion carries a value and they agree. A refused conflict --
+      // `single` over two different values, a tied mode, a value beside an
+      // absence -- is unresolved work, and stays outstanding. (Review finding.)
       const asserted = r?.value !== undefined ||
-        (r?.refused !== undefined && r.contributing.some((s) => s.value !== undefined));
+        (r?.refused !== undefined && r.contributing.length > 0 &&
+          r.contributing.every((s) => s.value !== undefined) && !r.disagreement);
       if (asserted) cells.push({ hasValue: true, criterionId: critId, widened });
       else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code, criterionId: critId, widened });
       else cells.push({ hasValue: false, code: NOT_ASSESSED, criterionId: critId, widened });

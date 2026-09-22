@@ -123,3 +123,44 @@ describe('group-level completeness respects group-pair inapplicability', () => {
     expect(() => completeness(doc(), { measure: 'score', criterionGroupId: 'nope' })).toThrow(/nope/);
   });
 });
+
+describe('a refused reduction counts as present only when nothing is in conflict (review finding)', () => {
+  const NOMINAL = { level: 'nominal', preference: 'none', levels: ['a', 'b'] };
+  const one = (measurement: unknown, assertions: unknown[], extra: Record<string, unknown> = {}) =>
+    completeness(Analysis.parse({
+      id: 'r', subject: { question: 'q' },
+      authors: [{ id: 'ana', displayName: 'Ana', kind: 'human' }, { id: 'ben', displayName: 'Ben', kind: 'human' }],
+      alternatives: [{ id: 'x', label: 'X' }],
+      criteria: [{ id: 'c', label: 'C', defaultMeasurement: measurement }],
+      cells: [{ alternativeId: 'x', criterionId: 'c', measure: 'score', assertions, ...extra }],
+    }), { measure: 'score' });
+
+  it('present: a nominal value under a numeric default, refused for its type', () => {
+    const c = one(NOMINAL, [assertion(1, { value: 'a', justification: 'j' })], { reduction: 'lower-median' });
+    expect(c).toMatchObject({ present: 1, outstanding: 0 });
+  });
+
+  it('outstanding: `single` over two different values -- a conflict nobody resolved', () => {
+    const c = one(ORDINAL, [
+      assertion(1, { value: 2, justification: 'j' }),
+      assertion(2, { value: 4, justification: 'j', authorId: 'ben' }),
+    ], { reduction: 'single' });
+    expect(c).toMatchObject({ present: 0, outstanding: 1 });
+  });
+
+  it('outstanding: a tied mode', () => {
+    const c = one(NOMINAL, [
+      assertion(1, { value: 'a', justification: 'j' }),
+      assertion(2, { value: 'b', justification: 'j', authorId: 'ben' }),
+    ], { reduction: 'mode' });
+    expect(c).toMatchObject({ present: 0, outstanding: 1 });
+  });
+
+  it('outstanding: a value beside an absence', () => {
+    const c = one(ORDINAL, [
+      assertion(1, { value: 3, justification: 'j' }),
+      assertion(2, { missing: { code: 'not-evidenced' }, authorId: 'ben' }),
+    ]);
+    expect(c).toMatchObject({ present: 0, outstanding: 1 });
+  });
+});
