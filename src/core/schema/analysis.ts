@@ -563,7 +563,9 @@ export function validateAnalysis(
   });
   for (const axis of ['alternatives', 'criteria'] as const) {
     for (const r of axisGroups(a, axis).refused) {
-      if (r.kind === 'nesting' && r.codes.includes('cycle')) {
+      // `selfEdge` is the one-group cycle (a group that is its own parent); the
+      // library reports it under its own code, and it is the simplest cycle of all.
+      if (r.kind === 'nesting' && (r.codes.includes('cycle') || r.codes.includes('selfEdge'))) {
         err(
           'group-nesting-acyclic', `groups[${a.groups.findIndex((g) => g.id === r.childId)}].parentId`,
           `nesting "${r.childId}" under "${r.groupId}" closes a cycle; a group cannot contain itself`,

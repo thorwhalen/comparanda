@@ -187,6 +187,39 @@ describe('groups are analysis data, and nothing else (#47 items 3-4)', () => {
       .toBe(true);
   });
 
+  it('refuses a group that is its own parent (review finding: the one-group cycle)', () => {
+    const d = {
+      id: 'g', subject: { question: 'q' }, authors: [],
+      groups: [{ id: 'a', label: 'A', axis: 'alternatives', parentId: 'a' }],
+    };
+    const r = validateAnalysis(d);
+    expect(r.ok).toBe(false);
+    expect(r.problems.some((p) => p.ruleId === 'group-nesting-acyclic' && p.path === 'groups[0].parentId')).toBe(true);
+  });
+
+  it('refuses a two-group nesting cycle', () => {
+    const d = {
+      id: 'g', subject: { question: 'q' }, authors: [],
+      groups: [
+        { id: 'a', label: 'A', axis: 'alternatives', parentId: 'b' },
+        { id: 'b', label: 'B', axis: 'alternatives', parentId: 'a' },
+      ],
+    };
+    expect(validateAnalysis(d).problems.some((p) => p.ruleId === 'group-nesting-acyclic')).toBe(true);
+  });
+
+  it('refuses a parent group on the other axis', () => {
+    const d = {
+      id: 'g', subject: { question: 'q' }, authors: [],
+      groups: [
+        { id: 'crit', label: 'C', axis: 'criteria' },
+        { id: 'alt', label: 'A', axis: 'alternatives', parentId: 'crit' },
+      ],
+    };
+    const hits = validateAnalysis(d).problems.filter((p) => p.ruleId === 'group-on-its-axis');
+    expect(hits.map((p) => p.path)).toEqual(['groups[1].parentId']);
+  });
+
   it('has no representation for selection', () => {
     // ADR-0008: selection is view state. The group schema has no field that
     // could hold "these three, for me, right now".
