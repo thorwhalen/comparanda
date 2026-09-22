@@ -5,3 +5,5 @@
  */
 export * from './dominance.js';
 export * from './screening.js';
+export * from './non-discriminating.js';
+export * from './pugh.js';
