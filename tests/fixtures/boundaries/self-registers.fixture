@@ -1,0 +1,4 @@
+// pretends to be src/view/encodings/heat.ts
+import { registerEncoding } from '../registry.js';
+export const heat = { id: 'heat' };
+registerEncoding(heat);

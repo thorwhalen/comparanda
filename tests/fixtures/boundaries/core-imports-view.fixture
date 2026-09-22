@@ -1,0 +1,3 @@
+// pretends to be src/core/analyses/leaky.ts
+import { mountMatrix } from '../../view/index.js';
+export const mount = mountMatrix;

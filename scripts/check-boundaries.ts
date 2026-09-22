@@ -1,36 +1,22 @@
 /**
  * Enforces the module boundaries the ADRs make load-bearing.
  *
- * Three properties, each of which has failed silently in a real project:
- *
- *   1. `core` has no DOM. ADR-0005: "If you need a DOM API in `core`, the design
- *      is wrong." Enforced by lint rule in CI "not by intention".
- *   2. `core` never imports from `view`. The dependency runs one way.
- *   3. Nothing reaches past its adapter. ADR-0013: one stray `fetch()` in a
- *      renderer breaks the standalone bundle, *and only offline* -- so it ships
- *      green and fails at the reader's desk.
+ * The rules themselves live in `boundary-rules.ts`, as pure functions, so the
+ * tests run exactly what this script runs against deliberately-violating
+ * fixtures (#39). This file only walks the tree, reads the metafile and exits.
  *
  * Run before the build (static) and again after (bundle inputs), because the
  * second is the one that actually proves ADR-0005's stated condition of
- * acceptance: that a core-only consumer gets no view code.
+ * acceptance: that a core-only consumer gets no view code -- and, per ADR-0017,
+ * no classic zod.
  */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
+import { bundleViolations, sourceViolations, type Metafile, type Violation } from './boundary-rules.js';
+
 const ROOT = new URL('..', import.meta.url).pathname;
 const SRC = join(ROOT, 'src');
-
-/** Globals that only exist in a browser. Their presence in `core` is the bug. */
-const DOM_GLOBALS = [
-  'document', 'window', 'navigator', 'localStorage', 'sessionStorage',
-  'HTMLElement', 'Element', 'Node', 'CustomEvent', 'DOMParser',
-  'requestAnimationFrame', 'getComputedStyle', 'matchMedia', 'BroadcastChannel',
-];
-
-/** Network reach. Legal only behind an adapter in `store/`. */
-const NETWORK = ['fetch(', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'navigator.sendBeacon'];
-
-interface Violation { file: string; line: number; rule: string; text: string }
 
 function walk(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -41,57 +27,11 @@ function walk(dir: string): string[] {
   });
 }
 
-/** Strip comments and string literals so a mention in prose is not a violation. */
-function strip(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length))
-    .replace(/(['"`])(?:\\.|(?!\1)[^\\])*\1/g, (m) => ' '.repeat(m.length));
+function checkSources(): Violation[] {
+  return walk(SRC).flatMap((file) =>
+    sourceViolations(relative(ROOT, file).split('\\').join('/'), readFileSync(file, 'utf8')));
 }
 
-function check(): Violation[] {
-  const v: Violation[] = [];
-  const add = (file: string, i: number, rule: string, text: string) =>
-    v.push({ file: relative(ROOT, file), line: i + 1, rule, text: text.trim().slice(0, 100) });
-
-  for (const file of walk(join(SRC, 'core'))) {
-    const lines = strip(readFileSync(file, 'utf8')).split('\n');
-    lines.forEach((line, i) => {
-      for (const g of DOM_GLOBALS) {
-        // Match the global only where it is *used* -- followed by a member
-        // access, an index, or a call -- and not where it merely appears as a
-        // property name. `{ document: current }` is a field called "document",
-        // not the DOM, and flagging it trains people to ignore this check.
-        const used = new RegExp(`(?<![.\\w$])${g}\\s*[.\\[(]`);
-        const typeofGuard = new RegExp(`typeof\\s+${g}\\b`);
-        if (used.test(line) || typeofGuard.test(line)) {
-          add(file, i, `core-has-no-dom (${g})`, line);
-        }
-      }
-      if (/from\s+['"][^'"]*\.\.\/view/.test(line) || /from\s+['"]\.\.\/\.\.\/view/.test(line)) {
-        add(file, i, 'core-must-not-import-view', line);
-      }
-    });
-  }
-
-  // Network is legal only in store/ -- that is what "nothing reaches past its
-  // adapter" means concretely.
-  for (const file of [...walk(join(SRC, 'core')), ...walk(join(SRC, 'view'))]) {
-    const lines = strip(readFileSync(file, 'utf8')).split('\n');
-    lines.forEach((line, i) => {
-      for (const n of NETWORK) {
-        if (line.includes(n)) add(file, i, `no-network-outside-store (${n})`, line);
-      }
-    });
-  }
-
-  return v;
-}
-
-/**
- * ADR-0005's condition of acceptance, checked against the real build: does the
- * core bundle contain any view input? tsup writes a metafile we can read.
- */
 function checkBundle(): Violation[] {
   const dist = join(ROOT, 'dist');
   const meta = join(dist, 'metafile-esm.json');
@@ -110,26 +50,17 @@ function checkBundle(): Violation[] {
         'Without it the core-contains-no-view check silently passes.',
     }];
   }
-  const m = JSON.parse(readFileSync(meta, 'utf8')) as {
-    outputs: Record<string, { inputs?: Record<string, unknown>; entryPoint?: string }>;
-  };
-  const v: Violation[] = [];
-  for (const [out, info] of Object.entries(m.outputs)) {
-    const isCoreEntry = info.entryPoint === 'src/index.ts';
-    if (!isCoreEntry) continue;
-    for (const input of Object.keys(info.inputs ?? {})) {
-      if (input.includes('src/view/')) {
-        v.push({ file: out, line: 0, rule: 'core-bundle-contains-view', text: input });
-      }
-    }
-  }
-  return v;
+  return bundleViolations(JSON.parse(readFileSync(meta, 'utf8')) as Metafile);
 }
 
-const violations = [...check(), ...checkBundle()];
+const violations = [...checkSources(), ...checkBundle()];
 
 if (violations.length === 0) {
-  console.log('boundaries ok: core has no DOM, core does not import view, no network outside store');
+  console.log(
+    'boundaries ok: core has no DOM, core does not import view, no network outside store, ' +
+      'no classic zod, no module-scope registration' +
+      (existsSync(join(ROOT, 'dist')) ? '; core bundle holds no view code and no classic zod' : ''),
+  );
   process.exit(0);
 }
 
@@ -137,5 +68,6 @@ console.error(`\n${violations.length} boundary violation(s):\n`);
 for (const x of violations) {
   console.error(`  ${x.file}:${x.line}\n    ${x.rule}\n    ${x.text}\n`);
 }
-console.error('See ADR-0005 (headless core) and ADR-0013 (nothing reaches past its adapter).\n');
+console.error('See ADR-0005 (headless core), ADR-0013 (nothing reaches past its adapter) and ADR-0017 ' +
+  '(zod/mini, explicit registries).\n');
 process.exit(1);

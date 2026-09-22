@@ -1,0 +1,11 @@
+// pretends to be src/core/schema/clean.ts -- every near-miss, and no violation
+import * as z from 'zod/mini';
+import { registerMigration } from '../migrations.js';
+export const Doc = z.object({ document: z.string(), window: z.number() });
+export function compose(): void {
+  // Registration inside a function is the composition root's job, and legal.
+  registerMigration({ from: 0, describe: 'none', up: (d) => d });
+}
+const note = 'call fetch( later, or read document.title, or import from "../view"';
+export const url = 'https://example.org/*not-a-comment*/';
+export { note };
