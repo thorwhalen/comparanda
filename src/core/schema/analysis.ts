@@ -26,7 +26,7 @@ import { degradationOf, type Degradation } from './declarations.js';
 import {
   ScaleDeclaration, isOrdered, resolveScale, validateMeasurement, type Measurement,
 } from './measurement.js';
-import { axisGroups, makeInapplicability } from './groups.js';
+import { axisGroups, makeInapplicability, membersOfGroup } from './groups.js';
 import { Rendition, validateEvidence, type EvidenceRuleId } from './evidence.js';
 
 /**
@@ -861,10 +861,35 @@ export function isInapplicable(a: Analysis, alternativeId: string, criterionId: 
  */
 export function completeness(
   a: Analysis,
-  scope: { measure: string; alternativeIds?: readonly string[]; criterionIds?: readonly string[] },
+  scope: {
+    measure: string;
+    alternativeIds?: readonly string[];
+    criterionIds?: readonly string[];
+    /**
+     * Narrow to the members of a group -- by closure, so a sub-group's members
+     * count (ADR-0008 as amended). Intersected with `alternativeIds` /
+     * `criterionIds` when both are given. Cells inside a declared inapplicable
+     * block count as structural here exactly as at analysis scope (#81).
+     */
+    alternativeGroupId?: string;
+    criterionGroupId?: string;
+  },
 ): Completeness {
-  const alts = scope.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id);
-  const crits = scope.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
+  const live = (list: readonly { id: string; tombstoned?: boolean | undefined }[]) =>
+    list.filter((x) => !x.tombstoned).map((x) => x.id);
+  const inGroup = (axis: 'alternatives' | 'criteria', groupId: string | undefined, ids: string[]): string[] => {
+    if (groupId === undefined) return ids;
+    const g = a.groups.find((x) => x.id === groupId);
+    if (!g || g.axis !== axis) {
+      throw new Error(`completeness: "${groupId}" is not a group of ${axis} in this analysis`);
+    }
+    const members = new Set(membersOfGroup(axisGroups(a, axis), groupId));
+    return ids.filter((id) => members.has(id));
+  };
+  const alts = inGroup('alternatives', scope.alternativeGroupId,
+    [...(scope.alternativeIds ?? live(a.alternatives))]);
+  const crits = inGroup('criteria', scope.criterionGroupId,
+    [...(scope.criterionIds ?? live(a.criteria))]);
   const cells: { hasValue: boolean; code?: string; criterionId?: string; widened?: boolean }[] = [];
   const reader = makeCellReader(a, scope.measure);
   const inapplicable = makeInapplicability(a);
@@ -879,7 +904,20 @@ export function completeness(
       const cell = index.get(cellKey(altId, critId, scope.measure));
       const widened = cell !== undefined && isWidenedByDisclosure(cell);
       const r = reader.read(altId, critId);
-      if (r?.value !== undefined) cells.push({ hasValue: true, criterionId: critId, widened });
+      // Presence, not displayability: a cell whose reduction was refused -- a
+      // lower-median over a nominal value, say -- still carries an asserted
+      // value, and counting it as not-assessed would report finished work as
+      // outstanding. (It did: every nominal and boolean cell in the messy
+      // fixture read as outstanding under its lower-median default.)
+      //
+      // Only when the refusal is about the *type* of the values, though: every
+      // live assertion carries a value and they agree. A refused conflict --
+      // `single` over two different values, a tied mode, a value beside an
+      // absence -- is unresolved work, and stays outstanding. (Review finding.)
+      const asserted = r?.value !== undefined ||
+        (r?.refused !== undefined && r.contributing.length > 0 &&
+          r.contributing.every((s) => s.value !== undefined) && !r.disagreement);
+      if (asserted) cells.push({ hasValue: true, criterionId: critId, widened });
       else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code, criterionId: critId, widened });
       else cells.push({ hasValue: false, code: NOT_ASSESSED, criterionId: critId, widened });
     }
