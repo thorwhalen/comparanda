@@ -52,6 +52,45 @@ function withWeight(a: Analysis, criterionId: string, weight: number): Analysis 
 
 const run = (a: Analysis, extra: Record<string, unknown> = {}) => sensitivity(a, { measure: 'score', ...extra });
 
+/** The whole reported order at a weighting: which rows are scored, and which pairs are ordered. */
+const reportedOrder = (a: Analysis, at?: { id: string; w: number }): string => {
+  const r = weightedSum(at ? withWeight(a, at.id, at.w) : a, { measure: 'score' });
+  const scored = r.rows.filter((row) => row.status !== 'not-scored');
+  const pairs: string[] = [];
+  for (const x of scored) {
+    for (const y of scored) {
+      if (x.alternativeId === y.alternativeId) continue;
+      if (separability(x, y) === 'x-higher') pairs.push(`${x.alternativeId}>${y.alternativeId}`);
+    }
+  }
+  return JSON.stringify([scored.map((row) => row.alternativeId).sort(), pairs.sort()]);
+};
+
+/**
+ * Every margin the analysis reports is the *nearest* boundary: the order is
+ * unchanged everywhere strictly between the declared weight and `at`, and
+ * changed just past it. This is what makes a margin a margin rather than some
+ * weight at which something eventually happens.
+ */
+const expectNearestBoundary = (a: Analysis, r: ReturnType<typeof sensitivity>) => {
+  const here = (id: string) => reportedOrder(a, { id, w: r.weightPerturbation.criteria.find((c) => c.criterionId === id)!.weight });
+  for (const c of r.weightPerturbation.criteria) {
+    for (const change of [c.ifRaised, c.ifLowered]) {
+      if (!change) continue;
+      const step = Math.max(Math.abs(change.at), c.weight, 1) * 1e-6;
+      const past = change.direction === 'up' ? change.at + step : Math.max(change.at - step, 0);
+      expect(reportedOrder(a, { id: c.criterionId, w: past }), `${c.criterionId} ${change.direction}: the order must differ past ${change.at}`)
+        .not.toBe(here(c.criterionId));
+      // ...and nothing happens on the way there.
+      for (let i = 1; i <= 24; i += 1) {
+        const between = c.weight + (change.at - c.weight) * (i / 25);
+        expect(reportedOrder(a, { id: c.criterionId, w: between }), `${c.criterionId} ${change.direction}: the order changed at ${between}, before the reported ${change.at}`)
+          .toBe(here(c.criterionId));
+      }
+    }
+  }
+};
+
 const ordered = (a: Analysis, higher: string, lower: string, weights?: { id: string; w: number }) => {
   const doc_ = weights ? withWeight(a, weights.id, weights.w) : a;
   const r = weightedSum(doc_, { measure: 'score' });
@@ -136,14 +175,37 @@ describe('blanks and the coverage gate (#85, ADR-0015)', () => {
     expect(past.rows.find((row) => row.alternativeId === 'x')!.status).toBe('not-scored');
   });
 
-  it('gives a row the gate did not score no stability number anywhere', () => {
+  it('gives a row the gate did not score no place in the order, and no aggregate', () => {
     // z is blank on the heavy criterion: coverage 1/4, below the 2/3 floor.
     const a = doc([{ m: ORD, w: 3 }, { m: ORD, w: 1 }], { x: [5, 5], y: [3, 3], z: [undefined, 4] });
     const r = run(a);
     expect(r.unscored).toEqual(['z']);
     expect(r.orderedPairs.every((p) => p.higher !== 'z' && p.lower !== 'z')).toBe(true);
-    const mentionsZ = JSON.stringify(r.weightPerturbation).includes('"z"');
-    expect(mentionsZ, 'an unscored row must carry no weight margin').toBe(false);
+    // z may be named as the row that would *enter* the gate -- that is a fact
+    // about the order, not a stability number for a row nobody scored -- but it
+    // is never given a position in it.
+    for (const c of r.weightPerturbation.criteria) {
+      for (const change of [c.ifRaised, c.ifLowered]) {
+        if (!change) continue;
+        if (change.alternativeId === 'z') expect(change.cause).toBe('row-enters-the-coverage-gate');
+        expect(change.pair?.higher).not.toBe('z');
+        expect(change.pair?.lower).not.toBe('z');
+      }
+    }
+  });
+
+  it('finds the weight at which an unscored row joins the order (review finding)', () => {
+    // Lowering the heavy criterion's weight raises z's coverage past the floor:
+    // 1/(1+t) >= 2/3 at t <= 0.5, and the order gains x>z and z>y.
+    const a = doc([{ m: ORD, w: 3 }, { m: ORD, w: 1 }], { x: [5, 5], y: [3, 3], z: [undefined, 4] });
+    const r = run(a);
+    const c0 = r.weightPerturbation.criteria.find((c) => c.criterionId === 'c0')!;
+    expect(c0.ifLowered?.cause).toBe('row-enters-the-coverage-gate');
+    expect(c0.ifLowered?.alternativeId).toBe('z');
+    expect(c0.ifLowered?.at).toBeCloseTo(0.5, 9);
+    const after = weightedSum(withWeight(a, 'c0', 0.49), { measure: 'score' });
+    expect(after.rows.find((row) => row.alternativeId === 'z')!.status).not.toBe('not-scored');
+    expectNearestBoundary(a, r);
   });
 
   it('names a row leaving the coverage gate as the change, when that comes first', () => {
@@ -182,6 +244,35 @@ describe('the alternative-set perturbation (#85, ADR-0015 sub-amendment)', () =>
     expect(survivors.removed).toBe('x');
     // y > z survives x's removal and is checked.
     expect(r.orderedPairs.some((p) => p.higher === 'y' && p.lower === 'z')).toBe(true);
+  });
+});
+
+describe('every kind of order change counts, and only real ones (review findings)', () => {
+  it('reports a pair that becomes ordered, not only one that stops being', () => {
+    // z is blank on c1, so its aggregate is an interval that overlaps y's point.
+    // Lowering c1's weight narrows the interval until z > y appears -- a change
+    // a scan watching only the pairs already ordered would never see.
+    const a = doc([{ m: ORD, w: 8 }, { m: ORD, w: 5 }, { m: ORD, w: 4 }], {
+      x: [5, 5, 5], y: [3, 3, 3], z: [4, undefined, 3],
+    });
+    const r = run(a);
+    const causes = r.weightPerturbation.criteria.flatMap((c) => [c.ifRaised?.cause, c.ifLowered?.cause]);
+    expect(causes).toContain('pair-becomes-ordered');
+    expectNearestBoundary(a, r);
+  });
+
+  it('does not report a gate margin for a row that never leaves the gate', () => {
+    // z's coverage is (2 + t) / (3 + t) on c2, never below 2/3: no weight of c2
+    // takes z out, and a root of the gate equation there is not an event.
+    const a = doc([{ m: ORD, w: 2 }, { m: COST, w: 1 }, { m: ORD, w: 1 }], {
+      x: [5, 90, 'na'], y: [4, 10, 3], z: [2, undefined, 4],
+    });
+    const r = run(a);
+    const c2 = r.weightPerturbation.criteria.find((c) => c.criterionId === 'c2')!;
+    for (const change of [c2.ifRaised, c2.ifLowered]) {
+      if (change?.cause === 'row-leaves-the-coverage-gate') expect(change.alternativeId).not.toBe('z');
+    }
+    expectNearestBoundary(a, r);
   });
 });
 
@@ -224,11 +315,19 @@ describe('runs only over an opted-into weighted aggregation (#85 item 3)', () =>
     expect(r.weightPerturbation.criteria).toEqual([]);
   });
 
-  it('says so when the gate scored nothing separable, rather than reporting large margins', () => {
-    const r = run(doc([{ m: ORD, w: 1 }], { x: [3], y: [3] }));
+  it('says what a margin means when the gate separated nothing', () => {
+    const a = doc([{ m: ORD, w: 1 }], { x: [3], y: [3] });
+    const r = run(a);
     expect(r.orderedPairs).toEqual([]);
-    expect(r.weightPerturbation.smallest).toBeUndefined();
-    expect(r.warnings.join(' ')).toMatch(/absent rather than large/);
+    expect(r.warnings.join(' ')).toMatch(/not the weight at which one would break/);
+    // Whatever it reports here is a gate event, not a pair that breaks: there
+    // is no pair to break.
+    for (const c of r.weightPerturbation.criteria) {
+      for (const change of [c.ifRaised, c.ifLowered]) {
+        if (change) expect(change.cause).not.toBe('pair-stops-being-ordered');
+      }
+    }
+    expectNearestBoundary(a, r);
   });
 });
 
@@ -256,18 +355,25 @@ describe('the messy fixture, with weights declared over it', () => {
     for (const u of r.unscored) expect(ids.has(u)).toBe(true);
   });
 
-  it('every margin it reports is one the weighted sum agrees with', () => {
+  it('every margin it reports is the nearest boundary the weighted sum agrees with', () => {
+    // Whatever the cause -- a pair breaking, a pair appearing, a row entering or
+    // leaving the gate -- the whole reported order must be unchanged all the way
+    // to the margin and changed just past it.
     const a = weighted();
-    const r = sensitivity(a, { measure: 'score' });
+    expectNearestBoundary(a, sensitivity(a, { measure: 'score' }));
+  });
+
+  it('catches an order change that only a gained pair reveals', () => {
+    // The fixture's margins used to be read off the pairs already ordered, which
+    // overstated them several-fold: on these weights the first thing that happens
+    // to several criteria is a new pair appearing, not an old one breaking.
+    const r = sensitivity(weighted(), { measure: 'score' });
+    const changes = r.weightPerturbation.criteria.flatMap((c) => [c.ifRaised, c.ifLowered]).filter(Boolean);
+    expect(changes.some((change) => change!.cause === 'pair-becomes-ordered')).toBe(true);
+    // And every criterion has a margin in at least one direction: with five
+    // weights on this matrix, none of them is inert.
     for (const c of r.weightPerturbation.criteria) {
-      for (const change of [c.ifRaised, c.ifLowered]) {
-        if (!change || change.cause !== 'pair-stops-being-ordered') continue;
-        const { higher, lower } = change.pair!;
-        const before = change.direction === 'up' ? change.at * 0.999 : change.at * 1.001 + 1e-9;
-        const after = change.direction === 'up' ? change.at * 1.001 + 1e-9 : change.at * 0.999;
-        expect(ordered(a, higher, lower, { id: c.criterionId, w: before }), `${c.criterionId} before`).toBe(true);
-        expect(ordered(a, higher, lower, { id: c.criterionId, w: after }), `${c.criterionId} after`).toBe(false);
-      }
+      expect(c.nearest, `${c.criterionId} reports no margin at all`).toBeDefined();
     }
   });
 });

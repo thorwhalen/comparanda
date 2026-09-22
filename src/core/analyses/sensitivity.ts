@@ -7,16 +7,26 @@
  *
  * 1. **Weight perturbation.** ADR-0015: "a ranking that flips under a 5% weight
  *    change is not a ranking." For each weighted criterion this reports how far
- *    its substitution weight must move -- up and down -- before something in the
- *    reported order changes: a pair that is ordered today stops being ordered,
- *    or a row falls out of the coverage gate. It is solved **exactly**, not
- *    sampled: each row's aggregate is a linear-fractional function of one
- *    weight, so the boundary between two rows is the root of a quadratic.
+ *    its substitution weight must move -- up and down -- before the reported
+ *    order changes **in any way**: a pair that is ordered stops being ordered,
+ *    a pair that overlaps becomes ordered, or a row enters or leaves the
+ *    coverage gate. Candidate weights are solved **exactly**, not sampled (each
+ *    row's aggregate is linear-fractional in one weight, so a boundary between
+ *    two rows is the root of a quadratic, and a gate boundary is linear), and
+ *    each candidate is then kept only if the whole set of ordered pairs really
+ *    differs either side of it -- so a root the order passes through untouched,
+ *    or touches tangentially, is not reported as a margin.
  * 2. **Alternative-set perturbation.** Rank reversal under a changed alternative
- *    set is the standing critique of compensatory methods, and it is the check
- *    that keeps shipping one honest. Each alternative is removed in turn and the
- *    order of the survivors is recompared. (Removal covers addition: the set
- *    without X, plus X, is the set with X.)
+ *    set is the standing critique of compensatory methods. Each alternative is
+ *    removed in turn and the order of the survivors is recompared. (Removal
+ *    covers addition: the set without X, plus X, is the set with X.)
+ *
+ *    **This one cannot fail as the aggregate is written today**, and it is
+ *    reported as the regression guard it is rather than as a finding: a
+ *    declared-range weighted sum has no cross-row term, so no other row's score
+ *    or coverage can move when one is removed. It fails the day someone
+ *    normalises against observed extrema instead, which is the failure the
+ *    literature says these methods die of.
  *
  * **This is a stability finding, never a recommendation.** The result carries
  * its own `caption`, so a view renders the sentence the analysis wrote rather
@@ -68,11 +78,15 @@ export interface OrderChange {
   cause:
     /** Two rows that are ordered today stop being ordered, or swap. */
     | 'pair-stops-being-ordered'
+    /** Two rows that overlap today become separable: a pair the order did not have. */
+    | 'pair-becomes-ordered'
     /** A scored row's coverage falls below the floor, so it leaves the order entirely. */
-    | 'row-leaves-the-coverage-gate';
-  /** The pair that stops being ordered, when that is the cause. */
+    | 'row-leaves-the-coverage-gate'
+    /** An unscored row's coverage rises past the floor, so it joins the order. */
+    | 'row-enters-the-coverage-gate';
+  /** The pair that starts or stops being ordered, when that is the cause. */
   pair?: OrderedPair;
-  /** The row that leaves the gate, when that is the cause. */
+  /** The row that enters or leaves the gate, when that is the cause. */
   alternativeId?: string;
 }
 
@@ -170,17 +184,6 @@ function crossings(f: Linear, g: Linear): number[] {
   return roots.filter((t) => Number.isFinite(t) && t >= -EPS).map((t) => Math.max(t, 0));
 }
 
-/** The nearest root strictly above / below `w`, with a little slack for the one we sit on. */
-function nearest(roots: readonly number[], w: number): { up?: number; down?: number } {
-  let up: number | undefined;
-  let down: number | undefined;
-  for (const t of roots) {
-    if (t > w + EPS && (up === undefined || t < up)) up = t;
-    if (t < w - EPS && (down === undefined || t > down)) down = t;
-  }
-  return { ...(up === undefined ? {} : { up }), ...(down === undefined ? {} : { down }) };
-}
-
 function changeOf(
   at: number, w: number, totalWeight: number, cause: OrderChange['cause'],
   detail: { pair?: OrderedPair; alternativeId?: string },
@@ -227,11 +230,15 @@ export function sensitivity(a: Analysis, opts: SensitivityOptions): SensitivityR
   const assumptions: [string, ...string[]] = [
     ...base.assumptions,
     'Weight sensitivity moves one substitution weight at a time and solves exactly for the first '
-      + 'movement that changes the reported order. One-at-a-time movement understates joint '
-      + 'sensitivity: several weights moving together can flip an order that no single weight can.',
+      + 'movement that changes the reported order in any way: a pair ordered today ceasing to be, a '
+      + 'pair becoming ordered, or a row entering or leaving the coverage gate. One-at-a-time '
+      + 'movement understates joint sensitivity: several weights moving together can change an order '
+      + 'that no single weight can.',
     'The alternative-set perturbation removes each alternative in turn and recompares the survivors. '
-      + 'Under declared-range normalisation no other score can move, so a reversal here would mean '
-      + 'the aggregate had started normalising against the data instead -- which is what this checks.',
+      + 'As this aggregate is written it cannot find a reversal: a declared-range weighted sum has no '
+      + 'cross-row term, so no other row\'s score or coverage can move. Read it as a standing guard '
+      + 'against that changing -- it fails the day scores are normalised against observed extrema -- '
+      + 'and not as evidence about this data.',
   ];
 
   const caption =
@@ -348,50 +355,97 @@ export function sensitivity(a: Analysis, opts: SensitivityOptions): SensitivityR
     return t >= -EPS ? [Math.max(t, 0)] : [];
   };
 
+  /** The whole reported order at one weighting: which rows are scored, and which pairs are ordered. */
+  interface Snapshot { scored: Set<string>; pairs: Set<string> }
+
+  const allIdsInScope = base.rows.map((r) => r.alternativeId);
+
   const criteria: CriterionSensitivity[] = base.basis.map(({ criterionId, weight }) => {
-    let up: OrderChange | undefined;
-    let down: OrderChange | undefined;
-    const consider = (roots: readonly number[], cause: OrderChange['cause'], detail: { pair?: OrderedPair; alternativeId?: string }) => {
-      const { up: u, down: d } = nearest(roots, weight);
-      if (u !== undefined) up = closer(up, changeOf(u, weight, totalWeight, cause, detail));
-      if (d !== undefined) down = closer(down, changeOf(d, weight, totalWeight, cause, detail));
+    // One linear-fractional function per row end, built once for this criterion.
+    const ends = new Map(allIdsInScope.map((id) => [id, {
+      lo: asFunction(id, criterionId, 'lo'),
+      hi: asFunction(id, criterionId, 'hi'),
+    }]));
+
+    const snapshotAt = (t: number): Snapshot => {
+      const scored = new Set(allIdsInScope.filter((id) => scoredAt(id, criterionId, t)));
+      const pairs = new Set<string>();
+      for (const higher of scored) {
+        for (const lower of scored) {
+          if (higher === lower) continue;
+          if (evaluate(ends.get(higher)!.lo, t) > evaluate(ends.get(lower)!.hi, t) + EPS) {
+            pairs.add(key({ higher, lower }));
+          }
+        }
+      }
+      return { scored, pairs };
     };
 
-    for (const pair of orderedPairs) {
-      const f = asFunction(pair.higher, criterionId, 'lo');
-      const g = asFunction(pair.lower, criterionId, 'hi');
-      // Only the crossings that really end the ordering: at the root the two
-      // ends meet, and just past it the pair is no longer separable. And only
-      // where both rows are still scored -- past the gate there is no pair left
-      // to reorder, and quoting a margin from there would be a fiction.
-      const roots = crossings(f, g).filter((t) => {
-        if (!scoredAt(pair.higher, criterionId, t) || !scoredAt(pair.lower, criterionId, t)) return false;
-        const after = t + Math.max(t, 1) * 1e-6;
-        const before = Math.max(t - Math.max(t, 1) * 1e-6, 0);
-        const ordered = (x: number) => evaluate(f, x) > evaluate(g, x) + EPS;
-        return ordered(before) !== ordered(after);
-      });
-      consider(roots, 'pair-stops-being-ordered', { pair });
+    // Every weight at which something *could* change: a pair boundary in either
+    // direction, for every pair of rows in scope -- not only the pairs ordered
+    // today, because a pair that becomes ordered is a change too -- and a gate
+    // boundary for every row, entering as well as leaving.
+    const candidates: number[] = [];
+    for (let i = 0; i < allIdsInScope.length; i += 1) {
+      for (let j = i + 1; j < allIdsInScope.length; j += 1) {
+        const x = allIdsInScope[i]!;
+        const y = allIdsInScope[j]!;
+        candidates.push(...crossings(ends.get(x)!.lo, ends.get(y)!.hi));
+        candidates.push(...crossings(ends.get(y)!.lo, ends.get(x)!.hi));
+      }
     }
-    const inAnOrderedPair = new Set(orderedPairs.flatMap((p) => [p.higher, p.lower]));
-    for (const altId of inAnOrderedPair) {
-      const roots = gateCrossings(altId, criterionId);
-      consider(roots, 'row-leaves-the-coverage-gate', { alternativeId: altId });
-      // A row sitting exactly on the floor leaves it under any movement in the
-      // direction that lowers its coverage. `nearest` steps over a root it is
-      // standing on, so name it here, at a distance of nothing.
-      for (const t of roots) {
-        if (Math.abs(t - weight) > EPS) continue;
-        const step = Math.max(weight, 1) * 1e-6;
-        const onTheEdge = (direction: 'up' | 'down'): OrderChange => ({
+    for (const id of allIdsInScope) candidates.push(...gateCrossings(id, criterionId));
+
+    const describe = (from: Snapshot, to: Snapshot): { cause: OrderChange['cause']; pair?: OrderedPair; alternativeId?: string } => {
+      const entered = [...to.scored].find((id) => !from.scored.has(id));
+      const left = [...from.scored].find((id) => !to.scored.has(id));
+      // A row entering or leaving explains whatever happened to its pairs, so
+      // it is named first.
+      if (left !== undefined) return { cause: 'row-leaves-the-coverage-gate', alternativeId: left };
+      if (entered !== undefined) return { cause: 'row-enters-the-coverage-gate', alternativeId: entered };
+      const gone = [...from.pairs].find((k) => !to.pairs.has(k));
+      const got = [...to.pairs].find((k) => !from.pairs.has(k));
+      const asPair = (k: string): OrderedPair => {
+        const [higher, lower] = k.split('>');
+        return { higher: higher!, lower: lower! };
+      };
+      if (gone !== undefined) return { cause: 'pair-stops-being-ordered', pair: asPair(gone) };
+      return { cause: 'pair-becomes-ordered', pair: asPair(got!) };
+    };
+
+    const same = (x: Snapshot, y: Snapshot) =>
+      x.scored.size === y.scored.size && [...x.scored].every((id) => y.scored.has(id))
+      && x.pairs.size === y.pairs.size && [...x.pairs].every((k) => y.pairs.has(k));
+
+    let up: OrderChange | undefined;
+    let down: OrderChange | undefined;
+    for (const t of candidates) {
+      const step = Math.max(Math.abs(t), weight, 1) * 1e-6;
+      const below = snapshotAt(Math.max(t - step, 0));
+      const above = snapshotAt(t + step);
+      const here = snapshotAt(t);
+      if (t > weight + EPS) {
+        // Travelling up: what the order looks like on the near side of the root
+        // against the far side. A root the order passes through unchanged --
+        // including a tangency, where it is the same on both sides -- is not an
+        // event, and is not reported as a margin.
+        if (same(below, above) && same(below, here)) continue;
+        const to = same(below, here) ? above : here;
+        up = closer(up, { ...changeOf(t, weight, totalWeight, 'pair-stops-being-ordered', {}), ...describe(below, to) });
+      } else if (t < weight - EPS) {
+        if (same(below, above) && same(above, here)) continue;
+        const to = same(above, here) ? below : here;
+        down = closer(down, { ...changeOf(t, weight, totalWeight, 'pair-stops-being-ordered', {}), ...describe(above, to) });
+      } else {
+        // A root we are standing on: the order changes under any movement in
+        // whichever direction differs from where we are, at a distance of nothing.
+        const onTheEdge = (direction: 'up' | 'down', to: Snapshot): OrderChange => ({
           at: weight, delta: 0, direction, shareOfTotalWeight: 0,
           ...(weight > 0 ? { shareOfOwnWeight: 0 } : {}),
-          cause: 'row-leaves-the-coverage-gate', alternativeId: altId,
+          ...describe(here, to),
         });
-        if (!scoredAt(altId, criterionId, weight + step)) up = closer(up, onTheEdge('up'));
-        if (weight > 0 && !scoredAt(altId, criterionId, Math.max(weight - step, 0))) {
-          down = closer(down, onTheEdge('down'));
-        }
+        if (!same(here, above)) up = closer(up, onTheEdge('up', above));
+        if (weight > 0 && !same(here, below)) down = closer(down, onTheEdge('down', below));
       }
     }
 
@@ -434,21 +488,22 @@ export function sensitivity(a: Analysis, opts: SensitivityOptions): SensitivityR
   const warnings = [...base.warnings];
   if (orderedPairs.length === 0) {
     warnings.push(
-      'The gate scored no separable pair, so there is no order for a weight movement to change. '
-      + 'The weight margins below are absent rather than large.',
+      'The gate separated no pair, so there is no order yet. A margin below is the weight at which '
+      + 'one would appear, not the weight at which one would break.',
     );
   }
 
-  const weightFinding = orderedPairs.length === 0
-    ? 'no pair is ordered, so no weight movement can change the order'
-    : smallest === undefined
-      ? 'no movement of any single weight changes the order'
-      : `the order first changes when "${smallest.criterionId}" moves ${smallest.direction} by `
-        + `${round(smallest.delta)} (${percent(smallest.shareOfTotalWeight)} of the total weight)`
-        + `${fragile ? `, which is inside the ${percent(fragileBelow)} ADR-0015 calls fragile` : ''}`;
+  const weightFinding = smallest === undefined
+    ? 'no movement of any single weight changes the order'
+    : `the order first changes when "${smallest.criterionId}" moves ${smallest.direction} by `
+      + `${round(smallest.delta)} (${percent(smallest.shareOfTotalWeight)} of the total weight), `
+      + `and the change is that a ${describeCause(smallest.cause)}`
+      + `${fragile ? `; that is inside the ${percent(fragileBelow)} ADR-0015 calls fragile` : ''}`;
   const setFinding = reversalFound
-    ? 'removing an alternative reorders the others -- the ranking depends on who else is in the set'
-    : 'removing any one alternative leaves the order of the others unchanged';
+    ? 'removing an alternative reorders the others -- the ranking depends on who else is in the set, '
+      + 'which a declared-range weighted sum cannot do, so something is wrong with the aggregate'
+    : 'removing any one alternative leaves the order of the others unchanged, as a declared-range '
+      + 'weighted sum must (a guard against that changing, not a finding about this data)';
 
   return {
     method: 'sensitivity',
@@ -476,4 +531,13 @@ function round(x: number): string {
 
 function percent(x: number): string {
   return Number.isFinite(x) ? `${Math.round(x * 1000) / 10}%` : 'an unbounded share';
+}
+
+function describeCause(cause: OrderChange['cause']): string {
+  switch (cause) {
+    case 'pair-stops-being-ordered': return 'pair that is ordered today stops being ordered';
+    case 'pair-becomes-ordered': return 'pair that overlaps today becomes ordered';
+    case 'row-leaves-the-coverage-gate': return 'row leaves the coverage gate';
+    default: return 'row enters the coverage gate';
+  }
 }
