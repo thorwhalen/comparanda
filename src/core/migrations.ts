@@ -147,7 +147,7 @@ export function registeredMigrations(): Migration[] {
   return documentChain.registered();
 }
 
-/** Testing seam. Not exported from the package entry point. */
+/** Testing seam. Exported from the package entry point too (`export *`), so the leading underscore is the only warning. */
 export function _clearMigrations(): void {
   documentChain.clear();
 }

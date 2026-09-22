@@ -9,22 +9,21 @@
  *
  * The first `case 'not-evidenced':` in core quietly ends that guarantee, because
  * a custom child of `not-evidenced` will not take the branch. So this file scans
- * `src/core` and fails on:
- *
- *   - `case '<core code>'`
- *   - `=== '<core code>'` / `!==` / `==` / `!=`, either side
- *   - an equality against the named constants for a core code
- *     (`NOT_ASSESSED`, `NOT_APPLICABLE`), which are the same literal by another
- *     name
+ * `src/core` and fails on any comparison, membership test or lookup table keyed
+ * on a core code -- `offendingNodes` below lists exactly what.
  *
  * Writing a code (`code: NOT_ASSESSED`) is not branching on one and is not
- * flagged. The single allowed comparison is listed in `ALLOWED` with its reason,
- * and the allowlist is itself checked for staleness.
+ * flagged. The allowed exceptions -- the flag table itself, and one declaration
+ * invariant -- are listed in `ALLOWED` with their reasons; each must match
+ * exactly one node, so an entry can neither go stale nor quietly cover a second
+ * offence.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import ts from 'typescript';
 
 import { CORE_MISSING_CODES } from '../src/core/schema/missingness.js';
 
@@ -41,53 +40,96 @@ const CODE_CONSTANTS = ['NOT_ASSESSED', 'NOT_APPLICABLE'];
  */
 const ALLOWED: { file: string; fragment: string; why: string }[] = [
   {
+    file: 'src/core/schema/missingness.ts',
+    fragment: "{ 'not-applicable': { structural: true",
+    why: 'CORE_MISSING_CODES itself: the one table keyed by code, holding the flags every ' +
+      'consumer reads instead of branching on the code. It is the cure, not the disease.',
+  },
+  {
     file: 'src/core/schema/analysis.ts',
-    fragment: 'structural === true && broader !== NOT_APPLICABLE',
+    fragment: 'broader !== NOT_APPLICABLE',
     why: 'ADR-0009 precedence: a code declaring structural: true must have broader ' +
       '"not-applicable". This validates a declaration; it does not branch on a cell\'s code.',
   },
 ];
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const literal = `(['"\`])(?:${CODES.map(escape).join('|')})\\1`;
-const constant = `\\b(?:${CODE_CONSTANTS.join('|')})\\b`;
-const eq = '(?:===|!==|==|!=)';
-const PATTERNS: RegExp[] = [
-  new RegExp(`\\bcase\\s+${literal}`),
-  new RegExp(`${eq}\\s*${literal}`),
-  new RegExp(`${literal}\\s*${eq}`),
-  new RegExp(`\\bcase\\s+${constant}`),
-  new RegExp(`${eq}\\s*${constant}`),
-  new RegExp(`${constant}\\s*${eq}`),
-];
+/**
+ * The detector reads the syntax tree, not the text.
+ *
+ * A line scanner was tried first and was fooled by a string containing `/*`
+ * (everything after it read as a comment), by `case` and its label on separate
+ * lines, and by an import alias. The TypeScript parser already knows what is a
+ * string, a comment and a comparison, so this asks it.
+ *
+ * Flagged, anywhere in a file:
+ *   - `case <code>` and `==`/`===`/`!=`/`!==` with a code on either side;
+ *   - `Object.is(..., <code>)`;
+ *   - `[<code>, ...].includes(x)` -- membership is a branch by another name;
+ *   - an object literal keyed by a core code -- a lookup table does the job of
+ *     a switch, and is the likeliest way round a switch-only guard.
+ * where `<code>` is a string literal naming a core code, a constant bound to one
+ * (including under an import alias), `X.enum.<code>`, or any of those in
+ * parentheses.
+ *
+ * Not flagged, knowingly: a code reached through a variable the parser cannot
+ * see the value of (`const c = 'withheld'; ... === c`). That needs type-level
+ * analysis and would buy little: the pattern here is written by hand, and the
+ * obvious ways of writing it are covered.
+ */
+interface Hit { line: number; text: string }
 
-/** Code only: drop `//` comments and lines inside block comments. */
-function codeLines(source: string): [number, string][] {
-  const out: [number, string][] = [];
-  let inBlock = false;
-  source.split('\n').forEach((raw, i) => {
-    let line = raw;
-    if (inBlock) {
-      const end = line.indexOf('*/');
-      if (end === -1) return;
-      line = line.slice(end + 2);
-      inBlock = false;
+function offendingNodes(source: string, fileName = 'x.ts'): Hit[] {
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
+  const constants = new Set(CODE_CONSTANTS);
+  // Import aliases: `import { NOT_ASSESSED as NA }` makes `NA` a code too.
+  sf.forEachChild(function aliases(n) {
+    if (ts.isImportSpecifier(n) && CODE_CONSTANTS.includes((n.propertyName ?? n.name).text)) {
+      constants.add(n.name.text);
     }
-    line = line.replace(/\/\*.*?\*\//g, '');
-    const open = line.indexOf('/*');
-    if (open !== -1) {
-      inBlock = true;
-      line = line.slice(0, open);
-    }
-    line = line.replace(/\/\/.*$/, '');
-    out.push([i + 1, line]);
+    n.forEachChild(aliases);
   });
-  return out;
-}
 
-/** Every line in `source` that branches on a core code. */
-function offendingLines(source: string): [number, string][] {
-  return codeLines(source).filter(([, line]) => PATTERNS.some((p) => p.test(line)));
+  const isCode = (e: ts.Node): boolean => {
+    if (ts.isParenthesizedExpression(e)) return isCode(e.expression);
+    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return CODES.includes(e.text);
+    if (ts.isIdentifier(e)) return constants.has(e.text);
+    if (ts.isPropertyAccessExpression(e)) {
+      return CODES.includes(e.name.text) && ts.isPropertyAccessExpression(e.expression) &&
+        e.expression.name.text === 'enum';
+    }
+    if (ts.isElementAccessExpression(e)) {
+      return isCode(e.argumentExpression) && ts.isPropertyAccessExpression(e.expression) &&
+        e.expression.name.text === 'enum';
+    }
+    return false;
+  };
+  const EQ = new Set([
+    ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken,
+    ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken,
+  ]);
+  const keyText = (k: ts.PropertyName): string | undefined =>
+    ts.isIdentifier(k) || ts.isStringLiteral(k) ? k.text : undefined;
+
+  const hits: Hit[] = [];
+  const flag = (n: ts.Node) => hits.push({
+    line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1,
+    text: n.getText(sf).replace(/\s+/g, ' '),
+  });
+  sf.forEachChild(function walk(n) {
+    if (ts.isCaseClause(n) && isCode(n.expression)) flag(n.expression);
+    else if (ts.isBinaryExpression(n) && EQ.has(n.operatorToken.kind) && (isCode(n.left) || isCode(n.right))) flag(n);
+    else if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
+      const { expression: target, name } = n.expression;
+      if (name.text === 'is' && ts.isIdentifier(target) && target.text === 'Object' && n.arguments.some(isCode)) flag(n);
+      if (name.text === 'includes' && ts.isArrayLiteralExpression(target) && target.elements.some(isCode)) flag(n);
+    } else if (ts.isObjectLiteralExpression(n) && n.properties.some((p) =>
+      (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && p.name &&
+      CODES.includes(keyText(p.name) ?? ''))) {
+      flag(n);
+    }
+    n.forEachChild(walk);
+  });
+  return hits;
 }
 
 function tsFiles(dir: string): string[] {
@@ -99,20 +141,47 @@ function tsFiles(dir: string): string[] {
 }
 
 describe('the detector', () => {
+  const flagged = (src: string) => offendingNodes(src).length;
+
   it('catches a switch, and an equality either way round, on a literal code', () => {
     const offending = [
-      "case 'not-evidenced':",
-      'case "withheld": return 0;',
-      "if (m.code === 'deferred') {",
-      "if ('indeterminate' !== code) {",
+      "switch (c) { case 'not-evidenced': break; }",
+      'switch (c) { case "withheld": return 0; }',
+      "if (m.code === 'deferred') {}",
+      "if ('indeterminate' !== code) {}",
       'const quiet = code == `not-assessed`;',
-      'if (code === NOT_ASSESSED) {',
-      'case NOT_APPLICABLE:',
-      'return NOT_APPLICABLE !== c;',
+      'if (code === NOT_ASSESSED) {}',
+      'switch (c) { case NOT_APPLICABLE: break; }',
+      'const r = NOT_APPLICABLE !== c;',
     ];
-    for (const line of offending) {
-      expect(offendingLines(line), `should have flagged: ${line}`).toHaveLength(1);
-    }
+    for (const src of offending) expect(flagged(src), `should have flagged: ${src}`).toBe(1);
+  });
+
+  it('catches the ways round a switch-only guard', () => {
+    const offending = [
+      // an alias
+      "import { NOT_ASSESSED as NA } from './missingness.js';\nif (c === NA) {}",
+      // the zod enum
+      'if (c === MissingCode.enum.withheld) {}',
+      "if (c === MissingCode.enum['not-assessed']) {}",
+      // parentheses
+      'if (c === (NOT_ASSESSED)) {}',
+      // label on its own line
+      "switch (c) {\n  case\n    'withheld':\n    break;\n}",
+      // Object.is and membership
+      "if (Object.is(c, 'deferred')) {}",
+      "if (['withheld', 'not-evidenced'].includes(c)) {}",
+      // a lookup table keyed by code
+      'const weight = { withheld: 0, deferred: 1 };',
+      "const label = { 'not-assessed': 'not yet' };",
+    ];
+    for (const src of offending) expect(flagged(src), `should have flagged: ${src}`).toBe(1);
+  });
+
+  it('is not fooled by comment markers inside strings', () => {
+    // The line scanner this replaced read everything after '/*' as a comment.
+    const src = "const glob = 'src/*';\nconst url = 'http://x'; if (c === 'withheld') {}";
+    expect(offendingNodes(src).map((h) => h.line)).toEqual([2]);
   });
 
   it('does not fire on writing a code, a comment, or an unrelated string', () => {
@@ -120,24 +189,14 @@ describe('the detector', () => {
       'cells.push({ hasValue: false, code: NOT_ASSESSED });',
       "const fallback = { code: 'not-assessed' };",
       "// case 'withheld': used to be here",
-      "if (level === 'nominal') {",
-      "if (status === 'deferred-review') {",
-      'fix: `set broader to "${NOT_APPLICABLE}"`,',
-      "if (facts.terminal === true) {",
+      "/* if (c === 'withheld') */ const x = 1;",
+      "if (level === 'nominal') {}",
+      "if (status === 'deferred-review') {}",
+      'const fix = `set broader to "${NOT_APPLICABLE}"`;',
+      'if (facts.terminal === true) {}',
+      "const msg = 'the code withheld is terminal';",
     ];
-    for (const line of innocent) {
-      expect(offendingLines(line), `should NOT have flagged: ${line}`).toEqual([]);
-    }
-  });
-
-  it('skips a multi-line block comment and resumes after it', () => {
-    const src = [
-      '/**',
-      " * case 'withheld':",
-      ' */',
-      "if (x === 'withheld') {}",
-    ].join('\n');
-    expect(offendingLines(src).map(([n]) => n)).toEqual([4]);
+    for (const src of innocent) expect(flagged(src), `should NOT have flagged: ${src}`).toBe(0);
   });
 
   it('knows every constant that names a core code', () => {
@@ -151,6 +210,8 @@ describe('the detector', () => {
 
 describe('src/core', () => {
   const files = tsFiles(coreDir);
+  const relOf = (f: string) => relative(root, f).split('\\').join('/');
+  const allowed = (rel: string, h: Hit) => ALLOWED.some((a) => a.file === rel && h.text.startsWith(a.fragment));
 
   it('has files to scan (so a pass means something)', () => {
     expect(files.length).toBeGreaterThan(5);
@@ -159,10 +220,9 @@ describe('src/core', () => {
   it('never branches on a literal missingness reason code', () => {
     const found: string[] = [];
     for (const f of files) {
-      const rel = relative(root, f).split('\\').join('/');
-      for (const [n, line] of offendingLines(readFileSync(f, 'utf8'))) {
-        if (ALLOWED.some((a) => a.file === rel && line.includes(a.fragment))) continue;
-        found.push(`${rel}:${n}: ${line.trim()}`);
+      const rel = relOf(f);
+      for (const h of offendingNodes(readFileSync(f, 'utf8'), f)) {
+        if (!allowed(rel, h)) found.push(`${rel}:${h.line}: ${h.text.slice(0, 120)}`);
       }
     }
     expect(
@@ -173,11 +233,11 @@ describe('src/core', () => {
     ).toEqual([]);
   });
 
-  it('has no stale allowlist entry', () => {
+  it('allows each listed exception exactly once, and none is stale', () => {
     for (const a of ALLOWED) {
-      const source = readFileSync(join(root, a.file), 'utf8');
-      const hit = offendingLines(source).some(([, line]) => line.includes(a.fragment));
-      expect(hit, `ALLOWED entry no longer matches anything: ${a.file}: ${a.fragment}`).toBe(true);
+      const hits = offendingNodes(readFileSync(join(root, a.file), 'utf8'))
+        .filter((h) => h.text.startsWith(a.fragment));
+      expect(hits.length, `ALLOWED entry should match exactly one node: ${a.file}: ${a.fragment}`).toBe(1);
     }
   });
 });
