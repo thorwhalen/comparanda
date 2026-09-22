@@ -240,8 +240,10 @@ export interface CriterionComparison {
   xAtLeastAsGood: boolean;
   /** x's worst beats y's best beyond tolerance. Necessary dominance needs this somewhere. */
   xStrictlyBetter: boolean;
-  /** x's best reaches y's worst. Possible dominance needs this everywhere. */
+  /** x's best reaches y's worst, within tolerance. Possible dominance needs this everywhere. */
   xCanReach: boolean;
+  /** x's best beats y's worst beyond tolerance. Possible dominance needs this somewhere. */
+  xCanBeStrictlyBetter: boolean;
 }
 
 function compareOnCriterion(p: Prepared, x: string, y: string, cid: string): CriterionComparison {
@@ -253,7 +255,7 @@ function compareOnCriterion(p: Prepared, x: string, y: string, cid: string): Cri
     const reason = (typeof ix === 'string' ? ix : iy) as CellExclusion;
     return {
       criterionId: cid, standing: 'excluded', exclusion: { side, reason }, tolerance,
-      xAtLeastAsGood: false, xStrictlyBetter: false, xCanReach: false,
+      xAtLeastAsGood: false, xStrictlyBetter: false, xCanReach: false, xCanBeStrictlyBetter: false,
     };
   }
   const q = tolerance;
@@ -267,7 +269,11 @@ function compareOnCriterion(p: Prepared, x: string, y: string, cid: string): Cri
     : 'undetermined';
   return {
     criterionId: cid, standing, x: ix, y: iy, tolerance,
-    xAtLeastAsGood, xStrictlyBetter, xCanReach: !(ix.hi < iy.lo),
+    xAtLeastAsGood, xStrictlyBetter,
+    // The same tolerance as necessary dominance. Without it a pair could be
+    // "necessarily" dominated while one criterion said x could not even reach.
+    xCanReach: !(ix.hi < iy.lo - q),
+    xCanBeStrictlyBetter: ix.hi > iy.lo + q,
   };
 }
 
@@ -287,17 +293,24 @@ function necessarilyDominates(p: Prepared, x: string, y: string): boolean {
   return comparedAny && strictSomewhere;
 }
 
-/** Could `x` dominate `y` under some resolution of the blanks? */
+/**
+ * Could `x` dominate `y` under some resolution of the blanks?
+ *
+ * Dominance is "at least as good everywhere and strictly better somewhere", so
+ * its possible form needs both halves: x can reach y everywhere, and x can beat
+ * y somewhere. Without the second, two identical fully-scored alternatives each
+ * "possibly dominated" the other, with no blank anywhere to resolve.
+ */
 function possiblyDominates(p: Prepared, x: string, y: string): boolean {
-  let comparedAny = false;
+  let strictPossible = false;
   for (const cid of p.basis) {
     const c = compareOnCriterion(p, x, y, cid);
     if (c.standing === 'excluded') continue;
-    comparedAny = true;
     // x's best must reach y's worst, or it cannot win here under any resolution.
     if (!c.xCanReach) return false;
+    if (c.xCanBeStrictlyBetter) strictPossible = true;
   }
-  return comparedAny;
+  return strictPossible;
 }
 
 const EXCLUSION_WORDS: Record<ExcludedCriterion['reason'], string> = {
@@ -489,8 +502,11 @@ export function explainDominance(
       `however the blanks resolve, and strictly better on ${list(better)}.`;
   } else if (worse.length > 0) {
     summary = `${x} does not dominate ${y}: it is worse on ${list(worse)} however the blanks resolve.`;
-  } else if (pos) {
+  } else if (pos && undetermined.length > 0) {
     summary = `${x} might dominate ${y}, depending on how the blanks resolve on ${list(undetermined)}.`;
+  } else if (pos) {
+    summary = `${x} might dominate ${y}: no criterion rules it out, but none shows it strictly better ` +
+      'beyond the indifference tolerance either.';
   } else {
     summary = `${x} does not dominate ${y}: it cannot be better on any compared criterion.`;
   }

@@ -67,6 +67,17 @@ function expectAgreement(a: Analysis, usePracticalTolerance: boolean) {
       const e = explainDominance(a, x, y, opts);
       expect(e.necessarilyDominates, `${x}>${y}: ${e.summary}`).toBe(edges.has(`${x}>${y}`));
       if (e.possiblyDominates) possiblyDominated.add(y);
+      // Independently of the shared code path: recompute both verdicts from the
+      // intervals the explanation reports, straight from ADR-0019 clause 2
+      // (with the practical tolerance q applied symmetrically).
+      const compared = e.criteria.filter((c) => c.standing !== 'excluded');
+      const nec = compared.length > 0 &&
+        compared.every((c) => c.x!.lo >= c.y!.hi - c.tolerance) &&
+        compared.some((c) => c.x!.lo > c.y!.hi + c.tolerance);
+      const pos = compared.every((c) => c.x!.hi >= c.y!.lo - c.tolerance) &&
+        compared.some((c) => c.x!.hi > c.y!.lo + c.tolerance);
+      expect(e.necessarilyDominates, `${x}>${y} necessary, from intervals`).toBe(nec);
+      expect(e.possiblyDominates, `${x}>${y} possible, from intervals`).toBe(nec || pos);
       expect(e.basis).toEqual(d.basis);
       expect(e.basisDescription).toBe(d.basisDescription);
     }
@@ -132,6 +143,28 @@ describe('what an explanation says', () => {
     expect(e.criteria.map((c) => [c.criterionId, c.standing])).toEqual([['q', 'better'], ['p', 'indifferent']]);
     expect(e.summary).toMatch(/necessarily dominates/);
     expect(e.summary).toContain('q');
+  });
+
+  it('does not call two identical, fully scored alternatives provisional (review finding)', () => {
+    // ADR-0019: possible dominance needs "strict somewhere". Without it each of
+    // two identical rows "possibly dominated" the other, with no blank to resolve,
+    // and the summary ended "depending on how the blanks resolve on ."
+    const a = doc({ x: [3, 20], y: [3, 20] });
+    const e = explainDominance(a, 'x', 'y', { measure: 'score' });
+    expect(e.possiblyDominates).toBe(false);
+    expect(e.summary).not.toMatch(/on \.$/);
+    const d = dominance(a, { measure: 'score' });
+    expect(d.provisional).toEqual([]);
+    expect(d.nonDominated.sort()).toEqual(['x', 'y']);
+  });
+
+  it('applies the tolerance to possible dominance as it does to necessary', () => {
+    // x=5.5 vs y=5 on a tolerance of 1 is indifference both ways; y cannot then
+    // be judged unable to reach x, which the untolerant check used to say.
+    const a = doc({ x: [4, 20], y: [3, 20] });
+    const e = explainDominance(a, 'y', 'x', { measure: 'score', usePracticalTolerance: true });
+    const q = e.criteria.find((c) => c.criterionId === 'q')!;
+    expect(q.xCanReach).toBe(q.x!.hi >= q.y!.lo - q.tolerance);
   });
 
   it('orients a decreasing criterion: a lower price is better', () => {
