@@ -8,11 +8,9 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Analysis } from '../src/core/schema/analysis.js';
-import { initialViewState } from '../src/core/view-state.js';
 import {
   affordanceOf, anonymousIdentity, capabilitiesOf, cellAffordanceOf, embeddedEvidenceResolver,
-  inMemoryAnalysisSource, inMemoryAnnotationSink, inMemoryAssertionStore, inMemoryViewStateStore,
-  DEFAULT_CAPABILITIES,
+  inMemoryAnalysisSource, oneItemProvider, writeSafety, DEFAULT_CAPABILITIES,
 } from '../src/store/index.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,33 +27,78 @@ describe('in-memory adapters exist for every port, so nothing needs a network', 
     await expect(source.create({})).rejects.toThrow(/one-item provider/);
   });
 
-  it('view state, threads and assertions', async () => {
-    const v = inMemoryViewStateStore(initialViewState(relocation()));
-    expect((await v.getOne('view-state')).id).toBe('view-state');
-    const threads = inMemoryAnnotationSink(relocation().threads);
-    expect((await threads.getList({})).total).toBe(relocation().threads.length);
-    const created = await threads.create({ id: 't-new', anchor: { scope: 'analysis' }, comments: [] } as never);
-    expect(created.id).toBe('t-new');
-    const assertions = inMemoryAssertionStore();
-    expect((await assertions.getList({})).total).toBe(0);
+  it('one more one-item provider is all the other roles cost, when they arrive', async () => {
+    // ADR-0006's 2026-08-22 amendment: v1 builds one port. The others are the
+    // same shape over their own document when a second implementation exists.
+    const p = oneItemProvider({ id: 'view-state', kept: 1 });
+    expect((await p.getOne('view-state')).kept).toBe(1);
+    expect((await p.update('view-state', { kept: 2 })).kept).toBe(2);
+    await expect(p.getOne('other')).rejects.toThrow(/no item with id/);
   });
 
   it('evidence resolves through the port, and says so when it cannot', async () => {
     const a = relocation();
     const resolver = embeddedEvidenceResolver();
-    const withExcerpt = a.cells.flatMap((c) => c.assertions).flatMap((s) => s.evidence).find((e) => e.excerpt);
-    expect(withExcerpt, 'the fixture should embed an excerpt').toBeDefined();
-    const hit = await resolver.resolve(withExcerpt!, { analysis: a });
-    expect(hit.status).toBe('embedded');
-    const miss = await resolver.resolve({ ...withExcerpt!, excerpt: undefined } as never, { analysis: a });
+    const withRendition = a.cells.flatMap((c) => c.assertions).flatMap((s) => s.evidence)
+      .find((e) => e.excerpt && e.renditionId);
+    expect(withRendition, 'the fixture should embed an excerpt with a rendition').toBeDefined();
+    const hit = await resolver.resolve(withRendition!, { analysis: a, now: new Date('2026-09-22T00:00:00Z') });
+    expect(hit.status).toBe('from-excerpt');
+    if (hit.status === 'from-excerpt') {
+      expect(hit.rendition?.id).toBe(withRendition!.renditionId);
+      expect(hit.standing).toBeDefined();
+    }
+    const miss = await resolver.resolve({ ...withRendition!, excerpt: undefined } as never, { analysis: a });
     expect(miss.status).toBe('unresolvable');
     if (miss.status === 'unresolvable') expect(miss.reason.length).toBeGreaterThan(20);
+  });
+
+  it('never renders a stale or unlocatable quote as a live one (ADR-0014)', async () => {
+    const a = relocation();
+    const resolver = embeddedEvidenceResolver();
+    const stale = a.cells.flatMap((c) => c.assertions).flatMap((s) => s.evidence)
+      .find((e) => e.excerpt && e.check && e.check.status !== 'exact');
+    expect(stale, 'the fixture should carry a failed check').toBeDefined();
+    const shown = await resolver.resolve(stale!, { analysis: a, now: new Date('2026-09-22T00:00:00Z') });
+    if (shown.status !== 'from-excerpt') throw new Error('expected the excerpt to be shown with caveats');
+    expect(shown.caveats.join(' ')).toMatch(new RegExp(stale!.check!.status));
+    expect(shown.caveats.join(' ').length).toBeGreaterThan(20);
+
+    // And a check whose source has moved on says that too.
+    const drifted = a.cells.flatMap((c) => c.assertions).flatMap((s) => s.evidence)
+      .find((e) => e.excerpt && e.check?.originalDrifted);
+    const shownDrifted = await resolver.resolve(drifted!, { analysis: a, now: new Date('2026-09-22T00:00:00Z') });
+    if (shownDrifted.status !== 'from-excerpt') throw new Error('expected the excerpt to be shown');
+    expect(shownDrifted.standing.sourceChanged).toBe(true);
+    expect(shownDrifted.caveats.join(' ')).toMatch(/changed since it was ingested/);
+
+    // A reference pointing at a rendition this document does not carry: the
+    // quote cannot be located in its source, and the reader is told.
+    const dangling = await resolver.resolve(
+      { ...stale!, renditionId: 'no-such-rendition' } as never,
+      { analysis: a, now: new Date('2026-09-22T00:00:00Z') },
+    );
+    if (dangling.status !== 'from-excerpt') throw new Error('expected the excerpt to be shown with caveats');
+    expect(dangling.rendition).toBeUndefined();
+    expect(dangling.caveats.some((c) => c.includes('no-such-rendition'))).toBe(true);
   });
 
   it('identity has a usable anonymous default', async () => {
     const who = await anonymousIdentity().current();
     expect(who.id).toBe('anonymous');
     expect(who.kind).toBe('human');
+    // ADR-0012: no persona means principalId === id, and an unattested identity says so.
+    expect(who.principalId).toBe(who.id);
+    expect(who.attestation?.method).toBe('unverified');
+  });
+
+  it('refuses the multiWriter combination the ADR calls a defect', () => {
+    const caps = (over: Record<string, unknown>) => ({ getCapabilities: () => ({ ...DEFAULT_CAPABILITIES, ...over }) as never });
+    expect(writeSafety(caps({})).safe).toBe(true);
+    expect(writeSafety(caps({ multiWriter: true, perContributorFiles: true })).safe).toBe(true);
+    const unsafe = writeSafety(caps({ multiWriter: true }));
+    expect(unsafe.safe).toBe(false);
+    expect(unsafe.reason).toMatch(/perContributorFiles/);
   });
 });
 
@@ -106,7 +149,9 @@ describe('every editable affordance is derived from getCapabilities', () => {
     const offenders = walk(join(root, 'src'))
       .map((f) => [relative(root, f).split('\\').join('/'), readFileSync(f, 'utf8')] as const)
       .filter(([rel]) => !allowed.has(rel))
-      .filter(([, src]) => /\b(readOnly|isReadOnly|canEdit|editable)\b\s*[:=?]/.test(
+      // Any mention at all, declaration or read: a second place that *consults*
+      // editability is the failure as much as a second place that declares it.
+      .filter(([, src]) => /\b(readOnly|isReadOnly|canEdit|editable|locked)\b/.test(
         src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' '),
       ))
       .map(([rel]) => rel);

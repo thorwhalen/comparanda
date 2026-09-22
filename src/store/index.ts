@@ -2,17 +2,16 @@
  * comparanda/store -- the ports, and in-memory adapters for every one of them.
  *
  * ADR-0013 injects the view's dependencies as ports; ADR-0006 as amended says
- * what shape they have: `DataProvider<T>` from `@zodal/store`, not a key-value
- * store. The five providers it names:
+ * what shape they have -- `DataProvider<T>` from `@zodal/store`, not a
+ * key-value store -- and **how many v1 builds**: exactly one,
+ * `DataProvider<Analysis>` (amendment of 2026-08-22, clause 1). Saved views,
+ * annotations and assertions travel *inside* the analysis document in v1, so a
+ * provider each would be four interfaces over one aggregate; they arrive, in the
+ * 2026-08-21 shape, when a second implementation of one of them exists.
+ * `oneItemProvider` is what they will arrive through.
  *
- *     AnalysisSource  = DataProvider<Analysis>   // one-item provider
- *     ViewStateStore  = DataProvider<StoredViewState>
- *     AnnotationSink  = DataProvider<Thread>
- *     AssertionStore  = DataProvider<StoredAssertion>
- *     SavedViewStore  = DataProvider<SavedView>  // shape settled with #71
- *
- * plus the two ports that are not collections -- `EvidenceResolver` (ADR-0014)
- * and `IdentityProvider` (ADR-0012).
+ * Two ports here are not persistence and are not narrowed by that clause:
+ * `EvidenceResolver` (ADR-0014) and `IdentityProvider` (ADR-0012).
  *
  * **`getCapabilities()` is the only source of truth for what the UI offers**
  * (ADR-0006 clause 3): `affordanceOf()` derives every enable/disable from it and
@@ -20,7 +19,10 @@
  * inert. `comparanda` invents no parallel read-only flag; the one document-level
  * policy that exists -- `Cell.readOnly` / `Analysis.locked`, which the schema
  * owns (a declaration, not a capability) -- is combined by
- * `cellAffordanceOf()` rather than consulted anywhere else.
+ * `cellAffordanceOf()` rather than consulted anywhere else. The capability
+ * report also carries the amendment's load-bearing pair: `multiWriter` may be
+ * true only where `perContributorFiles` is, and `writeSafety()` refuses the
+ * combination the amendment calls a defect.
  *
  * This module is the only place permitted to reach the network or browser
  * storage; nothing here does, which is why the whole view can be tested against
@@ -30,11 +32,11 @@ import { DEFAULT_CAPABILITIES, createInMemoryProvider } from '@zodal/store';
 import type { DataProvider, ProviderCapabilities } from '@zodal/store';
 
 import type { Analysis } from '../core/schema/analysis.js';
-import type { Assertion, Cell } from '../core/schema/values.js';
-import type { Thread } from '../core/schema/annotations.js';
+import type { Cell } from '../core/schema/values.js';
 import type { Author } from '../core/schema/provenance.js';
-import type { EvidenceRef, Rendition } from '../core/schema/evidence.js';
-import type { ViewState } from '../core/view-state.js';
+import {
+  checkStanding, verdictFound, type CheckStanding, type EvidenceRef, type Rendition,
+} from '../core/schema/evidence.js';
 
 export type { DataProvider, ProviderCapabilities };
 export { DEFAULT_CAPABILITIES, createInMemoryProvider };
@@ -42,20 +44,6 @@ export { DEFAULT_CAPABILITIES, createInMemoryProvider };
 /** The analysis, as a degenerate one-item provider (ADR-0006 amendment, clause 2). */
 export type AnalysisSource = DataProvider<Analysis>;
 
-/** View state, per reader per device. One item, under a stable id. */
-export interface StoredViewState extends ViewState { id: string }
-export type ViewStateStore = DataProvider<StoredViewState>;
-
-/** Annotation threads. A genuine collection (ADR-0011). */
-export type AnnotationSink = DataProvider<Thread>;
-
-/** Rater assertions, when they are written separately from the document. */
-export interface StoredAssertion extends Assertion {
-  alternativeId: string;
-  criterionId: string;
-  measure: string;
-}
-export type AssertionStore = DataProvider<StoredAssertion>;
 
 /**
  * What a resolved evidence reference gives a reader (ADR-0014).
@@ -64,8 +52,22 @@ export type AssertionStore = DataProvider<StoredAssertion>;
  * surfaced state, never a dead link rendered as if it worked.
  */
 export type ResolvedEvidence =
-  | { status: 'embedded'; excerpt: string; rendition?: Rendition }
-  | { status: 'resolved'; excerpt?: string; rendition?: Rendition; url?: string }
+  | {
+    /** The excerpt travelling in the document was shown; no source was fetched. */
+    status: 'from-excerpt';
+    excerpt: string;
+    /** The cleaned copy the excerpt indexes into, when the document carries it. */
+    rendition?: Rendition;
+    /**
+     * How the stored check stands *now* (ADR-0014): every non-current standing
+     * carries a caveat, and a view may not render one as current. Present
+     * whenever a reference carries a check, so staleness is surfaced rather
+     * than silently rendered as a live quote.
+     */
+    standing: CheckStanding;
+    /** Anything a reader must be told alongside the excerpt, in words. */
+    caveats: string[];
+  }
   | { status: 'unresolvable'; reason: string };
 
 /**
@@ -73,7 +75,14 @@ export type ResolvedEvidence =
  * (ADR-0013, ADR-0014). `core` never assumes where documents live.
  */
 export interface EvidenceResolver {
-  resolve(ref: EvidenceRef, context: { analysis: Analysis }): Promise<ResolvedEvidence>;
+  resolve(ref: EvidenceRef, context: ResolveContext): Promise<ResolvedEvidence>;
+}
+
+/** What a resolver needs besides the reference. `now` is a parameter, never a hidden clock. */
+export interface ResolveContext {
+  analysis: Analysis;
+  now?: Date;
+  currentCheckerVersion?: string;
 }
 
 /** Who is acting (ADR-0012). The anonymous default is usable, not a stub. */
@@ -188,44 +197,87 @@ export function inMemoryAnalysisSource(analysis: Analysis, options?: { canUpdate
   return oneItemProvider(analysis, options);
 }
 
-/** View state, in memory, under its own stable id. */
-export function inMemoryViewStateStore(state: ViewState, { id = 'view-state' } = {}): ViewStateStore {
-  return oneItemProvider<StoredViewState>({ ...state, id });
-}
-
-/** Threads, in memory. */
-export function inMemoryAnnotationSink(threads: readonly Thread[] = []): AnnotationSink {
-  return createInMemoryProvider([...threads] as Thread[]) as AnnotationSink;
-}
-
-/** Assertions, in memory. */
-export function inMemoryAssertionStore(assertions: readonly StoredAssertion[] = []): AssertionStore {
-  return createInMemoryProvider([...assertions] as StoredAssertion[]) as AssertionStore;
-}
 
 /**
  * The standalone resolver ADR-0013 names: it opens embedded excerpts and says
  * plainly when there is nothing embedded to open. No network, by construction.
  */
-export function embeddedEvidenceResolver(): EvidenceResolver {
+export function embeddedEvidenceResolver(
+  { currentCheckerVersion = 'comparanda-check/1.0.0' }: { currentCheckerVersion?: string } = {},
+): EvidenceResolver {
   return {
-    resolve: async (ref, { analysis }) => {
-      const rendition = analysis.renditions.find((r) => r.id === ref.renditionId);
-      if (ref.excerpt !== undefined) {
-        return rendition ? { status: 'embedded', excerpt: ref.excerpt, rendition } : { status: 'embedded', excerpt: ref.excerpt };
+    resolve: async (ref, context) => {
+      if (ref.excerpt === undefined) {
+        return {
+          status: 'unresolvable',
+          reason: 'this reference carries no embedded excerpt, and this deployment has no resolver that can fetch its source.',
+        };
       }
-      return {
-        status: 'unresolvable',
-        reason: 'this reference carries no embedded excerpt, and this deployment has no resolver that can fetch its source.',
-      };
+      const rendition = ref.renditionId === undefined
+        ? undefined
+        : context.analysis.renditions.find((r) => r.id === ref.renditionId);
+      const standing = checkStanding(ref.check, {
+        currentCheckerVersion: context.currentCheckerVersion ?? currentCheckerVersion,
+        now: context.now ?? new Date(0),
+      });
+      const caveats: string[] = [];
+      // The verdict itself, before its freshness: a check that did not find the
+      // quote must not be rendered as a quote the reader can go and look at.
+      if (ref.check && ref.check.status !== 'unchecked' && !verdictFound(ref.check.status)) {
+        caveats.push(`the last check could not confirm this quote in its source (verdict "${ref.check.status}"); ` +
+          'what is shown is the copy stored in this document.');
+      }
+      // ADR-0014: a non-current standing must be shown as such, and the source
+      // having moved on is its own caveat.
+      if (standing.freshness === 'unchecked') caveats.push('this quote has not been checked against its source.');
+      else if (standing.freshness !== 'current') {
+        caveats.push(`this quote's check is ${standing.freshness.replace('-', ' ')}; it may no longer hold.`);
+      }
+      if (standing.sourceChanged) caveats.push('the source has changed since it was ingested; the original may no longer contain this quote.');
+      if (ref.renditionId !== undefined && rendition === undefined) {
+        caveats.push(`the cleaned copy this quote indexes into ("${ref.renditionId}") is not in this document, so the quote cannot be located in its source.`);
+      }
+      return rendition
+        ? { status: 'from-excerpt', excerpt: ref.excerpt, rendition, standing, caveats }
+        : { status: 'from-excerpt', excerpt: ref.excerpt, standing, caveats };
     },
   };
 }
 
 /** The anonymous identity ADR-0012 requires to be usable rather than a stub. */
 export function anonymousIdentity(author: Partial<Author> = {}): IdentityProvider {
+  // ADR-0012: an author with no persona carries `principalId === id`, and an
+  // unverified identity says so rather than leaving the field absent.
+  const id = author.id ?? 'anonymous';
   const current: Author = {
-    id: 'anonymous', displayName: 'Anonymous', kind: 'human', ...author,
-  } as Author;
+    id,
+    displayName: 'Anonymous',
+    kind: 'human',
+    principalId: id,
+    attestation: { method: 'unverified' },
+    ...author,
+  };
   return { current: async () => current, known: async () => [current] };
+}
+
+/**
+ * The invariant ADR-0006's 2026-08-22 amendment (clause 3) writes into the
+ * capability report: `DataProvider.update` is last-write-wins with no version
+ * field, which ADR-0011 forbids for the analysis -- so several contributors may
+ * write only where each writes their own key.
+ *
+ * A provider reporting `multiWriter: true` without `perContributorFiles` is a
+ * defect, not a configuration, and this is where that stops being folklore.
+ */
+export function writeSafety(
+  provider: Pick<DataProvider<unknown>, 'getCapabilities'>,
+): { safe: boolean; reason?: string } {
+  const caps = capabilitiesOf(provider) as ProviderCapabilities & { multiWriter?: boolean; perContributorFiles?: boolean };
+  if (caps.multiWriter !== true) return { safe: true };
+  if (caps.perContributorFiles === true) return { safe: true };
+  return {
+    safe: false,
+    reason: 'this source reports multiWriter without perContributorFiles: two contributors would write the same key, ' +
+      'and DataProvider.update is last-write-wins, so a contribution would be lost silently (ADR-0006, ADR-0011).',
+  };
 }
