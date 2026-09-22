@@ -25,9 +25,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   Analysis, validateAnalysis, scaleDegradations, completeness, vocabularyOf,
-  makeCellReader, isInapplicable,
+  makeCellReader, isInapplicable, contradictedCells,
 } from '../src/core/schema/analysis.js';
-import { checkStanding } from '../src/core/schema/evidence.js';
+import { checkStanding, verdictFound } from '../src/core/schema/evidence.js';
 import { dominance } from '../src/core/analyses/dominance.js';
 import { screen } from '../src/core/analyses/screening.js';
 import { CORE_MISSING_CODES } from '../src/core/schema/missingness.js';
@@ -89,6 +89,52 @@ describe('relocation.json — the messy fixture', () => {
     // The criterion-anchored one is where the definitional argument lives, and
     // that is usually the most valuable thread in a document.
     expect(threads.some((t) => t.anchor.scope === 'criterion')).toBe(true);
+  });
+
+  it('keeps the criteria it rejected, with reason codes, and not as columns (#63)', () => {
+    const a = relocation();
+    expect(a.rejectedCriteria.length).toBeGreaterThanOrEqual(2);
+    const codes = new Set(a.rejectedCriteria.map((r) => r.reasonCode));
+    expect(codes).toContain('merged');
+    expect(codes).toContain('not-discriminating');
+    const critIds = new Set(a.criteria.map((c) => c.id));
+    const critLabels = new Set(a.criteria.map((c) => c.label));
+    for (const r of a.rejectedCriteria) {
+      expect(r.reason.trim().length).toBeGreaterThan(0);
+      // A rejected criterion is not a column: nothing with its label is scored.
+      expect(critLabels.has(r.label), `"${r.label}" is rejected and also a criterion`).toBe(false);
+      // A merge points at the criterion that absorbed it, which must exist.
+      if (r.reasonCode === 'merged') {
+        expect(r.mergedIntoId && critIds.has(r.mergedIntoId), `mergedIntoId "${r.mergedIntoId}"`).toBe(true);
+      }
+      if (r.proposedBy) {
+        expect(a.authors.map((x) => x.id)).toContain(r.proposedBy);
+      }
+    }
+  });
+
+  it('cites contradicting evidence, and reports the cell (#65)', () => {
+    const a = relocation();
+    const refs = a.cells.flatMap((c) => c.assertions).flatMap((s) => s.evidence);
+    expect(refs.some((e) => e.stance === 'contradicts')).toBe(true);
+    const report = contradictedCells(a, { measure: 'score' });
+    expect(report.count).toBe(1);
+    expect(report.cells[0]).toMatchObject({ alternativeId: 'berlin', criterionId: 'rent' });
+  });
+
+  it('carries a check that failed, not only checks that passed (#65)', () => {
+    const refs = relocation().cells.flatMap((c) => c.assertions).flatMap((s) => s.evidence);
+    const failed = refs.filter((e) => e.check && e.check.status !== 'unchecked' && !verdictFound(e.check.status));
+    const statuses = new Set(failed.map((e) => e.check!.status));
+    // Both ways a check fails: the quote is gone from a changed document, and
+    // the target cannot be reached at all.
+    expect(statuses).toContain('stale');
+    expect(statuses).toContain('unresolvable');
+    for (const e of failed) {
+      // A failed verdict is still a verdict: dated and attributed.
+      expect(e.check!.checkedAt).toBeTruthy();
+      expect(e.check!.checkerVersion).toBeTruthy();
+    }
   });
 });
 
