@@ -26,7 +26,7 @@ import { degradationOf, type Degradation } from './declarations.js';
 import {
   ScaleDeclaration, isOrdered, resolveScale, validateMeasurement, type Measurement,
 } from './measurement.js';
-import { Rendition, validateEvidence } from './evidence.js';
+import { Rendition, validateEvidence, type EvidenceRuleId } from './evidence.js';
 
 /**
  * The schema version this build reads and writes.
@@ -156,6 +156,62 @@ export type Analysis = z.infer<typeof Analysis>;
  */
 export type RuleFamily = 'schema' | 'honesty' | 'completeness';
 
+/**
+ * The ADR each validation rule comes from.
+ *
+ * A refusal is the product (ADR-0018: the tooling declines an illegal operation
+ * "with a specific reason instead of producing a plausible wrong number"), and a
+ * reason a reader cannot trace to the decision behind it is a reason they can
+ * only take on trust. Every problem `validateAnalysis` reports carries its
+ * rule's ADR in `adr` and names both the rule and the ADR in its message (#56).
+ *
+ * One table rather than an ADR number typed into each message, so that a rule
+ * cannot be added without one: the helpers inside `validateAnalysis` accept only
+ * a `RuleId`, and the `satisfies` clause makes the compiler check that every
+ * rule the evidence module can report is listed too.
+ */
+export const RULE_SOURCES = Object.freeze({
+  // Shape and versioning: the schema is the contract, and it is versioned.
+  'schema-shape': 'ADR-0004',
+  'schema-version-readable': 'ADR-0006',
+  // Structural integrity: the document refers to what it contains (the
+  // `schema` family, as ADR-0031 defines it).
+  'unique-ids': 'ADR-0031',
+  'cell-coordinates-exist': 'ADR-0031',
+  'cell-measure-declared': 'ADR-0031',
+  'group-exists': 'ADR-0008',
+  // Measurement: level, preference, range, thresholds.
+  'criterion-has-a-measurement': 'ADR-0018',
+  'measurement-well-formed': 'ADR-0018',
+  'substitution-weight-needs-range': 'ADR-0020',
+  // Missingness and the extensible vocabularies.
+  'no-bare-null': 'ADR-0009',
+  'structural-refines-not-applicable': 'ADR-0009',
+  'no-redeclaring-core': 'ADR-0009',
+  'unique-declarations': 'ADR-0030',
+  'blank-is-defined': 'ADR-0030',
+  // Multi-rater cells.
+  'cells-unique': 'ADR-0011',
+  // Honesty and completeness.
+  'score-has-a-reason': 'ADR-0031',
+  'assertion-attributed': 'ADR-0031',
+  'value-has-evidence': 'ADR-0014',
+  // Evidence references.
+  'cite-a-span': 'ADR-0014',
+  'check-dated': 'ADR-0014',
+  'check-attributed': 'ADR-0014',
+  'inference-names-its-sources': 'ADR-0031',
+  'external-support-required': 'ADR-0031',
+} as const satisfies Record<EvidenceRuleId, `ADR-${string}`> & Record<string, `ADR-${string}`>);
+
+/** A rule `validateAnalysis` can report. */
+export type RuleId = keyof typeof RULE_SOURCES;
+
+/** The suffix every reported message ends with: the rule, and where it was decided. */
+function citeRule(message: string, ruleId: RuleId): string {
+  return `${message} [rule ${ruleId}; ${RULE_SOURCES[ruleId]}]`;
+}
+
 export interface ValidationProblem {
   path: string;
   message: string;
@@ -167,6 +223,12 @@ export interface ValidationProblem {
    */
   ruleId: string;
   /**
+   * The ADR the rule comes from, e.g. `"ADR-0018"`. Also named at the end of
+   * `message`, which is where a human reads it; this field is for a caller that
+   * wants to link it. See `RULE_SOURCES`.
+   */
+  adr: string;
+  /**
    * What would fix it.
    *
    * **Required.** "Names the exact path and what would fix it" is not satisfied
@@ -176,6 +238,19 @@ export interface ValidationProblem {
    */
   fix: string;
 }
+
+/**
+ * What `validateAnalysis` returns: a typed document, or no document at all.
+ *
+ * A discriminated union rather than an optional `analysis`, because "an invalid
+ * document never partially loads" (#56) has to be true of the type, not of the
+ * caller's discipline: with `ok: false` there is no `analysis` to reach for, and
+ * with `ok: true` TypeScript knows it is there. Warnings -- completeness is a
+ * normal working state -- do not withhold the document; errors do.
+ */
+export type ValidationResult =
+  | { ok: true; analysis: Analysis; problems: ValidationProblem[] }
+  | { ok: false; analysis?: undefined; problems: ValidationProblem[] };
 
 /**
  * Validate an analysis at the boundary.
@@ -203,21 +278,18 @@ export function validateAnalysis(
      */
     includeCompleteness?: boolean;
   } = {},
-): {
-  ok: boolean;
-  analysis?: Analysis;
-  problems: ValidationProblem[];
-} {
+): ValidationResult {
   const parsed = Analysis.safeParse(input);
   if (!parsed.success) {
     return {
       ok: false,
       problems: parsed.error.issues.map((i) => ({
         path: i.path.join('.') || '(root)',
-        message: i.message,
+        message: citeRule(i.message, 'schema-shape'),
         severity: 'error' as const,
         family: 'schema' as const,
         ruleId: 'schema-shape',
+        adr: RULE_SOURCES['schema-shape'],
         fix: 'correct the value at this path to the type the schema declares.',
       })),
     };
@@ -228,13 +300,19 @@ export function validateAnalysis(
   const problems: ValidationProblem[] = [];
 
   /** An honesty failure. Always an error; there is no switch. */
-  const honesty = (ruleId: string, path: string, message: string, fix: string) =>
-    problems.push({ path, message, severity: 'error', family: 'honesty', ruleId, fix });
+  const honesty = (ruleId: RuleId, path: string, message: string, fix: string) =>
+    problems.push({
+      path, message: citeRule(message, ruleId), severity: 'error', family: 'honesty',
+      ruleId, adr: RULE_SOURCES[ruleId], fix,
+    });
 
   /** An unfinished-ness. Always a warning, and suppressible as a set. */
-  const incomplete = (ruleId: string, path: string, message: string, fix: string) => {
+  const incomplete = (ruleId: RuleId, path: string, message: string, fix: string) => {
     if (includeCompleteness) {
-      problems.push({ path, message, severity: 'warning', family: 'completeness', ruleId, fix });
+      problems.push({
+        path, message: citeRule(message, ruleId), severity: 'warning', family: 'completeness',
+        ruleId, adr: RULE_SOURCES[ruleId], fix,
+      });
     }
   };
 
@@ -247,8 +325,11 @@ export function validateAnalysis(
    * silently also silence "unknown alternative" -- which is the whole reason
    * the field is stable.
    */
-  const err = (ruleId: string, path: string, message: string, fix: string) =>
-    problems.push({ path, message, severity: 'error', family: 'schema', ruleId, fix });
+  const err = (ruleId: RuleId, path: string, message: string, fix: string) =>
+    problems.push({
+      path, message: citeRule(message, ruleId), severity: 'error', family: 'schema',
+      ruleId, adr: RULE_SOURCES[ruleId], fix,
+    });
 
   if (a.schemaVersion > SCHEMA_VERSION) {
     err(
@@ -332,7 +413,7 @@ export function validateAnalysis(
               : `declares no ordered range on ${unranged.join('; ')}`) +
             '. A substitution weight says how much of this criterion\'s swing buys how much of ' +
             'another\'s; without a declared range there is no swing, and the weight is a bare ' +
-            'statement of importance (ADR-0020).',
+            'statement of importance.',
           'declare an ordered level with a range on every measurement of this criterion, or remove ' +
             'weights.substitution. If what you have is stated importance rather than a rate of ' +
             'exchange, it is not a substitution weight.',
@@ -392,7 +473,7 @@ export function validateAnalysis(
           hasValue
             ? 'an assertion carries a value and a missing reason; exactly one is required'
             : 'an assertion carries neither a value nor a missing reason. No bare nulls: ' +
-              'every absence names why (ADR-0009).',
+              'every absence names why.',
           hasValue
             ? 'remove whichever of value/missing is not meant.'
             : 'set a value, or set missing.code to a reason -- "not-assessed" if nobody has looked.',
@@ -528,7 +609,9 @@ export function validateAnalysis(
     }
   }
 
-  return { ok: problems.every((p) => p.severity !== 'error'), analysis: a, problems };
+  return problems.every((p) => p.severity !== 'error')
+    ? { ok: true, analysis: a, problems }
+    : { ok: false, problems };
 }
 
 /**
