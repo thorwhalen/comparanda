@@ -130,3 +130,15 @@ describe('supersededCells', () => {
     expect(supersededCells(a, { measure: 'confidence' }).count).toBe(1);
   });
 });
+
+describe('compareCriteriaVersions at the edges (review findings)', () => {
+  it('is exact above 2^53, accepts a capital V, and ignores leading zeros', async () => {
+    const { compareCriteriaVersions: cmp } = await import('../src/core/schema/analysis.js');
+    expect(cmp('9007199254740993', '9007199254740992')).toBe(1);
+    expect(cmp('V2', 'v2.0')).toBe(0);
+    expect(cmp('1.010', '1.9')).toBe(1);
+    expect(cmp('001.2', '1.2')).toBe(0);
+    expect(cmp('1.0', '1')).toBe(0);
+    expect(cmp('2026-01-01', '2026-02-01')).toBeUndefined();
+  });
+});

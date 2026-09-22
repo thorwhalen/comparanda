@@ -891,13 +891,19 @@ export function contradictedCells(
  * would invent a history.
  */
 export function compareCriteriaVersions(a: string, b: string): -1 | 0 | 1 | undefined {
-  const parse = (v: string) => (/^v?\d+(\.\d+)*$/.test(v) ? v.replace(/^v/, '').split('.').map(Number) : undefined);
+  // Segments stay strings, compared by length after dropping leading zeros and
+  // then lexically: exact at any size, where Number() stops distinguishing
+  // integers above 2^53.
+  const parse = (v: string) =>
+    (/^[vV]?\d+(\.\d+)*$/.test(v) ? v.replace(/^[vV]/, '').split('.').map((d) => d.replace(/^0+(?=\d)/, '')) : undefined);
   const x = parse(a);
   const y = parse(b);
   if (!x || !y) return a === b ? 0 : undefined;
   for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    const d = (x[i] ?? 0) - (y[i] ?? 0);
-    if (d !== 0) return d < 0 ? -1 : 1;
+    const p = x[i] ?? '0';
+    const q = y[i] ?? '0';
+    if (p.length !== q.length) return p.length < q.length ? -1 : 1;
+    if (p !== q) return p < q ? -1 : 1;
   }
   return 0;
 }

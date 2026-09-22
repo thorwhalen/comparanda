@@ -90,4 +90,24 @@ describe('reduce() reports the independence of what it reduced', () => {
     const r = reduce(cell, { ...opts, authors });
     expect(r.independence).toMatchObject({ weakest: 'resampled', flagged: true });
   });
+
+  it('flags a mixed set containing a consensus verdict', () => {
+    // `consensus` ranks above `independent` on the ladder, so the weakest rung
+    // reads `independent`; the set is still not n raters. (Review finding.)
+    const r = reduce(cellOf([
+      assertion('a', 2, { independence: 'independent' }),
+      assertion('bb', 4, { independence: 'consensus' }),
+    ]), opts);
+    expect(r.independence?.flagged).toBe(true);
+    expect(r.independence?.reason).toMatch(/consensus/);
+  });
+
+  it('collapses one author id even when no authors are passed', () => {
+    // Without `authors` the less cautious reading must not be the default.
+    const r = reduce(cellOf([
+      assertion('a', 2, { independence: 'independent', id: 's1' }),
+      assertion('a', 4, { independence: 'independent', id: 's2', at: '2026-08-22T00:00:05Z' }),
+    ]), opts);
+    expect(r.independence).toMatchObject({ weakest: 'resampled', flagged: true });
+  });
 });

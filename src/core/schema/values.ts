@@ -16,7 +16,7 @@ import * as z from 'zod/mini';
 import { EvidenceRef } from './evidence.js';
 import { Missing } from './missingness.js';
 import {
-  Independence, Perturbation, effectiveIndependence, weakestIndependence,
+  Independence, Perturbation, effectiveIndependence,
 } from './provenance.js';
 import { meanIsLegal, type LevelOfMeasurement } from './measurement.js';
 import {
@@ -240,24 +240,33 @@ export interface ReductionIndependence {
 /**
  * The independence reading of a multi-assertion set, for `reduce`.
  *
- * Uses `effectiveIndependence` when the authors are known, so two personas of
- * one principal cannot pass as two raters; otherwise the recorded rungs alone.
+ * Always uses `effectiveIndependence`, so two personas of one principal (or
+ * two assertions under one author id, when no authors are passed) cannot pass
+ * as two raters. Flagged unless every member records `independent`.
  */
 function independenceOf(
   contributing: readonly Assertion[],
   authors: readonly { id: string; principalId?: string | undefined }[] | undefined,
 ): ReductionIndependence | undefined {
   if (contributing.length < 2) return undefined;
-  const weakest = authors
-    ? effectiveIndependence(contributing, authors)
-    : weakestIndependence(contributing);
-  if (weakest === 'independent') return { weakest, flagged: false };
+  // Always collapse personas. Without `authors`, two assertions under one
+  // author id still collapse (an unknown author is its own principal); the
+  // less cautious reading is never the default.
+  const weakest = effectiveIndependence(contributing, authors ?? []);
   const n = contributing.length;
+  // `consensus` ranks above `independent` on the ladder, so a mixed set's
+  // weakest rung can read `independent` while one member is a group verdict,
+  // not a rater. Flag on every member, not on the weakest rung alone.
+  const consensus = contributing.some((a) => a.independence === 'consensus');
+  if (weakest === 'independent' && !consensus) return { weakest, flagged: false };
   const reason = weakest === 'unknown'
     ? `${n} assertions, and at least one records no independence; unknown is not independent, ` +
       `so these cannot be read as ${n} raters.`
-    : `${n} assertions, the weakest at "${weakest}"; these are not ${n} independent raters, and ` +
-      'any spread or agreement across them overstates how many heads produced it.';
+    : weakest === 'independent' || weakest === 'consensus'
+      ? `${n} assertions, and at least one is a consensus verdict; a group's agreed answer is not ` +
+        'one more independent rater.'
+      : `${n} assertions, the weakest at "${weakest}"; these are not ${n} independent raters, and ` +
+        'any spread or agreement across them overstates how many heads produced it.';
   return { weakest, flagged: true, reason };
 }
 
