@@ -47,7 +47,7 @@ export const SERIATION_ASSUMPTIONS: readonly [string, ...string[]] = Object.free
     'average rather than counting as agreement.',
   'An item with fewer comparable criteria than the minimum overlap is parked rather than placed: a ' +
     'distance from two comparisons is not the same evidence as one from twelve.',
-  'Pins and locked runs are inputs to the run, so a manual arrangement survives a re-run.',
+  'Pins and lock constraints on runs are inputs to the run, so a manual arrangement survives a re-run.',
   'Ordering the criteria axis compares two criteria through each alternative\'s position on its own ' +
     'declared scale; two categorical cells from different criteria are not comparable and drop out.',
 ] as const);
@@ -589,12 +589,12 @@ export function seriate(a: Analysis, opts: SeriationOptions): SeriationResult {
       blocks.splice(bestAt, 0, block);
       if (bestGap > 0 && block.length > 1) {
         pinConflicts.push(
-          `"${pin.id}" is pinned to position ${pin.position} and is inside a locked run; the run moved as a ` +
+          `"${pin.id}" is pinned to position ${pin.position} and sits inside a run held by a lock; the run moved as a ` +
           `block, which is the nearest position the lock allows`,
         );
       } else if (bestGap > 0) {
         pinConflicts.push(
-          `"${pin.id}" could not sit at position ${pin.position}: another pin or a locked run holds it`,
+          `"${pin.id}" could not sit at position ${pin.position}: another pin or a run lock holds it`,
         );
       }
       if (parked.some((x) => x.id === pin.id)) {

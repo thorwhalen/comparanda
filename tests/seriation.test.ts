@@ -277,7 +277,7 @@ describe('what the review found (#155)', () => {
     // y cannot be first without cutting the run, so the run leads and the
     // conflict is reported rather than silently resolved.
     expect(r.order.slice(0, 2)).toEqual(['x', 'y']);
-    expect(r.notes.join(' ')).toMatch(/locked run/);
+    expect(r.notes.join(' ')).toMatch(/run held by a lock/);
     if (r.provenance.kind === 'seriated') expect(r.provenance.params.pinConflicts).toBeDefined();
   });
 
