@@ -151,7 +151,10 @@ describe('every editable affordance is derived from getCapabilities', () => {
       .filter(([rel]) => !allowed.has(rel))
       // Any mention at all, declaration or read: a second place that *consults*
       // editability is the failure as much as a second place that declares it.
-      .filter(([, src]) => /\b(readOnly|isReadOnly|canEdit|editable|locked)\b/.test(
+      // `locked` only where it is the *analysis field* (`.locked`, `locked:`):
+      // view state's locked runs (ADR-0008) are an ordering constraint and have
+      // nothing to do with who may write.
+      .filter(([, src]) => /\b(readOnly|isReadOnly|canEdit|editable)\b|(?:\.locked\b|\blocked\s*[:?])/.test(
         src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' '),
       ))
       .map(([rel]) => rel);
