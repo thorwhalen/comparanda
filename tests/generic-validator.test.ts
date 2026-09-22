@@ -12,9 +12,14 @@
  * validation and fails here, the artifact and the code disagree, and it is the
  * artifact the other repository trusts (#55, #69).
  *
- * `strict: true` is deliberate: Ajv then also refuses a schema that uses an
- * unknown keyword or an ambiguous construct, which is exactly the class of
- * emitter output a stricter consumer elsewhere would choke on.
+ * `strict: true` makes Ajv refuse an unknown keyword or an ill-typed keyword
+ * value in the schema itself. The current artifact uses no `$ref` or `format`,
+ * so today that is most of what strict mode checks; it is on so that the day the
+ * emitter starts producing either, a malformed one fails here first.
+ *
+ * Note what this does **not** prove: the emitted shape is open (no
+ * `additionalProperties: false`), so a misspelled optional field passes both
+ * Ajv and zod, which strips unknown keys.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -71,19 +76,25 @@ describe('the emitted JSON Schema, read by a generic validator', () => {
     const base = readJson(join(examplesDir, 'languages.json'));
 
     // `subject` is required; `alternatives` is not, because it defaults to [].
+    // Each case must fail for the reason it was built to fail for, not merely fail.
+    const failsWith = (d: unknown, keyword: string, instancePath: string) => {
+      expect(validate(d)).toBe(false);
+      expect(validate.errors?.map((e) => [e.keyword, e.instancePath])).toContainEqual([keyword, instancePath]);
+    };
+
     const missingRequired = structuredClone(base);
     delete missingRequired.subject;
-    expect(validate(missingRequired)).toBe(false);
+    failsWith(missingRequired, 'required', '');
 
     const wrongType = structuredClone(base);
     wrongType.criteria = 'not an array';
-    expect(validate(wrongType)).toBe(false);
+    failsWith(wrongType, 'type', '/criteria');
 
     const badEnum = structuredClone(base);
     badEnum.criteria[0].defaultMeasurement = {
       ...badEnum.criteria[0].defaultMeasurement,
       level: 'not-a-level-of-measurement',
     };
-    expect(validate(badEnum)).toBe(false);
+    failsWith(badEnum, 'enum', '/criteria/0/defaultMeasurement/level');
   });
 });
