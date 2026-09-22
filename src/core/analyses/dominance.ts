@@ -34,6 +34,16 @@ import { isWidenedByDisclosure } from '../schema/values.js';
 import { makeInapplicability } from '../schema/groups.js';
 import { measurementFor } from '../schema/structure.js';
 import { admitsDominance, isOrdered, type Measurement } from '../schema/measurement.js';
+import type { AnalysisResult } from './registry.js';
+
+/** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
+export const DOMINANCE_ASSUMPTIONS: readonly string[] = Object.freeze([
+  "A contingently missing cell could be anything in its criterion's declared range, and is compared over that whole interval (ADR-0019).",
+  "The comparison basis is fixed across the whole scope; nominal, range-less, and preference none/ordered/target criteria are excluded and named.",
+  "A structurally absent cell leaves the comparison for the pairs it is in.",
+  "Only necessary dominance builds the front; possible dominance is used only as a filter.",
+  "With the practical tolerance on, the relation is no longer transitive, and cycles are reported rather than assumed away.",
+]);
 
 export interface Interval { lo: number; hi: number }
 
@@ -56,7 +66,7 @@ export interface DominanceOptions {
   criterionIds?: readonly string[];
 }
 
-export interface DominanceResult {
+export interface DominanceResult extends AnalysisResult {
   /** Not dominated even in the optimistic reading. Robustly surviving. */
   nonDominated: string[];
   /** Necessarily dominated: worse on every criterion however the blanks resolve. */
@@ -409,7 +419,7 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
   }
   if (basis.length === 0) {
     notes.push('no criterion admits a dominance comparison, so nothing can be dominated.');
-    return {
+    return { assumptions: DOMINANCE_ASSUMPTIONS,
       nonDominated: altIds, dominated: [], provisional: [], edges: [],
       basis, excluded, basisDescription, uncertaintyCost: 0, cycles: [], widenedByDisclosure, notes,
     };
@@ -472,14 +482,14 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
     );
   }
 
-  return {
+  return { assumptions: DOMINANCE_ASSUMPTIONS,
     nonDominated, dominated, provisional, edges, basis, excluded, basisDescription,
     uncertaintyCost: provisional.length, cycles, widenedByDisclosure, notes,
   };
 }
 
 /** Why `x` does or does not dominate `y`, criterion by criterion. */
-export interface DominanceExplanation {
+export interface DominanceExplanation extends AnalysisResult {
   x: string;
   y: string;
   /** `x` necessarily dominates `y`: exactly when `dominance()` has the edge `x -> y`. */
@@ -565,7 +575,7 @@ export function explainDominance(
       'withheld from you and compared at their widest possible values.)';
   }
 
-  return {
+  return { assumptions: DOMINANCE_ASSUMPTIONS,
     x, y, necessarilyDominates: nec, possiblyDominates: nec || pos, criteria,
     basis: p.basis, excluded: p.excluded, basisDescription: describeBasis(a, p), summary,
     widenedByDisclosure,

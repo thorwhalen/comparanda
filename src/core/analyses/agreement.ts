@@ -37,6 +37,16 @@ import { CORE_MISSING_CODES } from '../schema/missingness.js';
 import { Independence, effectiveIndependence } from '../schema/provenance.js';
 import { isWidenedByDisclosure, type Assertion, type ScalarValue } from '../schema/values.js';
 import type { LevelOfMeasurement, Measurement } from '../schema/measurement.js';
+import type { AnalysisResult } from './registry.js';
+
+/** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
+export const AGREEMENT_ASSUMPTIONS: readonly string[] = Object.freeze([
+  "Krippendorff's alpha, per criterion, over alternatives as units, with the difference function set by the criterion's level of measurement (ADR-0022).",
+  "Raters are distinct principals: personas of one person count once within a unit.",
+  "Only a set whose every contributing assertion is independent is labelled agreement; anything else is consistency.",
+  "Structural absences leave the computation; other absences are absent from the value domain, and terminal ones are counted separately.",
+  "The interval is a jackknife over units; the bands are reported and act on nothing.",
+]);
 
 /** The difference function, chosen by the criterion's level of measurement. */
 export type AlphaMetric = 'nominal' | 'ordinal' | 'interval' | 'ratio';
@@ -207,7 +217,7 @@ export interface CriterionAgreement {
   outstanding: number;
 }
 
-export interface AgreementResult {
+export interface AgreementResult extends AnalysisResult {
   measure: string;
   /** One entry per criterion. There is deliberately no matrix-wide figure. */
   criteria: CriterionAgreement[];
@@ -372,7 +382,7 @@ export function agreement(a: Analysis, opts: AgreementOptions): AgreementResult 
   if (widenedByDisclosure > 0) {
     notes.push(`computed with ${widenedByDisclosure} cell${widenedByDisclosure === 1 ? '' : 's'} withheld from you.`);
   }
-  return { measure, criteria: out, skipped, widenedByDisclosure, notes };
+  return { assumptions: AGREEMENT_ASSUMPTIONS, measure, criteria: out, skipped, widenedByDisclosure, notes };
 }
 
 /**

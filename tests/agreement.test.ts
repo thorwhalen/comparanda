@@ -125,7 +125,7 @@ describe('agreement() over an analysis', () => {
 
   it('has no matrix-wide agreement number anywhere in its result', () => {
     const r = agreement(datasetCAnalysis(), { measure: 'score' });
-    expect(Object.keys(r).sort()).toEqual(['criteria', 'measure', 'notes', 'skipped', 'widenedByDisclosure']);
+    expect(Object.keys(r).sort()).toEqual(['assumptions', 'criteria', 'measure', 'notes', 'skipped', 'widenedByDisclosure']);
     expect(r.notes.join(' ')).toMatch(/no agreement figure for the whole matrix/);
   });
 
