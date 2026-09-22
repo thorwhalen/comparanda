@@ -1,0 +1,4 @@
+// pretends to be src/view/leaky.ts
+export async function load(url: string) {
+  return (await fetch(url)).json();
+}

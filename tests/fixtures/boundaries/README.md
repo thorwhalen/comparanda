@@ -1,0 +1,1 @@
+Deliberately violating sources for `tests/boundaries.test.ts` (#39). Each file breaks exactly one boundary rule, and the test asserts the rule fires on it. They carry a `.fixture` extension so neither the compiler nor the boundary script treats them as source; the test supplies the path each one pretends to live at.

@@ -1,0 +1,4 @@
+// pretends to be src/core/schema/leaky.ts
+export function title(): string {
+  return document.title;
+}

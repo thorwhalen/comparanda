@@ -1,0 +1,3 @@
+// pretends to be src/view/leaky.ts
+import { z } from 'zod';
+export const Name = z.string();
