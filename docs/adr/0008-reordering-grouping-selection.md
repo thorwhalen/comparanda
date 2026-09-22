@@ -159,3 +159,9 @@ and § 7, Conflict G (dominance per group scope).
 4. [Understanding SC 2.5.7: Dragging Movements (Level AA) — W3C WAI, WCAG 2.2](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html)
 5. [Multi-criteria analysis: a manual — Department for Communities and Local Government (2009)](https://researchonline.lse.ac.uk/id/eprint/12761/1/Multi-criteria_Analysis.pdf)
 6. [Decision matrix — Wikipedia](https://en.wikipedia.org/wiki/Decision_matrix) — cited for its criteria-in-rows orientation, the transpose of ours.
+
+## Amendments
+
+### 2026-09-22 — A group-pair inapplicability covers the members of sub-groups
+
+Adopting `@zodal/groups-core` (#47) made membership closed under nesting: a row in a sub-group is a member of every group above it, which is the library's rule and the one "groups may nest" implies. A declared group-pair inapplicability is read through that same membership, so a block naming a group also covers the rows of its sub-groups. This ADR only said group-pair inapplicability is "ours to model"; this records how it is modelled. Structural absence still wins over an author-set code (ADR-0009). No shipped fixture nests groups, and their results are unchanged.
