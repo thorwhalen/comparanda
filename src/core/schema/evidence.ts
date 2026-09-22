@@ -432,9 +432,21 @@ export interface EvidenceProblem {
    * failure ADR-0006 names, passing the boundary it was written for.
    */
   family: 'honesty';
-  ruleId: string;
+  ruleId: EvidenceRuleId;
   fix: string;
 }
+
+/**
+ * The rule ids this module can report. A closed union rather than `string` so
+ * that `validateAnalysis`'s table of rule sources is checked by the compiler to
+ * cover every one of them.
+ */
+export type EvidenceRuleId =
+  | 'cite-a-span'
+  | 'check-dated'
+  | 'check-attributed'
+  | 'inference-names-its-sources'
+  | 'external-support-required';
 
 /**
  * Structural checks on a reference.
