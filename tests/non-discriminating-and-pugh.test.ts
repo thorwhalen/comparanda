@@ -106,7 +106,8 @@ describe('pughTally (#83)', () => {
       if (o && typeof o === 'object') for (const [k, v] of Object.entries(o)) { keys.push(k); walk(v); }
     };
     walk(r);
-    expect(keys.filter((k) => /net|total|score|sum|rank/i.test(k))).toEqual([]);
+    // Word-level, so `assumptions` (#87) does not read as containing "sum".
+    expect(keys.filter((k) => /^(net|total|score|sum|rank)|(Net|Total|Score|Sum|Rank)/.test(k))).toEqual([]);
   });
 
   it('makes not-comparable a real fourth count, from missingness and from preference none', () => {

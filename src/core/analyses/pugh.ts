@@ -31,6 +31,15 @@ import type { Analysis } from '../schema/analysis.js';
 import { measurementFor } from '../schema/structure.js';
 import { isOrdered, type Measurement } from '../schema/measurement.js';
 import { indifferenceOf, makeReadings, widenedCells, type Reading } from './readings.js';
+import type { AnalysisResult } from './registry.js';
+
+/** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
+export const PUGH_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
+  "Every count is relative to the chosen datum; a different datum gives different counts.",
+  "'Same' means within the criterion's declared indifference threshold (exact equality when none is declared).",
+  "A blank is decided only when every value in its declared range gives the same answer; otherwise it is not comparable.",
+  "The counts are not a score and have no net: better and worse on different criteria do not cancel.",
+] as const);
 
 export interface PughOptions {
   measure: string;
@@ -69,7 +78,7 @@ export interface PughRow {
   criteria: PughComparison[];
 }
 
-export interface PughResult {
+export interface PughResult extends AnalysisResult {
   datum: string;
   rows: PughRow[];
   /** What the tally is not. Render it with the counts (ADR-0015 g). */
@@ -159,5 +168,5 @@ export function pughTally(a: Analysis, opts: PughOptions): PughResult {
   if (widenedByDisclosure > 0) {
     notes.push(`${widenedByDisclosure} cell(s) in scope are withheld from you and were read as blanks.`);
   }
-  return { datum: opts.datum, rows, legend, widenedByDisclosure, notes };
+  return { assumptions: PUGH_ASSUMPTIONS, datum: opts.datum, rows, legend, widenedByDisclosure, notes };
 }

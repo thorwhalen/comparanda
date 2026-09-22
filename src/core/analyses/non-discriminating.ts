@@ -23,6 +23,14 @@ import type { Analysis } from '../schema/analysis.js';
 import { measurementFor } from '../schema/structure.js';
 import { isOrdered } from '../schema/measurement.js';
 import { indifferenceOf, makeReadings, widenedCells } from './readings.js';
+import type { AnalysisResult } from './registry.js';
+
+/** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
+export const NON_DISCRIMINATING_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
+  "A criterion does no work when every compared alternative lies within its declared indifference threshold (exact equality when none is declared).",
+  "A blank could be anything in the declared range, so a column with blanks is undetermined unless the range itself is narrower than the threshold.",
+  "This proposes; it never removes a criterion.",
+] as const);
 
 export interface NonDiscriminatingOptions {
   measure: string;
@@ -58,7 +66,7 @@ export interface CriterionDiscrimination {
   reason: string;
 }
 
-export interface NonDiscriminatingResult {
+export interface NonDiscriminatingResult extends AnalysisResult {
   /** Criteria proposed as doing no work. A proposal: nothing has been removed. */
   proposed: string[];
   criteria: CriterionDiscrimination[];
@@ -155,5 +163,5 @@ export function findNonDiscriminatingCriteria(a: Analysis, opts: NonDiscriminati
   if (widenedByDisclosure > 0) {
     notes.push(`${widenedByDisclosure} cell(s) in scope are withheld from you and were read as blanks.`);
   }
-  return { proposed, criteria, widenedByDisclosure, notes };
+  return { assumptions: NON_DISCRIMINATING_ASSUMPTIONS, proposed, criteria, widenedByDisclosure, notes };
 }

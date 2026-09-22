@@ -14,6 +14,14 @@ import type { Analysis } from '../schema/analysis.js';
 import { reducedValue, cellIndex, cellKey } from '../schema/analysis.js';
 import { isWidenedByDisclosure } from '../schema/values.js';
 import { measurementFor } from '../schema/structure.js';
+import type { AnalysisResult } from './registry.js';
+
+/** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
+export const SCREENING_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
+  "Each acceptability floor is absolute and non-compensatory: strength elsewhere does not offset a failure here.",
+  "An alternative below a floor is flagged, never removed.",
+  "A blank or non-numeric cell cannot be tested against its floor and is reported as untested, not as a pass.",
+] as const);
 
 export interface ScreeningFlag {
   alternativeId: string;
@@ -25,7 +33,7 @@ export interface ScreeningFlag {
   untested: boolean;
 }
 
-export interface ScreeningResult {
+export interface ScreeningResult extends AnalysisResult {
   flagged: ScreeningFlag[];
   /** Alternatives with at least one hard flag (tested and failed). */
   flaggedAlternatives: string[];
@@ -97,7 +105,7 @@ export function screen(a: Analysis, measure: string): ScreeningResult {
     );
   }
 
-  return {
+  return { assumptions: SCREENING_ASSUMPTIONS,
     flagged: flags,
     flaggedAlternatives: [...new Set(hard.map((f) => f.alternativeId))],
     screenedOn,
