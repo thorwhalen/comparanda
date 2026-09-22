@@ -18,7 +18,7 @@ const ORDINAL = {
 };
 const NOMINAL = { level: 'nominal' as const, preference: 'none' as const, levels: ['a', 'b'] };
 
-const doc = (criterion: Record<string, unknown>) => ({
+const doc = (criterion: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
   id: 'a1',
   schemaVersion: 1,
   subject: { question: 'which one?' },
@@ -26,6 +26,7 @@ const doc = (criterion: Record<string, unknown>) => ({
   alternatives: [{ id: 'alt-1', label: 'A' }],
   criteria: [{ id: 'cost', label: 'Cost', ...criterion }],
   cells: [],
+  ...extra,
 });
 
 const ruleHits = (d: unknown) => validateAnalysis(d).problems.filter((p) => p.ruleId === RULE);
@@ -87,6 +88,37 @@ describe('substitution weight needs a declared range', () => {
     expect(hits[0]!.message).toMatch(/no measurement/);
     // Reported alongside, not instead of, the missing-measurement rule.
     expect(r.problems.some((p) => p.ruleId === 'criterion-has-a-measurement')).toBe(true);
+  });
+
+  it('rejects a range on a nominal level: nominal values have no swing', () => {
+    // A range is only a swing on an ordered level. `validateMeasurement` does not
+    // forbid a range on nominal, so presence of `range` alone is not enough.
+    const hits = ruleHits(doc({
+      defaultMeasurement: { ...NOMINAL, range: { min: 0, max: 1 } },
+      weights: { substitution: 0.4 },
+    }));
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.message).toMatch(/nominal/);
+  });
+
+  it('does not hold an overridden default against a weight', () => {
+    // Every declared measure has its own ranged measurement, so the nominal
+    // default is never what the weight applies to.
+    const d = doc(
+      { measurements: { score: ORDINAL }, defaultMeasurement: NOMINAL, weights: { substitution: 0.4 } },
+      { measures: [{ name: 'score' }] },
+    );
+    expect(ruleHits(d)).toEqual([]);
+  });
+
+  it('holds the default against a weight when a declared measure falls back to it', () => {
+    const d = doc(
+      { measurements: { score: ORDINAL }, defaultMeasurement: NOMINAL, weights: { substitution: 0.4 } },
+      { measures: [{ name: 'score' }, { name: 'confidence' }] },
+    );
+    const hits = ruleHits(d);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.message).toContain('defaultMeasurement (for "confidence")');
   });
 
   it('cannot be silenced by turning completeness off', () => {
