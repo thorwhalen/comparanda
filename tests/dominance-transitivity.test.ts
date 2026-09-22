@@ -167,7 +167,14 @@ describe('interval-completion dominance', () => {
     expect(result.edges.filter((e) => e.dominator === 'blank')).toHaveLength(0);
     // ...and it is not dominated either, because its blanks could resolve high.
     expect(result.dominated).not.toContain('blank');
-    expect(result.provisional).toContain('blank');
+    // Nor even *possibly* dominated: 'low' sits at the range minimum, so no
+    // completion makes it strictly better anywhere. ADR-0019 clause 2 defines
+    // possible dominance as "hi_a >= lo_b for every j, strict somewhere"; this
+    // test used to expect 'blank' in `provisional`, which only the missing
+    // "strict somewhere" half allowed. It is 'low' that is provisional.
+    expect(result.provisional).not.toContain('blank');
+    expect(result.nonDominated).toContain('blank');
+    expect(result.provisional).toContain('low');
   });
 
   it('reports which criteria it excluded, rather than excluding them silently', () => {

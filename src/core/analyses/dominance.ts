@@ -74,6 +74,12 @@ export interface DominanceResult {
   basis: string[];
   excluded: ExcludedCriterion[];
   /**
+   * The basis in words, e.g. "computed over the 9 criteria that admit a
+   * dominance comparison, across 12 alternatives; 3 criteria excluded: ...".
+   * ADR-0019: a result that does not name its basis is not interpretable.
+   */
+  basisDescription: string;
+  /**
    * How many alternatives would leave `provisional` if every blank resolved.
    * The cost of the missing data, in the unit that matters.
    */
@@ -143,18 +149,32 @@ function orient(iv: Interval, m: Measurement): Interval | undefined {
 }
 
 /**
- * Compute the dominance relation.
- *
- * The algorithm is the naive O(n^2 * m) pairwise scan, and that is a deliberate
- * choice rather than an oversight: these matrices are tens to low hundreds of
- * alternatives (ADR-0002), the scan is exact and obviously correct, and the
- * divide-and-conquer skyline algorithms that beat it only pay at sizes this tool
- * explicitly does not target.
+ * Why one cell left the comparison for every pair it is in: `structural` (the
+ * criterion does not apply -- a structural missingness code, or a declared
+ * inapplicable group pair), or `non-numeric` (a value dominance cannot order).
  */
-export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult {
-  const notes: string[] = [];
-  const excluded: ExcludedCriterion[] = [];
+export type CellExclusion = 'structural' | 'non-numeric';
 
+type Row = Map<string, Interval | CellExclusion>;
+
+/**
+ * Everything a pairwise comparison needs, fixed once for the whole scope.
+ *
+ * `dominance()` and `explainDominance()` both build their answers from this and
+ * from `compareOnCriterion` below, so the explanation of a pair cannot disagree
+ * with the relation it explains.
+ */
+interface Prepared {
+  altIds: string[];
+  basis: string[];
+  excluded: ExcludedCriterion[];
+  measurements: Map<string, Measurement>;
+  rows: Map<string, Row>;
+  tolerance: (cid: string) => number;
+}
+
+function prepare(a: Analysis, opts: DominanceOptions): Prepared {
+  const excluded: ExcludedCriterion[] = [];
   const altIds = (opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id)).slice();
   const candidateCrits = opts.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
 
@@ -173,6 +193,187 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
     measurements.set(cid, m);
   }
 
+  // Materialise the oriented intervals once.
+  const rows = new Map<string, Row>();
+  for (const altId of altIds) {
+    const row: Row = new Map();
+    for (const cid of basis) {
+      const m = measurements.get(cid)!;
+      const raw = intervalFor(a, altId, cid, m, opts.measure);
+      if (raw === 'excluded') { row.set(cid, 'structural'); continue; }
+      if (raw === undefined) { row.set(cid, 'non-numeric'); continue; }
+      const o = orient(raw, m);
+      row.set(cid, o ?? 'non-numeric');
+    }
+    rows.set(altId, row);
+  }
+
+  const tolerance = (cid: string): number => {
+    if (!opts.usePracticalTolerance) return 0;
+    return measurements.get(cid)?.thresholds?.indifference ?? 0;
+  };
+
+  return { altIds, basis, excluded, measurements, rows, tolerance };
+}
+
+/**
+ * How `x` stands against `y` on one basis criterion, oriented so larger is better.
+ *
+ * - `better` / `worse`: strictly, however the blanks resolve (beyond tolerance).
+ * - `indifferent`: within tolerance of each other however the blanks resolve.
+ * - `undetermined`: which is better depends on how the blanks resolve.
+ * - `excluded`: a cell on either side left the comparison.
+ */
+export type CriterionStanding = 'better' | 'worse' | 'indifferent' | 'undetermined' | 'excluded';
+
+export interface CriterionComparison {
+  criterionId: string;
+  standing: CriterionStanding;
+  /** The oriented intervals compared (larger is better), when both sides took part. */
+  x?: Interval;
+  y?: Interval;
+  /** Present when `standing` is `excluded`: which side left, and why. */
+  exclusion?: { side: 'x' | 'y' | 'both'; reason: CellExclusion };
+  /** The indifference tolerance applied; 0 unless `usePracticalTolerance`. */
+  tolerance: number;
+  /** x's worst is at least y's best, within tolerance. Necessary dominance needs this everywhere. */
+  xAtLeastAsGood: boolean;
+  /** x's worst beats y's best beyond tolerance. Necessary dominance needs this somewhere. */
+  xStrictlyBetter: boolean;
+  /** x's best reaches y's worst, within tolerance. Possible dominance needs this everywhere. */
+  xCanReach: boolean;
+  /** x's best beats y's worst beyond tolerance. Possible dominance needs this somewhere. */
+  xCanBeStrictlyBetter: boolean;
+}
+
+function compareOnCriterion(p: Prepared, x: string, y: string, cid: string): CriterionComparison {
+  const ix = p.rows.get(x)!.get(cid)!;
+  const iy = p.rows.get(y)!.get(cid)!;
+  const tolerance = p.tolerance(cid);
+  if (typeof ix === 'string' || typeof iy === 'string') {
+    const side = typeof ix === 'string' && typeof iy === 'string' ? 'both' : typeof ix === 'string' ? 'x' : 'y';
+    const reason = (typeof ix === 'string' ? ix : iy) as CellExclusion;
+    return {
+      criterionId: cid, standing: 'excluded', exclusion: { side, reason }, tolerance,
+      xAtLeastAsGood: false, xStrictlyBetter: false, xCanReach: false, xCanBeStrictlyBetter: false,
+    };
+  }
+  const q = tolerance;
+  const xAtLeastAsGood = !(ix.lo < iy.hi - q);
+  const xStrictlyBetter = ix.lo > iy.hi + q;
+  const yStrictlyBetter = iy.lo > ix.hi + q;
+  const yAtLeastAsGood = !(iy.lo < ix.hi - q);
+  const standing: CriterionStanding = xStrictlyBetter ? 'better'
+    : yStrictlyBetter ? 'worse'
+    : xAtLeastAsGood && yAtLeastAsGood ? 'indifferent'
+    : 'undetermined';
+  return {
+    criterionId: cid, standing, x: ix, y: iy, tolerance,
+    xAtLeastAsGood, xStrictlyBetter,
+    // The same tolerance as necessary dominance. Without it a pair could be
+    // "necessarily" dominated while one criterion said x could not even reach.
+    xCanReach: !(ix.hi < iy.lo - q),
+    xCanBeStrictlyBetter: ix.hi > iy.lo + q,
+  };
+}
+
+/** Does `x` necessarily dominate `y`? Early-exits; the verdict `explainDominance` reports. */
+function necessarilyDominates(p: Prepared, x: string, y: string): boolean {
+  let strictSomewhere = false;
+  let comparedAny = false;
+  for (const cid of p.basis) {
+    const c = compareOnCriterion(p, x, y, cid);
+    // A criterion excluded for either side leaves the comparison for this pair.
+    if (c.standing === 'excluded') continue;
+    comparedAny = true;
+    // At least as good however the blanks resolve: x's worst >= y's best.
+    if (!c.xAtLeastAsGood) return false;
+    if (c.xStrictlyBetter) strictSomewhere = true;
+  }
+  return comparedAny && strictSomewhere;
+}
+
+/**
+ * Could `x` dominate `y` under some resolution of the blanks?
+ *
+ * Dominance is "at least as good everywhere and strictly better somewhere", so
+ * its possible form needs both halves: x can reach y everywhere, and x can beat
+ * y somewhere. Without the second, two identical fully-scored alternatives each
+ * "possibly dominated" the other, with no blank anywhere to resolve.
+ */
+function possiblyDominates(p: Prepared, x: string, y: string): boolean {
+  let strictPossible = false;
+  for (const cid of p.basis) {
+    const c = compareOnCriterion(p, x, y, cid);
+    if (c.standing === 'excluded') continue;
+    // x's best must reach y's worst, or it cannot win here under any resolution.
+    if (!c.xCanReach) return false;
+    if (c.xCanBeStrictlyBetter) strictPossible = true;
+  }
+  return strictPossible;
+}
+
+const EXCLUSION_WORDS: Record<ExcludedCriterion['reason'], string> = {
+  nominal: 'nominal',
+  'no-preference-direction': 'with no direction of preference',
+  'no-declared-range': 'with no declared range',
+  'non-numeric': 'non-numeric',
+};
+
+/**
+ * The comparison basis, in words.
+ *
+ * ADR-0019: every result names its basis, because "A dominates B" means nothing
+ * until a reader knows over what. Uses the analysis's display aliases, so a
+ * deployment that says "options" reads "options" here too.
+ *
+ * e.g. "computed over the 9 criteria that admit a dominance comparison, across
+ * 12 alternatives; 3 criteria excluded: 2 nominal, 1 with no declared range;
+ * 4 cells not applicable, which leave the comparison for the pairs they are in."
+ */
+function describeBasis(a: Analysis, p: Prepared): string {
+  const al = a.aliases;
+  const noun = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const crit = (n: number) => noun(n, al?.criterion ?? 'criterion', al?.criteria ?? 'criteria');
+  const alts = noun(p.altIds.length, al?.alternative ?? 'alternative', al?.alternatives ?? 'alternatives');
+
+  let s = p.basis.length === 0
+    ? `no ${al?.criterion ?? 'criterion'} admits a dominance comparison, across ${alts}`
+    : `computed over the ${crit(p.basis.length)} that ${p.basis.length === 1 ? 'admits' : 'admit'} ` +
+      `a dominance comparison, across ${alts}`;
+
+  if (p.excluded.length > 0) {
+    const byReason = new Map<string, number>();
+    for (const e of p.excluded) byReason.set(e.reason, (byReason.get(e.reason) ?? 0) + 1);
+    const parts = [...byReason].map(([r, n]) => `${n} ${EXCLUSION_WORDS[r as ExcludedCriterion['reason']]}`);
+    s += `; ${crit(p.excluded.length)} excluded: ${parts.join(', ')}`;
+  }
+
+  let notApplicable = 0;
+  for (const row of p.rows.values()) for (const v of row.values()) if (v === 'structural') notApplicable += 1;
+  if (notApplicable > 0) {
+    s += `; ${noun(notApplicable, 'cell', 'cells')} not applicable, which ` +
+      `${notApplicable === 1 ? 'leaves' : 'leave'} the comparison for the pairs ` +
+      `${notApplicable === 1 ? 'it is' : 'they are'} in`;
+  }
+  return `${s}.`;
+}
+
+/**
+ * Compute the dominance relation.
+ *
+ * The algorithm is the naive O(n^2 * m) pairwise scan, and that is a deliberate
+ * choice rather than an oversight: these matrices are tens to low hundreds of
+ * alternatives (ADR-0002), the scan is exact and obviously correct, and the
+ * divide-and-conquer skyline algorithms that beat it only pay at sizes this tool
+ * explicitly does not target.
+ */
+export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult {
+  const notes: string[] = [];
+  const p = prepare(a, opts);
+  const { altIds, basis, excluded } = p;
+  const basisDescription = describeBasis(a, p);
+
   if (excluded.length > 0) {
     notes.push(
       `${excluded.length} criteria are excluded from the comparison by construction; ` +
@@ -183,61 +384,8 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
     notes.push('no criterion admits a dominance comparison, so nothing can be dominated.');
     return {
       nonDominated: altIds, dominated: [], provisional: [], edges: [],
-      basis, excluded, uncertaintyCost: 0, cycles: [], notes,
+      basis, excluded, basisDescription, uncertaintyCost: 0, cycles: [], notes,
     };
-  }
-
-  // Materialise the oriented intervals once.
-  type Row = Map<string, Interval | 'excluded'>;
-  const rows = new Map<string, Row>();
-  for (const altId of altIds) {
-    const row: Row = new Map();
-    for (const cid of basis) {
-      const m = measurements.get(cid)!;
-      const raw = intervalFor(a, altId, cid, m, opts.measure);
-      if (raw === 'excluded') { row.set(cid, 'excluded'); continue; }
-      if (raw === undefined) { row.set(cid, 'excluded'); continue; }
-      const o = orient(raw, m);
-      row.set(cid, o ?? 'excluded');
-    }
-    rows.set(altId, row);
-  }
-
-  const tolerance = (cid: string): number => {
-    if (!opts.usePracticalTolerance) return 0;
-    return measurements.get(cid)?.thresholds?.indifference ?? 0;
-  };
-
-  /** Does `x` necessarily dominate `y`? */
-  function necessarilyDominates(x: string, y: string): boolean {
-    const rx = rows.get(x)!, ry = rows.get(y)!;
-    let strictSomewhere = false;
-    let comparedAny = false;
-    for (const cid of basis) {
-      const ix = rx.get(cid), iy = ry.get(cid);
-      // A criterion excluded for either side leaves the comparison for this pair.
-      if (ix === 'excluded' || iy === 'excluded' || !ix || !iy) continue;
-      comparedAny = true;
-      const q = tolerance(cid);
-      // At least as good however the blanks resolve: x's worst >= y's best.
-      if (ix.lo < iy.hi - q) return false;
-      if (ix.lo > iy.hi + q) strictSomewhere = true;
-    }
-    return comparedAny && strictSomewhere;
-  }
-
-  /** Could `x` dominate `y` under some resolution of the blanks? */
-  function possiblyDominates(x: string, y: string): boolean {
-    const rx = rows.get(x)!, ry = rows.get(y)!;
-    let comparedAny = false;
-    for (const cid of basis) {
-      const ix = rx.get(cid), iy = ry.get(cid);
-      if (ix === 'excluded' || iy === 'excluded' || !ix || !iy) continue;
-      comparedAny = true;
-      // x's best must reach y's worst, or it cannot win here under any resolution.
-      if (ix.hi < iy.lo) return false;
-    }
-    return comparedAny;
   }
 
   const edges: { dominator: string; dominated: string }[] = [];
@@ -247,10 +395,10 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
   for (const x of altIds) {
     for (const y of altIds) {
       if (x === y) continue;
-      if (necessarilyDominates(x, y)) {
+      if (necessarilyDominates(p, x, y)) {
         edges.push({ dominator: x, dominated: y });
         necessarilyDominated.add(y);
-      } else if (possiblyDominates(x, y)) {
+      } else if (possiblyDominates(p, x, y)) {
         possiblyDominated.add(y);
       }
     }
@@ -298,8 +446,74 @@ export function dominance(a: Analysis, opts: DominanceOptions): DominanceResult 
   }
 
   return {
-    nonDominated, dominated, provisional, edges, basis, excluded,
+    nonDominated, dominated, provisional, edges, basis, excluded, basisDescription,
     uncertaintyCost: provisional.length, cycles, notes,
+  };
+}
+
+/** Why `x` does or does not dominate `y`, criterion by criterion. */
+export interface DominanceExplanation {
+  x: string;
+  y: string;
+  /** `x` necessarily dominates `y`: exactly when `dominance()` has the edge `x -> y`. */
+  necessarilyDominates: boolean;
+  /** `x` could dominate `y` under some resolution of the blanks. */
+  possiblyDominates: boolean;
+  /** One entry per basis criterion, in basis order. */
+  criteria: CriterionComparison[];
+  /** The same basis `dominance()` uses for this scope, and why the rest were left out. */
+  basis: string[];
+  excluded: ExcludedCriterion[];
+  basisDescription: string;
+  /** The verdict and its reason, in one sentence. */
+  summary: string;
+}
+
+/**
+ * Explain one pair, for display -- never as a way to compute the relation.
+ *
+ * ADR-0019: the relation is `dominance()` over a fixed basis; this re-reads the
+ * same prepared intervals and the same per-criterion comparison, so it cannot
+ * disagree with it. Pass the same `opts` (and in particular the same scope) as
+ * the `dominance()` call being explained.
+ */
+export function explainDominance(
+  a: Analysis, x: string, y: string, opts: DominanceOptions,
+): DominanceExplanation {
+  const p = prepare(a, opts);
+  for (const id of [x, y]) {
+    if (!p.rows.has(id)) {
+      throw new Error(`"${id}" is not an alternative in scope; pass the scope used for dominance()`);
+    }
+  }
+  const criteria = p.basis.map((cid) => compareOnCriterion(p, x, y, cid));
+  const nec = x !== y && necessarilyDominates(p, x, y);
+  const pos = x !== y && !nec && possiblyDominates(p, x, y);
+  const count = (st: CriterionStanding) => criteria.filter((c) => c.standing === st).map((c) => c.criterionId);
+  const worse = count('worse'), undetermined = count('undetermined'), better = count('better');
+  const list = (ids: string[]) => ids.join(', ');
+
+  let summary: string;
+  if (x === y) summary = `${x} is compared with itself; nothing dominates itself.`;
+  else if (criteria.every((c) => c.standing === 'excluded')) {
+    summary = `${x} and ${y} share no criterion both can be compared on, so neither dominates.`;
+  } else if (nec) {
+    summary = `${x} necessarily dominates ${y}: at least as good on every compared criterion ` +
+      `however the blanks resolve, and strictly better on ${list(better)}.`;
+  } else if (worse.length > 0) {
+    summary = `${x} does not dominate ${y}: it is worse on ${list(worse)} however the blanks resolve.`;
+  } else if (pos && undetermined.length > 0) {
+    summary = `${x} might dominate ${y}, depending on how the blanks resolve on ${list(undetermined)}.`;
+  } else if (pos) {
+    summary = `${x} might dominate ${y}: no criterion rules it out, but none shows it strictly better ` +
+      'beyond the indifference tolerance either.';
+  } else {
+    summary = `${x} does not dominate ${y}: it cannot be better on any compared criterion.`;
+  }
+
+  return {
+    x, y, necessarilyDominates: nec, possiblyDominates: nec || pos, criteria,
+    basis: p.basis, excluded: p.excluded, basisDescription: describeBasis(a, p), summary,
   };
 }
 
