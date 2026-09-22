@@ -21,6 +21,7 @@ Three rules make the chain trustworthy:
   human settles. All round-1 actions have been applied; the settled set is indexed at [`../adr/README.md`](../adr/README.md).
 - **Sections stay as the evidence of record.** A findings file is a synthesis and will be shorter
   than its evidence; when a claim needs its full chain, read the section it came from.
+- **A section a findings file overturns says so at the top.** Sections are not rewritten, so where a findings document explicitly overturns a section's recommendation, the section opens with a `> [!IMPORTANT]` "Superseded on N point(s)" block naming what and pointing at the findings section — the evidence stands, the recommendation does not. Only explicit overturns get one; where the findings leave a choice to a human, the section carries no note.
 
 New-ADR numbers below use the **consolidated allocation proposed in
 [`../adr/README.md`](../adr/README.md)**, not the per-document numbers used

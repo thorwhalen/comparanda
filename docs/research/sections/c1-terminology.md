@@ -1,5 +1,8 @@
 # MCDA vocabulary, Pugh matrices, consequence tables, and what to call things
 
+> [!IMPORTANT]
+> **Superseded on one point.** This section recommends `pending` as the agent's output for "high leverage, needs investigation"; that code no longer exists, and the mapping is too coarse under the renamed set — `indeterminate` when the assessor looked and could not tell, `deferred` when the assessment was postponed. See [`findings-terminology.md` § 7, Conflict C](../findings-terminology.md) (and § 4 for the rename); the evidence below stands, the recommendation does not.
+
 **Research question(s):** Confirm or correct the MCDA/MADM vocabulary adopted in
 `docs/domain-model.md` and ADR-0003. Who uses "attribute" vs "criterion", and why? Is "decision
 matrix" / "performance matrix" / "consequence table" the right name for the grid? Does Pugh's
