@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Analysis } from '../src/core/schema/analysis.js';
-import { orphanedThreadsOf, resolveAnchor, tombstone } from '../src/core/schema/anchors.js';
+import { orphanedSuggestionsOf, orphanedThreadsOf, resolveAnchor, tombstone } from '../src/core/schema/anchors.js';
 
 const doc = () => Analysis.parse({
   id: 'n', subject: { question: 'q' },
@@ -78,6 +78,24 @@ describe('deletion is a tombstone, and its threads are visibly orphaned', () => 
 
   it('refuses to tombstone an id that does not exist, rather than silently doing nothing', () => {
     expect(() => tombstone(doc(), { kind: 'alternative', id: 'nope' })).toThrow(/nope/);
+  });
+
+  it('refuses a kind it cannot tombstone, rather than tombstoning a criterion', () => {
+    expect(() => tombstone(doc(), { kind: 'group' as never, id: 'g' })).toThrow(/group/);
+  });
+
+  it('lists suggestions anchored to a tombstoned entity too (review finding)', () => {
+    const a = Analysis.parse({
+      ...doc(),
+      suggestions: [
+        { id: 's1', anchor: { scope: 'cell', alternativeId: 'x', criterionId: 'reach', measure: 'score' }, authorId: 'ana', at: '2026-08-22T00:00:00Z', proposed: {} },
+        { id: 's2', anchor: { scope: 'criterion', criterionId: 'cost' }, authorId: 'ana', at: '2026-08-22T00:00:00Z', proposed: {}, status: 'declined' },
+      ],
+    });
+    expect(orphanedSuggestionsOf(a)).toEqual([]);
+    const b = tombstone(a, { kind: 'criterion', id: 'reach' });
+    expect(orphanedSuggestionsOf(b).map((o) => [o.suggestion.id, o.resolution.reason])).toEqual([['s1', 'tombstoned']]);
+    expect(b.suggestions).toHaveLength(2);
   });
 });
 

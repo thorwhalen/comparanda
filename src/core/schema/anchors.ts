@@ -19,7 +19,7 @@
  * and `analysis.ts` already imports the annotation shapes.
  */
 import type { Analysis } from './analysis.js';
-import type { Anchor, Thread } from './annotations.js';
+import type { Anchor, Suggestion, Thread } from './annotations.js';
 
 /** Why an anchor no longer points at something live. */
 export type OrphanReason = 'missing' | 'tombstoned';
@@ -93,6 +93,22 @@ export function orphanedThreadsOf(a: Analysis): { thread: Thread; resolution: Ex
 }
 
 /**
+ * Every suggestion whose anchor no longer resolves, with the reason.
+ *
+ * Suggestions are anchored exactly as threads are, so a suggestion against a
+ * tombstoned criterion is the same silent loss #51 forbids if nothing lists it.
+ * Decided suggestions are included for the same reason resolved threads are.
+ */
+export function orphanedSuggestionsOf(a: Analysis): { suggestion: Suggestion; resolution: Exclude<AnchorResolution, { status: 'live' }> }[] {
+  const out: { suggestion: Suggestion; resolution: Exclude<AnchorResolution, { status: 'live' }> }[] = [];
+  for (const suggestion of a.suggestions) {
+    const resolution = resolveAnchor(a, suggestion.anchor);
+    if (resolution.status === 'orphaned') out.push({ suggestion, resolution });
+  }
+  return out;
+}
+
+/**
  * Delete an alternative or a criterion the only way this core allows: mark it
  * tombstoned, keep it and everything anchored to it. Returns a new analysis;
  * the input is not mutated. `supersededBy` records a split or merge.
@@ -115,7 +131,12 @@ export function tombstone(
       ? { ...x, tombstoned: true, ...(supersededBy ? { supersededBy: [...supersededBy] } : {}) }
       : x));
   };
-  return target.kind === 'alternative'
-    ? { ...a, alternatives: mark(a.alternatives) }
-    : { ...a, criteria: mark(a.criteria) };
+  // Checked at runtime too: a JS caller passing any other kind would otherwise
+  // silently tombstone a criterion.
+  if (target.kind === 'alternative') return { ...a, alternatives: mark(a.alternatives) };
+  if (target.kind === 'criterion') return { ...a, criteria: mark(a.criteria) };
+  throw new Error(
+    `cannot tombstone a "${String(target.kind)}": only alternatives and criteria carry a tombstone. ` +
+      'Groups have no tombstone field yet, so deleting one is a hard delete (see #51).',
+  );
 }

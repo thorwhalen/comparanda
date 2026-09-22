@@ -22,6 +22,21 @@
  * assertions (including under another persona of the same principal), and an
  * assertion in no round -- the implicit single round of an analysis that never
  * declared one, which behaves exactly as analyses always have.
+ *
+ * **A presentation policy, not a security boundary** (ADR-0023). Everything is
+ * in the document; anyone holding it can read every author. This decides what a
+ * cooperating view shows. It covers the author, the value and the justification
+ * of each assertion, and nothing else, so a view must also not render, for an
+ * assertion whose author is hidden:
+ *
+ * - the assertion's **id** -- producers often mint ids from the author
+ *   (the messy fixture's `a-rent-ber-ben` names Ben);
+ * - `procedureId`, which identifies the agent or pipeline that produced it;
+ * - its evidence and `supersededBy` chain, when values are hidden;
+ * - suggestions whose `proposed` assertion carries an author or a round.
+ *
+ * The map `visibilityFor` returns is keyed by assertion id for lookup only; a
+ * view must never display those keys.
  */
 import type { Analysis } from './analysis.js';
 import type { Assertion } from './values.js';

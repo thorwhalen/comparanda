@@ -104,4 +104,16 @@ describe('round locking needs no migration (#49 item 3)', () => {
       expect(LockedRound.parse(migrateLocking(v1))).toEqual(v1);
     }
   });
+
+  it('knows the cost that remains: a reader without locking drops the new fields', () => {
+    // "No migration" is about old documents under a new reader. The other
+    // direction is not free: zod objects strip unknown keys, so a reader built
+    // before locking round-trips a locked round without its lock. That is the
+    // version handshake's job (docs/cross-repo-coordination.md §3.3: MINOR is
+    // additive, and a producer emits the lowest version that expresses the
+    // document), not a migration's -- pinned here so nobody mistakes one for
+    // the other.
+    const locked = { ...round({}), lockedAt: OPEN };
+    expect('lockedAt' in Round.parse(locked)).toBe(false);
+  });
 });
