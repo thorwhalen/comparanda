@@ -38,6 +38,7 @@ describe('the golden fixture: Krippendorff (2011), dataset C', () => {
     ['nominal', 0.7434],
     ['ordinal', 0.8154],
     ['interval', 0.8491],
+    ['ratio', 0.7974],
   ] as const)('reproduces the published %s alpha', (metric, expected) => {
     expect(krippendorffAlpha(units, metric)).toBeCloseTo(expected, 4);
   });
@@ -60,7 +61,9 @@ describe('the golden fixture: Krippendorff (2011), dataset C', () => {
     expect(jk.interval![0]).toBeLessThan(alpha);
     expect(jk.interval![1]).toBeGreaterThan(alpha);
     expect(jk.interval![1]).toBeLessThanOrEqual(1);
-    expect(jk.standardError).toBeGreaterThan(0);
+    // Regression value, independently recomputed from the leave-one-unit-out
+    // estimates during review; a wrong SE formula moves it.
+    expect(jk.standardError).toBeCloseTo(0.148031, 5);
   });
 
   it('is undefined, not 1 or 0, when nothing varies or nothing pairs', () => {
@@ -181,18 +184,27 @@ describe('agreement() over an analysis', () => {
       expect(c.structuralExcluded).toBe(0);
     });
 
-    it('excludes a structurally absent alternative entirely, including through a declared structural code', () => {
+    it('excludes an alternative every rater marks structurally absent, including through a declared code', () => {
       const declared = [{ id: 'no-such-programme', broader: 'not-applicable', structural: true, means: 'no programme exists' }];
-      const a = datasetCAnalysis({
-        missingCodes: declared,
-        extraAssertions: { 5: [absence('s1', 'no-such-programme')] },
-      });
+      const a = datasetCAnalysis({ missingCodes: declared, extraAssertions: { 5: [absence('s1', 'no-such-programme')] } });
+      // Replace unit 6's values with structural absences from the same raters.
+      const cell = a.cells[5]!;
+      cell.assertions = cell.assertions.map((s) => ({ ...s, value: undefined, justification: undefined, missing: { code: 'no-such-programme' } }) as never);
       const c = agreement(a, { measure: 'score' }).criteria[0]!;
       expect(c.structuralExcluded).toBe(1);
+      expect(c.disputedApplicability).toBe(0);
       // Same as dataset C with unit 6 removed.
       const without = units.filter((_, u) => u !== 5);
       expect(c.alpha).toBeCloseTo(krippendorffAlpha(without, 'ordinal')!, 12);
-      expect(c.alpha).not.toBeCloseTo(0.8154, 3);
+    });
+
+    it('keeps the other raters\' values when one rater says the criterion does not apply, and reports the dispute (review finding)', () => {
+      const declared = [{ id: 'no-such-programme', broader: 'not-applicable', structural: true, means: 'no programme exists' }];
+      const a = datasetCAnalysis({ missingCodes: declared, extraAssertions: { 5: [absence('s1', 'no-such-programme')] } });
+      const c = agreement(a, { measure: 'score' }).criteria[0]!;
+      expect(c.structuralExcluded).toBe(0);
+      expect(c.disputedApplicability).toBe(1);
+      expect(c.alpha).toBeCloseTo(0.8154, 4);
     });
   });
 

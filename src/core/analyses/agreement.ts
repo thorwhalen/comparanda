@@ -192,6 +192,13 @@ export interface CriterionAgreement {
   /** Alternatives left out because the criterion is structurally absent for them. */
   structuralExcluded: number;
   /**
+   * Alternatives where some raters recorded a structural absence and others a
+   * value. The values still enter alpha (one rater's "does not apply" must not
+   * discard everyone else's scores), and the dispute is reported here, because
+   * disagreeing about whether a criterion applies is a finding in itself.
+   */
+  disputedApplicability: number;
+  /**
    * Terminal absences -- answers, not outstanding work -- absent from the value
    * domain and counted here, keyed by the core code each is or refines.
    */
@@ -271,6 +278,7 @@ export function agreement(a: Analysis, opts: AgreementOptions): AgreementResult 
     const unitRungs: string[] = [];
     const absentCounted: Record<string, number> = {};
     let structuralExcluded = 0;
+    let disputedApplicability = 0;
     let outstanding = 0;
     let unscaled = 0;
 
@@ -283,7 +291,9 @@ export function agreement(a: Analysis, opts: AgreementOptions): AgreementResult 
       // one more observation, so it never enters an agreement statistic.
       const live = cell.assertions.filter((s) => !s.supersededBy && s.independence !== 'consensus');
       const facts = live.map((s) => (s.missing ? vocabulary.resolve(s.missing.code, critId).facts : undefined));
-      if (facts.some((f) => f?.structural)) { structuralExcluded += 1; continue; }
+      const structuralHere = facts.filter((f) => f?.structural).length;
+      if (structuralHere > 0 && structuralHere === live.length) { structuralExcluded += 1; continue; }
+      if (structuralHere > 0) disputedApplicability += 1;
       const values: (number | string)[] = [];
       const contributing: Assertion[] = [];
       live.forEach((s, i) => {
@@ -296,6 +306,7 @@ export function agreement(a: Analysis, opts: AgreementOptions): AgreementResult 
           contributing.push(s);
         } else if (s.missing) {
           const f = facts[i];
+          if (f?.structural) return; // reported as disputedApplicability above
           if (f?.terminal) {
             const root = coreAncestor(s.missing.code, declared) ?? s.missing.code;
             absentCounted[root] = (absentCounted[root] ?? 0) + 1;
@@ -348,6 +359,7 @@ export function agreement(a: Analysis, opts: AgreementOptions): AgreementResult 
       pairableUnits: pairable.length,
       pairableValues: pairable.reduce((s, u) => s + u.length, 0),
       structuralExcluded,
+      disputedApplicability,
       absentCounted,
       outstanding,
     });
