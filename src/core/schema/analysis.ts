@@ -165,6 +165,10 @@ export type RuleFamily = 'schema' | 'honesty' | 'completeness';
  * only take on trust. Every problem `validateAnalysis` reports carries its
  * rule's ADR in `adr` and names both the rule and the ADR in its message (#56).
  *
+ * The guarantee is `validateAnalysis`'s. The lower-level validators it composes
+ * (`validateEvidence`, `validateMeasurement`, ...) return their bare problems;
+ * a caller that wants cited refusals goes through the boundary.
+ *
  * One table rather than an ADR number typed into each message, so that a rule
  * cannot be added without one: the helpers inside `validateAnalysis` accept only
  * a `RuleId`, and the `satisfies` clause makes the compiler check that every
@@ -194,7 +198,7 @@ export const RULE_SOURCES = Object.freeze({
   'cells-unique': 'ADR-0011',
   // Honesty and completeness.
   'score-has-a-reason': 'ADR-0031',
-  'assertion-attributed': 'ADR-0031',
+  'assertion-attributed': 'ADR-0012',
   'value-has-evidence': 'ADR-0014',
   // Evidence references.
   'cite-a-span': 'ADR-0014',
@@ -227,7 +231,7 @@ export interface ValidationProblem {
    * `message`, which is where a human reads it; this field is for a caller that
    * wants to link it. See `RULE_SOURCES`.
    */
-  adr: string;
+  adr: `ADR-${string}`;
   /**
    * What would fix it.
    *
