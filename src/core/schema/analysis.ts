@@ -734,3 +734,51 @@ export function completeness(
   // deliberate, defined blank as outstanding work.
   return tallyCompleteness(cells, vocabularyOf(a));
 }
+
+/** A cell that cites contradicting evidence, and which references do. */
+export interface ContradictedCell {
+  alternativeId: string;
+  criterionId: string;
+  measure: string;
+  /** Ids of the live assertions' references whose stance is `contradicts`. */
+  referenceIds: string[];
+}
+
+/**
+ * Which cells cite evidence that contradicts what they assert.
+ *
+ * "n cells cite contradicting evidence" is the count ADR-0014's `stance` field
+ * exists to make possible (#65): without it, three supporting sources and one
+ * contradicting one collapse into "four citations". A contradicting reference is
+ * not a defect -- recording it is the honest thing to do -- so this is a report,
+ * not a validation rule.
+ *
+ * Counts only **live** assertions (a superseded one no longer speaks for the
+ * cell) and skips tombstoned alternatives and criteria, the same scope
+ * `completeness` uses. `measure` narrows to one measure; omitted, every cell
+ * counts.
+ */
+export function contradictedCells(
+  a: Analysis,
+  { measure }: { measure?: string } = {},
+): { count: number; cells: ContradictedCell[] } {
+  const liveAlts = new Set(a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id));
+  const liveCrits = new Set(a.criteria.filter((x) => !x.tombstoned).map((x) => x.id));
+  const cells: ContradictedCell[] = [];
+  for (const cell of a.cells) {
+    if (measure !== undefined && cell.measure !== measure) continue;
+    if (!liveAlts.has(cell.alternativeId) || !liveCrits.has(cell.criterionId)) continue;
+    const referenceIds = cell.assertions
+      .filter((s) => !s.supersededBy)
+      .flatMap((s) => s.evidence.filter((e) => e.stance === 'contradicts').map((e) => e.id));
+    if (referenceIds.length > 0) {
+      cells.push({
+        alternativeId: cell.alternativeId,
+        criterionId: cell.criterionId,
+        measure: cell.measure,
+        referenceIds,
+      });
+    }
+  }
+  return { count: cells.length, cells };
+}

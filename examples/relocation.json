@@ -465,6 +465,26 @@
               "renditionId": "r-berlin-rent",
               "normaliserId": "nfc-v1",
               "excerpt": "Mittelwert 14,80 EUR je Quadratmeter"
+            },
+            {
+              "id": "e-ber-rent-asking",
+              "target": "doc:asking-rents-q2",
+              "sourceType": "primary",
+              "stance": "contradicts",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "Angebotsmieten im Median 19,60 EUR je Quadratmeter"
+                }
+              ],
+              "check": {
+                "status": "exact",
+                "checkedAt": "2026-08-22T09:00:00Z",
+                "checkerVersion": "comparanda-check/1.0.0"
+              },
+              "excerpt": "Angebotsmieten im Median 19,60 EUR je Quadratmeter",
+              "label": "Quarterly asking-rent report, Q2 2026"
             }
           ],
           "version": 1,
@@ -476,7 +496,29 @@
           "id": "a-rent-ber-ben",
           "authorId": "ben",
           "at": "2026-08-22T09:00:00Z",
-          "evidence": [],
+          "evidence": [
+            {
+              "id": "e-ber-rent-news",
+              "target": "doc:city-paper-rents",
+              "sourceType": "secondary",
+              "stance": "supports",
+              "derivedFrom": [],
+              "selectors": [
+                {
+                  "type": "TextQuoteSelector",
+                  "exact": "new leases now run about a third above the index"
+                }
+              ],
+              "check": {
+                "status": "unresolvable",
+                "checkedAt": "2026-08-22T09:00:00Z",
+                "checkerVersion": "comparanda-check/1.0.0",
+                "detail": "the article URL returns 404; no archived copy was found"
+              },
+              "excerpt": "new leases now run about a third above the index",
+              "label": "City newspaper, housing column"
+            }
+          ],
           "version": 1,
           "value": 2300,
           "justification": "the index lags; actual asking prices are a third higher",
@@ -1235,6 +1277,22 @@
     }
   ],
   "suggestions": [],
-  "rejectedCriteria": [],
+  "rejectedCriteria": [
+    {
+      "label": "Cost of living",
+      "reason": "Rent and income tax are most of the difference between these cities, and scoring cost of living as well would count housing twice.",
+      "reasonCode": "merged",
+      "mergedIntoId": "rent",
+      "proposedBy": "agent-run-7",
+      "at": "2026-08-22T09:00:00Z"
+    },
+    {
+      "label": "Public transport",
+      "reason": "All five cities have a frequent metro and neither of us drives; every alternative would score the top level, so it cannot separate them.",
+      "reasonCode": "not-discriminating",
+      "proposedBy": "ben",
+      "at": "2026-08-22T09:00:00Z"
+    }
+  ],
   "reductions": []
 }
