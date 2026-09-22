@@ -962,13 +962,18 @@ export interface ContradictedCell {
 export function contradictedCells(
   a: Analysis,
   { measure }: { measure?: string } = {},
-): { count: number; cells: ContradictedCell[] } {
+): { count: number; cells: ContradictedCell[]; widenedByDisclosure: number } {
   const liveAlts = new Set(a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id));
   const liveCrits = new Set(a.criteria.filter((x) => !x.tombstoned).map((x) => x.id));
   const cells: ContradictedCell[] = [];
+  // ADR-0021: a projected-out assertion's evidence is gone, so a withheld cell
+  // can hide a contradiction. The count says how many cells this reader could
+  // not look inside.
+  let widenedByDisclosure = 0;
   for (const cell of a.cells) {
     if (measure !== undefined && cell.measure !== measure) continue;
     if (!liveAlts.has(cell.alternativeId) || !liveCrits.has(cell.criterionId)) continue;
+    if (isWidenedByDisclosure(cell)) widenedByDisclosure += 1;
     const referenceIds = cell.assertions
       .filter((s) => !s.supersededBy)
       .flatMap((s) => s.evidence.filter((e) => e.stance === 'contradicts').map((e) => e.id));
@@ -981,7 +986,7 @@ export function contradictedCells(
       });
     }
   }
-  return { count: cells.length, cells };
+  return { count: cells.length, cells, widenedByDisclosure };
 }
 
 /**
@@ -1053,6 +1058,8 @@ export function supersededCells(
   cells: SupersededCell[];
   undetermined: SupersededCell[];
   unversioned: number;
+  /** In-scope cells a disclosure projection widened for this reader (ADR-0021). */
+  widenedByDisclosure: number;
 } {
   const liveAlts = new Set(a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id));
   const definedIn = new Map(
@@ -1062,10 +1069,12 @@ export function supersededCells(
   const cells: SupersededCell[] = [];
   const undetermined: SupersededCell[] = [];
   let unversioned = 0;
+  let widenedByDisclosure = 0;
   for (const cell of a.cells) {
     if (measure !== undefined && cell.measure !== measure) continue;
     const current = definedIn.get(cell.criterionId);
     if (current === undefined || !liveAlts.has(cell.alternativeId)) continue;
+    if (isWidenedByDisclosure(cell)) widenedByDisclosure += 1;
     const older: SupersededCell['assertions'] = [];
     const unknown: SupersededCell['assertions'] = [];
     for (const s of cell.assertions) {
@@ -1082,5 +1091,5 @@ export function supersededCells(
     if (older.length > 0) cells.push({ ...base, assertions: older });
     if (unknown.length > 0) undetermined.push({ ...base, assertions: unknown });
   }
-  return { count: cells.length, cells, undetermined, unversioned };
+  return { count: cells.length, cells, undetermined, unversioned, widenedByDisclosure };
 }
