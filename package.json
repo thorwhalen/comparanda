@@ -77,6 +77,7 @@
   },
   "dependencies": {
     "@zodal/groups-core": "^0.1.0",
+    "@zodal/store": "^0.2.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
