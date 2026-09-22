@@ -82,6 +82,12 @@ It exercises what the clean example does not:
   climate category and a boolean;
 - evidence links, some with embedded excerpts, one deliberately stale and one whose source has
   changed since ingest;
+- a reference whose `stance` is `contradicts` — the Berlin rent score cites the rent index, and
+  also the asking-rent report that disagrees with it — so `contradictedCells` has one cell to count;
+- two failed checks, one of each kind: a `stale` quote (the document changed) and an
+  `unresolvable` target (the page is gone), both dated and attributed like any other verdict;
+- two rejected criteria kept in `rejectedCriteria` rather than discarded: one `merged` into rent,
+  one `not-discriminating`;
 - three annotation threads: one resolved, one open, one anchored to a criterion rather than a cell.
 
 ### It is also the falsification fixture
