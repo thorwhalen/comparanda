@@ -203,6 +203,8 @@ export const RULE_SOURCES = Object.freeze({
   'score-has-a-reason': 'ADR-0031',
   'assertion-attributed': 'ADR-0012',
   'value-has-evidence': 'ADR-0014',
+  // Disclosure.
+  'disclosure-flag-is-projection-only': 'ADR-0021',
   // Evidence references.
   'cite-a-span': 'ADR-0014',
   'check-dated': 'ADR-0014',
@@ -514,6 +516,23 @@ export function validateAnalysis(
               'what it means.',
           );
         }
+      }
+
+      // `withheldFromReader` is written by the projection, and only on what it
+      // emptied. On an assertion that still carries content it is either a
+      // producer mistaking it for a request to withhold, or an attempt to
+      // inflate the widened-cell count -- and a projection that trusted it
+      // would pass the content straight through (ADR-0021).
+      if (as.disclosure?.withheldFromReader === true &&
+        (hasValue || !!as.justification?.trim() || as.evidence.length > 0 || !!as.missing?.note)) {
+        honesty(
+          'disclosure-flag-is-projection-only', `${atA}.disclosure.withheldFromReader`,
+          'marked as projected out for its reader, but it still carries a value, a justification, ' +
+            'a note or evidence. The flag records what a projection removed; it is not a request to ' +
+            'withhold, and it cannot be true of an assertion with content.',
+          'remove withheldFromReader and let projectForReader decide what this reader sees; to keep ' +
+            'the value from every reader, record a `withheld` absence instead.',
+        );
       }
 
       // Not being finished is not a defect.

@@ -70,6 +70,58 @@ describe('projectForReader', () => {
     expect(widenedCells).toBe(0);
   });
 
+  it('leaves no trace of either withheld assertion: value, justification, evidence or excerpt', () => {
+    const source = relocation();
+    const { analysis } = projectForReader(source, reviewer);
+    const json = JSON.stringify(analysis);
+    for (const id of ['a-rent-tai-ana', 'a-tax-lis']) {
+      const original = source.cells.flatMap((c) => c.assertions).find((x) => x.id === id)!;
+      const projected = analysis.cells.flatMap((c) => c.assertions).find((x) => x.id === id)!;
+      expect(projected.value, id).toBeUndefined();
+      expect(projected.evidence, id).toEqual([]);
+      if (original.justification) expect(json).not.toContain(original.justification);
+      for (const e of original.evidence) {
+        if (e.excerpt) expect(json, `${id} excerpt`).not.toContain(e.excerpt);
+      }
+    }
+  });
+
+  it('does not trust a withheldFromReader flag on an assertion that still has content (review finding)', () => {
+    // The flag reads like a request to withhold. Set on a full assertion, it
+    // must neither pass the content through nor be accepted by validation.
+    const doc = raw();
+    const target = doc.cells.flatMap((c: { assertions: { id: string }[] }) => c.assertions)
+      .find((x: { id: string }) => x.id === 'a-tax-lis');
+    target.disclosure = { ...target.disclosure, withheldFromReader: true };
+    const v = validateAnalysis(doc);
+    expect(v.ok).toBe(false);
+    expect(v.problems.some((p) => p.ruleId === 'disclosure-flag-is-projection-only')).toBe(true);
+    const { analysis } = projectForReader(Analysis.parse(doc), reviewer);
+    const s = analysis.cells.flatMap((c) => c.assertions).find((x) => x.id === 'a-tax-lis')!;
+    expect(s.value).toBeUndefined();
+    expect(s.evidence).toEqual([]);
+  });
+
+  it('keeps an absence\'s own code: withholding its note must not make it look finished', () => {
+    const a = Analysis.parse({
+      id: 'd', subject: { question: 'q' }, authors: [{ id: 'ana', displayName: 'Ana', kind: 'human' }],
+      alternatives: [{ id: 'x', label: 'X' }],
+      criteria: [{ id: 'c', label: 'C', defaultMeasurement: { level: 'ordinal', preference: 'increasing', range: { min: 1, max: 5 }, levels: [1, 2, 3, 4, 5] } }],
+      cells: [{
+        alternativeId: 'x', criterionId: 'c', measure: 'score',
+        assertions: [{
+          id: 's', authorId: 'ana', at: '2026-01-01T00:00:00Z', version: 1, evidence: [],
+          missing: { code: 'not-assessed', note: 'waiting on the landlord' }, disclosure: { label: 'secret' },
+        }],
+      }],
+    });
+    const { analysis, widenedCells } = projectForReader(a, () => false);
+    const s = analysis.cells[0]!.assertions[0]!;
+    expect(s.missing).toEqual({ code: 'not-assessed' });
+    expect(widenedCells).toBe(0);
+    expect(validateAnalysis(analysis).ok).toBe(true);
+  });
+
   it('is idempotent: projecting a projection widens nothing further', () => {
     const once = projectForReader(relocation(), reviewer).analysis;
     const twice = projectForReader(once, reviewer);

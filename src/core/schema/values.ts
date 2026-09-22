@@ -29,13 +29,6 @@ export const ScalarValue = z.union([z.number(), z.string(), z.boolean()]);
 export type ScalarValue = z.infer<typeof ScalarValue>;
 
 /**
- * One author's claim about one (alternative, criterion, measure).
- *
- * `value` and `missing` are mutually exclusive and exactly one is required: an
- * assertion that says nothing is not an assertion. That is the "no bare nulls"
- * rule at the level where it actually bites.
- */
-/**
  * Who may see an assertion is not the same fact as whether it exists (ADR-0021).
  *
  * Presence lives in `value` / `missing`; disclosure lives here, beside it, the
@@ -56,11 +49,23 @@ export const Disclosure = z.object({
    * projected out for the reader of this document. Its value, justification and
    * evidence are gone and it carries the `withheld` missingness code; this flag
    * is what lets every analysis over the projection count the cells it widened.
+   *
+   * It is **not** a request to withhold -- that is the host's decision, passed
+   * to the projection. `validateAnalysis` rejects it on an assertion that still
+   * carries a value, a justification or evidence, and the projection ignores it
+   * on one (rule `disclosure-flag-is-projection-only`).
    */
   withheldFromReader: z.optional(z.boolean()),
 });
 export type Disclosure = z.infer<typeof Disclosure>;
 
+/**
+ * One author's claim about one (alternative, criterion, measure).
+ *
+ * `value` and `missing` are mutually exclusive and exactly one is required: an
+ * assertion that says nothing is not an assertion. That is the "no bare nulls"
+ * rule at the level where it actually bites.
+ */
 export const Assertion = z.object({
   id: z.string(),
   authorId: z.string(),

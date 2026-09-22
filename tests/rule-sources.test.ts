@@ -86,7 +86,10 @@ const hostile = {
     {
       alternativeId: 'x', criterionId: 'c', measure: 'score',
       assertions: [
-        { id: 's1', authorId: 'ghost', at: '2026-08-22T00:00:00Z', value: 3, evidence: [], version: 1 },
+        {
+          id: 's1', authorId: 'ghost', at: '2026-08-22T00:00:00Z', value: 3, evidence: [], version: 1,
+          disclosure: { withheldFromReader: true },
+        },
         { id: 's2', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, evidence: [] },
         {
           id: 's3', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, evidence: [],

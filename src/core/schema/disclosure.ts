@@ -19,6 +19,21 @@ import type { Analysis } from './analysis.js';
 import { WITHHELD } from './missingness.js';
 import { isWidenedByDisclosure, type Assertion, type Cell } from './values.js';
 
+/**
+ * Whether an assertion is already the output of a projection: flagged, and
+ * carrying nothing but its identity and an absence.
+ *
+ * The flag alone is not enough. A producer that sets `withheldFromReader` on an
+ * assertion with its value still in it -- the field name reads like a request --
+ * would otherwise be passed through with the value intact. (Review finding.)
+ */
+export function isProjectedOut(s: Assertion): boolean {
+  // Not keyed on the `withheld` code itself: core never branches on a reason
+  // code (#44). Emptiness is the property that matters.
+  return s.disclosure?.withheldFromReader === true && s.value === undefined && s.missing !== undefined &&
+    !s.missing.note && !s.justification?.trim() && s.evidence.length === 0;
+}
+
 /** The host's disclosure decision: may this reader see this assertion? */
 export type DisclosureDecision = (assertion: Assertion, cell: Cell) => boolean;
 
@@ -43,8 +58,9 @@ export interface Projection {
  * are dropped too: an excerpt index into a source is as good as the value.
  *
  * Not projected here, and the host's to handle until a later pass: free text in
- * annotation threads and the `proposed` payload of suggestions, both of which
- * can quote a value.
+ * annotation threads, and the `proposed` payload of suggestions -- including an
+ * **accepted** one, whose payload is the stored assertion, value and all. A
+ * superseded assertion the reader may see still shows its own (older) value.
  */
 export function projectForReader(source: Analysis, discloses: DisclosureDecision): Projection {
   const a = structuredClone(source);
@@ -56,16 +72,24 @@ export function projectForReader(source: Analysis, discloses: DisclosureDecision
       // Decide on the untouched source, so a predicate cannot be confused by
       // anything the projection has already done. Projecting a projection is a
       // no-op for what is already withheld.
-      if (s.disclosure?.withheldFromReader || discloses(sourceCell.assertions[i]!, sourceCell)) return s;
+      if (isProjectedOut(s) || discloses(sourceCell.assertions[i]!, sourceCell)) return s;
       for (const e of s.evidence) if (e.renditionId) droppedRenditions.add(e.renditionId);
+      const label = s.disclosure?.label !== undefined ? { label: s.disclosure.label } : {};
       const projected: Assertion = {
         id: s.id,
         authorId: s.authorId,
         at: s.at,
-        missing: { code: WITHHELD },
         evidence: [],
         version: s.version,
-        disclosure: { ...(s.disclosure?.label !== undefined ? { label: s.disclosure.label } : {}), withheldFromReader: true },
+        ...(s.value !== undefined
+          // A value the reader may not see: replaced by a withheld absence, and
+          // flagged so every analysis over the projection counts the widening.
+          ? { missing: { code: WITHHELD }, disclosure: { ...label, withheldFromReader: true } }
+          // An absence has no value to withhold. It keeps its own code -- turning
+          // a `not-assessed` into `withheld` would tell the reader the cell is
+          // finished when it is not -- and loses only its note and evidence. It
+          // widens nothing, so it is not flagged.
+          : { missing: { code: s.missing!.code }, ...(s.disclosure?.label !== undefined ? { disclosure: { ...label } } : {}) }),
       };
       if (s.independence !== undefined) projected.independence = s.independence;
       if (s.roundId !== undefined) projected.roundId = s.roundId;
