@@ -29,12 +29,11 @@
  * missing data, measured in alternatives you cannot yet set aside.
  */
 import type { Analysis } from '../schema/analysis.js';
-import { reducedValue, makeCellReader, cellIndex, cellKey } from '../schema/analysis.js';
+import { reducedValue, makeCellReader, cellIndex, cellKey, vocabularyOf } from '../schema/analysis.js';
 import { isWidenedByDisclosure } from '../schema/values.js';
 import { makeInapplicability } from '../schema/groups.js';
 import { measurementFor } from '../schema/structure.js';
 import { admitsDominance, isOrdered, type Measurement } from '../schema/measurement.js';
-import { resolveMissingCode } from '../schema/missingness.js';
 
 export interface Interval { lo: number; hi: number }
 
@@ -129,7 +128,9 @@ function intervalFor(
   }
 
   if (r?.missing) {
-    const { facts } = resolveMissingCode(r.missing.code, a.missingCodes);
+    // Through the one resolver, so a code declared on this criterion is read as
+    // its author meant -- the same reading Pugh and completeness take.
+    const { facts } = vocabularyOf(a).resolve(r.missing.code, critId);
     // Structurally absent: the criterion does not apply here, so it leaves the
     // comparison for this pair rather than widening to the full range.
     //

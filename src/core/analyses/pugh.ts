@@ -21,6 +21,9 @@
  *   (ADR-0019 clause 7).
  *
  * `same` uses the criterion's declared `indifference` (0 when none is declared).
+ * Always, unlike `dominance()`, which applies it only under `usePracticalTolerance`:
+ * a Pugh tally's "same" is a judgement of practical equivalence by construction,
+ * so the declared threshold is what the author said "same" means.
  * A contingent blank widens to the declared range, as in dominance; a comparison
  * the widened interval still decides is decided, otherwise it is not comparable.
  */

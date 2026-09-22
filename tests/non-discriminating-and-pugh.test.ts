@@ -140,6 +140,20 @@ describe('pughTally (#83)', () => {
     expect(pughTally(c, { measure: 'score', datum: 'd' }).rows[0]!.criteria[0]!.standing).toBe('better');
   });
 
+  it('decides worse, same and a datum-side blank when the range settles them (review finding)', () => {
+    const narrow = { ...ORD, range: { min: 4, max: 5 }, levels: [4, 5] };
+    const std = (rows: Record<string, (number | undefined)[]>, m: Record<string, unknown> = narrow) =>
+      pughTally(doc([m], rows), { measure: 'score', datum: 'd' }).rows[0]!.criteria[0]!.standing;
+    // x's blank lies in [4,5]; a datum at 6 beats all of it.
+    expect(std({ d: [6], x: [undefined] })).toBe('worse');
+    // Indifference wider than the range: any resolution is "same".
+    expect(std({ d: [4.5], x: [undefined] }, { ...narrow, thresholds: { indifference: 1 } })).toBe('same');
+    // The blank is on the datum's side: x at 3 is below everything the datum could be.
+    expect(std({ d: [undefined], x: [3] })).toBe('worse');
+    // Blanks on both sides over a range wider than the tolerance: undecided.
+    expect(std({ d: [undefined], x: [undefined] })).toBe('not-comparable');
+  });
+
   it('orients a decreasing criterion and applies the declared indifference as "same"', () => {
     const cost = { level: 'ratio', preference: 'decreasing', range: { min: 0, max: 100 }, thresholds: { indifference: 5 } };
     const r = pughTally(doc([cost, cost], { d: [50, 50], x: [40, 53] }), { measure: 'score', datum: 'd' });
@@ -180,5 +194,35 @@ describe('pughTally (#83)', () => {
     const datum = analysis.alternatives[0]!.id;
     expect(pughTally(analysis, { measure: 'score', datum }).widenedByDisclosure).toBeGreaterThan(0);
     expect(findNonDiscriminatingCriteria(analysis, { measure: 'score' }).widenedByDisclosure).toBeGreaterThan(0);
+  });
+});
+
+describe('dominance, Pugh and completeness read a criterion-scoped code the same way (review finding)', () => {
+  it('a structural code declared on the criterion leaves the comparison in all three', async () => {
+    const { dominance } = await import('../src/core/analyses/dominance.js');
+    const { completeness } = await import('../src/core/schema/analysis.js');
+    const a = Analysis.parse({
+      id: 's', subject: { question: 'q' }, authors: [{ id: 'a', displayName: 'a', kind: 'human' }],
+      alternatives: [{ id: 'd', label: 'D' }, { id: 'x', label: 'X' }],
+      criteria: [
+        { id: 'c0', label: 'C0', defaultMeasurement: ORD },
+        {
+          id: 'c1', label: 'C1', defaultMeasurement: ORD,
+          missingCodes: [{ id: 'no-such-office', broader: 'not-applicable', structural: true, means: 'x has no office there' }],
+        },
+      ],
+      cells: [
+        { alternativeId: 'd', criterionId: 'c0', measure: 'score', assertions: [{ id: 'd0', authorId: 'a', at: '2026-01-01T00:00:00Z', version: 1, evidence: [], value: 3, justification: 'j' }] },
+        { alternativeId: 'x', criterionId: 'c0', measure: 'score', assertions: [{ id: 'x0', authorId: 'a', at: '2026-01-01T00:00:00Z', version: 1, evidence: [], value: 2, justification: 'j' }] },
+        { alternativeId: 'd', criterionId: 'c1', measure: 'score', assertions: [{ id: 'd1', authorId: 'a', at: '2026-01-01T00:00:00Z', version: 1, evidence: [], value: 1, justification: 'j' }] },
+        { alternativeId: 'x', criterionId: 'c1', measure: 'score', assertions: [{ id: 'x1', authorId: 'a', at: '2026-01-01T00:00:00Z', version: 1, evidence: [], missing: { code: 'no-such-office' } }] },
+      ],
+    });
+    // Structural on c1, so d dominates x on c0 alone. Read as a contingent
+    // blank instead, x's c1 could be 5 and the edge would not be necessary.
+    expect(dominance(a, { measure: 'score' }).edges).toContainEqual({ dominator: 'd', dominated: 'x' });
+    expect(completeness(a, { measure: 'score' }).structural).toBe(1);
+    const c1 = pughTally(a, { measure: 'score', datum: 'd' }).rows[0]!.criteria.find((c) => c.criterionId === 'c1')!;
+    expect(c1.standing).toBe('not-comparable');
   });
 });
