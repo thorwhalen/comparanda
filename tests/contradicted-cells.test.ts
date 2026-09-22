@@ -38,7 +38,7 @@ const build = (cells: unknown[], extra: Record<string, unknown> = {}) => Analysi
 describe('contradictedCells', () => {
   it('reports zero, not undefined, when nothing contradicts', () => {
     const a = build([cell('x', 'c1', [assertion('s', [ref('e', 'supports')])])]);
-    expect(contradictedCells(a)).toEqual({ count: 0, cells: [] });
+    expect(contradictedCells(a)).toEqual({ count: 0, cells: [], widenedByDisclosure: 0 });
   });
 
   it('counts a cell once, however many contradicting references it cites', () => {

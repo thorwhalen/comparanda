@@ -44,7 +44,7 @@ describe('compareCriteriaVersions', () => {
 
 describe('supersededCells', () => {
   it('reports zero, not undefined, when nothing is superseded', () => {
-    expect(supersededCells(build([]))).toEqual({ count: 0, cells: [], undetermined: [], unversioned: 0 });
+    expect(supersededCells(build([]))).toEqual({ count: 0, cells: [], undetermined: [], unversioned: 0, widenedByDisclosure: 0 });
   });
 
   it('counts a score given before its criterion last changed meaning', () => {

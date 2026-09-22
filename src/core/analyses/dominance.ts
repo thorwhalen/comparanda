@@ -494,6 +494,12 @@ export interface DominanceExplanation {
   basisDescription: string;
   /** The verdict and its reason, in one sentence. */
   summary: string;
+  /**
+   * Of this pair's basis cells, how many a disclosure projection widened for
+   * this reader (ADR-0021). Required, as on every analysis result, so a view
+   * cannot omit it: a verdict computed over hidden cells must say so.
+   */
+  widenedByDisclosure: number;
 }
 
 /**
@@ -538,9 +544,31 @@ export function explainDominance(
     summary = `${x} does not dominate ${y}: it cannot be better on any compared criterion.`;
   }
 
+  // Only cells that entered this pair's comparison, and only those that
+  // actually lost their value to the projection (a withheld peer beside a
+  // visible consensus still compares at that value). (Review finding.)
+  let widenedByDisclosure = 0;
+  if (x !== y) {
+    const stored = cellIndex(a);
+    for (const c of criteria) {
+      if (c.standing === 'excluded') continue;
+      for (const id of [x, y]) {
+        const cell = stored.get(cellKey(id, c.criterionId, opts.measure));
+        if (cell && isWidenedByDisclosure(cell) && reducedValue(a, id, c.criterionId, opts.measure)?.value === undefined) {
+          widenedByDisclosure += 1;
+        }
+      }
+    }
+  }
+  if (widenedByDisclosure > 0) {
+    summary += ` (${widenedByDisclosure} of the compared cells ${widenedByDisclosure === 1 ? 'is' : 'are'} ` +
+      'withheld from you and compared at their widest possible values.)';
+  }
+
   return {
     x, y, necessarilyDominates: nec, possiblyDominates: nec || pos, criteria,
     basis: p.basis, excluded: p.excluded, basisDescription: describeBasis(a, p), summary,
+    widenedByDisclosure,
   };
 }
 
@@ -622,12 +650,17 @@ export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlankWo
   const verdict = (rx: Row, ry: Row): string =>
     `${dominates(rx, ry) ? 1 : 0}${dominates(ry, rx) ? 1 : 0}`;
 
+  const storedCells = cellIndex(a);
   const out: BlankWorthFilling[] = [];
 
   for (const altId of altIds) {
     const row = rows.get(altId)!;
     for (const cid of result.basis) {
       if (reader.read(altId, cid)?.value !== undefined) continue;
+      // A cell withheld from this reader is not a blank they can fill; ranking
+      // it would send them to ask for something they may not see (ADR-0021).
+      const stored = storedCells.get(cellKey(altId, cid, opts.measure));
+      if (stored && isWidenedByDisclosure(stored)) continue;
       if (inapplicable(altId, cid)) continue;
       const current = row.get(cid);
       if (current === 'excluded' || !current) continue;
