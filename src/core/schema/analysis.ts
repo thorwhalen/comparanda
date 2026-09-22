@@ -721,6 +721,7 @@ export function makeCellReader(
       return reduce(cell, {
         defaultReduction: a.defaultReduction,
         reductions: a.reductions,
+        authors: a.authors,
         ...(m ? { level: m.level } : {}),
         ...(degradations ? { degradations } : {}),
       });
@@ -776,6 +777,7 @@ export function reducedValue(
   return reduce(cell, {
     defaultReduction: a.defaultReduction,
     reductions: a.reductions,
+    authors: a.authors,
     ...(m ? { level: m.level } : {}),
   });
 }
@@ -875,4 +877,105 @@ export function contradictedCells(
     }
   }
   return { count: cells.length, cells };
+}
+
+/**
+ * Compare two criteria-set versions, or say they cannot be compared.
+ *
+ * Versions are opaque strings in the schema, and nothing declares an ordering
+ * over them. The one ordering that needs no declaration is the one everybody
+ * writes: dotted non-negative integers, optionally prefixed `v` (`"3"`,
+ * `"1.2"`, `"v2.0.1"`). Those compare segment by segment, missing segments
+ * reading as 0. Anything else -- a date, a hash, a name -- returns `undefined`
+ * rather than a guess: sorting `"draft"` against `"final"` alphabetically
+ * would invent a history.
+ */
+export function compareCriteriaVersions(a: string, b: string): -1 | 0 | 1 | undefined {
+  // Segments stay strings, compared by length after dropping leading zeros and
+  // then lexically: exact at any size, where Number() stops distinguishing
+  // integers above 2^53.
+  const parse = (v: string) =>
+    (/^[vV]?\d+(\.\d+)*$/.test(v) ? v.replace(/^[vV]/, '').split('.').map((d) => d.replace(/^0+(?=\d)/, '')) : undefined);
+  const x = parse(a);
+  const y = parse(b);
+  if (!x || !y) return a === b ? 0 : undefined;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const p = x[i] ?? '0';
+    const q = y[i] ?? '0';
+    if (p.length !== q.length) return p.length < q.length ? -1 : 1;
+    if (p !== q) return p < q ? -1 : 1;
+  }
+  return 0;
+}
+
+/** A cell with live assertions scored against an older definition of its criterion. */
+export interface SupersededCell {
+  alternativeId: string;
+  criterionId: string;
+  measure: string;
+  /** The version the criterion's current definition dates from. */
+  definedInVersion: string;
+  /** The live assertions scored against an earlier version, with the version each used. */
+  assertions: { id: string; criteriaVersion: string }[];
+}
+
+/**
+ * Which cells were scored against a superseded criterion definition (#62).
+ *
+ * An assertion is **superseded** when it records a `criteriaVersion` strictly
+ * earlier than its criterion's `definedInVersion` -- the criterion changed
+ * meaning after the score was given, so the score answers a question the
+ * document no longer asks. A version at or after `definedInVersion` is current:
+ * the criteria set moved on, but not this criterion.
+ *
+ * Two things are reported separately rather than guessed at:
+ *
+ * - `undetermined`: the versions differ and cannot be ordered (see
+ *   `compareCriteriaVersions`). Counting them as superseded would overstate the
+ *   problem; counting them as current would hide it.
+ * - `unversioned`: live assertions on a versioned criterion that record no
+ *   `criteriaVersion`. Nothing says what they were scored against.
+ *
+ * A criterion with no `definedInVersion` has never recorded a change of meaning
+ * and supersedes nothing. Live assertions only; tombstoned rows and columns are
+ * skipped, as in `contradictedCells`. `measure` narrows to one measure.
+ */
+export function supersededCells(
+  a: Analysis,
+  { measure }: { measure?: string } = {},
+): {
+  count: number;
+  cells: SupersededCell[];
+  undetermined: SupersededCell[];
+  unversioned: number;
+} {
+  const liveAlts = new Set(a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id));
+  const definedIn = new Map(
+    a.criteria.filter((c) => !c.tombstoned && c.definedInVersion !== undefined)
+      .map((c) => [c.id, c.definedInVersion!]),
+  );
+  const cells: SupersededCell[] = [];
+  const undetermined: SupersededCell[] = [];
+  let unversioned = 0;
+  for (const cell of a.cells) {
+    if (measure !== undefined && cell.measure !== measure) continue;
+    const current = definedIn.get(cell.criterionId);
+    if (current === undefined || !liveAlts.has(cell.alternativeId)) continue;
+    const older: SupersededCell['assertions'] = [];
+    const unknown: SupersededCell['assertions'] = [];
+    for (const s of cell.assertions) {
+      if (s.supersededBy) continue;
+      if (s.criteriaVersion === undefined) { unversioned++; continue; }
+      const cmp = compareCriteriaVersions(s.criteriaVersion, current);
+      if (cmp === -1) older.push({ id: s.id, criteriaVersion: s.criteriaVersion });
+      else if (cmp === undefined) unknown.push({ id: s.id, criteriaVersion: s.criteriaVersion });
+    }
+    const base = {
+      alternativeId: cell.alternativeId, criterionId: cell.criterionId, measure: cell.measure,
+      definedInVersion: current,
+    };
+    if (older.length > 0) cells.push({ ...base, assertions: older });
+    if (unknown.length > 0) undetermined.push({ ...base, assertions: unknown });
+  }
+  return { count: cells.length, cells, undetermined, unversioned };
 }
