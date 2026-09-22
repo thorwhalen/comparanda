@@ -24,7 +24,7 @@ import {
 } from './missingness.js';
 import { degradationOf, type Degradation } from './declarations.js';
 import {
-  ScaleDeclaration, resolveScale, validateMeasurement, type Measurement,
+  ScaleDeclaration, isOrdered, resolveScale, validateMeasurement, type Measurement,
 } from './measurement.js';
 import { Rendition, validateEvidence } from './evidence.js';
 
@@ -295,6 +295,48 @@ export function validateAnalysis(
     if (c.defaultMeasurement) {
       for (const p of validateMeasurement(c.defaultMeasurement, `criteria[${i}].defaultMeasurement`)) {
         err('measurement-well-formed', p.path, p.message, 'see the message: it states the rule.');
+      }
+    }
+    if (c.weights?.substitution !== undefined) {
+      // ADR-0020: a substitution weight is a rate of exchange across a declared
+      // swing, and is meaningless without one. The weight does not name the
+      // measure it will be applied to, so every measurement it could be applied
+      // to must be ordered and carry a range -- one that is not is a weight some
+      // aggregation will read as a bare statement of importance.
+      //
+      // "Could be applied to" is the measurement each of the analysis's declared
+      // measures resolves to (so a `defaultMeasurement` every measure overrides
+      // is not held against it). With no measures declared, it is everything
+      // the criterion declares.
+      const candidates: [string, Measurement][] = a.measures.length > 0
+        ? a.measures.flatMap(({ name }): [string, Measurement][] => {
+          const m = measurementFor(c, name);
+          if (!m) return [];
+          return [[c.measurements[name] ? `measurements.${name}` : `defaultMeasurement (for "${name}")`, m]];
+        })
+        : [
+          ...declared.map(([measure, m]): [string, Measurement] => [`measurements.${measure}`, m]),
+          ...(c.defaultMeasurement ? [['defaultMeasurement', c.defaultMeasurement] as [string, Measurement]] : []),
+        ];
+      // A range on a nominal level is not a swing: nominal values have no order,
+      // so "how much of this criterion's span" has no answer however it is typed.
+      const unranged = candidates
+        .filter(([, m]) => !(isOrdered(m.level) && m.range))
+        .map(([where, m]) => (isOrdered(m.level) ? where : `${where}, which is nominal`));
+      if (candidates.length === 0 || unranged.length > 0) {
+        err(
+          'substitution-weight-needs-range', `criteria[${i}].weights.substitution`,
+          `criterion "${c.id}" carries a substitution weight but ` +
+            (candidates.length === 0
+              ? 'declares no measurement the weight could apply to, so no range'
+              : `declares no ordered range on ${unranged.join('; ')}`) +
+            '. A substitution weight says how much of this criterion\'s swing buys how much of ' +
+            'another\'s; without a declared range there is no swing, and the weight is a bare ' +
+            'statement of importance (ADR-0020).',
+          'declare an ordered level with a range on every measurement of this criterion, or remove ' +
+            'weights.substitution. If what you have is stated importance rather than a rate of ' +
+            'exchange, it is not a substitution weight.',
+        );
       }
     }
     for (const g of c.groupIds) {
