@@ -151,6 +151,16 @@ date establishes the field this rule depends on and fixes its ladder — `shared
 already carries and the one ADR-0024 and the cross-repo document read. **Read `in-session` as
 `shared-context`.** Nothing else in the rule changes, and `in-session` is reserved for nothing.
 
+
+### 2026-09-22 — A declared refinement is reported with its parent: `insufficient-evidence-to-discriminate`
+
+- **Status:** accepted
+- **Date:** 2026-09-22
+
+The Decision names three codes that are counted and reported separately — `not-evidenced`, `indeterminate`, `withheld` — and says missingness maps by flags, not literal codes. What it did not say is where a *declared* refinement of one of those three goes. It goes with its `broader` parent: a refinement is reported in its parent's separate count, is absent from the ordinal domain like its parent, and is never a point on the scale. Resolution through `broader` is the one resolver ADR-0030 requires, so no consumer needs to know the refinement's id.
+
+The case that raised it (#67, mirroring a companion-repo request later closed there as settled by extension-as-data): "compared these two alternatives directly and could not tell them apart on this criterion" is declared as `insufficient-evidence-to-discriminate` with `broader: "indeterminate"`. It inherits `structural: false`, `terminal: true`, `informative: true`, counts as settled and informative in completeness, and is reported beside — never merged into a scale value with — `indeterminate`. No core code is added: the finding is real, and it is exactly what the extension mechanism is for.
+
 ## References
 The reasoning is in `docs/research/findings-terminology.md` §5 and its working note
 `docs/research/sections/c4-agreement.md`. The labelling rule and the interval-rendering requirement
