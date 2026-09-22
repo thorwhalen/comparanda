@@ -191,6 +191,23 @@ describe('interval-completion dominance', () => {
     expect(result.notes.join(' ')).toMatch(/excluded/i);
   });
 
+  it('excludes a target criterion, as ADR-0019 clause 7 requires in v1, and says why', () => {
+    // A target criterion needs a distance metric to dominate on, which smuggles
+    // a cardinal assumption back in. It ships in the schema and is excluded,
+    // named, from the basis (#43).
+    const a = buildAnalysis([{ id: 'x', values: [3, 3, 3] }, { id: 'y', values: [2, 2, 2] }]);
+    a.criteria.push({
+      id: 'temp', label: 'office temperature', groupIds: [],
+      measurements: { score: { level: 'interval', preference: 'target', range: { min: 15, max: 30, target: 21 } } },
+    } as never);
+    const result = dominance(a, { measure: 'score' });
+    expect(result.basis).not.toContain('temp');
+    expect(result.excluded).toContainEqual({ criterionId: 'temp', reason: 'target-preference' });
+    expect(result.basisDescription).toMatch(/target preference/);
+    // The criteria that remain still decide the relation.
+    expect(result.edges).toContainEqual({ dominator: 'x', dominated: 'y' });
+  });
+
   it('separates necessary dominance from provisional survival', () => {
     // `hi` beats `lo` on every criterion with no blanks: necessary.
     // `maybe` has a blank that could beat `hi`, so it is only provisional.

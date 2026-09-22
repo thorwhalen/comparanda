@@ -40,7 +40,7 @@ export interface Interval { lo: number; hi: number }
 /** Why a criterion was left out of the comparison. Always reported. */
 export interface ExcludedCriterion {
   criterionId: string;
-  reason: 'nominal' | 'no-preference-direction' | 'no-declared-range' | 'non-numeric';
+  reason: 'nominal' | 'no-preference-direction' | 'target-preference' | 'no-declared-range' | 'non-numeric';
 }
 
 export interface DominanceOptions {
@@ -122,13 +122,6 @@ function intervalFor(
   return { lo: range.min, hi: range.max };
 }
 
-/** Distance from the target, as an interval, for `target` preference. */
-function toTargetDistance(iv: Interval, target: number): Interval {
-  const lo = iv.lo <= target && target <= iv.hi ? 0 : Math.min(Math.abs(iv.lo - target), Math.abs(iv.hi - target));
-  const hi = Math.max(Math.abs(iv.lo - target), Math.abs(iv.hi - target));
-  return { lo, hi };
-}
-
 /**
  * Orient an interval so that **larger is always better**, so the comparison
  * below has one form instead of three.
@@ -139,12 +132,7 @@ function orient(iv: Interval, m: Measurement): Interval | undefined {
       return iv;
     case 'decreasing':
       return { lo: -iv.hi, hi: -iv.lo };
-    case 'target': {
-      const t = m.range?.target;
-      if (t === undefined) return undefined;
-      const d = toTargetDistance(iv, t);
-      return { lo: -d.hi, hi: -d.lo };
-    }
+    // `target` never reaches here: it is excluded from the basis (ADR-0019 clause 7).
     default:
       return undefined;
   }
@@ -190,6 +178,10 @@ function prepare(a: Analysis, opts: DominanceOptions): Prepared {
     if (!m) { excluded.push({ criterionId: cid, reason: 'no-declared-range' }); continue; }
     if (!isOrdered(m.level)) { excluded.push({ criterionId: cid, reason: 'nominal' }); continue; }
     if (!admitsDominance(m.preference)) { excluded.push({ criterionId: cid, reason: 'no-preference-direction' }); continue; }
+    // ADR-0019 clause 7 (and ADR-0018): `target` ships in the schema and is
+    // excluded from strict dominance in v1. Comparing by distance to the target
+    // needs a distance metric, which smuggles a cardinal assumption back in.
+    if (m.preference === 'target') { excluded.push({ criterionId: cid, reason: 'target-preference' }); continue; }
     if (!m.range) { excluded.push({ criterionId: cid, reason: 'no-declared-range' }); continue; }
     basis.push(cid);
     measurements.set(cid, m);
@@ -320,6 +312,7 @@ function possiblyDominates(p: Prepared, x: string, y: string): boolean {
 const EXCLUSION_WORDS: Record<ExcludedCriterion['reason'], string> = {
   nominal: 'nominal',
   'no-preference-direction': 'with no direction of preference',
+  'target-preference': 'with a target preference (excluded from strict dominance in v1)',
   'no-declared-range': 'with no declared range',
   'non-numeric': 'non-numeric',
 };
