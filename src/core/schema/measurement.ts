@@ -63,9 +63,11 @@ export function isOrdered(level: LevelOfMeasurement): boolean {
  *                 is legal, dominance is not.
  * - `none`        no preference relation exists. Nominal categories live here.
  *
- * `none` and `ordered` are *excluded from dominance by construction*, and any
- * analysis that excludes them must say which ones it excluded -- a silent
- * exclusion is how a Pareto front comes to mean something other than it says.
+ * `none` and `ordered` are *excluded from dominance by construction*, and so is
+ * `target` in v1 (ADR-0019 clause 7: comparing by distance to the target needs a
+ * metric, which smuggles a cardinal assumption back in). Any analysis that
+ * excludes them must say which ones it excluded -- a silent exclusion is how a
+ * Pareto front comes to mean something other than it says.
  */
 export const Preference = z.enum(['increasing', 'decreasing', 'target', 'ordered', 'none']);
 export type Preference = z.infer<typeof Preference>;

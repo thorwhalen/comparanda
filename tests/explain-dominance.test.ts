@@ -4,8 +4,10 @@
  * The explanation is for display only, and it is only worth showing if it can
  * never disagree with the relation it explains. So the load-bearing test here is
  * agreement: over generated matrices -- blanks, structural absences, decreasing
- * and target preferences, practical tolerance on and off -- every pair's
- * explanation must say exactly what `dominance()` says about that pair.
+ * preferences, practical tolerance on and off -- every pair's explanation must
+ * say exactly what `dominance()` says about that pair. (The generator also
+ * declares a `target` criterion; since #43 it is excluded from the basis, as
+ * ADR-0019 clause 7 requires, so it exercises the exclusion path only.)
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
