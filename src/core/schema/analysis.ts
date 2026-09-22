@@ -297,6 +297,33 @@ export function validateAnalysis(
         err('measurement-well-formed', p.path, p.message, 'see the message: it states the rule.');
       }
     }
+    if (c.weights?.substitution !== undefined) {
+      // ADR-0020: a substitution weight is a rate of exchange across a declared
+      // swing, and is meaningless without one. The weight does not name the
+      // measure it will be applied to, so every measurement it could be applied
+      // to must carry a range -- one unranged measurement is a weight some
+      // aggregation will read as a bare statement of importance.
+      const candidates: [string, Measurement][] = [
+        ...declared.map(([measure, m]): [string, Measurement] => [`measurements.${measure}`, m]),
+        ...(c.defaultMeasurement ? [['defaultMeasurement', c.defaultMeasurement] as [string, Measurement]] : []),
+      ];
+      const unranged = candidates.filter(([, m]) => !m.range).map(([where]) => where);
+      if (candidates.length === 0 || unranged.length > 0) {
+        err(
+          'substitution-weight-needs-range', `criteria[${i}].weights.substitution`,
+          `criterion "${c.id}" carries a substitution weight but ` +
+            (candidates.length === 0
+              ? 'declares no measurement, so no range'
+              : `declares no range on ${unranged.join(', ')}`) +
+            '. A substitution weight says how much of this criterion\'s swing buys how much of ' +
+            'another\'s; without a declared range there is no swing, and the weight is a bare ' +
+            'statement of importance (ADR-0020).',
+          'declare a range on every measurement of this criterion, or remove weights.substitution. ' +
+            'If what you have is stated importance rather than a rate of exchange, it is not a ' +
+            'substitution weight.',
+        );
+      }
+    }
     for (const g of c.groupIds) {
       if (!groupIds.has(g)) {
         err('group-exists', `criteria[${i}].groupIds`, `unknown group "${g}"`,
