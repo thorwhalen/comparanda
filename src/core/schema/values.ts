@@ -15,7 +15,9 @@
 import * as z from 'zod/mini';
 import { EvidenceRef } from './evidence.js';
 import { Missing } from './missingness.js';
-import { Independence, Perturbation } from './provenance.js';
+import {
+  Independence, Perturbation, effectiveIndependence, weakestIndependence,
+} from './provenance.js';
 import { meanIsLegal, type LevelOfMeasurement } from './measurement.js';
 import {
   declarationFields, resolveDeclaration, degradationOf,
@@ -211,6 +213,52 @@ export interface Reduced {
   spread: ScalarValue[];
   /** Set when the reduction refused to run, with the reason. */
   refused?: string;
+  /**
+   * How independent the contributing assertions are, when there are two or
+   * more of them (#76, #64). Absent for zero or one: a single assertion is not
+   * a set, and there is nothing to be independent of.
+   *
+   * `flagged` is true unless every contributing assertion records
+   * `independent` (and, when `authors` were passed to `reduce`, no principal
+   * contributes twice). An unrecorded rung counts as unknown, never as
+   * independent -- the same cautious reading `weakestIndependence` takes.
+   * The value is still computed: the flag qualifies it, it does not withhold it.
+   */
+  independence?: ReductionIndependence | undefined;
+}
+
+/** See `Reduced.independence`. */
+export interface ReductionIndependence {
+  /** The weakest rung among the contributing assertions, or `unknown`. */
+  weakest: Independence | 'unknown';
+  /** True when the set cannot be read as that many independent raters. */
+  flagged: boolean;
+  /** Why it was flagged, in words a reader can act on. Set only when flagged. */
+  reason?: string | undefined;
+}
+
+/**
+ * The independence reading of a multi-assertion set, for `reduce`.
+ *
+ * Uses `effectiveIndependence` when the authors are known, so two personas of
+ * one principal cannot pass as two raters; otherwise the recorded rungs alone.
+ */
+function independenceOf(
+  contributing: readonly Assertion[],
+  authors: readonly { id: string; principalId?: string | undefined }[] | undefined,
+): ReductionIndependence | undefined {
+  if (contributing.length < 2) return undefined;
+  const weakest = authors
+    ? effectiveIndependence(contributing, authors)
+    : weakestIndependence(contributing);
+  if (weakest === 'independent') return { weakest, flagged: false };
+  const n = contributing.length;
+  const reason = weakest === 'unknown'
+    ? `${n} assertions, and at least one records no independence; unknown is not independent, ` +
+      `so these cannot be read as ${n} raters.`
+    : `${n} assertions, the weakest at "${weakest}"; these are not ${n} independent raters, and ` +
+      'any spread or agreement across them overstates how many heads produced it.';
+  return { weakest, flagged: true, reason };
 }
 
 function live(assertions: readonly Assertion[]): Assertion[] {
@@ -236,6 +284,11 @@ function isNumeric(v: ScalarValue | undefined): v is number {
 export function reduce(
   cell: Cell,
   opts: {
+    /**
+     * The document's authors. When given, personas that share a principal are
+     * collapsed before judging independence (see `effectiveIndependence`).
+     */
+    authors?: readonly { id: string; principalId?: string | undefined }[];
     defaultReduction: Reduction;
     level?: LevelOfMeasurement;
     /** The document's reduction declarations, for resolving a non-core name. */
@@ -243,6 +296,16 @@ export function reduce(
     /** Appended to when the reduction name could not be resolved. */
     degradations?: Degradation[];
   },
+): Reduced {
+  const reduced = reduceValue(cell, opts);
+  const independence = independenceOf(reduced.contributing, opts.authors);
+  return independence ? { ...reduced, independence } : reduced;
+}
+
+/** `reduce` without the independence reading; the value logic, unchanged. */
+function reduceValue(
+  cell: Cell,
+  opts: Parameters<typeof reduce>[1],
 ): Reduced {
   const contributing = live(cell.assertions);
   const named = cell.reduction ?? opts.defaultReduction;
