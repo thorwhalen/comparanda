@@ -22,7 +22,7 @@ const relocation = () => Analysis.parse(raw());
 
 const seriated = (at: string, pathLength = 1.25): OrderProvenance => ({
   kind: 'seriated', method: 'olo-hierarchical', linkage: 'average', measure: 'score',
-  distance: 'gower', missingPolicy: 'skip-contingent', minOverlap: 2, pathLength,
+  distance: 'gower', missingPolicy: 'structural-matches', minOverlap: 2, pathLength,
   parked: [], params: { sizeLimit: 200 }, at,
 });
 
@@ -152,5 +152,44 @@ describe('the runtime and dirty state (#70)', () => {
 
   it('refuses a malformed persisted state with the problems named, rather than half-reading it', () => {
     expect(() => parseViewState(JSON.stringify({ schemaVersion: 1, alternativeOrder: { order: 'nope' } }))).toThrow(/not a valid view state/);
+  });
+});
+
+describe('sets compare as sets (review finding)', () => {
+  const alts = ['lisbon', 'berlin', 'taipei', 'seoul', 'montreal'];
+  it('pins re-added in another order are the same pins: undo-to-original stays clean', () => {
+    let v = initialViewState(relocation());
+    v = pin(v, 'alternatives', 'lisbon', 0);
+    v = pin(v, 'alternatives', 'berlin', 1);
+    const snap = snapshotOf(v);
+    const moved = pin(v, 'alternatives', 'lisbon', 3);
+    expect(isDirty(moved, snap)).toBe(true);
+    const back = pin(moved, 'alternatives', 'lisbon', 0);
+    expect(dirtyDimensions(back, snap)).toEqual([]);
+  });
+
+  it('locked runs are a set; the order inside a run is not', () => {
+    let v = initialViewState(relocation());
+    v = lockRun(v, 'alternatives', ['lisbon', 'berlin']);
+    v = lockRun(v, 'alternatives', ['taipei', 'seoul']);
+    const snap = snapshotOf(v);
+    const relocked = lockRun(unlockRun(v, 'alternatives', ['lisbon', 'berlin']), 'alternatives', ['lisbon', 'berlin']);
+    expect(isDirty(relocked, snap)).toBe(false);
+    const reversed = lockRun(unlockRun(v, 'alternatives', ['lisbon', 'berlin']), 'alternatives', ['berlin', 'lisbon']);
+    expect(isDirty(reversed, snap)).toBe(true);
+  });
+
+  it('hidden ids and selections in another order are not a change', () => {
+    const v = setFilter(initialViewState(relocation()), { hiddenAlternatives: ['taipei', 'seoul'] });
+    expect(isDirty(setFilter(v, { hiddenAlternatives: ['seoul', 'taipei'] }), snapshotOf(v))).toBe(false);
+    const s = setSelection(v, { alternatives: [alts[0]!, alts[1]!] });
+    expect(isDirty(setSelection(s, { alternatives: [alts[1]!, alts[0]!] }), snapshotOf(s))).toBe(false);
+  });
+
+  it('refuses non-JSON and non-objects with the view-state error, and names a future version as view state', () => {
+    expect(() => parseViewState('not json')).toThrow(/not a valid view state/);
+    expect(() => parseViewState('null')).toThrow(/not a valid view state/);
+    const future = JSON.stringify({ ...JSON.parse(serializeViewState(initialViewState(relocation()))), schemaVersion: 99 });
+    expect(() => parseViewState(future)).toThrow(/^view state: .*99/);
   });
 });

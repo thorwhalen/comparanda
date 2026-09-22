@@ -72,13 +72,15 @@ export const OrderProvenance = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('seriated'),
     method: z.string(),
-    linkage: z.optional(z.string()),
+    /** Required: ADR-0025 says the record carries it, enough to re-derive the order. */
+    linkage: z.string(),
     measure: z.string(),
     distance: z.string(),
-    missingPolicy: z.string(),
-    minOverlap: z.optional(z.number()),
-    /** Achieved Hamiltonian path length, when the method reports one. */
-    pathLength: z.optional(z.number()),
+    /** ADR-0025's two policies, and only those. */
+    missingPolicy: z.enum(['structural-matches', 'skip-all']),
+    minOverlap: z.number(),
+    /** Achieved Hamiltonian path length. */
+    pathLength: z.number(),
     /** Ids left out for too little overlap -- visibly parked, never dropped (ADR-0025). */
     parked: z._default(z.array(z.string()), []),
     /** Any further method parameters, so a run can be reproduced exactly. */
@@ -220,9 +222,33 @@ export function snapshotOf(v: ViewState): SavedViewState {
 /** The comparable part of one dimension. Provenance is derivation, so it is dropped here. */
 function arrangementOf(v: SavedViewState, d: Dimension): unknown {
   const value = v[d];
+  const sorted = (xs: readonly string[]) => [...xs].sort();
   if (d === 'alternativeOrder' || d === 'criterionOrder') {
     const o = value as AxisOrder;
-    return { order: o.order, constraints: o.constraints };
+    // Order is a list; its constraints are sets. Pins by id, locked runs by
+    // their contents (the order *inside* a run is meaningful and kept).
+    return {
+      order: o.order,
+      constraints: {
+        pins: [...o.constraints.pins].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : x.position - y.position)),
+        lockedRuns: [...o.constraints.lockedRuns].sort((x, y) => {
+          const a = JSON.stringify(x), b = JSON.stringify(y);
+          return a < b ? -1 : a > b ? 1 : 0;
+        }),
+      },
+    };
+  }
+  if (d === 'selection') {
+    const s = value as Selection;
+    return {
+      alternatives: sorted(s.alternatives),
+      criteria: sorted(s.criteria),
+      cells: [...s.cells].map((c) => `${JSON.stringify([c.alternativeId, c.criterionId])}`).sort(),
+    };
+  }
+  if (d === 'filter') {
+    const f = value as Filter;
+    return { hiddenAlternatives: sorted(f.hiddenAlternatives), hiddenCriteria: sorted(f.hiddenCriteria) };
   }
   return value;
 }
@@ -377,8 +403,21 @@ export function serializeViewState(v: ViewState): string {
  * Throws with the problems rather than returning a half-read state.
  */
 export function parseViewState(json: string): { state: ViewState; migration: MigrationResult } {
-  const raw = JSON.parse(json) as Record<string, unknown>;
-  const migration = viewStateMigrations.migrate(raw);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch (e) {
+    throw new Error(`not a valid view state: not JSON (${(e as Error).message})`);
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('not a valid view state: expected a JSON object');
+  }
+  let migration: MigrationResult;
+  try {
+    migration = viewStateMigrations.migrate(raw as Record<string, unknown>);
+  } catch (e) {
+    throw new Error(`view state: ${(e as Error).message}`);
+  }
   const parsed = ViewState.safeParse(migration.document);
   if (!parsed.success) {
     const problems = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
