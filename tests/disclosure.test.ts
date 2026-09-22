@@ -10,9 +10,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Analysis, completeness, validateAnalysis } from '../src/core/schema/analysis.js';
+import { Analysis, completeness, contradictedCells, supersededCells, validateAnalysis } from '../src/core/schema/analysis.js';
 import { projectForReader, widenedCellCount, type DisclosureDecision } from '../src/core/schema/disclosure.js';
-import { dominance } from '../src/core/analyses/dominance.js';
+import { blanksWorthFilling, dominance, explainDominance } from '../src/core/analyses/dominance.js';
 import { screen } from '../src/core/analyses/screening.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
@@ -131,6 +131,34 @@ describe('projectForReader', () => {
 });
 
 describe('every analysis result says how many cells were widened for its reader', () => {
+  it('the per-cell reports and the pair explanation too (#77)', () => {
+    const p = projectForReader(relocation(), reviewer).analysis;
+    expect(contradictedCells(relocation(), { measure: 'score' }).widenedByDisclosure).toBe(0);
+    expect(contradictedCells(p, { measure: 'score' }).widenedByDisclosure).toBe(2);
+    expect(supersededCells(p).widenedByDisclosure).toBeGreaterThanOrEqual(0);
+    // a-rent-tai-ana is withheld: explaining Taipei against anyone says so.
+    const d = dominance(p, { measure: 'score' });
+    const other = p.alternatives.find((x) => x.id !== 'taipei')!.id;
+    const e = explainDominance(p, 'taipei', other, { measure: 'score' });
+    const expected = p.cells.filter((c) => (c.alternativeId === 'taipei' || c.alternativeId === other) &&
+      c.measure === 'score' && d.basis.includes(c.criterionId) &&
+      c.assertions.some((s) => !s.supersededBy && s.disclosure?.withheldFromReader)).length;
+    expect(expected, 'the fixture withholds a basis cell in the Taipei row').toBeGreaterThan(0);
+    expect(e.widenedByDisclosure).toBe(expected);
+    expect(e.summary).toMatch(/withheld from you/);
+    expect(explainDominance(relocation(), 'taipei', other, { measure: 'score' }).widenedByDisclosure).toBe(0);
+  });
+
+  it('never ranks a withheld cell as a blank worth filling', () => {
+    const p = projectForReader(relocation(), reviewer).analysis;
+    const withheld = new Set(p.cells.filter((c) => c.assertions.some((s) => s.disclosure?.withheldFromReader))
+      .map((c) => `${c.alternativeId}|${c.criterionId}`));
+    expect(withheld.size).toBe(2);
+    for (const b of blanksWorthFilling(p, { measure: 'score' })) {
+      expect(withheld.has(`${b.alternativeId}|${b.criterionId}`), `${b.alternativeId} x ${b.criterionId}`).toBe(false);
+    }
+  });
+
   it('completeness', () => {
     expect(completeness(relocation(), { measure: 'score' }).widenedByDisclosure).toBe(0);
     const p = projectForReader(relocation(), reviewer).analysis;

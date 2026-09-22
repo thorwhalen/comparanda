@@ -223,16 +223,35 @@ export function resolveReduction(
   );
 }
 
-/** One (alternative, criterion, measure) intersection. */
+/**
+ * One (alternative, criterion, measure) intersection.
+ *
+ * Every claim lives on an **assertion**, so a second rater costs a second
+ * assertion and nothing else (#45). The three fields below are the only ones at
+ * cell level, and each is here because it is *about the set* of assertions, not
+ * any one of them.
+ */
 export const Cell = z.object({
   alternativeId: z.string(),
   criterionId: z.string(),
   measure: z.string(),
   assertions: z._default(z.array(Assertion), []),
-  /** Overrides the analysis-level default for this cell only. */
+  /**
+   * Overrides the analysis-level default for this cell only. Cell-level because
+   * a reduction is a policy *over* the assertions; stored as a named policy,
+   * never as its result.
+   */
   reduction: z.optional(Reduction),
-  /** Set when `reduction` is `consensus`. */
+  /**
+   * Set when `reduction` is `consensus`: which assertion the panel agreed is the
+   * cell's answer. A pointer into the set, so it cannot live inside one member.
+   */
   consensusAssertionId: z.optional(z.string()),
+  /**
+   * A policy declaration about the cell ("this cell is read-only"), which the
+   * schema-change rules place in the schema rather than in an adapter. It
+   * constrains edits to the whole set, so it is not per assertion.
+   */
   readOnly: z.optional(z.boolean()),
 });
 export type Cell = z.infer<typeof Cell>;

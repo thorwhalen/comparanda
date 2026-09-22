@@ -493,6 +493,12 @@ export interface DominanceExplanation {
   basisDescription: string;
   /** The verdict and its reason, in one sentence. */
   summary: string;
+  /**
+   * Of this pair's basis cells, how many a disclosure projection widened for
+   * this reader (ADR-0021). Required, as on every analysis result, so a view
+   * cannot omit it: a verdict computed over hidden cells must say so.
+   */
+  widenedByDisclosure: number;
 }
 
 /**
@@ -537,9 +543,18 @@ export function explainDominance(
     summary = `${x} does not dominate ${y}: it cannot be better on any compared criterion.`;
   }
 
+  const widenedByDisclosure = x === y
+    ? widenedIn(a, [x], p.basis, opts.measure)
+    : widenedIn(a, [x, y], p.basis, opts.measure);
+  if (widenedByDisclosure > 0) {
+    summary += ` (${widenedByDisclosure} of the compared cell${widenedByDisclosure === 1 ? ' is' : 's are'} ` +
+      'withheld from you, so this verdict is over their widest possible values.)';
+  }
+
   return {
     x, y, necessarilyDominates: nec, possiblyDominates: nec || pos, criteria,
     basis: p.basis, excluded: p.excluded, basisDescription: describeBasis(a, p), summary,
+    widenedByDisclosure,
   };
 }
 
@@ -621,12 +636,17 @@ export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlankWo
   const verdict = (rx: Row, ry: Row): string =>
     `${dominates(rx, ry) ? 1 : 0}${dominates(ry, rx) ? 1 : 0}`;
 
+  const storedCells = cellIndex(a);
   const out: BlankWorthFilling[] = [];
 
   for (const altId of altIds) {
     const row = rows.get(altId)!;
     for (const cid of result.basis) {
       if (reader.read(altId, cid)?.value !== undefined) continue;
+      // A cell withheld from this reader is not a blank they can fill; ranking
+      // it would send them to ask for something they may not see (ADR-0021).
+      const stored = storedCells.get(cellKey(altId, cid, opts.measure));
+      if (stored && isWidenedByDisclosure(stored)) continue;
       if (inapplicable(altId, cid)) continue;
       const current = row.get(cid);
       if (current === 'excluded' || !current) continue;
