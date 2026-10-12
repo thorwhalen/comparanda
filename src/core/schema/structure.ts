@@ -11,7 +11,7 @@ import { MissingCodeDeclaration } from './missingness.js';
 import { Measurement, Acceptability } from './measurement.js';
 
 /** A thing being compared. A row, by convention. */
-export const Alternative = z.object({
+export const Alternative = z.strictObject({
   id: z.string(),
   label: z.string(),
   description: z.optional(z.string()),
@@ -41,7 +41,7 @@ export type Alternative = z.infer<typeof Alternative>;
  * year is behind a paywall"). It is prose on purpose: the condition is a
  * judgement about a source, and the code is what makes the outcome checkable.
  */
-export const MissingRule = z.object({
+export const MissingRule = z.strictObject({
   when: z.string(),
   code: z.string(),
 });
@@ -76,7 +76,7 @@ export type MissingRule = z.infer<typeof MissingRule>;
  *
  * Every field is optional, so a terse criterion stays terse.
  */
-export const CriterionDefinition = z.object({
+export const CriterionDefinition = z.strictObject({
   objective: z.optional(z.string()),
   question: z.optional(z.string()),
   evidenceRule: z.optional(z.string()),
@@ -86,7 +86,7 @@ export const CriterionDefinition = z.object({
 export type CriterionDefinition = z.infer<typeof CriterionDefinition>;
 
 /** Where a criterion came from. Criteria deserve the discipline values get. */
-export const CriterionProvenance = z.object({
+export const CriterionProvenance = z.strictObject({
   origin: z.enum(['user-stated', 'derived-from-source', 'agent-proposed', 'imported']),
   authorId: z.optional(z.string()),
   at: z.optional(z.string()),
@@ -113,7 +113,7 @@ export type CriterionProvenance = z.infer<typeof CriterionProvenance>;
  * Naming them apart costs nothing now and is a migration through every stored
  * analysis later.
  */
-export const Weights = z.object({
+export const Weights = z.strictObject({
   substitution: z.optional(z.number()),
   voting: z.optional(z.number()),
   /** Who set them and why; a weight nobody owns is a weight nobody defends. */
@@ -123,7 +123,7 @@ export const Weights = z.object({
 export type Weights = z.infer<typeof Weights>;
 
 /** A thing alternatives are compared on. A column, by convention. */
-export const Criterion = z.object({
+export const Criterion = z.strictObject({
   /**
    * Missingness codes this criterion may use in addition to the analysis's.
    *
@@ -175,7 +175,7 @@ export function measurementFor(criterion: Criterion, measure: string): Measureme
  * review, and an answer that lives only in someone's memory gets re-litigated
  * every time.
  */
-export const RejectedCriterion = z.object({
+export const RejectedCriterion = z.strictObject({
   label: z.string(),
   reason: z.string(),
   reasonCode: z.optional(
@@ -189,7 +189,7 @@ export const RejectedCriterion = z.object({
 export type RejectedCriterion = z.infer<typeof RejectedCriterion>;
 
 /** A named set of alternatives or criteria. Groups are data; selection is not. */
-export const Group = z.object({
+export const Group = z.strictObject({
   id: z.string(),
   label: z.string(),
   axis: z.enum(['alternatives', 'criteria']),
@@ -219,7 +219,7 @@ export type Group = z.infer<typeof Group>;
  * it entirely rather than rendering a rectangle of blanks -- which is both
  * clearer and, at scale, the difference between a legible matrix and a wall.
  */
-export const InapplicableBlock = z.object({
+export const InapplicableBlock = z.strictObject({
   alternativeGroupId: z.string(),
   criterionGroupId: z.string(),
   reason: z.optional(z.string()),
@@ -234,7 +234,7 @@ export type InapplicableBlock = z.infer<typeof InapplicableBlock>;
  * *alternatives*, and the internal name never changes. Criteria keep their own
  * name, which is already the word users say.
  */
-export const Aliases = z.object({
+export const Aliases = z.strictObject({
   alternative: z._default(z.string(), 'option'),
   alternatives: z._default(z.string(), 'options'),
   criterion: z._default(z.string(), 'criterion'),

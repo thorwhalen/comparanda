@@ -100,8 +100,8 @@ describe('deletion is a tombstone, and its threads are visibly orphaned', () => 
     const a = Analysis.parse({
       ...doc(),
       suggestions: [
-        { id: 's1', anchor: { scope: 'cell', alternativeId: 'x', criterionId: 'reach', measure: 'score' }, authorId: 'ana', at: '2026-08-22T00:00:00Z', proposed: {} },
-        { id: 's2', anchor: { scope: 'criterion', criterionId: 'cost' }, authorId: 'ana', at: '2026-08-22T00:00:00Z', proposed: {}, status: 'declined' },
+        { id: 's1', anchor: { scope: 'cell', alternativeId: 'x', criterionId: 'reach', measure: 'score' }, authorId: 'ana', at: '2026-08-22T00:00:00Z', proposed: { id: 'p1', authorId: 'ana', at: '2026-08-22T00:00:00Z', value: 3 } },
+        { id: 's2', anchor: { scope: 'criterion', criterionId: 'cost' }, authorId: 'ana', at: '2026-08-22T00:00:00Z', proposed: { id: 'p2', authorId: 'ana', at: '2026-08-22T00:00:00Z', value: 3 }, status: 'declined' },
       ],
     });
     expect(orphanedSuggestionsOf(a)).toEqual([]);

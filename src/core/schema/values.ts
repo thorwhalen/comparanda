@@ -41,7 +41,7 @@ export type ScalarValue = z.infer<typeof ScalarValue>;
  * projection time; the schema only carries what the decision needs and what the
  * projection leaves behind.
  */
-export const Disclosure = z.object({
+export const Disclosure = z.strictObject({
   /** The host's confidentiality label for this assertion, e.g. "confidential". Opaque here. */
   label: z.optional(z.string()),
   /**
@@ -66,7 +66,7 @@ export type Disclosure = z.infer<typeof Disclosure>;
  * assertion that says nothing is not an assertion. That is the "no bare nulls"
  * rule at the level where it actually bites.
  */
-export const Assertion = z.object({
+export const Assertion = z.strictObject({
   id: z.string(),
   authorId: z.string(),
   at: z.string(),
@@ -181,7 +181,7 @@ export const CORE_REDUCTIONS: Readonly<Record<CoreReduction, ReductionFacts>> = 
  * A reduction a deployment defines, named in the document so a foreign reader
  * knows what it was asked to compute.
  */
-export const ReductionDeclaration = z.object(declarationFields(CoreReduction));
+export const ReductionDeclaration = z.strictObject(declarationFields(CoreReduction));
 export type ReductionDeclaration = z.infer<typeof ReductionDeclaration>;
 
 /**
@@ -236,7 +236,7 @@ export function resolveReduction(
  * cell level, and each is here because it is *about the set* of assertions, not
  * any one of them.
  */
-export const Cell = z.object({
+export const Cell = z.strictObject({
   alternativeId: z.string(),
   criterionId: z.string(),
   measure: z.string(),

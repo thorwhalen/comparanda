@@ -15,6 +15,7 @@
  * a repair hint for a human reading an orphan, and is never used to resolve.
  */
 import * as z from 'zod/mini';
+import { Assertion } from './values.js';
 
 export const AnchorScope = z.enum([
   'analysis',
@@ -34,7 +35,7 @@ export type AnchorScope = z.infer<typeof AnchorScope>;
  * document, which is why the scope exists at all rather than everything hanging
  * off cells.
  */
-export const Anchor = z.object({
+export const Anchor = z.strictObject({
   scope: AnchorScope,
   alternativeId: z.optional(z.string()),
   criterionId: z.optional(z.string()),
@@ -49,7 +50,7 @@ export const Anchor = z.object({
 });
 export type Anchor = z.infer<typeof Anchor>;
 
-export const Comment = z.object({
+export const Comment = z.strictObject({
   id: z.string(),
   authorId: z.string(),
   at: z.string(),
@@ -62,7 +63,7 @@ export type Comment = z.infer<typeof Comment>;
  * A thread. Resolvable, never deletable: the record of *why* a score moved is
  * the point, and a resolved thread that vanishes takes the reasoning with it.
  */
-export const Thread = z.object({
+export const Thread = z.strictObject({
   id: z.string(),
   anchor: Anchor,
   comments: z._default(z.array(Comment), []),
@@ -77,13 +78,17 @@ export type Thread = z.infer<typeof Thread>;
  * analysis. This is how a reviewer participates without mutating a shared
  * artifact.
  */
-export const Suggestion = z.object({
+export const Suggestion = z.strictObject({
   id: z.string(),
   anchor: Anchor,
   authorId: z.string(),
   at: z.string(),
-  /** The proposed assertion, as it would be written if accepted. */
-  proposed: z.unknown(),
+  /**
+   * The proposed assertion, as it would be written if accepted. Typed, so the
+   * closed shape has no hole in it: `unknown` here accepted any object, and
+   * narrowing it after the freeze would be a migration (#57 review).
+   */
+  proposed: Assertion,
   rationale: z.optional(z.string()),
   status: z._default(z.enum(['open', 'accepted', 'declined', 'superseded']), 'open'),
   decidedBy: z.optional(z.string()),

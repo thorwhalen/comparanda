@@ -105,15 +105,15 @@ describe('round locking needs no migration (#49 item 3)', () => {
     }
   });
 
-  it('knows the cost that remains: a reader without locking drops the new fields', () => {
+  it('knows the cost that remains: a reader without locking refuses the new fields, loudly', () => {
     // "No migration" is about old documents under a new reader. The other
-    // direction is not free: zod objects strip unknown keys, so a reader built
-    // before locking round-trips a locked round without its lock. That is the
-    // version handshake's job (docs/cross-repo-coordination.md §3.3: MINOR is
-    // additive, and a producer emits the lowest version that expresses the
-    // document), not a migration's -- pinned here so nobody mistakes one for
-    // the other.
+    // direction is not free: the schema is closed (schema v1,
+    // docs/schema-v1.md), so a reader built before locking refuses a locked
+    // round rather than round-tripping it without its lock. Before the freeze
+    // it stripped the field silently; refusing is the point of closing it.
+    // Which reader gets which document is the version handshake's job
+    // (docs/cross-repo-coordination.md §3.3), not a migration's.
     const locked = { ...round({}), lockedAt: OPEN };
-    expect('lockedAt' in Round.parse(locked)).toBe(false);
+    expect(Round.safeParse(locked).success).toBe(false);
   });
 });

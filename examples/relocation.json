@@ -212,6 +212,17 @@
           "Continental",
           "Subtropical"
         ]
+      },
+      "definedInVersion": "2",
+      "definition": {
+        "question": "Which main Köppen group is the city in, read from the published climate map rather than from how it feels?"
+      },
+      "provenance": {
+        "origin": "user-stated",
+        "authorId": "ana",
+        "at": "2026-08-21T12:00:00Z",
+        "derivedFrom": [],
+        "rationale": "redefined from a felt description to the Köppen main group, so two people reading the same map give the same answer"
       }
     },
     {
@@ -468,7 +479,17 @@
       "startedAt": "2026-08-23T09:00:00Z"
     }
   ],
-  "rounds": [],
+  "rounds": [
+    {
+      "id": "r-daylight",
+      "index": 1,
+      "label": "winter daylight, blind pass",
+      "feedback": "none",
+      "attribution": "anonymous",
+      "openedAt": "2026-08-22T08:00:00Z",
+      "closedAt": "2026-08-23T18:00:00Z"
+    }
+  ],
   "cells": [
     {
       "alternativeId": "lisbon",
@@ -565,7 +586,9 @@
               "target": "doc:city-paper-rents",
               "sourceType": "secondary",
               "stance": "supports",
-              "derivedFrom": [],
+              "derivedFrom": [
+                "e-ber-rent"
+              ],
               "selectors": [
                 {
                   "type": "TextQuoteSelector",
@@ -774,7 +797,8 @@
           "evidence": [],
           "version": 1,
           "value": "Mediterranean",
-          "justification": "Koppen Csa"
+          "justification": "Koppen Csa",
+          "criteriaVersion": "2"
         }
       ]
     },
@@ -786,11 +810,12 @@
         {
           "id": "a-cli-ber",
           "authorId": "ana",
-          "at": "2026-08-22T09:00:00Z",
+          "at": "2026-08-20T09:00:00Z",
           "evidence": [],
           "version": 1,
           "value": "Continental",
-          "justification": "Koppen Dfb"
+          "justification": "Koppen Dfb",
+          "criteriaVersion": "1"
         }
       ]
     },
@@ -806,7 +831,8 @@
           "evidence": [],
           "version": 1,
           "value": "Subtropical",
-          "justification": "Koppen Cfa"
+          "justification": "Koppen Cfa",
+          "criteriaVersion": "2"
         }
       ]
     },
@@ -822,7 +848,8 @@
           "evidence": [],
           "version": 1,
           "value": "Continental",
-          "justification": "Koppen Dwa"
+          "justification": "Koppen Dwa",
+          "criteriaVersion": "2"
         }
       ]
     },
@@ -838,7 +865,8 @@
           "evidence": [],
           "version": 1,
           "value": "Continental",
-          "justification": "Koppen Dfb"
+          "justification": "Koppen Dfb",
+          "criteriaVersion": "2"
         }
       ]
     },
@@ -876,7 +904,8 @@
           "version": 1,
           "value": 1,
           "justification": "7h39m at the solstice, which is under the level-1 condition",
-          "independence": "independent"
+          "independence": "independent",
+          "roundId": "r-daylight"
         },
         {
           "id": "a-day-ber-ben",
@@ -886,7 +915,8 @@
           "version": 1,
           "value": 3,
           "justification": "the condition should be read as usable daylight, not astronomical; the difference is the whole disagreement",
-          "independence": "independent"
+          "independence": "independent",
+          "roundId": "r-daylight"
         },
         {
           "id": "a-day-ber-cleo",
@@ -896,7 +926,8 @@
           "version": 1,
           "value": 1,
           "justification": "scored without seeing the other two; the solstice figure is the number that matters to someone who works indoors",
-          "independence": "independent"
+          "independence": "independent",
+          "roundId": "r-daylight"
         }
       ]
     },
@@ -1361,7 +1392,7 @@
         {
           "id": "c3",
           "authorId": "ben",
-          "at": "2026-08-22T09:00:00Z",
+          "at": "2026-08-23T20:00:00Z",
           "body": "We are scoring different things. Astronomical daylight or usable daylight? The anchor does not say."
         }
       ]
@@ -1390,7 +1421,32 @@
       ]
     }
   ],
-  "suggestions": [],
+  "suggestions": [
+    {
+      "id": "sg-day-tai",
+      "anchor": {
+        "scope": "cell",
+        "alternativeId": "taipei",
+        "criterionId": "winter-daylight",
+        "measure": "score",
+        "repairHint": "Taipei x Winter daylight"
+      },
+      "authorId": "cleo",
+      "at": "2026-08-24T10:00:00Z",
+      "proposed": {
+        "id": "a-day-tai-cleo",
+        "authorId": "cleo",
+        "at": "2026-08-24T10:00:00Z",
+        "value": 5,
+        "justification": "about ten and a half hours of daylight at the winter solstice, over the ten-hour anchor for 5",
+        "evidence": [],
+        "version": 1,
+        "independence": "independent"
+      },
+      "rationale": "the blank says nobody has looked yet; the solstice day length answers it",
+      "status": "open"
+    }
+  ],
   "rejectedCriteria": [
     {
       "label": "Cost of living",
@@ -1408,5 +1464,6 @@
       "at": "2026-08-22T09:00:00Z"
     }
   ],
-  "reductions": []
+  "reductions": [],
+  "criteriaVersion": "2"
 }

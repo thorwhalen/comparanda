@@ -126,7 +126,7 @@ export const CORE_MISSING_CODES: Readonly<Record<MissingCode, MissingCodeFacts>>
  * *refinement* of exactly one core code, so a consumer that knows only the core
  * set can still classify it correctly by following `broader`.
  */
-export const MissingCodeDeclaration = z.object({
+export const MissingCodeDeclaration = z.strictObject({
   ...declarationFields(MissingCode),
   /** Defaults follow `broader` unless overridden; an override is a real claim. */
   structural: z.optional(z.boolean()),
@@ -146,7 +146,7 @@ export const MissingCodeDeclaration = z.object({
 export type MissingCodeDeclaration = z.infer<typeof MissingCodeDeclaration>;
 
 /** A qualified absence, as stored in a cell. */
-export const Missing = z.object({
+export const Missing = z.strictObject({
   /** A core code, or a declared extension. */
   code: z.string(),
   /** Free text. Never a substitute for the code -- a note cannot be counted. */

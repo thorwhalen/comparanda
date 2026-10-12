@@ -157,7 +157,8 @@ function main(): void {
   );
   const schema = {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
-    $id: `https://github.com/thorwhalen/comparanda/schema/comparanda.v${SCHEMA_VERSION}.json`,
+    // The immutable location: the release tag's raw file (docs/schema-v1.md).
+    $id: `https://raw.githubusercontent.com/thorwhalen/comparanda/schema-v${SCHEMA_VERSION}/schema/comparanda.v${SCHEMA_VERSION}.json`,
     title: `comparanda analysis, schema version ${SCHEMA_VERSION}`,
     description:
       'A structured comparison: alternatives x criteria, with qualified missingness, confidence, ' +

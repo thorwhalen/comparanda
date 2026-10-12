@@ -26,6 +26,18 @@ describe('independence', () => {
     expect(parsed.independence).toBeUndefined();
   });
 
+  it('a perturbed draw carries what was varied, and keeps it through a round trip (v1 pulled-forward field)', () => {
+    const draw = {
+      id: 'd1', authorId: 'agent', at: '2026-01-01T00:00:00Z', value: 3, independence: 'perturbed',
+      perturbation: { kind: 'prompt-paraphrase', seed: 7, detail: 'second of three paraphrases' },
+    };
+    const parsed = Assertion.parse(draw);
+    expect(parsed.perturbation).toEqual(draw.perturbation);
+    expect(Assertion.parse(JSON.parse(JSON.stringify(parsed))).perturbation).toEqual(draw.perturbation);
+    // The schema is closed: a misspelt key inside it is refused, not dropped.
+    expect(Assertion.safeParse({ ...draw, perturbation: { ...draw.perturbation, sead: 7 } }).success).toBe(false);
+  });
+
   it('unknown independence never counts as an independent rater', () => {
     expect(countsAsIndependentRater(undefined)).toBe(false);
     expect(countsAsIndependentRater('shared-context')).toBe(false);

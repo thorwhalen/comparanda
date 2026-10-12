@@ -121,6 +121,9 @@ vocabulary). Gate 2a is the contract-shaping subset; all nine block the schema c
 - [ ] Both example fixtures validate, and the messy one exercises the parts the clean one cannot
       (`comparanda: examples/README.md`).
 
+> [!NOTE]
+> **Amended 2026-10-12 — 2b passed; v1 is frozen** (`comparanda: docs/schema-v1.md`, #57). Two items are met in a different form than written. The "registered (no-op) v1 step" cannot exist, because there is no version 0 to migrate from (a document without `schemaVersion` reads as 1); its enforceable form shipped instead: `DOCUMENT_MIGRATIONS` is empty at v1, and a test fails the build if `SCHEMA_VERSION` is bumped without a step. The immutable path is the `schema-v1` git tag and its GitHub release; npm follows with the first publish (#119).
+
 **Blocks (in `rubricator`):** `analysis_validate` against the real schema; the
 `rubricator://schema/comparanda/{version}` resource; the declared-emit set; any claim of
 conformance; the end-to-end demo. **Blocks (in `comparanda`):** 2b's *schema code* blocks Phase 2
@@ -340,6 +343,9 @@ Steps 1–4 are cheap and are the ones that must not be skipped. Steps 5–7 are
 | The vendored copy, emit-set bump and conformance fixture | `rubricator` | `rubricator` |
 
 ### 3.3 The version handshake
+
+> [!IMPORTANT]
+> **Amended 2026-10-12, at the v1 freeze** (#167): `comparanda`'s version is **one integer**, `schemaVersion`, not `MAJOR.MINOR`. The schema is closed (`additionalProperties: false`), so an older reader cannot load a document carrying a field it does not know: there is no MINOR such a reader could accept. Every schema change is therefore a version bump with a registered migration step, a no-op one for an additive change. What survives below unchanged: `rubricator` declares an explicit set, emits the lowest version that expresses the document, and vendors pinned copies. Read "MAJOR" below as "a version" and the MINOR clause as superseded.
 
 - **`comparanda` publishes versions; `rubricator` declares a set.**
 - Version is `MAJOR.MINOR`. **MAJOR** = anything a v(N-1) reader cannot load without migrating —

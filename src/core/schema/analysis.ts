@@ -41,7 +41,7 @@ import { Rendition, validateEvidence, type EvidenceRuleId } from './evidence.js'
 export const SCHEMA_VERSION = 1;
 
 /** The question being decided. One per analysis. */
-export const Subject = z.object({
+export const Subject = z.strictObject({
   question: z.string(),
   /** What decision this informs, and who is making it. Surfaces the frame. */
   decision: z.optional(z.string()),
@@ -72,15 +72,21 @@ export type Subject = z.infer<typeof Subject>;
  * Encodings are *not* here. An encoding is derived and belongs to the view
  * (ADR-0003); storing one would mean persisting computed data.
  */
-export const MeasureDeclaration = z.object({
+export const MeasureDeclaration = z.strictObject({
   name: z.string(),
   label: z.optional(z.string()),
   description: z.optional(z.string()),
 });
 export type MeasureDeclaration = z.infer<typeof MeasureDeclaration>;
 
-export const Analysis = z.object({
-  schemaVersion: z._default(z.number(), SCHEMA_VERSION),
+export const Analysis = z.strictObject({
+  /**
+   * Exactly this build's version: the v1 artifact says `const: 1`, so a
+   * generic validator refuses a 0, a 0.5 or a 2 as zod does (#57). An earlier
+   * document is brought here by `migrate` before it is parsed; a later one is
+   * refused by `validateAnalysis` with the version rule, not a shape dump.
+   */
+  schemaVersion: z._default(z.literal(SCHEMA_VERSION), SCHEMA_VERSION),
   id: z.string(),
   subject: Subject,
   title: z.optional(z.string()),
@@ -297,11 +303,51 @@ export function validateAnalysis(
     includeCompleteness?: boolean;
   } = {},
 ): ValidationResult {
-  const parsed = Analysis.safeParse(input);
+  // Read before parsing: the shape pins `schemaVersion` to this build's
+  // version, and a document from another version deserves to be told which,
+  // not handed a shape error. The rest of the document is still checked, as
+  // if it were at this version, so one pass reports everything.
+  const early: ValidationProblem[] = [];
+  const rawVersion = (input as { schemaVersion?: unknown } | null)?.schemaVersion;
+  let toParse = input;
+  if (rawVersion !== undefined && rawVersion !== SCHEMA_VERSION && input && typeof input === 'object') {
+    const later = typeof rawVersion === 'number' && Number.isInteger(rawVersion) && rawVersion > SCHEMA_VERSION;
+    early.push({
+      path: 'schemaVersion',
+      message: citeRule(
+        later
+          ? `document is version ${rawVersion}; this build reads up to ${SCHEMA_VERSION}`
+          : `document declares schemaVersion ${JSON.stringify(rawVersion)}, which is not a version this build can read or migrate`,
+        'schema-version-readable',
+      ),
+      severity: 'error', family: 'schema', ruleId: 'schema-version-readable',
+      adr: RULE_SOURCES['schema-version-readable'],
+      fix: later
+        ? 'upgrade the reader, or ask the producer to emit an earlier schema version.'
+        : 'migrate an earlier document with `migrate` before validating it; a version is a positive integer.',
+    });
+    toParse = { ...(input as object), schemaVersion: SCHEMA_VERSION };
+  }
+
+  // An own `__proto__` key (which JSON.parse creates) is one zod accepts and
+  // drops while a generic validator refuses it: the silent load-then-save loss
+  // the closed shape exists to prevent, in a corner (#57 review).
+  const protoAt = ownProtoPath(input);
+  if (protoAt !== undefined) {
+    early.push({
+      path: protoAt,
+      message: citeRule('a "__proto__" key is not a field of any schema object', 'schema-shape'),
+      severity: 'error', family: 'schema', ruleId: 'schema-shape',
+      adr: RULE_SOURCES['schema-shape'],
+      fix: 'remove the key.',
+    });
+  }
+
+  const parsed = Analysis.safeParse(toParse);
   if (!parsed.success) {
     return {
       ok: false,
-      problems: parsed.error.issues.map((i) => ({
+      problems: [...early, ...parsed.error.issues.map((i) => ({
         path: i.path.join('.') || '(root)',
         message: citeRule(i.message, 'schema-shape'),
         severity: 'error' as const,
@@ -309,13 +355,13 @@ export function validateAnalysis(
         ruleId: 'schema-shape',
         adr: RULE_SOURCES['schema-shape'],
         fix: 'correct the value at this path to the type the schema declares.',
-      })),
+      }))],
     };
   }
 
   const a = parsed.data;
   const vocabulary = vocabularyOf(a);
-  const problems: ValidationProblem[] = [];
+  const problems: ValidationProblem[] = [...early];
 
   /** An honesty failure. Always an error; there is no switch. */
   const honesty = (ruleId: RuleId, path: string, message: string, fix: string) =>
@@ -349,13 +395,6 @@ export function validateAnalysis(
       ruleId, adr: RULE_SOURCES[ruleId], fix,
     });
 
-  if (a.schemaVersion > SCHEMA_VERSION) {
-    err(
-      'schema-version-readable', 'schemaVersion',
-      `document is version ${a.schemaVersion}; this build reads up to ${SCHEMA_VERSION}`,
-      'upgrade the reader, or ask the producer to emit an earlier schema version.',
-    );
-  }
 
   // Read from the input, not the parse: parsing fills the missing half of a
   // pair with its default, and the half-pair is then invisible.
@@ -689,6 +728,29 @@ export function validateAnalysis(
     }
   });
 
+  // A suggestion proposes an assertion "as it would be written if accepted"
+  // (#57): held to the same two rules as a stored one, so accepting it cannot
+  // write a bare null or an off-scale value.
+  a.suggestions.forEach((sg, i) => {
+    const p = sg.proposed;
+    const at = `suggestions[${i}].proposed`;
+    if ((p.value !== undefined) === (p.missing !== undefined)) {
+      err('no-bare-null', at,
+        p.value !== undefined
+          ? 'a proposed assertion carries a value and a missing reason; exactly one is required'
+          : 'a proposed assertion carries neither a value nor a missing reason. No bare nulls: every absence names why.',
+        'propose a value, or a missing code with its reason.');
+    }
+    const crit = sg.anchor.criterionId === undefined ? undefined : a.criteria.find((c) => c.id === sg.anchor.criterionId);
+    const m = crit && sg.anchor.measure !== undefined ? measurementFor(crit, sg.anchor.measure) : undefined;
+    const reason = m && p.value !== undefined ? valueRefusal(m, p.value) : undefined;
+    if (reason !== undefined) {
+      err('value-admitted', `${at}.value`,
+        `the proposed value is not one the "${sg.anchor.measure}" measurement of criterion "${sg.anchor.criterionId}" admits: ${reason}`,
+        'propose a value the measurement declares.');
+    }
+  });
+
   // Groups belong to one axis, and nest as a tree (ADR-0008, the `labels`
   // profile). A row tagged with the other axis's group, or a block naming one,
   // is silently ignored by every reader -- which is why it is refused here.
@@ -816,6 +878,23 @@ export function validateAnalysis(
     ? { ok: true, analysis: a, problems }
     : { ok: false, problems };
 }
+
+/**
+ * The JSON path of the first own `__proto__` key in a parsed-JSON value, if any.
+ * Open maps (`params`, anchor `levels`, `measurements`) are skipped: there the
+ * artifact accepts any key, and refusing one would disagree with it the other way.
+ */
+function ownProtoPath(v: unknown, at = '', key = ''): string | undefined {
+  if (!v || typeof v !== 'object' || OPEN_MAPS.has(key)) return undefined;
+  if (Object.prototype.hasOwnProperty.call(v, '__proto__')) return `${at}${at ? '.' : ''}__proto__`;
+  for (const [k, x] of Object.entries(v)) {
+    const found = ownProtoPath(x, `${at}${at ? '.' : ''}${k}`, k);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+const OPEN_MAPS = new Set(['params', 'levels', 'measurements']);
 
 /**
  * The identity of a cell, as one string.

@@ -158,3 +158,8 @@ added `Criterion.missingCodes`.
 **Clause 4 of the amendment above stands unchanged**: key parity is not semantic parity, both
 repositories can register a `lower-median` and disagree about ties, and only golden fixtures through
 both implementations would catch that.
+
+### 2026-10-12 — v1 is frozen, and the shape is closed
+
+Schema v1 froze on this date (#57; `docs/schema-v1.md`). One decision the original text never made had to be made for the freeze: **what a v1 reader does with a key the schema does not name.** Until now zod stripped it silently and the artifact accepted it, so a renamed field validated in an old document and was dropped on load-then-save (#165). The shape is now **closed** in both places — `strictObject` in the schema source, `additionalProperties: false` in the emitted artifact — and extension goes through the declared vocabularies, which already carry `broader` for exactly this. Closing is the reversible direction: opening later keeps every stored document valid, closing later would not. The decision and its alternatives are recorded in #167.
+

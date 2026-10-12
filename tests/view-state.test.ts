@@ -51,8 +51,10 @@ describe('the shape (#53)', () => {
 
   it('keeps selection here and has no place for it in the analysis document', () => {
     expect(Object.keys(ViewState.shape)).toContain('selection');
-    const parsed = Analysis.parse({ ...raw(), selection: { alternatives: ['lisbon'] } });
-    expect(Object.keys(parsed)).not.toContain('selection');
+    // The schema is closed (schema v1, docs/schema-v1.md): a document carrying
+    // view state is refused, not quietly stripped.
+    expect(Analysis.safeParse({ ...raw(), selection: { alternatives: ['lisbon'] } }).success).toBe(false);
+    expect(Object.keys(Analysis.parse(raw()))).not.toContain('selection');
   });
 
   it('is versioned and migrated on its own chain, apart from the document', () => {
