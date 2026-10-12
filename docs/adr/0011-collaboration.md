@@ -366,4 +366,6 @@ Clause 5 says that where "the analysis is locked, an edit becomes a *proposal*",
 - **Changing the lock** is how a lock ends. A lock that refused its own removal would be permanent.
 - **Deciding a suggestion** is the owner's half of suggestion mode ("an owner accepts or declines"). A lock that refused it would make every suggestion on a locked analysis undecidable.
 
+**A lock is a declaration, not a safeguard.** With no host — a standalone file — anyone holding the document may unlock it and then edit, exactly as they could edit the JSON by hand. What a lock buys is that nobody edits a locked analysis *by accident*, and that unlocking is a deliberate, recorded act. Protection against a person is the host's, and only the host's.
+
 Who may do any of these is the host's question (ADR-0012), asked through `authorize` with the edit named and, where known, its target. It is not the lock's question. Whether the backend accepts the write at all is the provider's capability (ADR-0006 clause 3), asked first. `editAffordances` in `comparanda/store` composes the three in that order, and is the only reading of editability the view may use (boundary rule `view-edits-through-store`).

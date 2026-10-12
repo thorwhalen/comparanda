@@ -76,7 +76,12 @@ export interface DocumentEditRequest {
   action: 'comment' | 'revise' | 'change-lock' | 'decide-suggestion';
   doing: string;
   target?: EditTarget;
+  /** On `decide-suggestion` only: which way. */
+  decision?: SuggestionDecision;
 }
+
+/** Accepting writes the proposed assertion into its cell; declining writes only the suggestion's status. */
+export type SuggestionDecision = 'accept' | 'decline';
 
 /** What a host is asked to authorise. */
 export type EditRequest = CellEditRequest | DocumentEditRequest;
@@ -179,8 +184,13 @@ export interface Affordances {
   revise(doing: string, target?: EditTarget): Affordance;
   /** Whether the analysis may be locked or unlocked. A lock never refuses its own removal. */
   changeLock(): Affordance;
-  /** Whether this suggestion may be accepted or declined: it must exist and still be open. */
-  decideSuggestion(suggestionId: string): Affordance;
+  /**
+   * Whether this suggestion may be accepted or declined. Either way it must
+   * exist and still be open. Accepting writes its assertion into the anchored
+   * cell, so that cell must exist to be written and must not be read-only; a
+   * lock does not refuse it (`documentPolicy`).
+   */
+  decideSuggestion(suggestionId: string, decision: SuggestionDecision): Affordance;
 }
 
 /**
@@ -295,12 +305,25 @@ export function makeAffordances(
       const doing = a.locked ? 'unlocking the analysis' : 'locking the analysis';
       return withHost(documentRequest('change-lock', doing, { kind: 'analysis' }), documentPolicy(a, 'change-lock'));
     },
-    decideSuggestion(suggestionId) {
+    decideSuggestion(suggestionId, decision) {
       const s = a.suggestions.find((x) => x.id === suggestionId);
-      const own = !s ? refuse(`there is no suggestion "${suggestionId}" in this analysis.`)
-        : s.status !== 'open' ? refuse(`this suggestion has already been ${s.status}; it cannot be decided again.`)
-          : documentPolicy(a, 'decide-suggestion');
-      return withHost(documentRequest('decide-suggestion', 'deciding a suggestion', { kind: 'suggestion', id: suggestionId }), own);
+      const own = (): Affordance => {
+        if (!s) return refuse(`there is no suggestion "${suggestionId}" in this analysis.`);
+        if (s.status !== 'open') return refuse(`this suggestion has already been ${s.status}; it cannot be decided again.`);
+        if (decision === 'accept') {
+          const { scope, alternativeId: alt, criterionId: crit, measure } = s.anchor;
+          if (scope !== 'cell' || alt === undefined || crit === undefined || measure === undefined) {
+            return refuse('this suggestion is not anchored to one cell, so accepting it has nowhere to write; decline it instead.');
+          }
+          const st = structural(alt, crit, measure);
+          if (!st.enabled) return st;
+          if (cellAt(alt, crit, measure)?.readOnly) return refuse('the cell this suggestion targets is declared read-only in the analysis; decline it instead.');
+        }
+        return documentPolicy(a, 'decide-suggestion');
+      };
+      const request = documentRequest('decide-suggestion', `${decision === 'accept' ? 'accepting' : 'declining'} a suggestion`,
+        { kind: 'suggestion', id: suggestionId });
+      return withHost({ ...request, decision }, own());
     },
   };
 }

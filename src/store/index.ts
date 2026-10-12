@@ -184,7 +184,9 @@ export function editAffordances(
       return gated(phrase, () => doc.revise(phrase, target));
     },
     changeLock: () => gated(analysis.locked ? 'unlocking the analysis' : 'locking the analysis', () => doc.changeLock()),
-    decideSuggestion: (id) => gated('deciding a suggestion', () => doc.decideSuggestion(id)),
+    decideSuggestion: (id, decision) => gated(
+      `${decision === 'accept' ? 'accepting' : 'declining'} a suggestion`, () => doc.decideSuggestion(id, decision),
+    ),
   };
   return { ...doc, ...writes };
 }
@@ -235,12 +237,21 @@ const rethrowLater = (error: unknown): void => queueMicrotask(() => { throw erro
  *
  * `update` may not change the item's `id`: a one-item provider holds one
  * document, and renaming it would orphan every reference to the old id.
+ *
+ * **Nothing reaches the stored document except `update`.** The provider keeps
+ * its own copy of `initial`, and `getOne`, `getList`, `update` and every event
+ * hand out copies -- so a write cannot skip the checks a source puts on
+ * `update` (`inMemoryAnalysisSource`'s `revisionProblems`), nor happen without
+ * an event. `T` must therefore survive `structuredClone`: plain data, as every
+ * schema document is, not class instances or functions. A write whose result
+ * cannot be copied is refused before anything is stored.
  */
 export function oneItemProvider<T extends { id: string }>(
   initial: T,
   { canUpdate = true, onSubscriberError = rethrowLater }: OneItemProviderOptions = {},
 ): DataProvider<T> {
-  let current = initial;
+  let current = structuredClone(initial);
+  const copy = (): T => structuredClone(current);
   const listeners = new Set<(event: DataChangeEvent<T>) => void>();
   const pending: T[] = [];
   let draining = false;
@@ -248,7 +259,8 @@ export function oneItemProvider<T extends { id: string }>(
     try { onSubscriberError(error); } catch (secondary) { rethrowLater(error); rethrowLater(secondary); }
   };
   const notify = (item: T) => {
-    pending.push(structuredClone(item));
+    if (listeners.size === 0) return;
+    pending.push(item); // already a private copy: `current` is replaced, never mutated
     if (draining) return; // a subscriber wrote: its event follows this one, in order
     draining = true;
     try {
@@ -267,10 +279,10 @@ export function oneItemProvider<T extends { id: string }>(
     throw new Error(`a one-item provider cannot ${what}; it holds exactly one document ("${current.id}").`);
   };
   return {
-    getList: async () => ({ data: [current], total: 1 }),
+    getList: async () => ({ data: [copy()], total: 1 }),
     getOne: async (id: string) => {
       if (id !== current.id) throw new Error(`no item with id "${id}"; this provider holds "${current.id}".`);
-      return current;
+      return copy();
     },
     create: refuse('create'),
     update: async (id: string, data: Partial<T>) => {
@@ -279,9 +291,13 @@ export function oneItemProvider<T extends { id: string }>(
       if ('id' in data && data.id !== current.id) {
         throw new Error(`a one-item provider cannot change its document's id ("${current.id}" to "${String(data.id)}").`);
       }
-      current = { ...current, ...data };
-      notify(current);
-      return current;
+      // Copied before it is stored: a value that cannot be copied is refused
+      // with nothing changed, and nobody holds a reference into the store.
+      const written = structuredClone({ ...current, ...data });
+      current = written;
+      notify(written);
+      // This write, not whatever a subscriber wrote while being told about it.
+      return structuredClone(written);
     },
     subscribe: (listener) => {
       listeners.add(listener);

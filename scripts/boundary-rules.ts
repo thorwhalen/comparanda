@@ -195,9 +195,15 @@ export function sourceViolations(file: string, text: string): Violation[] {
   if (inView) {
     // From the parse tree, not stripped text: a call inside a template literal,
     // or after a regex literal holding a quote, is invisible to a text scan.
+    // Not caught, and not worth an evaluator: a computed member
+    // (`core['makeAffordances']`) and a wrapper defined outside src/view. The
+    // rule stops the natural mistake; review stops the contrived one.
     const blind = new Set<string>(PROVIDER_BLIND);
     sf.forEachChild(function walk(n) {
-      if (ts.isIdentifier(n) && blind.has(n.text)) {
+      // A property key that merely shares the name ({ cellPolicy: 'Cell policy' }) is not a use.
+      const isKey = n.parent !== undefined && (ts.isPropertyAssignment(n.parent) || ts.isPropertySignature(n.parent) ||
+        ts.isPropertyDeclaration(n.parent) || ts.isMethodDeclaration(n.parent)) && n.parent.name === n;
+      if (ts.isIdentifier(n) && blind.has(n.text) && !isKey) {
         add(lineOf(n), `view-edits-through-store (${n.text})`, `${n.text} in view code: ${PROVIDER_BLIND_WHY}`);
       }
       n.forEachChild(walk);

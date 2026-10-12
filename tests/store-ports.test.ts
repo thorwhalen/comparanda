@@ -8,6 +8,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Analysis } from '../src/core/schema/analysis.js';
+import { tombstone } from '../src/core/schema/anchors.js';
 import { makeAffordances, WRITE_AFFORDANCES, type Affordance, type Affordances } from '../src/core/affordances.js';
 import {
   affordanceOf, anonymousIdentity, capabilitiesOf, cellAffordanceOf, editAffordances, embeddedEvidenceResolver,
@@ -173,7 +174,7 @@ describe('editAffordances: what the view reads, every write gated on getCapabili
     comment: (aff) => aff.comment(),
     revise: (aff) => aff.revise('renaming a criterion', { kind: 'criterion', id: 'rent' }),
     changeLock: (aff) => aff.changeLock(),
-    decideSuggestion: (aff) => aff.decideSuggestion('sg-day-tai'),
+    decideSuggestion: (aff) => aff.decideSuggestion('sg-day-tai', 'accept'),
   };
 
   it('flipping canUpdate disables every write the view can offer, each with a stated reason', () => {
@@ -233,7 +234,7 @@ describe('editAffordances: what the view reads, every write gated on getCapabili
     expect(open.suggest('lisbon', 'rent', 'score').enabled).toBe(true);
     expect(open.comment()).toEqual({ enabled: false, reason: 'you are not authorised to do this here.' });
     expect(open.changeLock().enabled).toBe(true);
-    expect(open.decideSuggestion('sg-day-tai').enabled).toBe(true);
+    expect(open.decideSuggestion('sg-day-tai', 'accept').enabled).toBe(true);
     expect(asked).toEqual(['suggest', 'comment', 'change-lock', 'decide-suggestion']);
     // A frozen source answers before either, with its own reason.
     asked.length = 0;
@@ -267,8 +268,27 @@ describe('editAffordances: what the view reads, every write gated on getCapabili
   it('decides only a suggestion that exists and is still open', () => {
     const a = relocation();
     const decided = { ...a, suggestions: a.suggestions.map((s) => ({ ...s, status: 'accepted' as const })) };
-    expect(editAffordances(inMemoryAnalysisSource(a), a).decideSuggestion('nope').reason).toMatch(/no suggestion "nope"/);
-    expect(editAffordances(inMemoryAnalysisSource(decided), decided).decideSuggestion('sg-day-tai').reason).toMatch(/already been accepted/);
+    expect(editAffordances(inMemoryAnalysisSource(a), a).decideSuggestion('nope', 'decline').reason).toMatch(/no suggestion "nope"/);
+    expect(editAffordances(inMemoryAnalysisSource(decided), decided).decideSuggestion('sg-day-tai', 'decline').reason)
+      .toMatch(/already been accepted/);
+  });
+
+  it('offers accepting a suggestion only where its assertion could be written; declining stays open', () => {
+    const a = relocation();
+    const asked: unknown[] = [];
+    const deleted = tombstone(a, { kind: 'alternative', id: 'taipei' });
+    const ro = { ...a, cells: a.cells.map((c) => (c.alternativeId === 'taipei' && c.criterionId === 'winter-daylight' ? { ...c, readOnly: true } : c)) };
+    for (const [doc, why] of [[deleted, /has been deleted/], [ro, /read-only in the analysis; decline it instead/]] as const) {
+      const aff = editAffordances(inMemoryAnalysisSource(doc), doc, { authorize: (r) => { asked.push(r); return true; } });
+      expect(aff.decideSuggestion('sg-day-tai', 'accept').reason).toMatch(why);
+      expect(aff.decideSuggestion('sg-day-tai', 'decline')).toEqual({ enabled: true });
+    }
+    // The host is told which way, and about what.
+    expect(asked).toContainEqual({
+      action: 'decide-suggestion', doing: 'declining a suggestion', target: { kind: 'suggestion', id: 'sg-day-tai' }, decision: 'decline',
+    });
+    const frozen = editAffordances(inMemoryAnalysisSource(a, { canUpdate: false }), a);
+    expect(frozen.decideSuggestion('sg-day-tai', 'decline').reason).toBe('this source does not accept updates, so declining a suggestion is not possible here.');
   });
 });
 
@@ -332,6 +352,39 @@ describe('subscribe: the analysis source is load-and-subscribe (ADR-0013, ADR-00
     stopB = p.subscribe!(() => heard.push('B'));
     await p.update('doc', { n: 1 });
     expect(heard).toEqual(['A']);
+  });
+
+  it('lets nothing but update reach the stored document', async () => {
+    const initial = { id: 'doc', n: 0 };
+    const p = oneItemProvider(initial);
+    initial.n = 5;
+    expect((await p.getOne('doc')).n).toBe(0);
+    (await p.getOne('doc')).n = 6;
+    (await p.getList({})).data[0]!.n = 7;
+    (await p.update('doc', { n: 1 })).n = 777;
+    expect((await p.getOne('doc')).n).toBe(1);
+  });
+
+  it('refuses, with nothing stored, a write it cannot copy', async () => {
+    const p = oneItemProvider<{ id: string; n: unknown }>({ id: 'doc', n: 0 });
+    await expect(p.update('doc', { n: () => 1 })).rejects.toThrow();
+    expect((await p.getOne('doc')).n).toBe(0);
+  });
+
+  it('returns the caller\'s own write, not one a subscriber made while being told', async () => {
+    const p = oneItemProvider({ id: 'doc', n: 0 });
+    p.subscribe!((e) => { if (e.type === 'updated' && e.item.n === 1) void p.update('doc', { n: 2 }); });
+    expect((await p.update('doc', { n: 1 })).n).toBe(1);
+    expect((await p.getOne('doc')).n).toBe(2);
+  });
+
+  it('copies real analyses faithfully', async () => {
+    const a = relocation();
+    const source = inMemoryAnalysisSource(a);
+    const back = await source.getOne(a.id);
+    expect(back).toEqual(a);
+    expect(back).not.toBe(a);
+    expect(Analysis.safeParse(back).success).toBe(true);
   });
 
   it('refuses to change the document\'s id', async () => {

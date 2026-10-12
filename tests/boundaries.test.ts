@@ -136,6 +136,7 @@ describe('each rule catches its deliberately violating fixture', () => {
       ['src/view/matrix.ts', "import { editAffordances } from '../store/index.js';"],
       ['src/view/matrix.ts', '// never call makeAffordances here'],
       ['src/view/matrix.ts', 'const makeAffordancesLater = 1;'],
+      ['src/view/matrix.ts', "const labels = { cellPolicy: 'Cell policy' };"],
       ['src/store/index.ts', "import { makeAffordances } from '../core/affordances.js';"],
       ['src/core/analyses/a.ts', 'const p = cellPolicy(a, c);'],
     ] as const) {
