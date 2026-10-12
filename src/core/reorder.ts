@@ -43,6 +43,7 @@
  */
 import type { Analysis } from './schema/analysis.js';
 import type { Axis } from './schema/groups.js';
+import { aliasesOf } from './schema/structure.js';
 import type { ViewState } from './view-state.js';
 
 /** Which gesture asked for a move. Carried for logging; never part of the sentence. */
@@ -320,15 +321,15 @@ function labelsOf(a: Analysis, axis: Axis): Map<string, string> {
 }
 
 function singularNoun(a: Analysis, axis: Axis): string {
-  const al = a.aliases;
-  const word = axis === 'alternatives' ? al?.alternative ?? 'alternative' : al?.criterion ?? 'criterion';
+  const al = aliasesOf(a);
+  const word = axis === 'alternatives' ? al.alternative : al.criterion;
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
 /** The plural in the analysis's own vocabulary, for counts a numeral alone would leave bare. */
 function pluralNoun(a: Analysis, axis: Axis): string {
-  const al = a.aliases;
-  return axis === 'alternatives' ? al?.alternatives ?? 'alternatives' : al?.criteria ?? 'criteria';
+  const al = aliasesOf(a);
+  return axis === 'alternatives' ? al.alternatives : al.criteria;
 }
 
 /**

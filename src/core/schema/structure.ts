@@ -214,11 +214,30 @@ export const InapplicableBlock = z.object({
 });
 export type InapplicableBlock = z.infer<typeof InapplicableBlock>;
 
-/** Per-analysis display aliases. Never hard-code the internal words into a UI. */
+/**
+ * Per-analysis display aliases. Never hard-code the internal words into a UI.
+ *
+ * Alternatives display as **"options"** by default (ADR-0003 amendment,
+ * decision 2): user-facing material says *options*, specialist material says
+ * *alternatives*, and the internal name never changes. Criteria keep their own
+ * name, which is already the word users say.
+ */
 export const Aliases = z.object({
-  alternative: z._default(z.string(), 'alternative'),
-  alternatives: z._default(z.string(), 'alternatives'),
+  alternative: z._default(z.string(), 'option'),
+  alternatives: z._default(z.string(), 'options'),
   criterion: z._default(z.string(), 'criterion'),
   criteria: z._default(z.string(), 'criteria'),
 });
 export type Aliases = z.infer<typeof Aliases>;
+
+/**
+ * The display aliases in force: the analysis's own, else the defaults.
+ *
+ * The one place a fallback word comes from. Readers that wrote
+ * `aliases?.alternative ?? 'alternative'` each carried their own copy of the
+ * default, and the copies disagreed with the schema once the default became
+ * "options".
+ */
+export function aliasesOf(a: { aliases?: Aliases | undefined }): Aliases {
+  return a.aliases ?? Aliases.parse({});
+}

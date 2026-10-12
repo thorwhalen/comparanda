@@ -51,11 +51,11 @@
       "type": "object",
       "properties": {
         "alternative": {
-          "default": "alternative",
+          "default": "option",
           "type": "string"
         },
         "alternatives": {
-          "default": "alternatives",
+          "default": "options",
           "type": "string"
         },
         "criterion": {

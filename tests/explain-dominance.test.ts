@@ -231,7 +231,7 @@ describe('the basis in words', () => {
   it('counts the basis, the alternatives and the exclusions, with their reasons', () => {
     const a = build([ranked('r1'), ranked('r2'), nominal('n1'), nominal('n2'), unranged('u1')], 12);
     expect(dominance(a, { measure: 'score' }).basisDescription).toBe(
-      'computed over the 2 criteria that admit a dominance comparison, across 12 alternatives; ' +
+      'computed over the 2 criteria that admit a dominance comparison, across 12 options; ' +
       '3 criteria excluded: 2 nominal, 1 with no declared range.',
     );
   });
@@ -239,14 +239,14 @@ describe('the basis in words', () => {
   it('uses the singular for one', () => {
     const a = build([ranked('r1'), nominal('n1')], 1);
     expect(dominance(a, { measure: 'score' }).basisDescription).toBe(
-      'computed over the 1 criterion that admits a dominance comparison, across 1 alternative; ' +
+      'computed over the 1 criterion that admits a dominance comparison, across 1 option; ' +
       '1 criterion excluded: 1 nominal.',
     );
   });
 
   it('says so when nothing can be compared', () => {
     const a = build([nominal('n1')], 3);
-    expect(dominance(a, { measure: 'score' }).basisDescription).toMatch(/^no criterion admits a dominance comparison, across 3 alternatives/);
+    expect(dominance(a, { measure: 'score' }).basisDescription).toMatch(/^no criterion admits a dominance comparison, across 3 options/);
   });
 
   it('uses the analysis\'s display aliases', () => {
