@@ -245,6 +245,10 @@ const rethrowLater = (error: unknown): void => queueMicrotask(() => { throw erro
  * an event. `T` must therefore survive `structuredClone`: plain data, as every
  * schema document is, not class instances or functions. A write whose result
  * cannot be copied is refused before anything is stored.
+ *
+ * The copies cost about 15 ms each on a 5 MB analysis, a handful per write:
+ * nothing at cell-by-cell editing speed. If a profile ever says otherwise,
+ * frozen objects are the replacement, at the same boundary.
  */
 export function oneItemProvider<T extends { id: string }>(
   initial: T,
@@ -326,20 +330,32 @@ export function oneItemProvider<T extends { id: string }>(
  * (#165). The write path is where a silent rewrite has to stop, because once
  * stored, nothing in the document says it happened. An error already in the
  * document does not block an unrelated write; warnings never block.
+ *
+ * Writes are **serialised**: each is checked against the document every
+ * earlier write produced, so two writes issued together cannot both pass a
+ * check that either would fail after the other (tombstoning a group while
+ * attaching an alternative to it). That is ordering within one provider, not
+ * ADR-0011 clause 6's versioned writes between contributors.
  */
 export function inMemoryAnalysisSource(analysis: Analysis, options?: OneItemProviderOptions): AnalysisSource {
   const inner = oneItemProvider(analysis, options);
+  let queue: Promise<unknown> = Promise.resolve();
+  const checkedUpdate = async (id: string, data: Partial<Analysis>) => {
+    const before = await inner.getOne(id);
+    const problems = revisionProblems(before, { ...before, ...data });
+    if (problems.length) {
+      throw new Error(
+        'refused: ' + problems.map((p) => `${p.path}: ${p.message} Fix: ${p.fix}`).join(' | '),
+      );
+    }
+    return inner.update(id, data);
+  };
   return {
     ...inner,
-    update: async (id: string, data: Partial<Analysis>) => {
-      const before = await inner.getOne(id);
-      const problems = revisionProblems(before, { ...before, ...data });
-      if (problems.length) {
-        throw new Error(
-          'refused: ' + problems.map((p) => `${p.path}: ${p.message} Fix: ${p.fix}`).join(' | '),
-        );
-      }
-      return inner.update(id, data);
+    update: (id: string, data: Partial<Analysis>) => {
+      const result = queue.then(() => checkedUpdate(id, data));
+      queue = result.catch(() => undefined); // a refused write does not block the next
+      return result;
     },
   };
 }

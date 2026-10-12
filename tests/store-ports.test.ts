@@ -287,6 +287,18 @@ describe('editAffordances: what the view reads, every write gated on getCapabili
     expect(asked).toContainEqual({
       action: 'decide-suggestion', doing: 'declining a suggestion', target: { kind: 'suggestion', id: 'sg-day-tai' }, decision: 'decline',
     });
+    // Accepting is a write to the anchored cell, and the host sees that cell.
+    asked.length = 0;
+    editAffordances(inMemoryAnalysisSource(a), a, { authorize: (r) => { asked.push(r); return true; } })
+      .decideSuggestion('sg-day-tai', 'accept');
+    expect(asked).toEqual([{
+      action: 'decide-suggestion', doing: 'accepting a suggestion', target: { kind: 'suggestion', id: 'sg-day-tai' },
+      decision: 'accept', cell: { alternativeId: 'taipei', criterionId: 'winter-daylight', measure: 'score' },
+    }]);
+    expect(() => editAffordances(inMemoryAnalysisSource(a), a).decideSuggestion('sg-day-tai', 'acept' as never)).toThrow(/"accept" or "decline"/);
+    const noMeasure = { ...a, suggestions: a.suggestions.map((sg) => ({ ...sg, anchor: { ...sg.anchor, measure: undefined } })) };
+    expect(editAffordances(inMemoryAnalysisSource(noMeasure as never), noMeasure as never).decideSuggestion('sg-day-tai', 'accept').reason)
+      .toMatch(/not the measure it scores/);
     const frozen = editAffordances(inMemoryAnalysisSource(a, { canUpdate: false }), a);
     expect(frozen.decideSuggestion('sg-day-tai', 'decline').reason).toBe('this source does not accept updates, so declining a suggestion is not possible here.');
   });
@@ -352,6 +364,24 @@ describe('subscribe: the analysis source is load-and-subscribe (ADR-0013, ADR-00
     stopB = p.subscribe!(() => heard.push('B'));
     await p.update('doc', { n: 1 });
     expect(heard).toEqual(['A']);
+  });
+
+  it('checks writes issued together one after another, so neither slips past the other', async () => {
+    const a = relocation();
+    const gone = tombstone(a, { kind: 'group', id: 'g-americas' }, { reopensInapplicable: true });
+    const source = inMemoryAnalysisSource(a);
+    const [tomb, attach] = await Promise.allSettled([
+      source.update(a.id, { groups: gone.groups, inapplicable: gone.inapplicable }),
+      source.update(a.id, {
+        alternatives: a.alternatives.map((x) => (x.id === 'lisbon' ? { ...x, groupIds: [...(x.groupIds ?? []), 'g-americas'] } : x)),
+      }),
+    ]);
+    expect(tomb.status).toBe('fulfilled');
+    expect(attach.status).toBe('rejected');
+    const after = await source.getOne(a.id);
+    expect(after.alternatives.find((x) => x.id === 'lisbon')!.groupIds).not.toContain('g-americas');
+    // A refused write does not block the next one.
+    expect((await source.update(a.id, { title: 'still writable' })).title).toBe('still writable');
   });
 
   it('lets nothing but update reach the stored document', async () => {

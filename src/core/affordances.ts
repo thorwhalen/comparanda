@@ -78,6 +78,12 @@ export interface DocumentEditRequest {
   target?: EditTarget;
   /** On `decide-suggestion` only: which way. */
   decision?: SuggestionDecision;
+  /**
+   * On accepting a suggestion only: the cell it writes. Accepting is a write to
+   * that cell, so a host that authorises cell by cell sees the same coordinates
+   * it sees for `assert`.
+   */
+  cell?: Omit<CellEditRequest, 'action'>;
 }
 
 /** Accepting writes the proposed assertion into its cell; declining writes only the suggestion's status. */
@@ -306,14 +312,20 @@ export function makeAffordances(
       return withHost(documentRequest('change-lock', doing, { kind: 'analysis' }), documentPolicy(a, 'change-lock'));
     },
     decideSuggestion(suggestionId, decision) {
+      if (decision !== 'accept' && decision !== 'decline') {
+        throw new TypeError(`a suggestion is decided with "accept" or "decline", not ${JSON.stringify(decision)}.`);
+      }
       const s = a.suggestions.find((x) => x.id === suggestionId);
       const own = (): Affordance => {
         if (!s) return refuse(`there is no suggestion "${suggestionId}" in this analysis.`);
         if (s.status !== 'open') return refuse(`this suggestion has already been ${s.status}; it cannot be decided again.`);
         if (decision === 'accept') {
           const { scope, alternativeId: alt, criterionId: crit, measure } = s.anchor;
-          if (scope !== 'cell' || alt === undefined || crit === undefined || measure === undefined) {
+          if (scope !== 'cell' || alt === undefined || crit === undefined) {
             return refuse('this suggestion is not anchored to one cell, so accepting it has nowhere to write; decline it instead.');
+          }
+          if (measure === undefined) {
+            return refuse('this suggestion names its cell but not the measure it scores, so accepting it has nowhere to write; decline it instead.');
           }
           const st = structural(alt, crit, measure);
           if (!st.enabled) return st;
@@ -323,7 +335,10 @@ export function makeAffordances(
       };
       const request = documentRequest('decide-suggestion', `${decision === 'accept' ? 'accepting' : 'declining'} a suggestion`,
         { kind: 'suggestion', id: suggestionId });
-      return withHost({ ...request, decision }, own());
+      const { scope, alternativeId, criterionId, measure } = s?.anchor ?? {};
+      const cell = decision === 'accept' && scope === 'cell' && alternativeId !== undefined &&
+        criterionId !== undefined && measure !== undefined ? { cell: { alternativeId, criterionId, measure } } : {};
+      return withHost({ ...request, decision, ...cell }, own());
     },
   };
 }
