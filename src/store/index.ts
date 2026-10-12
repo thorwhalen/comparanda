@@ -16,10 +16,13 @@
  * **`getCapabilities()` is the only source of truth for what the UI offers**
  * (ADR-0006 clause 3): `affordanceOf()` derives every enable/disable from it and
  * returns the *reason* alongside, so a control is never present and silently
- * inert. `comparanda` invents no parallel read-only flag; the one document-level
- * policy that exists -- `Cell.readOnly` / `Analysis.locked`, which the schema
- * owns (a declaration, not a capability) -- is combined by
- * `cellAffordanceOf()` rather than consulted anywhere else. The capability
+ * inert. `editAffordances()` is what a view reads: the document's affordances
+ * (core's `makeAffordances`), with every write -- the `WRITE_AFFORDANCES` --
+ * gated on the provider first. `comparanda` invents no parallel read-only flag;
+ * the one document-level policy that exists -- `Cell.readOnly` /
+ * `Analysis.locked`, which the schema owns (a declaration, not a capability) --
+ * is read by core's policy functions and meets the capability only here. A
+ * boundary rule keeps the view from reaching the provider-blind ones. The capability
  * report also carries the amendment's load-bearing pair: `multiWriter` may be
  * true only where `perContributorFiles` is, and `writeSafety()` refuses the
  * combination the amendment calls a defect.
@@ -29,18 +32,20 @@
  * `inMemory*` adapters with no network at all.
  */
 import { DEFAULT_CAPABILITIES, createInMemoryProvider } from '@zodal/store';
-import type { DataProvider, ProviderCapabilities } from '@zodal/store';
+import type { DataChangeEvent, DataProvider, ProviderCapabilities } from '@zodal/store';
 
 import type { Analysis } from '../core/schema/analysis.js';
 import { revisionProblems } from '../core/revision.js';
-import { cellPolicy, type Affordance } from '../core/affordances.js';
+import {
+  cellPolicy, makeAffordances, requireDecision, requireDoing, type Affordance, type Affordances, type Authorize, type WriteAffordance,
+} from '../core/affordances.js';
 import type { Cell } from '../core/schema/values.js';
 import type { Author } from '../core/schema/provenance.js';
 import {
   checkStanding, verdictFound, type CheckStanding, type EvidenceRef, type Rendition,
 } from '../core/schema/evidence.js';
 
-export type { DataProvider, ProviderCapabilities };
+export type { DataChangeEvent, DataProvider, ProviderCapabilities };
 export { DEFAULT_CAPABILITIES, createInMemoryProvider };
 
 /** The analysis, as a degenerate one-item provider (ADR-0006 amendment, clause 2). */
@@ -120,19 +125,76 @@ export type EditAction = keyof typeof ACTION_CAPABILITY;
 export function affordanceOf(
   provider: Pick<DataProvider<unknown>, 'getCapabilities'>,
   action: EditAction,
-  { what = 'this' }: { what?: string } = {},
+  { what = 'this', doing }: {
+    /** What would be changed: "this cell cannot be updated here". */
+    what?: string;
+    /** The edit, as a gerund phrase, when that reads better: "commenting is not possible here". Blank falls back to `what`. */
+    doing?: string;
+  } = {},
 ): Affordance {
   const caps = capabilitiesOf(provider);
   if (caps[ACTION_CAPABILITY[action]]) return { enabled: true };
+  const refused = `this source does not accept ${action === 'create' ? 'new items' : `${action}s`}`;
   return {
     enabled: false,
-    reason: `this source does not accept ${action === 'create' ? 'new items' : `${action}s`}, so ${what} cannot be ${action === 'create' ? 'added' : `${action}d`} here.`,
+    reason: doing === undefined || doing.trim() === ''
+      ? `${refused}, so ${what} cannot be ${action === 'create' ? 'added' : `${action}d`} here.`
+      : `${refused}, so ${doing} is not possible here.`,
   };
 }
 
 /**
+ * What a view reads to decide what it offers: the document's affordances, with
+ * every write gated on the provider.
+ *
+ * In v1 every edit -- a score, a suggestion, a comment, a revision of the
+ * structure -- is an `update` of the one analysis document (ADR-0006's
+ * 2026-08-22 amendment), so each of the `WRITE_AFFORDANCES` asks `canUpdate`
+ * first and returns the provider's reason when it is refused; only then the
+ * document's policy and the host's `authorize`. The capability is read at
+ * query time, so a provider whose capabilities change is reflected on the next
+ * question. Everything else -- legal values, legal blanks, inapplicable
+ * blocks, screens -- is the document's alone, and passes through.
+ *
+ * When the other ports arrive (saved views, annotations, assertions in their
+ * own providers), the edit that moves gates on *its* provider here, and no view
+ * changes.
+ *
+ * **The document half is a snapshot.** The capability is live; the analysis is
+ * the one passed in. After a write -- a lock toggled, an alternative added --
+ * build a new one from the item `subscribe` delivers, or the answers describe
+ * the document as it was.
+ */
+export function editAffordances(
+  source: Pick<DataProvider<unknown>, 'getCapabilities'>,
+  analysis: Analysis,
+  options: { authorize?: Authorize } = {},
+): Affordances {
+  const doc = makeAffordances(analysis, options);
+  const gated = (doing: string, own: () => Affordance): Affordance => {
+    const fromProvider = affordanceOf(source, 'update', { doing });
+    return fromProvider.enabled ? own() : fromProvider;
+  };
+  const writes: Pick<Affordances, WriteAffordance> = {
+    assert: (alt, crit, measure) => gated('writing to this cell', () => doc.assert(alt, crit, measure)),
+    suggest: (alt, crit, measure) => gated('proposing a suggestion', () => doc.suggest(alt, crit, measure)),
+    comment: (target) => gated('commenting', () => doc.comment(target)),
+    revise: (doing, target) => {
+      const phrase = requireDoing(doing);
+      return gated(phrase, () => doc.revise(phrase, target));
+    },
+    changeLock: () => gated(analysis.locked ? 'unlocking the analysis' : 'locking the analysis', () => doc.changeLock()),
+    decideSuggestion: (id, decision) => gated(
+      `${requireDecision(decision) === 'accept' ? 'accepting' : 'declining'} a suggestion`, () => doc.decideSuggestion(id, decision),
+    ),
+  };
+  return { ...doc, ...writes };
+}
+
+/**
  * The affordance for editing one cell: the provider's capability, and the
- * document's own policy.
+ * document's own policy. The narrow form, with no structural check and no
+ * host; a view reads `editAffordances(...).assert`, which includes both.
  *
  * `Cell.readOnly` and `Analysis.locked` are *declarations in the document*
  * (the schema owns policy, ADR-0004), not a second answer to "can this backend
@@ -148,31 +210,102 @@ export function cellAffordanceOf(
   return cellPolicy(analysis, cell);
 }
 
+export interface OneItemProviderOptions {
+  /** `false` for a frozen source: reported by `getCapabilities`, and `update` refuses. */
+  canUpdate?: boolean;
+  /** Where an error thrown by a subscriber goes. Default: rethrown on a microtask. */
+  onSubscriberError?: (error: unknown) => void;
+}
+
+const rethrowLater = (error: unknown): void => queueMicrotask(() => { throw error; });
+
 /**
  * A one-item provider over a single document, as ADR-0006 clause 2 describes:
- * `getOne` loads it, `update` writes it, and `getList` returns the one item.
- * `create`/`delete` are refused rather than pretended.
+ * `getOne` loads it, `update` writes it, `getList` returns the one item, and
+ * `subscribe` hears every write made through it -- ADR-0013's "load /
+ * subscribe". `create`/`delete` are refused rather than pretended.
+ *
+ * Subscribers hear writes in the order they happened, even when one of them
+ * writes while being notified (events queue, and drain in order); each gets
+ * its own copy of the item, so a subscriber cannot reach into the store; and
+ * one unsubscribed mid-notification hears nothing more. A subscriber that
+ * throws does not undo or fail the write that notified it, nor keep the next
+ * subscriber from hearing it: the write has happened, and the caller is told
+ * so. The error goes to `onSubscriberError`, which by default rethrows it on a
+ * microtask so it is loud rather than swallowed; if that handler throws too,
+ * the default takes over.
+ *
+ * `update` may not change the item's `id`: a one-item provider holds one
+ * document, and renaming it would orphan every reference to the old id.
+ *
+ * **Nothing reaches the stored document except `update`.** The provider keeps
+ * its own copy of `initial`, and `getOne`, `getList`, `update` and every event
+ * hand out copies -- so a write cannot skip the checks a source puts on
+ * `update` (`inMemoryAnalysisSource`'s `revisionProblems`), nor happen without
+ * an event. `T` must therefore survive `structuredClone`: plain data, as every
+ * schema document is, not class instances or functions. A write whose result
+ * cannot be copied is refused before anything is stored.
+ *
+ * The copies cost about 15 ms each on a 5 MB analysis, a handful per write:
+ * nothing at cell-by-cell editing speed. If a profile ever says otherwise,
+ * frozen objects are the replacement, at the same boundary.
  */
 export function oneItemProvider<T extends { id: string }>(
   initial: T,
-  { canUpdate = true }: { canUpdate?: boolean } = {},
+  { canUpdate = true, onSubscriberError = rethrowLater }: OneItemProviderOptions = {},
 ): DataProvider<T> {
-  let current = initial;
+  let current = structuredClone(initial);
+  const copy = (): T => structuredClone(current);
+  const listeners = new Set<(event: DataChangeEvent<T>) => void>();
+  const pending: T[] = [];
+  let draining = false;
+  const report = (error: unknown) => {
+    try { onSubscriberError(error); } catch (secondary) { rethrowLater(error); rethrowLater(secondary); }
+  };
+  const notify = (item: T) => {
+    if (listeners.size === 0) return;
+    pending.push(item); // already a private copy: `current` is replaced, never mutated
+    if (draining) return; // a subscriber wrote: its event follows this one, in order
+    draining = true;
+    try {
+      while (pending.length > 0) {
+        const next = pending.shift()!;
+        for (const listener of [...listeners]) {
+          if (!listeners.has(listener)) continue; // unsubscribed by an earlier subscriber
+          try { listener({ type: 'updated', id: next.id, item: structuredClone(next) }); } catch (error) { report(error); }
+        }
+      }
+    } finally {
+      draining = false;
+    }
+  };
   const refuse = (what: string) => async (): Promise<never> => {
     throw new Error(`a one-item provider cannot ${what}; it holds exactly one document ("${current.id}").`);
   };
   return {
-    getList: async () => ({ data: [current], total: 1 }),
+    getList: async () => ({ data: [copy()], total: 1 }),
     getOne: async (id: string) => {
       if (id !== current.id) throw new Error(`no item with id "${id}"; this provider holds "${current.id}".`);
-      return current;
+      return copy();
     },
     create: refuse('create'),
     update: async (id: string, data: Partial<T>) => {
       if (!canUpdate) throw new Error('this source is read-only.');
       if (id !== current.id) throw new Error(`no item with id "${id}"; this provider holds "${current.id}".`);
-      current = { ...current, ...data };
-      return current;
+      if ('id' in data && data.id !== current.id) {
+        throw new Error(`a one-item provider cannot change its document's id ("${current.id}" to "${String(data.id)}").`);
+      }
+      // Copied before it is stored: a value that cannot be copied is refused
+      // with nothing changed, and nobody holds a reference into the store.
+      const written = structuredClone({ ...current, ...data });
+      current = written;
+      notify(written);
+      // This write, not whatever a subscriber wrote while being told about it.
+      return structuredClone(written);
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
     },
     updateMany: refuse('update many items'),
     delete: refuse('delete'),
@@ -180,6 +313,8 @@ export function oneItemProvider<T extends { id: string }>(
     getCapabilities: () => ({
       ...DEFAULT_CAPABILITIES, canCreate: false, canUpdate, canDelete: false,
       canBulkUpdate: false, canBulkDelete: false, canUpsert: false,
+      // `subscribe` delivers every write made through this provider.
+      realtime: true,
     }),
   };
 }
@@ -195,20 +330,32 @@ export function oneItemProvider<T extends { id: string }>(
  * (#165). The write path is where a silent rewrite has to stop, because once
  * stored, nothing in the document says it happened. An error already in the
  * document does not block an unrelated write; warnings never block.
+ *
+ * Writes are **serialised**: each is checked against the document every
+ * earlier write produced, so two writes issued together cannot both pass a
+ * check that either would fail after the other (tombstoning a group while
+ * attaching an alternative to it). That is ordering within one provider, not
+ * ADR-0011 clause 6's versioned writes between contributors.
  */
-export function inMemoryAnalysisSource(analysis: Analysis, options?: { canUpdate?: boolean }): AnalysisSource {
+export function inMemoryAnalysisSource(analysis: Analysis, options?: OneItemProviderOptions): AnalysisSource {
   const inner = oneItemProvider(analysis, options);
+  let queue: Promise<unknown> = Promise.resolve();
+  const checkedUpdate = async (id: string, data: Partial<Analysis>) => {
+    const before = await inner.getOne(id);
+    const problems = revisionProblems(before, { ...before, ...data });
+    if (problems.length) {
+      throw new Error(
+        'refused: ' + problems.map((p) => `${p.path}: ${p.message} Fix: ${p.fix}`).join(' | '),
+      );
+    }
+    return inner.update(id, data);
+  };
   return {
     ...inner,
-    update: async (id: string, data: Partial<Analysis>) => {
-      const before = await inner.getOne(id);
-      const problems = revisionProblems(before, { ...before, ...data });
-      if (problems.length) {
-        throw new Error(
-          'refused: ' + problems.map((p) => `${p.path}: ${p.message} Fix: ${p.fix}`).join(' | '),
-        );
-      }
-      return inner.update(id, data);
+    update: (id: string, data: Partial<Analysis>) => {
+      const result = queue.then(() => checkedUpdate(id, data));
+      queue = result.catch(() => undefined); // a refused write does not block the next
+      return result;
     },
   };
 }

@@ -73,7 +73,7 @@ describe('editability is the intersection with the host, never a model of its ow
     const aff = makeAffordances(relocation(), {
       authorize: (r) => {
         asked.push(r);
-        return r.alternativeId === 'berlin' ? { enabled: false, reason: 'only the Berlin owner edits Berlin.' } : true;
+        return 'alternativeId' in r && r.alternativeId === 'berlin' ? { enabled: false, reason: 'only the Berlin owner edits Berlin.' } : true;
       },
     });
     expect(aff.assert('lisbon', 'rent', 'score').enabled).toBe(true);
@@ -171,9 +171,18 @@ describe('nothing about rendering or storage is expressible', () => {
     expect(JSON.parse(JSON.stringify(answers))).toEqual(answers);
   });
 
+  it('answers a revision and a comment from the document alone: a lock refuses the first only', () => {
+    const open = makeAffordances(relocation());
+    expect(open.revise('renaming a criterion')).toEqual({ enabled: true });
+    expect(open.comment()).toEqual({ enabled: true });
+    const locked = makeAffordances({ ...relocation(), locked: true });
+    expect(locked.revise('renaming a criterion').reason).toMatch(/locked; propose a suggestion/);
+    expect(locked.comment()).toEqual({ enabled: true });
+  });
+
   it('exposes only policy queries', () => {
     expect(Object.keys(makeAffordances(relocation())).sort()).toEqual(
-      ['assert', 'inapplicable', 'missingCode', 'missingCodes', 'screens', 'suggest', 'value'],
+      ['assert', 'changeLock', 'comment', 'decideSuggestion', 'inapplicable', 'missingCode', 'missingCodes', 'revise', 'screens', 'suggest', 'value'],
     );
   });
 

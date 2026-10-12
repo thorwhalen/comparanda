@@ -23,6 +23,7 @@
 import type { Analysis } from './schema/analysis.js';
 import { vocabularyOf } from './schema/analysis.js';
 import { makeInapplicability } from './schema/groups.js';
+import type { AnchorScope } from './schema/annotations.js';
 import { CORE_MISSING_CODES } from './schema/missingness.js';
 import { valueRefusal, type Measurement, type Preference } from './schema/measurement.js';
 import { measurementFor } from './schema/structure.js';
@@ -37,15 +38,59 @@ export interface Affordance {
 
 const ALLOWED: Affordance = Object.freeze({ enabled: true });
 const refuse = (reason: string): Affordance => ({ enabled: false, reason });
+const LOCKED = 'this analysis is locked; propose a suggestion instead of editing it.';
 
-/** What a host is asked to authorise. Coordinates are opaque ids. */
-export interface EditRequest {
+/** A write to one cell. Coordinates are opaque ids. */
+export interface CellEditRequest {
   /** `assert` writes an assertion; `suggest` proposes one on a locked or read-only cell. */
   action: 'assert' | 'suggest';
   alternativeId: string;
   criterionId: string;
   measure: string;
 }
+
+/**
+ * What a document edit is about, for a host that authorises by object rather
+ * than by wording. The anchor scopes of ADR-0011, plus a suggestion; `id` is
+ * absent for the analysis as a whole.
+ */
+export interface EditTarget {
+  kind: AnchorScope | 'suggestion';
+  id?: string;
+}
+
+/**
+ * A write to the analysis outside any one cell.
+ *
+ * - `comment` starts, answers or resolves a thread.
+ * - `revise` is every other change to what the analysis says -- its
+ *   alternatives, criteria, groups, definitions and declarations.
+ * - `change-lock` locks or unlocks the analysis.
+ * - `decide-suggestion` accepts or declines a suggestion.
+ *
+ * `doing` names the edit as a gerund phrase ("renaming a criterion"), for the
+ * host and for the refusal; `target` says what it is about, when the caller
+ * knows, so a host never has to parse the words.
+ */
+export interface DocumentEditRequest {
+  action: 'comment' | 'revise' | 'change-lock' | 'decide-suggestion';
+  doing: string;
+  target?: EditTarget;
+  /** On `decide-suggestion` only: which way. */
+  decision?: SuggestionDecision;
+  /**
+   * On accepting a suggestion only: the cell it writes. Accepting is a write to
+   * that cell, so a host that authorises cell by cell sees the same coordinates
+   * it sees for `assert`.
+   */
+  cell?: Omit<CellEditRequest, 'action'>;
+}
+
+/** Accepting writes the proposed assertion into its cell; declining writes only the suggestion's status. */
+export type SuggestionDecision = 'accept' | 'decline';
+
+/** What a host is asked to authorise. */
+export type EditRequest = CellEditRequest | DocumentEditRequest;
 
 /**
  * The host's authorisation, injected. Returning `false` refuses with a generic
@@ -62,9 +107,52 @@ export function cellPolicy(
   analysis: Pick<Analysis, 'locked'>,
   cell: Pick<Cell, 'readOnly'> | undefined,
 ): Affordance {
-  if (analysis.locked) return refuse('this analysis is locked; propose a suggestion instead of editing it.');
+  if (analysis.locked) return refuse(LOCKED);
   if (cell?.readOnly) return refuse('this cell is declared read-only in the analysis.');
   return ALLOWED;
+}
+
+/**
+ * The document's own policy on an edit outside a cell (ADR-0011, amendment of
+ * 2026-10-12).
+ *
+ * `Analysis.locked` means the analysis "accepts direct edits, or only
+ * suggestions", so a lock refuses every `revise`. It refuses nothing else:
+ *
+ * - a `comment` changes nothing the analysis asserts, and ADR-0011 clause 5
+ *   exists so that a reviewer can take part in a locked analysis without
+ *   mutating it -- a reviewer who could propose but not say why would be half
+ *   a reviewer;
+ * - `change-lock` is how a lock ends, and a lock that refused its own removal
+ *   would be permanent;
+ * - `decide-suggestion` is the owner's half of suggestion mode -- "an owner
+ *   accepts or declines" -- and a lock that refused it would make every
+ *   suggestion on a locked analysis undecidable.
+ *
+ * Who may do the last two is the host's question (ADR-0012), not the lock's.
+ */
+export function documentPolicy(
+  analysis: Pick<Analysis, 'locked'>,
+  action: DocumentEditRequest['action'],
+): Affordance {
+  if (action === 'revise' && analysis.locked) return refuse(LOCKED);
+  return ALLOWED;
+}
+
+/** A decision is one of two words; anything else is a caller's mistake, said at once rather than read as a decline. */
+export function requireDecision(decision: SuggestionDecision): SuggestionDecision {
+  if (decision !== 'accept' && decision !== 'decline') {
+    throw new TypeError(`a suggestion is decided with "accept" or "decline", not ${JSON.stringify(decision)}.`);
+  }
+  return decision;
+}
+
+/** `doing` is read by people. An empty one is a caller's mistake, and says so at once. */
+export function requireDoing(doing: string): string {
+  if (typeof doing !== 'string' || doing.trim() === '') {
+    throw new TypeError('name the edit as a gerund phrase, e.g. revise("renaming a criterion"); it is what the host and the refusal read.');
+  }
+  return doing.trim();
 }
 
 /** A legal blank on a criterion, with what it means. */
@@ -100,7 +188,35 @@ export interface Affordances {
   inapplicable(alternativeId: string, criterionId: string): boolean;
   /** Every acceptability screen `screen()` applies for this measure. */
   screens(measure: string): Screen[];
+  /** Whether a thread may be started, answered or resolved here. A lock does not refuse it (`documentPolicy`). */
+  comment(target?: EditTarget): Affordance;
+  /**
+   * Whether the analysis may be revised outside its cells: alternatives,
+   * criteria, groups, definitions, declarations. `doing` names the edit as a
+   * gerund phrase ("renaming a criterion"); an empty one throws.
+   */
+  revise(doing: string, target?: EditTarget): Affordance;
+  /** Whether the analysis may be locked or unlocked. A lock never refuses its own removal. */
+  changeLock(): Affordance;
+  /**
+   * Whether this suggestion may be accepted or declined. Either way it must
+   * exist and still be open. Accepting writes its assertion into the anchored
+   * cell, so that cell must exist to be written and must not be read-only; a
+   * lock does not refuse it (`documentPolicy`).
+   */
+  decideSuggestion(suggestionId: string, decision: SuggestionDecision): Affordance;
 }
+
+/**
+ * The members of `Affordances` that answer "may this be written?". Every other
+ * member answers a question about legality or structure, which no provider
+ * capability can change. The store's `editAffordances` gates exactly these on
+ * the provider, and a test holds this list to the interface.
+ */
+export const WRITE_AFFORDANCES = [
+  'assert', 'suggest', 'comment', 'revise', 'changeLock', 'decideSuggestion',
+] as const satisfies readonly (keyof Affordances)[];
+export type WriteAffordance = typeof WRITE_AFFORDANCES[number];
 
 /**
  * The affordances of one analysis. Prepared once; every query is a lookup.
@@ -140,6 +256,10 @@ export function makeAffordances(
     if (host === false) return refuse('you are not authorised to do this here.');
     return host.enabled ? ALLOWED : refuse(host.reason ?? 'you are not authorised to do this here.');
   };
+
+  const documentRequest = (
+    action: DocumentEditRequest['action'], doing: string, target: EditTarget | undefined,
+  ): DocumentEditRequest => (target === undefined ? { action, doing } : { action, doing, target });
 
   const cellAt = (altId: string, critId: string, measure: string) => cells.get(JSON.stringify([altId, critId, measure]));
 
@@ -188,6 +308,43 @@ export function makeAffordances(
           rationale: c.acceptability.rationale, preference: m.preference,
         }];
       });
+    },
+    comment(target) {
+      return withHost(documentRequest('comment', 'commenting', target), documentPolicy(a, 'comment'));
+    },
+    revise(doing, target) {
+      return withHost(documentRequest('revise', requireDoing(doing), target), documentPolicy(a, 'revise'));
+    },
+    changeLock() {
+      const doing = a.locked ? 'unlocking the analysis' : 'locking the analysis';
+      return withHost(documentRequest('change-lock', doing, { kind: 'analysis' }), documentPolicy(a, 'change-lock'));
+    },
+    decideSuggestion(suggestionId, decision) {
+      requireDecision(decision);
+      const s = a.suggestions.find((x) => x.id === suggestionId);
+      const own = (): Affordance => {
+        if (!s) return refuse(`there is no suggestion "${suggestionId}" in this analysis.`);
+        if (s.status !== 'open') return refuse(`this suggestion has already been ${s.status}; it cannot be decided again.`);
+        if (decision === 'accept') {
+          const { scope, alternativeId: alt, criterionId: crit, measure } = s.anchor;
+          if (scope !== 'cell' || alt === undefined || crit === undefined) {
+            return refuse('this suggestion is not anchored to one cell, so accepting it has nowhere to write; decline it instead.');
+          }
+          if (measure === undefined) {
+            return refuse('this suggestion names its cell but not the measure it scores, so accepting it has nowhere to write; decline it instead.');
+          }
+          const st = structural(alt, crit, measure);
+          if (!st.enabled) return st;
+          if (cellAt(alt, crit, measure)?.readOnly) return refuse('the cell this suggestion targets is declared read-only in the analysis; decline it instead.');
+        }
+        return documentPolicy(a, 'decide-suggestion');
+      };
+      const request = documentRequest('decide-suggestion', `${decision === 'accept' ? 'accepting' : 'declining'} a suggestion`,
+        { kind: 'suggestion', id: suggestionId });
+      const { scope, alternativeId, criterionId, measure } = s?.anchor ?? {};
+      const cell = decision === 'accept' && scope === 'cell' && alternativeId !== undefined &&
+        criterionId !== undefined && measure !== undefined ? { cell: { alternativeId, criterionId, measure } } : {};
+      return withHost({ ...request, decision, ...cell }, own());
     },
   };
 }

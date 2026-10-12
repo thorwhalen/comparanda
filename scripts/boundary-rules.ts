@@ -6,7 +6,7 @@
  * *same* predicates against deliberately-violating fixtures instead of a copy of
  * them that could drift (#39).
  *
- * Five source rules and three bundle rules, each of which has failed silently
+ * Six source rules and three bundle rules, each of which has failed silently
  * somewhere real:
  *
  *   core-has-no-dom            ADR-0005: "If you need a DOM API in `core`, the
@@ -23,6 +23,12 @@
  *                              at import time is deleted by the bundler under
  *                              `"sideEffects": false` -- an empty registry, no
  *                              error (findings-visualisation.md §5.2).
+ *   view-edits-through-store   ADR-0006 clause 3: the view derives every enable
+ *                              from getCapabilities(). The document's policy
+ *                              functions are blind to the provider, so a view
+ *                              that called one would offer edits a frozen
+ *                              source refuses -- a control present and silently
+ *                              inert. The view reads `editAffordances` (store).
  *
  * The bundle rules re-check the first and fourth against what the build actually
  * contains, following chunk imports, and name the import chain that got there.
@@ -53,6 +59,18 @@ export function isClassicZod(specifier: string): boolean {
   // mini users too.
   return !/^zod\/(?:mini|v4\/mini|v4\/core|v4-mini|locales|v4\/locales)(?:\/|$)/.test(specifier);
 }
+
+/**
+ * The functions that answer "may this be written?" with less than the whole
+ * answer: core's policy functions do not ask the provider, and the store's
+ * `cellAffordanceOf` skips the structural checks and the host. Correct in core
+ * and store; in the view, each is a second source of truth for editability.
+ */
+export const PROVIDER_BLIND = ['makeAffordances', 'cellPolicy', 'documentPolicy', 'cellAffordanceOf'] as const;
+
+const PROVIDER_BLIND_WHY =
+  'read editability through editAffordances (comparanda/store) instead: this one ignores the ' +
+  'provider\'s capability or the host, so a control would show where a write is refused (ADR-0006 clause 3).';
 
 /** Strip comments and string literals so a mention in prose is not a violation. */
 export function strip(src: string): string {
@@ -172,6 +190,23 @@ export function sourceViolations(file: string, text: string): Violation[] {
   if (inCore) {
     strip(text).split('\n').forEach((line, i) => {
       for (const g of DOM_GLOBALS) if (usesDomGlobal(line, g)) add(i, `core-has-no-dom (${g})`);
+    });
+  }
+  if (inView) {
+    // From the parse tree, not stripped text: a call inside a template literal,
+    // or after a regex literal holding a quote, is invisible to a text scan.
+    // Not caught, and not worth an evaluator: a computed member
+    // (`core['makeAffordances']`) and a wrapper defined outside src/view. The
+    // rule stops the natural mistake; review stops the contrived one.
+    const blind = new Set<string>(PROVIDER_BLIND);
+    sf.forEachChild(function walk(n) {
+      // A property key that merely shares the name ({ cellPolicy: 'Cell policy' }) is not a use.
+      const isKey = n.parent !== undefined && (ts.isPropertyAssignment(n.parent) || ts.isPropertySignature(n.parent) ||
+        ts.isPropertyDeclaration(n.parent) || ts.isMethodDeclaration(n.parent)) && n.parent.name === n;
+      if (ts.isIdentifier(n) && blind.has(n.text) && !isKey) {
+        add(lineOf(n), `view-edits-through-store (${n.text})`, `${n.text} in view code: ${PROVIDER_BLIND_WHY}`);
+      }
+      n.forEachChild(walk);
     });
   }
   if (inCore || inView) {

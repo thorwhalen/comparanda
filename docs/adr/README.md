@@ -99,7 +99,7 @@ A comparison is argued over, not obeyed.
 
 | # | Title | Status | Decides |
 |---|---|---|---|
-| [0011](0011-collaboration.md) | Collaboration — annotations, multi-rater values, and disagreement as a finding | accepted | Annotations anchor to stable opaque ids at every scope; every rater assertion is retained and declares its `independence`; deleting a criterion never deletes the argument about whether it should exist. **Amended:** the team is in v1; `Reduction` becomes a declared vocabulary; a cell key must be unique and a merge refuses rather than resolves. |
+| [0011](0011-collaboration.md) | Collaboration — annotations, multi-rater values, and disagreement as a finding | accepted | Annotations anchor to stable opaque ids at every scope; every rater assertion is retained and declares its `independence`; deleting a criterion never deletes the argument about whether it should exist. **Amended:** the team is in v1; `Reduction` becomes a declared vocabulary; a cell key must be unique and a merge refuses rather than resolves; a lock refuses revisions and nothing else — comments, unlocking and deciding a suggestion stay open (2026-10-12). |
 | [0023](0023-rounds-attribution-and-feedback.md) | Rounds, attribution policy and feedback policy | accepted | An optional `round` on every assertion with `attribution` and `feedback` policies; the author is always stored and the view redacts until the round closes. Stopping is a stability trace, never a threshold. |
 
 ## Accessibility

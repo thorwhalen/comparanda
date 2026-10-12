@@ -350,3 +350,22 @@ needs numbers already fails on non-numeric input with its own message, and `synt
 **What does not change.** `Reduction` is an open string at the point of use, `Analysis.reductions`
 carries the declarations, the core six are closed, and the two constraints from ADR-0015 stand —
 never a mean over ordinal assertions, and never a point reduction over a polarised cell.
+
+### 2026-10-12 — What a lock refuses: revisions, and nothing else
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+
+Clause 5 says that where "the analysis is locked, an edit becomes a *proposal*", and the schema documents `Analysis.locked` as "whether the analysis accepts direct edits, or only suggestions". Building the affordance layer for #72 made the boundary of "edit" a decision the code has to take, so it is recorded here rather than left to `documentPolicy`'s docstring.
+
+**A lock refuses every direct edit**: a cell's assertion (`assert`) and every revision of what the analysis says outside its cells (`revise`: alternatives, criteria, groups, definitions, declarations). Each becomes a suggestion, as clause 5 says.
+
+**A lock refuses nothing else.** Three other writes go to the document, and none of them is an edit in clause 5's sense:
+
+- **A comment** changes nothing the analysis asserts. Clause 5 exists so that a reviewer can take part without mutating the shared artifact, and a reviewer who could propose but not say why would be half a reviewer.
+- **Changing the lock** is how a lock ends. A lock that refused its own removal would be permanent.
+- **Deciding a suggestion** is the owner's half of suggestion mode ("an owner accepts or declines"). A lock that refused it would make every suggestion on a locked analysis undecidable.
+
+**A lock is a declaration, not a safeguard.** With no host — a standalone file — anyone holding the document may unlock it and then edit, exactly as they could edit the JSON by hand. What a lock buys is that nobody edits a locked analysis *by accident*, and that unlocking is a deliberate, recorded act. Protection against a person is the host's, and only the host's.
+
+Who may do any of these is the host's question (ADR-0012), asked through `authorize` with the edit named and, where known, its target. It is not the lock's question. Whether the backend accepts the write at all is the provider's capability (ADR-0006 clause 3), asked first. `editAffordances` in `comparanda/store` composes the three in that order, and is the only reading of editability the view may use (boundary rule `view-edits-through-store`).
