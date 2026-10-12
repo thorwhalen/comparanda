@@ -174,6 +174,38 @@ describe('a focused cell is never under the sticky headers (#103)', () => {
     expect(obscured().inline).toBeLessThanOrEqual(1);
   });
 
+  it('a tap does not scroll either, though a touch focuses after its pointerup', async () => {
+    handle = mountMatrix(el, { analysis: video, measure: 'score' });
+    const s = scroller();
+    const corner = el.querySelector('.comparanda-corner')!.getBoundingClientRect();
+    const td = el.querySelector<HTMLElement>('tbody tr td:nth-of-type(3)')!;
+    s.scrollLeft += td.getBoundingClientRect().left - corner.right + td.getBoundingClientRect().width / 2;
+    const before = s.scrollLeft;
+    // A tap's order in Chromium: pointerdown, pointerup, then focus.
+    const touch = (type: string) => td.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'touch' }));
+    touch('pointerdown');
+    touch('pointerup');
+    td.focus();
+    expect(s.scrollLeft).toBe(before);
+    // The press is used up by that focus: a later script focus of the same cell is revealed.
+    td.blur();
+    td.focus();
+    expect(obscured().inline).toBeLessThanOrEqual(1);
+  });
+
+  it('a press that never comes back (a drag out of the grid) does not stop a later reveal', async () => {
+    handle = mountMatrix(el, { analysis: video, measure: 'score' });
+    const s = scroller();
+    const corner = el.querySelector('.comparanda-corner')!.getBoundingClientRect();
+    const td = el.querySelector<HTMLElement>('tbody tr td:nth-of-type(3)')!;
+    // Pressed, with no pointerup and no focus following.
+    td.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+    el.querySelector<HTMLElement>('tbody tr td:nth-of-type(5)')!.focus();
+    s.scrollLeft += td.getBoundingClientRect().left - corner.right + td.getBoundingClientRect().width / 2;
+    td.focus();
+    expect(obscured().inline).toBeLessThanOrEqual(1);
+  });
+
   it('a click does not scroll the cell out from under the pointer', async () => {
     handle = mountMatrix(el, { analysis: video, measure: 'score' });
     const s = scroller();

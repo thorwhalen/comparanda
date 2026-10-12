@@ -124,7 +124,11 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const confidence = measure !== CONFIDENCE && unknownMeasure(analysis, CONFIDENCE) === undefined
     ? makeCellReader(analysis, CONFIDENCE) : undefined;
   const helpId = useId();
-  /** The cell a pointer is pressing, between its pointerdown and pointerup: the focus that lands there is the pointer's. */
+  /**
+   * What a pointer last pressed, until the focus it gives (or a key) uses it up:
+   * the focus that lands there is the pointer's. One-shot, because a touch's
+   * focus comes after its pointerup, and a drag can end outside the grid.
+   */
   const pressed = useRef<Element | null>(null);
   const words = aliasesOf(analysis);
   const layout = matrixLayout(analysis, view);
@@ -210,6 +214,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     if (event.altKey || event.metaKey) return;
     const from = (event.target as Element | null)?.closest?.('[data-cell]');
     const table = event.currentTarget as HTMLTableElement;
+    pressed.current = null;
     if (!from || !table.contains(from)) return;
     // A reader who clicked a half-covered cell and now uses the keyboard sees it uncovered first.
     revealClear(from);
@@ -234,7 +239,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const onFocusCapture = (event: FocusEvent) => {
     const into = (event.target as Element | null)?.closest?.('[data-cell]');
     if (!into) return;
-    if (!(pressed.current && into.contains(pressed.current))) revealClear(into);
+    const byPointer = pressed.current !== null && into.contains(pressed.current);
+    pressed.current = null;
+    if (!byPointer) revealClear(into);
     if (!onFocusChange) return;
     const [r, c] = into.getAttribute('data-cell')!.split(':').map(Number) as [number, number];
     if (r !== at.r || c !== at.c) onFocusChange(grid.focusAt(r, c));
@@ -262,7 +269,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         <table
           role="grid" aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}
           onPointerDownCapture={(event: PointerEvent) => { pressed.current = event.target as Element | null; }}
-          onPointerUpCapture={() => { pressed.current = null; }}
+          // A mouse focuses on press, before this; a touch focuses after it, so keeps the press.
+          onPointerUpCapture={(event: PointerEvent) => { if (event.pointerType !== 'touch') pressed.current = null; }}
           onPointerCancelCapture={() => { pressed.current = null; }}
         >
           <caption>{analysis.subject.question}</caption>
