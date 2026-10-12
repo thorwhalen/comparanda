@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
-import { initialViewState, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
+import { initialViewState, setFocus, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
 import { mountMatrix, type MatrixHandle } from '../../src/view/index.js';
 import videoJson from '../../examples/video-generation.json';
 
@@ -55,12 +55,14 @@ function obscured(): { block: number; inline: number; cut: number } {
     inline = rtl ? Math.max(0, cell.right - corner.left) : Math.max(0, corner.right - cell.left);
   }
   // And a cell that fits in the clear area is wholly in it: its far edges inside the scrollport too.
+  // In screen pixels, as the boxes are: the scroller's own lengths are CSS pixels, scaled by a host.
   const s = scroller();
   const box = s.getBoundingClientRect();
-  const clearHeight = s.clientHeight - parseFloat(getComputedStyle(s).scrollPaddingBlockStart);
-  const clearWidth = s.clientWidth - parseFloat(getComputedStyle(s).scrollPaddingInlineStart);
-  const bottom = box.top + s.clientTop + s.clientHeight;
-  const [lo, hi] = [box.left + s.clientLeft, box.left + s.clientLeft + s.clientWidth];
+  const [kx, ky] = [s.offsetWidth / box.width, s.offsetHeight / box.height];
+  const clearHeight = (s.clientHeight - parseFloat(getComputedStyle(s).scrollPaddingBlockStart)) / ky;
+  const clearWidth = (s.clientWidth - parseFloat(getComputedStyle(s).scrollPaddingInlineStart)) / kx;
+  const bottom = box.top + (s.clientTop + s.clientHeight) / ky;
+  const [lo, hi] = [box.left + s.clientLeft / kx, box.left + (s.clientLeft + s.clientWidth) / kx];
   const cut = Math.max(
     !inHead && cell.height <= clearHeight ? cell.bottom - bottom : 0,
     !isRowHeader && cell.width <= clearWidth ? Math.max(cell.right - hi, lo - cell.left) : 0,
@@ -124,6 +126,42 @@ describe('a focused cell is never under the sticky headers (#103)', () => {
   it('right to left', async () => {
     document.documentElement.setAttribute('dir', 'rtl');
     await tour(undefined, 'rtl');
+  });
+
+  // A host that scales the widget: boxes are measured on screen, scrolled in CSS pixels.
+  for (const [how, scale] of [['transform: scale(0.5)', (n: HTMLElement) => { n.style.transform = 'scale(0.5)'; n.style.transformOrigin = '0 0'; }],
+    ['zoom: 2', (n: HTMLElement) => { n.style.zoom = '2'; }]] as const) {
+    it(`a host scales the matrix (${how})`, async () => {
+      scale(el);
+      await tour(undefined, how);
+    });
+  }
+
+  it('a focus the host moves through the view is clear too', async () => {
+    handle = mountMatrix(el, { analysis: video, measure: 'score' });
+    el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')!.focus();
+    await userEvent.keyboard('{Control>}{End}{/Control}');
+    const alts = video.alternatives.map((a) => a.id);
+    const crits = video.criteria.map((c) => c.id);
+    for (const [a, c] of [[0, 0], [alts.length - 1, 1], [1, crits.length - 2], [alts.length - 2, crits.length - 1]] as const) {
+      handle.update({ view: setFocus(initialViewState(video), { alternativeId: alts[a]!, criterionId: crits[c]! }) });
+      const { block, inline, cut } = obscured();
+      expect([block, inline, cut].every((n) => n <= 1), `host focus ${alts[a]} / ${crits[c]}: ${block}, ${inline}, ${cut}`).toBe(true);
+    }
+  });
+
+  it('a click does not scroll the cell out from under the pointer', async () => {
+    handle = mountMatrix(el, { analysis: video, measure: 'score' });
+    const s = scroller();
+    // A cell half under the sticky header column, its visible half under the pointer.
+    const corner = el.querySelector('.comparanda-corner')!.getBoundingClientRect();
+    const td = el.querySelector<HTMLElement>('tbody tr td:nth-of-type(3)')!;
+    s.scrollLeft += td.getBoundingClientRect().left - corner.right + td.getBoundingClientRect().width / 2;
+    const before = s.scrollLeft;
+    expect(td.getBoundingClientRect().left).toBeLessThan(corner.right);
+    await userEvent.click(td, { position: { x: td.getBoundingClientRect().width - 4, y: 4 } });
+    expect(document.activeElement).toBe(td);
+    expect(s.scrollLeft).toBe(before);
   });
 
   it('the padding follows the header when its size changes', async () => {

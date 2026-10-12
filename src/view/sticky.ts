@@ -5,7 +5,8 @@
  * `scroll-padding-inline-start` equal the sticky header row and header column.
  * Without them the first arrow press scrolls the focused cell underneath the
  * header -- SC 2.4.11 fails at exactly the moment a keyboard reader needs to
- * see the cell. The extents depend on label wrapping, fonts, zoom and the
+ * see the cell. The extents depend on label wrapping, fonts, zoom, a host's
+ * scaling transform and the
  * group band row, so no constant in the stylesheet is right; they are measured
  * and written as custom properties the stylesheet reads:
  *
@@ -46,10 +47,12 @@ export function trackStickyExtents(root: Element): StickyExtents {
     const corner = scroller?.querySelector('.comparanda-corner');
     if (!scroller || !head || !corner) return;
     const band = head.querySelector('tr.comparanda-band');
+    // Boxes are measured on screen; the properties are CSS pixels of the scroller.
+    const { x, y } = cssPerScreenPixel(scroller);
     const px = (n: number) => `${n}px`;
-    scroller.style.setProperty(STICKY_VARS.block, px(head.getBoundingClientRect().height));
-    scroller.style.setProperty(STICKY_VARS.inline, px(corner.getBoundingClientRect().width));
-    if (band) scroller.style.setProperty(STICKY_VARS.band, px(band.getBoundingClientRect().height));
+    scroller.style.setProperty(STICKY_VARS.block, px(head.getBoundingClientRect().height * y));
+    scroller.style.setProperty(STICKY_VARS.inline, px(corner.getBoundingClientRect().width * x));
+    if (band) scroller.style.setProperty(STICKY_VARS.band, px(band.getBoundingClientRect().height * y));
     else scroller.style.removeProperty(STICKY_VARS.band);
     const now = [head, corner];
     if (Observer && (now.length !== watched.length || now.some((n, i) => n !== watched[i]))) {
@@ -87,9 +90,14 @@ export function revealClear(cell: Element): void {
   const padBlock = parseFloat(style.scrollPaddingBlockStart) || 0;
   const padInline = parseFloat(style.scrollPaddingInlineStart) || 0;
   const rtl = style.direction === 'rtl';
+  // Everything below is in screen pixels, as `getBoundingClientRect` gives them;
+  // the scroller's own lengths are CSS pixels, scaled by a host's transform or zoom.
+  const { x, y } = cssPerScreenPixel(scroller);
   const box = scroller.getBoundingClientRect();
-  const left = box.left + scroller.clientLeft;
-  const top = box.top + scroller.clientTop;
+  const left = box.left + scroller.clientLeft / x;
+  const top = box.top + scroller.clientTop / y;
+  const width = scroller.clientWidth / x;
+  const height = scroller.clientHeight / y;
   const r = cell.getBoundingClientRect();
   /** How far to scroll along one axis: bring `start` to at least `clearStart`, then `end` within `clearEnd` if that keeps `start` clear. */
   const along = (start: number, end: number, clearStart: number, clearEnd: number) => {
@@ -100,10 +108,21 @@ export function revealClear(cell: Element): void {
   // A header sticks along its own axis, so only the other one can hide it.
   const sticksBlock = cell.closest('thead') !== null;
   const sticksInline = cell.matches('th[scope="row"], .comparanda-corner');
-  const dy = sticksBlock ? 0 : along(r.top, r.bottom, top + padBlock, top + scroller.clientHeight);
+  const dy = sticksBlock ? 0 : along(r.top, r.bottom, top + padBlock / y, top + height);
   // Right to left, the inline start is the right edge: mirror, then flip the sign back.
   const dx = sticksInline ? 0 : rtl
-    ? -along(-r.right, -r.left, -(left + scroller.clientWidth - padInline), -left)
-    : along(r.left, r.right, left + padInline, left + scroller.clientWidth);
-  if (dx !== 0 || dy !== 0) scroller.scrollBy({ left: dx, top: dy, behavior: 'instant' });
+    ? -along(-r.right, -r.left, -(left + width - padInline / x), -left)
+    : along(r.left, r.right, left + padInline / x, left + width);
+  if (dx !== 0 || dy !== 0) scroller.scrollBy({ left: dx * x, top: dy * y, behavior: 'instant' });
+}
+
+/**
+ * CSS pixels of `el` per screen pixel, on each axis: 1 unless a host scales the
+ * matrix with a `transform` or CSS `zoom` (browser zoom scales both alike).
+ * `offset*` is unscaled layout, `getBoundingClientRect` is what is painted.
+ */
+function cssPerScreenPixel(el: HTMLElement): { x: number; y: number } {
+  const box = el.getBoundingClientRect();
+  const ratio = (css: number, screen: number) => (css > 0 && screen > 0 ? css / screen : 1);
+  return { x: ratio(el.offsetWidth, box.width), y: ratio(el.offsetHeight, box.height) };
 }

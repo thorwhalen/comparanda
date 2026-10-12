@@ -221,11 +221,15 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
    * reader's position, and it is brought clear of the sticky headers (#103).
    * A focus scrolls only a cell outside the scrollport, so one inside it but
    * under the sticky header column would stay covered: `revealClear` does it.
+   * Not for a pointer's focus: the cell clicked is where the pointer already is,
+   * and scrolling it away from under the pointer is the jump to avoid. The
+   * measured padding it reads is `mountMatrix`'s; rendered bare, the cell is
+   * only brought inside the scrollport.
    */
   const onFocusCapture = (event: FocusEvent) => {
     const into = (event.target as Element | null)?.closest?.('[data-cell]');
     if (!into) return;
-    revealClear(into);
+    if (into.matches(':focus-visible')) revealClear(into);
     if (!onFocusChange) return;
     const [r, c] = into.getAttribute('data-cell')!.split(':').map(Number) as [number, number];
     if (r !== at.r || c !== at.c) onFocusChange(grid.focusAt(r, c));
