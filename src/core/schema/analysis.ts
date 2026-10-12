@@ -1140,7 +1140,7 @@ export function completeness(
         (r?.refusedBecause === 'withheld-from-reader' &&
           r.contributing.every((s) => s.value !== undefined || isWithheldFromReader(s))) ||
         (r?.refused !== undefined && r.contributing.length > 0 &&
-          r.contributing.every((s) => s.value !== undefined) && !r.disagreement);
+          r.contributing.every((s) => s.value !== undefined || isWithheldFromReader(s)) && !r.disagreement);
       if (asserted) cells.push({ hasValue: true, criterionId: critId, widened });
       else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code, criterionId: critId, widened });
       else cells.push({ hasValue: false, code: NOT_ASSESSED, criterionId: critId, widened });

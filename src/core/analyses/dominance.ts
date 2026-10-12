@@ -114,7 +114,13 @@ export interface DominanceResult extends AnalysisResult {
   notes: string[];
 }
 
-/** How many (alternative, criterion) cells for `measure` a disclosure projection widened. */
+/**
+ * How many (alternative, criterion) cells for `measure` a disclosure projection
+ * left without a value -- the cells dominance compared over their full range.
+ * A cell whose value core could still prove (a consensus, a `latest`) was not
+ * widened for this comparison, though `widenedCellCount` counts it as a cell
+ * with something hidden.
+ */
 function widenedIn(a: Analysis, altIds: readonly string[], critIds: readonly string[], measure: string): number {
   if (!a.cells.some(isWidenedByDisclosure)) return 0;
   const index = cellIndex(a);
@@ -122,7 +128,7 @@ function widenedIn(a: Analysis, altIds: readonly string[], critIds: readonly str
   for (const alt of altIds) {
     for (const crit of critIds) {
       const c = index.get(cellKey(alt, crit, measure));
-      if (c && isWidenedByDisclosure(c)) n += 1;
+      if (c && isWidenedByDisclosure(c) && reducedValue(a, alt, crit, measure)?.value === undefined) n += 1;
     }
   }
   return n;

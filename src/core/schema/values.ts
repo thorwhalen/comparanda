@@ -124,6 +124,12 @@ export function isWidenedByDisclosure(cell: { assertions: readonly Assertion[] }
   return cell.assertions.some((s) => !s.supersededBy && isWithheldFromReader(s));
 }
 
+function arithmeticRefusal(named: string, level: LevelOfMeasurement): string {
+  return `"${named}" produces a value nobody asserted, which is not legal on an ` +
+    `${level} level; use lower-median. Averaging ordinal codes produces a value no ` +
+    'rater could have chosen.';
+}
+
 /**
  * Whether this reader is missing an assertion's value: flagged by a
  * projection, and holding no value. The definition `reduce`,
@@ -510,11 +516,24 @@ function reduceValue(
       refused: `reduction is "single" but ${contributing.length} live assertions exist; resolve the conflict rather than hiding it`,
     };
   }
-  if (valued.length > 0 && absent.length > 0) {
+  // A withheld assertion always stands for a value (`isWithheldFromReader`),
+  // so a visible absence beside one is a mix the owner sees too.
+  const withheld = contributing.filter(isWithheldFromReader);
+  if ((valued.length > 0 || withheld.length > 0) && absent.length > 0) {
     return {
       contributing, disagreement: true, spread,
       refused: 'assertions disagree about whether a value exists; no reduction over a mix of values and absences is defensible',
     };
+  }
+
+  // Refusals that depend only on the level or on the values the reader can
+  // see are the owner's too, so they are reported as themselves.
+  const arithmeticIllegal = resolved.facts.arithmetic && opts.level !== undefined && !meanIsLegal(opts.level);
+  if (arithmeticIllegal && valued.length > 0) {
+    return { contributing, disagreement, spread, refused: arithmeticRefusal(named, opts.level!) };
+  }
+  if ((mode === 'lower-median' || mode === 'mean') && valued.some((a) => !isNumeric(a.value))) {
+    return { contributing, disagreement, spread, refused: `${mode} needs numeric values` };
   }
 
   // Some withheld, some visible: a reduction over the visible ones would
@@ -523,7 +542,6 @@ function reduceValue(
   // exception is provable: `latest`, when the newest assertion is one the
   // reader can see and holds a value. A projection keeps every `at`, and only
   // ever withholds values, so the owner's `latest` is that same assertion.
-  const withheld = contributing.filter(isWithheldFromReader);
   if (withheld.length > 0 && visible.length > 0) {
     if (mode === 'latest' && absent.length === 0) {
       const newest = [...valued].sort((a, b) => a.at.localeCompare(b.at)).at(-1)!;
@@ -550,13 +568,8 @@ function reduceValue(
   // The arithmetic rule, stated once over the reduction's facts rather than as a
   // case for `mean`. A declared reduction that inherits `arithmetic: true` is
   // refused here without anyone having remembered to add it.
-  if (resolved.facts.arithmetic && opts.level && !meanIsLegal(opts.level)) {
-    return {
-      contributing, disagreement, spread,
-      refused: `"${named}" produces a value nobody asserted, which is not legal on an ` +
-        `${opts.level} level; use lower-median. Averaging ordinal codes produces a value no ` +
-        'rater could have chosen.',
-    };
+  if (arithmeticIllegal) {
+    return { contributing, disagreement, spread, refused: arithmeticRefusal(named, opts.level!) };
   }
 
   switch (mode) {

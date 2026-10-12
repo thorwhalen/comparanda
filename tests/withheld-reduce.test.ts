@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { Analysis, completeness, makeCellReader } from '../src/core/schema/analysis.js';
 import { projectForReader } from '../src/core/schema/disclosure.js';
 import { widenedCells } from '../src/core/analyses/readings.js';
+import { dominance } from '../src/core/analyses/dominance.js';
 import { isWidenedByDisclosure, reduce, type Assertion, type Cell } from '../src/core/schema/values.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
@@ -124,6 +125,22 @@ describe('ordering against the other refusals (review of #173)', () => {
     expect(r.refusedBecause).toBeUndefined();
   });
 
+  it('a visible absence beside a withheld value is the owner\'s disagreement, not a disclosure gap', () => {
+    const cell = cellOf([3, 4], [0], 'latest');
+    delete cell.assertions[1]!.value;
+    cell.assertions[1]!.missing = { code: 'not-assessed' };
+    const r = reduce(cell, opts);
+    expect(r.refused).toMatch(/disagree about whether a value exists/);
+    expect(r.disagreement).toBe(true);
+    expect(r.refusedBecause).toBeUndefined();
+  });
+
+  it('an illegal mean on an ordinal level is refused as that, whatever is withheld', () => {
+    const r = reduce(cellOf([3, 5], [0], 'mean'), { ...opts, level: 'ordinal' });
+    expect(r.refused).toMatch(/not legal on an ordinal level/);
+    expect(r.refusedBecause).toBeUndefined();
+  });
+
   it('a flagged, valueless assertion that kept its justification still hides a value: not an authored absence', () => {
     const cell = cellOf([3, 5], [0]);
     cell.assertions[0]!.justification = 'left behind by a hand-rolled projection';
@@ -166,6 +183,19 @@ describe('consumers', () => {
     expect(reader.outstanding).toBe(owner.outstanding);
   });
 
+  it('completeness under "single": one visible value beside one withheld, agreeing, is done as the owner sees it', () => {
+    const doc = structuredClone(relocation);
+    const cell = doc.cells.find(sameCell)!;
+    const live = cell.assertions.filter((s) => !s.supersededBy && s.value !== undefined).slice(0, 2);
+    cell.assertions = live.map((s) => ({ ...s, value: live[0]!.value }));
+    cell.reduction = 'single';
+    delete cell.consensusAssertionId;
+    const scope = { measure: cell.measure, alternativeIds: [cell.alternativeId], criterionIds: [cell.criterionId] };
+    const owner = completeness(doc, scope);
+    const reader = completeness(projectForReader(doc, (s) => s.id !== live[0]!.id).analysis, scope);
+    expect(reader.present).toBe(owner.present);
+  });
+
   it('widenedCells does not count a cell whose value core could still prove', () => {
     const doc = projected(new Set([first.id]));
     const cell = doc.cells.find(sameCell)!;
@@ -176,6 +206,9 @@ describe('consumers', () => {
     expect(makeCellReader(doc, target.measure).read(target.alternativeId, target.criterionId)!.value).toBeDefined();
     expect(visible.length).toBeGreaterThan(0);
     expect(widenedCells(doc, [target.alternativeId], [target.criterionId], target.measure)).toBe(0);
+    // Dominance counts the same thing for the same projection.
+    const only = { ...doc, cells: doc.cells.filter((c) => c === cell || !isWidenedByDisclosure(c)) };
+    expect(dominance(only, { measure: target.measure }).widenedByDisclosure).toBe(0);
   });
 
   it('completeness counts a partly withheld cell as done, as its owner does, and marks it widened', () => {

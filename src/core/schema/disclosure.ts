@@ -97,7 +97,12 @@ export function projectForReader(source: Analysis, discloses: DisclosureDecision
   return { analysis: a, widenedCells: widenedCellCount(a) };
 }
 
-/** Cells in `a` widened by a disclosure projection, optionally for one measure. */
+/**
+ * Cells in `a` widened by a disclosure projection, optionally for one measure:
+ * every cell with something withheld from this reader. The analyses count a
+ * narrower thing -- cells the withholding left *without a value* -- because a
+ * value core can still prove (a consensus, a `latest`) was not read as a blank.
+ */
 export function widenedCellCount(a: Analysis, { measure }: { measure?: string } = {}): number {
   return a.cells.filter((c) => (measure === undefined || c.measure === measure) && isWidenedByDisclosure(c)).length;
 }
