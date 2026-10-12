@@ -32,6 +32,7 @@ import { DEFAULT_CAPABILITIES, createInMemoryProvider } from '@zodal/store';
 import type { DataProvider, ProviderCapabilities } from '@zodal/store';
 
 import type { Analysis } from '../core/schema/analysis.js';
+import { criteriaRevisionProblems } from '../core/criteria-revision.js';
 import type { Cell } from '../core/schema/values.js';
 import type { Author } from '../core/schema/provenance.js';
 import {
@@ -192,9 +193,29 @@ export function oneItemProvider<T extends { id: string }>(
   };
 }
 
-/** The analysis, in memory. Pass `{ canUpdate: false }` for a standalone bundle's frozen source. */
+/**
+ * The analysis, in memory. Pass `{ canUpdate: false }` for a standalone bundle's frozen source.
+ *
+ * `update` refuses a change that rewrites what a criterion means without moving
+ * the criteria-set version (`criteriaRevisionProblems`, #62): the write path is
+ * where a silent rewrite has to stop, because once stored, nothing in the
+ * document says the old scores answered a different question.
+ */
 export function inMemoryAnalysisSource(analysis: Analysis, options?: { canUpdate?: boolean }): AnalysisSource {
-  return oneItemProvider(analysis, options);
+  const inner = oneItemProvider(analysis, options);
+  return {
+    ...inner,
+    update: async (id: string, data: Partial<Analysis>) => {
+      const before = await inner.getOne(id);
+      const problems = criteriaRevisionProblems(before, { ...before, ...data });
+      if (problems.length) {
+        throw new Error(
+          'refused: ' + problems.map((p) => `${p.path}: ${p.message} Fix: ${p.fix}`).join(' | '),
+        );
+      }
+      return inner.update(id, data);
+    },
+  };
 }
 
 
