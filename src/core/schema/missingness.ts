@@ -122,6 +122,21 @@ export const CORE_MISSING_CODES: Readonly<Record<MissingCode, MissingCodeFacts>>
 });
 
 /**
+ * What an absence says about the work, from its flags alone: `structural`, the
+ * cell should be empty; `outstanding`, nobody has settled it yet; `answered`,
+ * someone looked and the absence is the answer.
+ *
+ * Keyed on the flags, never the code, so a deployment's extension reads the
+ * same way as the core code it refines (#101).
+ */
+export type AbsenceStanding = 'structural' | 'outstanding' | 'answered';
+
+export function absenceStanding(facts: Pick<MissingCodeFacts, 'structural' | 'terminal'>): AbsenceStanding {
+  if (facts.structural) return 'structural';
+  return facts.terminal ? 'answered' : 'outstanding';
+}
+
+/**
  * A deployment-declared extension to the core set. Every extension is a
  * *refinement* of exactly one core code, so a consumer that knows only the core
  * set can still classify it correctly by following `broader`.
