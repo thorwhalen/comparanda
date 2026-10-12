@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   Analysis, absenceStanding, CORE_MISSING_CODES, makeCellReader, vocabularyOf,
 } from '../../src/index.js';
-import { mountMatrix, type MatrixHandle } from '../../src/view/index.js';
+import { createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
 const relocation = Analysis.parse(relocationJson);
@@ -69,31 +69,41 @@ function cellsOf(analysis: Analysis) {
 }
 
 describe('every absent cell says its reason in words (#101)', () => {
-  for (const encoding of ['text-only', 'missingness', 'value']) {
+  const encodings = createEncodingRegistry([...SHIPPED_ENCODINGS]);
+  for (const encoding of ['text-only', 'missingness', 'value', 'datum']) {
     it(`each code is heard with its own declared meaning and its standing (${encoding})`, () => {
       const { analysis, placed } = everyCode();
-      handle = mountMatrix(el, { analysis, measure: 'score', encoding });
+      handle = mountMatrix(el, { analysis, measure: 'score', encoding }, { encodings });
+      // Drawn with the encoding asked for, not quietly fallen back to text.
+      expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-encoding')).toBe(encoding);
       const vocabulary = vocabularyOf(analysis);
       const byCell = new Map(cellsOf(analysis).map((x) => [`${x.alt}\u0000${x.crit}`, x.td]));
       const standings = new Map<string, string>();
       for (const { alt, crit, code } of placed) {
         const td = byCell.get(`${alt}\u0000${crit}`)!;
         const said = heard(td);
+        // An encoding's words after an absence are a sentence, not a dangling phrase.
+        expect(said, code).not.toMatch(/\.\s*,/);
         const facts = vocabulary.resolve(code, crit).facts;
         if (facts) {
           expect(said, code).toContain(facts.means);
           expect(td.getAttribute('data-absence'), code).toBe(absenceStanding(facts));
-          standings.set(absenceStanding(facts), said.slice(said.indexOf(facts.means) + facts.means.length).trim());
+          standings.set(absenceStanding(facts), said.slice(said.lastIndexOf('.', said.length - 2) + 1).trim());
         } else {
           // Undeclared: nothing may be guessed, and the id is worded, never shown bare.
           expect(td.getAttribute('data-absence')).toBe('undeclared');
           expect(td.querySelector('.comparanda-shown')!.textContent).not.toBe(code);
           expect(said).toContain(code);
+          expect(said).toMatch(/still to be done/i);
         }
       }
       // Correctly nothing, a gap and an answer are three different things to hear.
       expect(standings.size).toBe(3);
       expect(new Set(standings.values()).size).toBe(3);
+      // And each is heard the right way round: the structural one as nothing to do, the outstanding one as a gap.
+      expect(standings.get('structural')).toMatch(/nothing to record/i);
+      expect(standings.get('outstanding')).toMatch(/still to be done/i);
+      expect(standings.get('answered')).toMatch(/not a gap/i);
     });
   }
 

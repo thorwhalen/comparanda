@@ -107,8 +107,9 @@ export type CellAbsence = AbsenceStanding | 'undeclared';
 const STANDING_SAID: Readonly<Record<CellAbsence, string>> = {
   structural: 'Nothing to record here.',
   outstanding: 'Still to be done.',
-  answered: 'Not a gap: someone looked.',
-  undeclared: 'Whether work remains is not known.',
+  answered: 'Not a gap: this is the answer.',
+  // As completeness counts it: the safe direction is to treat it as work remaining.
+  undeclared: 'Counted as still to be done.',
 };
 
 export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, affordances, onFocusChange }: MatrixViewProps) {
@@ -160,7 +161,11 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const after = state === 'value'
       ? `${reduced?.withheldFromReader ? '' : outOf(reduced?.value, reader.measurementOf(critId))}${sure !== undefined ? `, ${CONFIDENCE} ${String(sure)}` : ''}`
       : '';
-    const said = `${after}${absence ? ` ${STANDING_SAID[absence]}` : ''}${mark.said ?? ''}`;
+    // After a value, the encoding's words continue the phrase; after an absence's
+    // sentence they are a sentence of their own, and the standing comes last.
+    const said = absence
+      ? `${mark.said ? ` ${asSentence(mark.said)}` : ''} ${STANDING_SAID[absence]}`
+      : `${after}${mark.said ?? ''}`;
     // Visually hidden, inside the cell: "Memory safety, Rust, 5 of 5, confidence low" (ADR-0027).
     // The encoding's badge is seen; its meaning, in `said`, is what is heard.
     return (
@@ -507,6 +512,12 @@ function bandLabel(b: Band, axis: AxisLayout): string {
   if (b.label !== undefined) return b.label;
   const named = (axis.bands ?? []).flatMap((x) => (x.label === undefined ? [] : [x.label]));
   return named.length === 0 ? 'In none of the chosen groups' : `Not in ${named.join(' or ')}`;
+}
+
+/** A trailing phrase (", the datum") as a sentence of its own ("The datum."). */
+function asSentence(phrase: string): string {
+  const bare = phrase.replace(/^[\s,;]+/, '').replace(/[\s.]+$/, '');
+  return `${capitalise(bare)}.`;
 }
 
 function capitalise(word: string): string {

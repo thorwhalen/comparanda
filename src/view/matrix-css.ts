@@ -79,12 +79,15 @@ export const MATRIX_CSS = `
 .comparanda-matrix td[data-absence="structural"] {
   background-image: repeating-linear-gradient(135deg, var(--cmp-hatch) 0 1px, transparent 1px 7px);
 }
-/* Any absence that is work outstanding (\`not-assessed\`, \`deferred\`, their extensions) has the gap's dashed shape. */
+/* Any absence counted as work outstanding (\`not-assessed\`, \`deferred\`, their extensions, an undeclared
+   code) has the gap's dashed shape. */
 .comparanda-matrix td[data-state="not-assessed"],
-.comparanda-matrix td[data-absence="outstanding"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; }
+.comparanda-matrix td[data-absence="outstanding"],
+.comparanda-matrix td[data-absence="undeclared"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; }
 /* Focused, the gap keeps its dashed shape: the ring takes the focus colour, not a solid line. */
 .comparanda-matrix td[data-state="not-assessed"]:focus-visible,
-.comparanda-matrix td[data-absence="outstanding"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
+.comparanda-matrix td[data-absence="outstanding"]:focus-visible,
+.comparanda-matrix td[data-absence="undeclared"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
 /* An encoding's swatch paints the cell and sets the ink measured against it. Same specificity as the
    td[data-state] rules that mute an empty cell's ink, and later: keep it after them. */
 ${paletteRules('.comparanda-matrix')}
