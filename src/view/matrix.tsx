@@ -71,6 +71,10 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
   const { rows, columns, transposed } = layout;
   const groupLabel = new Map(analysis.groups.map((g) => [g.id, g.label]));
   const rowWord = transposed ? words.criterion : words.alternative;
+  const plural = (axis: AxisLayout) => (axis.axis === 'alternatives' ? words.alternatives : words.criteria);
+  const hiddenAxis = [rows, columns].find((axis) => axis.entries.length === 0);
+  // An axis with nothing shown leaves a table of headers and no cells; say why.
+  const empty = hiddenAxis && `No ${plural(hiddenAxis)} are shown: every one is hidden in this view, or there are none.`;
 
   const cell = (rowId: string, columnId: string) => {
     const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
@@ -107,7 +111,11 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
           {`The "${encoding}" encoding is not available in this build; showing values as text.`}
         </p>
       )}
-      <RefusedEdits analysis={analysis} measure={measure} affordances={affordances} />
+      <RefusedEdits
+        analysis={analysis} measure={measure} affordances={affordances}
+        rows={rows.entries} columns={columns.entries} transposed={transposed}
+      />
+      {empty && <p class="comparanda-empty" role="note">{empty}</p>}
       {/* Focusable so a keyboard can scroll it before the grid's own focus model arrives (#99). */}
       <div class="comparanda-scroll" role="region" aria-label={analysis.subject.question} tabIndex={0}>
         <table>
@@ -150,30 +158,51 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
 
 /**
  * The writes this view would offer, each asked of `affordances`, shown only
- * when refused and always with the reason. A write offered somewhere (one cell
- * that accepts a value) is not refused, so it is not listed.
+ * when refused and always with the reason.
+ *
+ * About the matrix as shown: a cell write (a value, a suggestion) is asked of
+ * the shown cells, and is not refused if one of them accepts it -- the first
+ * that does ends the search. A cell that is structurally inapplicable has
+ * nothing to record whatever the reader may do, so it is not asked; and the
+ * reason given is the one most cells share (a lock, a read-only source), never
+ * a list of every cell's own.
  */
-function RefusedEdits({ analysis, measure, affordances }: Pick<MatrixViewProps, 'analysis' | 'measure' | 'affordances'>) {
+function RefusedEdits({ analysis, measure, affordances, rows, columns, transposed }: Pick<MatrixViewProps, 'analysis' | 'measure' | 'affordances'> & {
+  rows: LayoutEntry[]; columns: LayoutEntry[]; transposed: boolean;
+}) {
   const id = useId();
-  const live = <T extends { tombstoned?: boolean | undefined }>(xs: readonly T[]) => xs.filter((x) => !x.tombstoned);
-  const pairs = live(analysis.alternatives).flatMap((alt) =>
-    live(analysis.criteria).map((crit) => [alt.id, crit.id] as const));
+  /** Over the shown, applicable cells: `undefined` if one allows it, else the commonest reason. */
+  const overCells = (ask: (alt: string, crit: string) => Affordance): string | undefined | null => {
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      for (const c of columns) {
+        const [alt, crit] = transposed ? [c.id, r.id] : [r.id, c.id];
+        if (affordances.inapplicable(alt, crit)) continue;
+        const answer = ask(alt, crit);
+        if (answer.enabled) return undefined;
+        const reason = answer.reason ?? '';
+        counts.set(reason, (counts.get(reason) ?? 0) + 1);
+      }
+    }
+    if (counts.size === 0) return null; // no cell to ask: nothing to offer, nothing refused
+    return [...counts.entries()].sort((x, y) => y[1] - x[1])[0]![0];
+  };
+  const overAll = (answers: Affordance[]): string | undefined | null =>
+    answers.length === 0 ? null : answers.some((x) => x.enabled) ? undefined : answers[0]!.reason ?? '';
   const open = (analysis.suggestions ?? []).filter((s) => s.status === 'open');
-  const controls: { key: string; label: string; answers: Affordance[] }[] = [
-    { key: 'assert', label: 'Record a value', answers: pairs.map(([a, c]) => affordances.assert(a, c, measure)) },
-    { key: 'suggest', label: 'Suggest a value', answers: pairs.map(([a, c]) => affordances.suggest(a, c, measure)) },
-    { key: 'comment', label: 'Comment', answers: [affordances.comment()] },
-    { key: 'revise', label: 'Revise the analysis', answers: [affordances.revise('revising the analysis')] },
-    { key: 'change-lock', label: analysis.locked ? 'Unlock the analysis' : 'Lock the analysis', answers: [affordances.changeLock()] },
+  const controls: { key: string; label: string; refused: string | undefined | null }[] = [
+    { key: 'assert', label: 'Record a value', refused: overCells((a, c) => affordances.assert(a, c, measure)) },
+    { key: 'suggest', label: 'Suggest a value', refused: overCells((a, c) => affordances.suggest(a, c, measure)) },
+    { key: 'comment', label: 'Comment', refused: overAll([affordances.comment()]) },
+    { key: 'revise', label: 'Revise the analysis', refused: overAll([affordances.revise('revising the analysis')]) },
+    { key: 'change-lock', label: 'Lock or unlock the analysis', refused: overAll([affordances.changeLock()]) },
     {
       key: 'decide-suggestion',
       label: `Accept or decline ${open.length === 1 ? 'the open suggestion' : `the ${open.length} open suggestions`}`,
-      answers: open.flatMap((s) => [affordances.decideSuggestion(s.id, 'accept'), affordances.decideSuggestion(s.id, 'decline')]),
+      refused: overAll(open.flatMap((s) => [affordances.decideSuggestion(s.id, 'accept'), affordances.decideSuggestion(s.id, 'decline')])),
     },
   ];
-  const refused = controls
-    .filter((c) => c.answers.length > 0 && c.answers.every((x) => !x.enabled))
-    .map((c) => ({ ...c, reasons: [...new Set(c.answers.map((x) => x.reason ?? 'not possible here.'))] }));
+  const refused = controls.filter((c): c is typeof c & { refused: string } => typeof c.refused === 'string');
   if (refused.length === 0) return null;
   return (
     <ul class="comparanda-edits" aria-label="Edits not available here">
@@ -181,9 +210,7 @@ function RefusedEdits({ analysis, measure, affordances }: Pick<MatrixViewProps, 
         <li key={c.key} data-edit={c.key}>
           <button type="button" aria-disabled="true" aria-describedby={`${id}-${c.key}`}>{c.label}</button>
           {' '}
-          <span class="comparanda-reason" id={`${id}-${c.key}`}>
-            {c.reasons.map(capitalise).join(' ')}
-          </span>
+          <span class="comparanda-reason" id={`${id}-${c.key}`}>{capitalise(c.refused || 'not possible here.')}</span>
         </li>
       ))}
     </ul>

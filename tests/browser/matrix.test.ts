@@ -49,6 +49,15 @@ function contrast(fg: string, bg: string): number {
   return (hi! + 0.05) / (lo! + 0.05);
 }
 
+/** The colour actually behind an element: its own, or the nearest painted ancestor's. */
+function backgroundOf(node: Element): string {
+  for (let n: Element | null = node; n; n = n.parentElement) {
+    const bg = getComputedStyle(n).backgroundColor;
+    if (!/^rgba\(.*,\s*0\)$/.test(bg) && bg !== 'transparent') return bg;
+  }
+  return 'rgb(255, 255, 255)';
+}
+
 const table = () => el.querySelector('table')!;
 const dataCells = () => Array.from(table().querySelectorAll('tbody td'));
 
@@ -71,9 +80,10 @@ describe('the messy fixture, both themes, both orientations', () => {
           expect(td.getAttribute('data-state')).toMatch(/^(value|missing|not-applicable|not-assessed|refused)$/);
         }
         // Measured from what was painted, in this theme: every header and cell.
-        for (const node of Array.from(table().querySelectorAll('th, td'))) {
-          const style = getComputedStyle(node);
-          expect(contrast(style.color, style.backgroundColor), node.textContent!).toBeGreaterThanOrEqual(4.5);
+        const text = el.querySelectorAll('th, td, caption, .comparanda-also, .comparanda-edits button, .comparanda-reason');
+        expect(el.querySelectorAll('.comparanda-reason').length).toBeGreaterThan(0);
+        for (const node of Array.from(text)) {
+          expect(contrast(getComputedStyle(node).color, backgroundOf(node)), node.textContent!).toBeGreaterThanOrEqual(4.5);
         }
       });
     }
@@ -87,6 +97,24 @@ describe('the messy fixture, both themes, both orientations', () => {
     const dark = getComputedStyle(table().querySelector('td')!).backgroundColor;
     expect(luminance(light)).toBeGreaterThan(0.8);
     expect(luminance(dark)).toBeLessThan(0.05);
+  });
+
+  it('the theme is the mount element\'s, whatever an outer element says', () => {
+    const outer = document.createElement('div');
+    outer.dataset.theme = 'dark';
+    document.body.append(outer);
+    outer.append(el);
+    el.dataset.theme = 'light';
+    mount({ analysis: relocation, measure: 'score' });
+    expect(luminance(getComputedStyle(table().querySelector('td')!).backgroundColor)).toBeGreaterThan(0.8);
+    outer.remove();
+  });
+
+  it('says so when every criterion is hidden, rather than drawing an empty table', () => {
+    const v = initialViewState(relocation);
+    mount({ analysis: relocation, measure: 'score', view: { ...v, filter: { hiddenAlternatives: [], hiddenCriteria: relocation.criteria.map((c) => c.id) } } });
+    expect(el.querySelector('.comparanda-empty')!.textContent).toMatch(/^No .* are shown/);
+    expect(dataCells()).toHaveLength(0);
   });
 
   it('transposing shows the same cell under the swapped headers', () => {
@@ -171,10 +199,23 @@ describe('edits are offered only through editAffordances', () => {
     }
   });
 
-  it('without a source, the same: read-only, and says why', () => {
+  it('without a source, the same: read-only, and says why in words about the matrix', () => {
     mount({ analysis: relocation, measure: 'score' });
     expect(el.querySelectorAll('.comparanda-edits button[aria-disabled="true"]')).toHaveLength(WRITE_AFFORDANCES.length);
-    for (const reason of Array.from(el.querySelectorAll('.comparanda-reason'))) expect(reason.textContent!.trim()).not.toBe('');
+    for (const reason of Array.from(el.querySelectorAll('.comparanda-reason'))) {
+      expect(reason.textContent).toBe('There is no source behind this matrix, so it does not accept updates; it is read-only.');
+    }
+  });
+
+  it('asks only the shown cells: a value writable only in a hidden row is refused', () => {
+    const source = inMemoryAnalysisSource(relocation);
+    const authorize = (r: { action?: string; alternativeId?: string }) => r.action !== 'assert' || r.alternativeId === 'lisbon';
+    const handle = mount({ analysis: relocation, measure: 'score', source, authorize: authorize as never });
+    const listed = () => Array.from(el.querySelectorAll('.comparanda-edits li')).map((li) => li.getAttribute('data-edit'));
+    expect(listed()).not.toContain('assert');
+    const v = initialViewState(relocation);
+    handle.update({ view: { ...v, filter: { hiddenAlternatives: ['lisbon'], hiddenCriteria: [] } } });
+    expect(listed()).toContain('assert');
   });
 
   it('over a writable source, nothing is refused, so no inert control is shown', () => {
@@ -188,5 +229,10 @@ describe('edits are offered only through editAffordances', () => {
     await source.update(relocation.id, { locked: true });
     const edits = Array.from(el.querySelectorAll('.comparanda-edits li')).map((li) => li.getAttribute('data-edit'));
     expect(edits).toEqual(['assert', 'revise']);
+    // The lock's reason, once: not every inapplicable cell's own refusal after it.
+    const lock = editAffordances(source, { ...relocation, locked: true }).revise('revising the analysis').reason!;
+    const assertReason = el.querySelector('.comparanda-edits li[data-edit="assert"] .comparanda-reason')!.textContent!;
+    expect(assertReason).not.toMatch(/does not apply/);
+    expect(assertReason.toLowerCase()).toContain(lock.split(';')[0]!.toLowerCase().slice(0, 20));
   });
 });

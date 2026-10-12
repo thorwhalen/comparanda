@@ -83,4 +83,25 @@ describe('matrixLayout', () => {
     const hidden: ViewState = { ...v, filter: { hiddenAlternatives: ['montreal'], hiddenCriteria: [] } };
     expect(matrixLayout(relocation, hidden).rows.bands!.map((b) => b.groupId)).toEqual(['g-asia', undefined]);
   });
+
+  it('an axis with nothing shown has no bands', () => {
+    const v = setGrouping(initialViewState(relocation), 'criteria', ['g-cost']);
+    const all: ViewState = { ...v, filter: { hiddenAlternatives: [], hiddenCriteria: relocation.criteria.map((c) => c.id) } };
+    const { columns } = matrixLayout(relocation, all);
+    expect(columns.entries).toEqual([]);
+    expect(columns.bands).toBeUndefined();
+  });
+
+  it('nested groups: a sub-group\'s members are its parent\'s, and the first chosen wins', () => {
+    const doc = structuredClone(relocation);
+    doc.groups.push({ id: 'g-iberia', label: 'Iberia', axis: 'alternatives', parentId: 'g-europe' });
+    doc.alternatives.find((a) => a.id === 'lisbon')!.groupIds = ['g-iberia'];
+    const parentFirst = matrixLayout(doc, setGrouping(initialViewState(doc), 'alternatives', ['g-europe', 'g-iberia'])).rows;
+    expect(parentFirst.bands!.map((b) => b.groupId)).toEqual(['g-europe', undefined]);
+    expect(parentFirst.entries.find((e) => e.id === 'lisbon')!.alsoIn).toEqual(['g-iberia']);
+    const childFirst = matrixLayout(doc, setGrouping(initialViewState(doc), 'alternatives', ['g-iberia', 'g-europe'])).rows;
+    expect(childFirst.bands!.map((b) => [b.groupId, ids(b.entries)])).toEqual([
+      ['g-iberia', ['lisbon']], ['g-europe', ['berlin']], [undefined, ['taipei', 'seoul', 'montreal']],
+    ]);
+  });
 });

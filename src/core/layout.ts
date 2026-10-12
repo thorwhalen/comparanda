@@ -44,7 +44,7 @@ export interface Band {
 export interface AxisLayout {
   axis: Axis;
   entries: LayoutEntry[];
-  /** Absent when the axis is not grouped, or none of its chosen groups exists. */
+  /** Absent when the axis is not grouped, none of its chosen groups exists, or nothing is shown. */
   bands: Band[] | undefined;
 }
 
@@ -99,5 +99,6 @@ function axisLayout(
     })),
     { groupId: undefined, label: undefined, entries: shown.filter((id) => !memberships.has(id)).map(entry) },
   ].filter((b) => b.entries.length > 0);
-  return { axis, entries: bands.flatMap((b) => b.entries), bands };
+  // Nothing shown: no bands either, so a view never draws an empty band row.
+  return { axis, entries: bands.flatMap((b) => b.entries), bands: bands.length > 0 ? bands : undefined };
 }

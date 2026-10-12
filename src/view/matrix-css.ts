@@ -2,11 +2,14 @@
  * The matrix's stylesheet, rendered inside the component so a mounted matrix is
  * styled with no CSS import, in a page, a shadow root or the standalone file.
  *
- * Everything is scoped under `.comparanda-matrix`. Colours are tokens, light by
- * default; dark follows `prefers-color-scheme` unless an ancestor (the mount
- * element, say) sets `data-theme="light"`, and `data-theme="dark"` forces it.
- * Every ink/surface pair here clears 4.5:1, which the browser suite measures
- * from the rendered colours in both themes rather than trusting this comment.
+ * Everything is scoped under `.comparanda-matrix`. Colours are tokens. The
+ * theme is read from the mount element and nowhere else: `data-theme="dark"`
+ * or `"light"` on it forces one; without either, `prefers-color-scheme`
+ * decides. Not "any ancestor": with nested settings a descendant selector
+ * cannot tell which is nearest, so the element the host mounted into is the
+ * one place a theme is said. Every ink/surface pair clears 4.5:1, which the
+ * browser suite measures from the rendered colours in both themes, text over
+ * an inherited background included, rather than trusting this comment.
  *
  * Sticky headers follow ADR-0027: `border-collapse: separate` with rules drawn
  * as inset `box-shadow`, because collapsed borders do not travel with a sticky
@@ -31,10 +34,10 @@ export const MATRIX_CSS = `
   color: var(--cmp-ink); background: var(--cmp-surface);
 }
 @media (prefers-color-scheme: dark) {
-  .comparanda-matrix:not([data-theme="light"] .comparanda-matrix) {${DARK}
+  :not([data-theme="light"]) > .comparanda-matrix {${DARK}
   }
 }
-[data-theme="dark"] .comparanda-matrix {${DARK}
+[data-theme="dark"] > .comparanda-matrix {${DARK}
 }
 .comparanda-matrix .comparanda-scroll {
   overflow: auto; max-height: var(--comparanda-max-height, 80vh);
@@ -50,7 +53,7 @@ export const MATRIX_CSS = `
 .comparanda-matrix th { background: var(--cmp-header); font-weight: 600; }
 .comparanda-matrix thead th { position: sticky; top: 0; z-index: 2; }
 .comparanda-matrix thead tr.comparanda-band th { white-space: nowrap; }
-.comparanda-matrix thead tr.comparanda-band + tr th { top: calc(2.1em + 1px); }
+.comparanda-matrix thead tr.comparanda-band + tr th { top: 2.1em; }
 .comparanda-matrix tbody th[scope="row"] { position: sticky; inset-inline-start: 0; z-index: 1; }
 .comparanda-matrix thead .comparanda-corner { inset-inline-start: 0; z-index: 3; }
 .comparanda-matrix tr.comparanda-band th { background: var(--cmp-band); }

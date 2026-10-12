@@ -11,6 +11,7 @@
 import { h, render, type ComponentType } from 'preact';
 
 import { vocabularyOf, type Analysis } from '../core/schema/analysis.js';
+import type { Affordances } from '../core/affordances.js';
 import { initialViewState, ViewState } from '../core/view-state.js';
 import {
   DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
@@ -47,6 +48,24 @@ const NO_SOURCE: Pick<DataProvider<unknown>, 'getCapabilities'> = {
     canBulkUpdate: false, canBulkDelete: false, canUpsert: false,
   }),
 };
+
+/**
+ * The write affordances without a source, in words about the matrix rather
+ * than about a source that does not exist. Still asked through, so a malformed
+ * request (an empty `doing`, an unknown decision) throws as it would with one.
+ */
+function withoutSource(a: Affordances): Affordances {
+  const refused = { enabled: false, reason: 'there is no source behind this matrix, so it does not accept updates; it is read-only.' };
+  return {
+    ...a,
+    assert: () => refused,
+    suggest: () => refused,
+    comment: () => refused,
+    revise: (doing, target) => (a.revise(doing, target), refused),
+    changeLock: () => refused,
+    decideSuggestion: (id, decision) => (a.decideSuggestion(id, decision), refused),
+  };
+}
 
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
@@ -86,7 +105,9 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       encoding: encoding ?? view?.encoding ?? TEXT_ONLY,
       // Without one, the document's own order, so a source's added alternative shows.
       view: view ?? initialViewState(analysis),
-      affordances: editAffordances(source ?? NO_SOURCE, analysis, authorize ? { authorize } : {}),
+      affordances: source
+        ? editAffordances(source, analysis, authorize ? { authorize } : {})
+        : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
       ...(standing ? { standing } : {}),
     };
     render(h(component, resolved), el);
