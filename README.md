@@ -73,6 +73,19 @@ let view = setGrouping(initialViewState(analysis), 'alternatives', ['g-europe', 
 matrix.update({ view: transpose(view) });  // criteria as rows, alternatives as columns
 ```
 
+The matrix is a `<table role="grid">` and one tab stop: arrow keys move between cells, Home and End along a row, Ctrl+Home and Ctrl+End to the corners. Where the reader is lives in the view state (`session.focus`, by id), and the matrix reports every change through `onViewChange`; keep it and pass it back, and a reload lands in the cell the reader left:
+
+```ts
+import { parseViewState, serializeViewState } from 'comparanda';
+
+const saved = localStorage.getItem('matrix-view');
+mountMatrix(el, {
+  analysis, measure: 'score',
+  view: saved ? parseViewState(saved).state : undefined,
+  onViewChange: (v) => localStorage.setItem('matrix-view', serializeViewState(v)),
+});
+```
+
 Light and dark follow `prefers-color-scheme`; `data-theme="light"` or `"dark"` on the mount element forces one; failing that, the same attribute on `<html>`.
 
 Without a `source` the matrix is read-only and says so. Changing the source takes its document in the same call: `update({ source, analysis: await source.getOne(id) })`. No React or Vue binding ships; each is a few lines:
@@ -95,7 +108,7 @@ function Matrix(props: MountMatrixProps) {
 ```ts
 // Vue 3
 const Matrix = defineComponent({
-  props: ['analysis', 'measure', 'vocabulary', 'encoding', 'standing', 'source', 'authorize'],
+  props: ['analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize', 'onViewChange'],
   setup(props) {
     const el = ref<HTMLElement>();
     let handle: MatrixHandle | undefined;

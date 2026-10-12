@@ -14,7 +14,9 @@
  * Sticky headers follow ADR-0027: `border-collapse: separate` with rules drawn
  * as inset `box-shadow`, because collapsed borders do not travel with a sticky
  * cell. Focus geometry under the sticky headers (`scroll-padding-*` equal to
- * their extents, SC 2.4.11) arrives with the grid's focus model (#103).
+ * their extents, SC 2.4.11) is #103's, on top of the grid's focus model (#99).
+ * A cell's announced measures are visually hidden with the clip pattern, not
+ * `display: none`, which would hide them from the screen reader too.
  *
  * The kinds of absence differ in shape, not only in colour (ADR-0009): a
  * structural `not-applicable` is hatched, a `not-assessed` gap has a dashed
@@ -43,9 +45,15 @@ export const MATRIX_CSS = `
 .comparanda-matrix .comparanda-scroll {
   overflow: auto; max-height: var(--comparanda-max-height, 80vh);
 }
-.comparanda-matrix .comparanda-scroll:focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 2px; }
+.comparanda-matrix [data-cell]:focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: -2px; }
+.comparanda-matrix .comparanda-keys { margin: 0 0 0.35em; color: var(--cmp-muted); font-size: 0.9em; }
+.comparanda-matrix .comparanda-sr {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
 .comparanda-matrix table { border-collapse: separate; border-spacing: 0; }
 .comparanda-matrix caption { text-align: start; font-weight: 600; padding: 0.35em 0; }
+.comparanda-matrix td { position: relative; }
 .comparanda-matrix th, .comparanda-matrix td {
   padding: 0.35em 0.6em; line-height: 1.4; text-align: start; vertical-align: top;
   background: var(--cmp-surface); color: var(--cmp-ink);

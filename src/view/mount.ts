@@ -12,7 +12,7 @@ import { h, render, type ComponentType } from 'preact';
 
 import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/analysis.js';
 import type { Affordances } from '../core/affordances.js';
-import { initialViewState, ViewState } from '../core/view-state.js';
+import { initialViewState, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
   DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
 } from '../store/index.js';
@@ -70,7 +70,7 @@ function withoutSource(a: Affordances): Affordances {
 
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
-  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize',
+  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize', 'onViewChange',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
 /** Elements with a live matrix. Two mounts on one element would each think they own its children. */
@@ -96,16 +96,36 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
   let analysis: Analysis = current.analysis;
   let unsubscribe: (() => void) | undefined;
   let destroyed = false;
+  /**
+   * Where the reader moved since the host last gave a `view`: the matrix's
+   * one piece of view state of its own, laid over the host's until the host
+   * hands over a different view object (typically the one `onViewChange` sent).
+   */
+  let moved: { focus: Session['focus'] } | undefined;
+  /** The `view` object the caller last gave, before parsing, to tell a new one from a re-passed one. */
+  let givenView: unknown = props.view;
+  /** The view state of the last render: what `onViewChange` reports. */
+  let shown: ViewState;
+
+  const moveFocus = (focus: Session['focus']) => {
+    if (destroyed) return;
+    moved = { focus };
+    draw();
+    current.onViewChange?.(shown);
+  };
 
   const draw = () => {
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
+    // Without one, the document's own order, so a source's added alternative shows.
+    const base = view ?? initialViewState(analysis);
+    shown = moved ? setFocus(base, moved.focus) : base;
     const resolved: MatrixViewProps = {
       analysis,
       measure,
       vocabulary: vocabulary ?? vocabularyOf(analysis),
       encoding: encoding ?? view?.encoding ?? TEXT_ONLY,
-      // Without one, the document's own order, so a source's added alternative shows.
-      view: view ?? initialViewState(analysis),
+      view: shown,
+      onFocusChange: moveFocus,
       affordances: source
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
         : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
@@ -122,14 +142,14 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     return source.subscribe!((event: DataChangeEvent<Analysis>) => {
       if (destroyed || current.source !== source) return;
       if (event.type !== 'updated' || event.id !== analysis.id) return;
-      const shown = analysis;
+      const before = analysis;
       analysis = event.item;
       try {
         draw();
       } catch (error) {
         // A write the view cannot render leaves the last good render, and the
         // document it rendered; the error goes to the source's subscriber handler.
-        analysis = shown;
+        analysis = before;
         redraw();
         throw error;
       }
@@ -193,18 +213,23 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       // re-render of unchanged props.
       if (props.measure !== current.measure || docChanged) measureOf(nextAnalysis, props.measure);
 
-      const before = { current, analysis, unsubscribe };
+      // A view object the caller had not given before replaces the reader's
+      // moves; the same one re-passed (a wrapper on every render) keeps them.
+      const nextGiven = replace || 'view' in next ? next.view : givenView;
+      const before = { current, analysis, unsubscribe, moved, givenView };
       const followed = swapped ? follow(props.source) : unsubscribe;
       current = props;
       analysis = nextAnalysis;
       unsubscribe = followed;
+      if (nextGiven !== givenView) moved = undefined;
+      givenView = nextGiven;
       try {
         draw();
       } catch (error) {
         // All or nothing, as at mount: the previous props, document and
         // subscription come back, and so does the previous render.
         if (swapped) followed?.();
-        ({ current, analysis, unsubscribe } = before);
+        ({ current, analysis, unsubscribe, moved, givenView } = before);
         redraw();
         throw error;
       }
@@ -248,6 +273,9 @@ function checked(props: MountMatrixProps): MountMatrixProps {
     }
     // The parsed copy, defaults filled, so the component never meets a partial one.
     props = { ...props, view: parsed.data };
+  }
+  if (props.onViewChange !== undefined && typeof props.onViewChange !== 'function') {
+    throw new TypeError(`props.onViewChange must be a function (view) => void; got ${describe(props.onViewChange)}.`);
   }
   if (source !== undefined && typeof source.subscribe !== 'function') {
     // A source the view cannot follow would offer edits against a document it

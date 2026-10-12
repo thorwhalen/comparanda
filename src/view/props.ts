@@ -57,6 +57,14 @@ export interface MountMatrixProps extends MatrixProps {
   source?: AnalysisSource;
   /** The host's authorisation of each edit, consulted after the source and the document. */
   authorize?: Authorize;
+  /**
+   * Called with the whole view state each time the matrix changes it -- so far,
+   * the reader's position in the grid (`session.focus`, #99). The view state
+   * stays the host's to keep (ADR-0006): persist this one and pass it back as
+   * `view`, and a reload lands in the cell the reader left. Without it the
+   * matrix still tracks the position for as long as it is mounted.
+   */
+  onViewChange?: (view: ViewState) => void;
 }
 
 /**
