@@ -15,6 +15,7 @@
  * a repair hint for a human reading an orphan, and is never used to resolve.
  */
 import * as z from 'zod/mini';
+import { Assertion } from './values.js';
 
 export const AnchorScope = z.enum([
   'analysis',
@@ -82,8 +83,12 @@ export const Suggestion = z.strictObject({
   anchor: Anchor,
   authorId: z.string(),
   at: z.string(),
-  /** The proposed assertion, as it would be written if accepted. */
-  proposed: z.unknown(),
+  /**
+   * The proposed assertion, as it would be written if accepted. Typed, so the
+   * closed shape has no hole in it: `unknown` here accepted any object, and
+   * narrowing it after the freeze would be a migration (#57 review).
+   */
+  proposed: Assertion,
   rationale: z.optional(z.string()),
   status: z._default(z.enum(['open', 'accepted', 'declined', 'superseded']), 'open'),
   decidedBy: z.optional(z.string()),

@@ -213,7 +213,17 @@
           "Subtropical"
         ]
       },
-      "definedInVersion": "2"
+      "definedInVersion": "2",
+      "definition": {
+        "question": "Which main Köppen group is the city in, read from the published climate map rather than from how it feels?"
+      },
+      "provenance": {
+        "origin": "user-stated",
+        "authorId": "ana",
+        "at": "2026-08-21T12:00:00Z",
+        "derivedFrom": [],
+        "rationale": "redefined from a felt description to the Köppen main group, so two people reading the same map give the same answer"
+      }
     },
     {
       "id": "winter-daylight",
@@ -476,8 +486,8 @@
       "label": "winter daylight, blind pass",
       "feedback": "none",
       "attribution": "anonymous",
-      "openedAt": "2026-08-20T09:00:00Z",
-      "closedAt": "2026-08-21T18:00:00Z"
+      "openedAt": "2026-08-22T08:00:00Z",
+      "closedAt": "2026-08-23T18:00:00Z"
     }
   ],
   "cells": [
@@ -800,7 +810,7 @@
         {
           "id": "a-cli-ber",
           "authorId": "ana",
-          "at": "2026-08-22T09:00:00Z",
+          "at": "2026-08-20T09:00:00Z",
           "evidence": [],
           "version": 1,
           "value": "Continental",
@@ -1413,21 +1423,27 @@
   ],
   "suggestions": [
     {
-      "id": "sg-visa-mon",
+      "id": "sg-day-tai",
       "anchor": {
         "scope": "cell",
-        "alternativeId": "montreal",
-        "criterionId": "visa-free",
+        "alternativeId": "taipei",
+        "criterionId": "winter-daylight",
         "measure": "score",
-        "repairHint": "Montreal x Visa-free"
+        "repairHint": "Taipei x Winter daylight"
       },
       "authorId": "cleo",
-      "at": "2026-08-23T10:00:00Z",
+      "at": "2026-08-24T10:00:00Z",
       "proposed": {
-        "value": true,
-        "justification": "the signed contract makes us employees of a local entity, so the business-visitor question no longer arises"
+        "id": "a-day-tai-cleo",
+        "authorId": "cleo",
+        "at": "2026-08-24T10:00:00Z",
+        "value": 3,
+        "justification": "about ten and a half hours of daylight at the winter solstice, often under cloud",
+        "evidence": [],
+        "version": 1,
+        "independence": "independent"
       },
-      "rationale": "the blank was waiting on the contract, and the contract is now signed",
+      "rationale": "the blank says nobody has looked yet; the solstice day length answers it",
       "status": "open"
     }
   ],

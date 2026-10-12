@@ -7,7 +7,8 @@
   "properties": {
     "schemaVersion": {
       "default": 1,
-      "type": "number"
+      "type": "number",
+      "const": 1
     },
     "id": {
       "type": "string"
@@ -1455,7 +1456,385 @@
           "at": {
             "type": "string"
           },
-          "proposed": {},
+          "proposed": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "authorId": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "boolean"
+                  }
+                ]
+              },
+              "missing": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "additionalProperties": false
+              },
+              "justification": {
+                "type": "string"
+              },
+              "evidence": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    },
+                    "selectors": {
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "TextQuoteSelector"
+                              },
+                              "exact": {
+                                "type": "string"
+                              },
+                              "prefix": {
+                                "type": "string"
+                              },
+                              "suffix": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "exact"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "TextPositionSelector"
+                              },
+                              "start": {
+                                "type": "number"
+                              },
+                              "end": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "start",
+                              "end"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "PageRegionSelector"
+                              },
+                              "page": {
+                                "type": "number"
+                              },
+                              "rect": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "w": {
+                                    "type": "number"
+                                  },
+                                  "h": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "w",
+                                  "h"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "page"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "LineRangeSelector"
+                              },
+                              "startLine": {
+                                "type": "number"
+                              },
+                              "endLine": {
+                                "type": "number"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "startLine",
+                              "endLine"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "TimeRangeSelector"
+                              },
+                              "startSeconds": {
+                                "type": "number"
+                              },
+                              "endSeconds": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "startSeconds",
+                              "endSeconds"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "PathSelector"
+                              },
+                              "syntax": {
+                                "type": "string",
+                                "enum": [
+                                  "css",
+                                  "xpath"
+                                ]
+                              },
+                              "value": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "syntax",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "sourceType": {
+                      "type": "string",
+                      "enum": [
+                        "primary",
+                        "secondary",
+                        "agent-summary",
+                        "agent-inference"
+                      ]
+                    },
+                    "stance": {
+                      "default": "supports",
+                      "type": "string",
+                      "enum": [
+                        "supports",
+                        "contradicts",
+                        "qualifies",
+                        "context"
+                      ]
+                    },
+                    "excerpt": {
+                      "type": "string"
+                    },
+                    "excerptHash": {
+                      "type": "string"
+                    },
+                    "renditionId": {
+                      "type": "string"
+                    },
+                    "normaliserId": {
+                      "type": "string"
+                    },
+                    "derivedFrom": {
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "check": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "exact",
+                            "normalised",
+                            "fuzzy",
+                            "moved",
+                            "stale",
+                            "unresolvable",
+                            "unchecked"
+                          ]
+                        },
+                        "checkedAt": {
+                          "type": "string"
+                        },
+                        "checkerVersion": {
+                          "type": "string"
+                        },
+                        "resolvedBy": {
+                          "type": "string"
+                        },
+                        "originalDrifted": {
+                          "type": "boolean"
+                        },
+                        "detail": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "retrievedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "target",
+                    "sourceType"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "independence": {
+                "type": "string",
+                "enum": [
+                  "shared-context",
+                  "resampled",
+                  "perturbed",
+                  "independent",
+                  "consensus"
+                ]
+              },
+              "perturbation": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "seed": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false
+              },
+              "roundId": {
+                "type": "string"
+              },
+              "procedureId": {
+                "type": "string"
+              },
+              "criteriaVersion": {
+                "type": "string"
+              },
+              "version": {
+                "default": 1,
+                "type": "number"
+              },
+              "supersededBy": {
+                "type": "string",
+                "minLength": 1
+              },
+              "disclosure": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "withheldFromReader": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "authorId",
+              "at"
+            ],
+            "additionalProperties": false
+          },
           "rationale": {
             "type": "string"
           },

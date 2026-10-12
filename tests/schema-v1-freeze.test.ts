@@ -38,11 +38,41 @@ describe('the shape is closed', () => {
     expect(open).toEqual([]);
   });
 
+  it('no field is left unconstrained, except the declared extension point `params`', () => {
+    // An empty schema accepts anything: `Suggestion.proposed` was one, which
+    // left a hole in the closed shape (#57 review). Declaration `params` are the
+    // one place open by design -- they carry an extension's own parameters.
+    const CONSTRAINING = ['type', '$ref', 'anyOf', 'oneOf', 'allOf', 'const', 'enum', 'not'];
+    const loose: string[] = [];
+    const walk = (s: unknown, at: string, key: string) => {
+      if (Array.isArray(s)) { s.forEach((v, i) => walk(v, `${at}/${i}`, String(i))); return; }
+      if (!s || typeof s !== 'object') return;
+      const o = s as Record<string, unknown>;
+      const container = ['properties', '$defs', 'dependentRequired', 'default'].includes(key);
+      if (at && !container && !CONSTRAINING.some((k) => k in o) && !/\/params\/additionalProperties$/.test(at)) loose.push(at);
+      for (const [k, v] of Object.entries(o)) if (k !== 'default') walk(v, `${at}/${k}`, k);
+    };
+    walk(schema, '', '');
+    expect(loose).toEqual([]);
+  });
+
+  it('refuses a schemaVersion other than 1 in both validators, and an own __proto__ key in zod as Ajv does', () => {
+    for (const v of [0, -1, 0.5, 2]) {
+      const d = { ...relocation(), schemaVersion: v };
+      expect(ajv(d), String(v)).toBe(false);
+      expect(validateAnalysis(d).problems.map((p) => p.ruleId), String(v)).toContain('schema-version-readable');
+    }
+    const proto = JSON.parse(JSON.stringify(relocation()).replace('{"id":', '{"__proto__":{"x":1},"id":'));
+    expect(ajv(proto)).toBe(false);
+    expect(validateAnalysis(proto).ok).toBe(false);
+  });
+
   it('zod and the artifact refuse the same unknown key, at the root and deep inside', () => {
     const doc = relocation();
     const cases: [string, (d: Record<string, any>) => void][] = [
       ['root', (d) => { d.selection = { alternatives: ['lisbon'] }; }],
       ['assertion', (d) => { d.cells[0].assertions[0].confidense = 3; }],
+      ['suggestion proposal', (d) => { d.suggestions[0].proposed.valeu = true; }],
       ['criterion definition (#158: renamed missingRule)', (d) => {
         d.criteria[0].definition = { ...(d.criteria[0].definition ?? {}), missingRule: 'old shape' };
       }],
@@ -62,14 +92,21 @@ describe('the shape is closed', () => {
   });
 });
 
-/** Does any value in `doc` sit at this dotted path? `[]` walks every array item. */
+/**
+ * Does a *meaningful* value sit at this dotted path? `[]` walks every array
+ * item. `false`, `null`, `""`, `[]` and `{}` do not count: a fixture setting
+ * every tombstone to `false` exercises nothing (#57 review).
+ */
 function exercised(doc: unknown, path: string): boolean {
   const step = (vals: unknown[], seg: string): unknown[] => vals.flatMap((v) => {
     if (seg === '[]') return Array.isArray(v) ? v : [];
     return v && typeof v === 'object' && seg in (v as object) ? [(v as Record<string, unknown>)[seg]] : [];
   });
+  const meaningful = (v: unknown) => v !== undefined && v !== null && v !== false && v !== '' &&
+    !(Array.isArray(v) && v.length === 0) &&
+    !(typeof v === 'object' && !Array.isArray(v) && Object.keys(v as object).length === 0);
   const segs = path.split('.').flatMap((s) => (s.endsWith('[]') ? [s.slice(0, -2), '[]'] : [s]));
-  return segs.reduce<unknown[]>(step, [doc]).some((v) => v !== undefined && !(Array.isArray(v) && v.length === 0));
+  return segs.reduce<unknown[]>(step, [doc]).some(meaningful);
 }
 
 describe('every pulled-forward field is exercised (docs/schema-v1.md)', () => {
@@ -83,13 +120,26 @@ describe('every pulled-forward field is exercised (docs/schema-v1.md)', () => {
     'cells[].assertions[].disclosure',
     'cells[].assertions[].evidence[].stance', 'cells[].assertions[].evidence[].sourceType',
     'cells[].assertions[].evidence[].derivedFrom', 'cells[].assertions[].evidence[].check',
-    'criteria[].definition', 'rejectedCriteria[].reasonCode',
+    'criteria[].definition', 'criteria[].provenance', 'rejectedCriteria[].reasonCode',
     'groups[].axis', 'inapplicable[].alternativeGroupId', 'groups[].tombstoned',
     'suggestions[].proposed', 'threads[].anchor',
   ];
 
   it.each(PULLED_FORWARD)('relocation.json carries %s', (path) => {
     expect(exercised(relocation(), path)).toBe(true);
+  });
+
+  it('the helper is not vacuous: falsy and empty values do not count', () => {
+    expect(exercised({ g: [{ t: false }, { t: null }, { t: {} }, { t: [] }] }, 'g[].t')).toBe(false);
+    expect(exercised({ g: [{ t: false }, { t: true }] }, 'g[].t')).toBe(true);
+  });
+
+  it('every field the freeze note lists is in the pinned list', () => {
+    const note = readFileSync(join(root, 'docs', 'schema-v1.md'), 'utf8');
+    for (const field of ['roundId', 'criteriaVersion', 'definedInVersion', 'provenance', 'derivedFrom', 'suggestions']) {
+      expect(note, field).toContain(field);
+      expect(PULLED_FORWARD.some((p) => p.includes(field)), field).toBe(true);
+    }
   });
 
   it('the two exercised elsewhere name the tests that carry them', () => {
