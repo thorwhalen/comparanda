@@ -149,8 +149,10 @@ describe('the messy fixture, both themes, both orientations', () => {
     expect(states).toContain('not-applicable');
     const na = dataCells().find((td) => td.getAttribute('data-state') === 'not-applicable')!;
     expect(na.querySelector('.comparanda-shown')!.textContent).toBe(vocab.means('not-applicable', 'eu-residency-path') ?? 'not-applicable');
-    // A shape, not only a colour: the hatch and the dashed frame differ in kind.
-    expect(getComputedStyle(na).backgroundImage).toMatch(/gradient/);
+    // A shape, not only a colour: each carries its own glyph, in the foreground.
+    expect(na.querySelector('svg.comparanda-glyph')!.getAttribute('data-glyph')).toBe('not-applicable');
+    const gap = dataCells().find((td) => td.getAttribute('data-state') === 'not-assessed')!;
+    expect(gap.querySelector('svg.comparanda-glyph')!.getAttribute('data-glyph')).toBe('not-assessed');
   });
 
   it('refuses a view state that is not one, by name', () => {

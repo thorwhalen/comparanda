@@ -235,13 +235,15 @@ describe('painted cells', () => {
     mount({ analysis: relocation, measure: 'score', encoding: 'missingness' });
     const deferred = el.querySelector<HTMLElement>('td[data-swatch="miss-deferred"]')!;
     expect(getComputedStyle(deferred).color).toBe('rgb(27, 29, 33)');
-    // The glyph is declared, not yet drawn: the legend does not promise it.
-    expect(legend().textContent).toMatch(/not drawn in this build yet/);
+    // The glyph is drawn, in that same ink, and the legend keys it in words.
+    expect(deferred.querySelector('svg.comparanda-glyph')!.getAttribute('data-glyph')).toBe('deferred');
+    expect(legend().querySelector('[data-glyph-key="deferred"]')!.textContent).toMatch(/Deferred \(two bars\)/);
   });
 
-  it('a not-applicable cell keeps its hatch under the missingness colour', () => {
+  it('a not-applicable cell keeps its glyph, not a background image, under the missingness colour', () => {
     mount({ analysis: relocation, measure: 'score', encoding: 'missingness' });
     const na = el.querySelector<HTMLElement>('td[data-glyph="not-applicable"]')!;
-    expect(getComputedStyle(na).backgroundImage).toMatch(/gradient/);
+    expect(na.querySelector('svg.comparanda-glyph')).not.toBeNull();
+    expect(getComputedStyle(na).backgroundImage).toBe('none');
   });
 });

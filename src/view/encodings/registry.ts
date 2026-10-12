@@ -22,7 +22,7 @@
  * Encodings live on the view side of ADR-0005 but hold no DOM: what they
  * return is data the matrix renders, so they are tested in plain Node.
  */
-import type { MissingCode, MissingnessVocabulary } from '../../core/schema/missingness.js';
+import type { MissingnessVocabulary } from '../../core/schema/missingness.js';
 import type { Analysis } from '../../core/schema/analysis.js';
 import type { Reduced } from '../../core/schema/values.js';
 import type { Swatch, SwatchId } from './palette.js';
@@ -38,7 +38,11 @@ export type Texture =
   | { readonly channel: 'none'; readonly because: string }
   /** Hatch density, at most three levels, aligned to the suppression layers. */
   | { readonly channel: 'hatch'; readonly carries: 'confidence' | 'disagreement'; readonly levels: 1 | 2 | 3 }
-  /** A glyph per core missingness reason; a custom code shows its `broader` ancestor's. */
+  /**
+   * A glyph per core missingness reason; a custom code shows its `broader`
+   * ancestor's. The matrix draws it on every missing cell, under any encoding
+   * (ADR-0028), so an encoding declaring it marks nothing per cell.
+   */
   | { readonly channel: 'glyph'; readonly carries: 'missing-reason' };
 
 /** What a cell shows under an encoding, beyond its text. Every field optional: no mark is a mark. */
@@ -47,8 +51,6 @@ export interface CellMark {
   readonly swatch?: SwatchId | VsupSwatchId;
   /** Hatch density, 1 (sparse) to 3 (dense), for an encoding whose texture is `hatch`. */
   readonly hatch?: 1 | 2 | 3;
-  /** The core reason whose glyph the cell carries, for an encoding whose texture is `glyph`. */
-  readonly glyph?: MissingCode;
   /** A short visible mark beside the value, so the encoding never rests on colour. */
   readonly badge?: string;
   /** What a screen reader hears after the value, in words: the badge's meaning, never its symbol. */
@@ -165,7 +167,7 @@ function textureProblem(texture: unknown): string | undefined {
 /** The texture declaration, in words, for the legend. */
 export function describeTexture(texture: Texture): string {
   switch (texture.channel) {
-    case 'none': return `No texture: ${texture.because}`;
+    case 'none': return `No texture of its own: ${texture.because}`;
     case 'hatch': return `Hatch density carries ${texture.carries}, in ${texture.levels} level${texture.levels === 1 ? '' : 's'}.`;
     case 'glyph': return 'A glyph shape carries the reason a cell is missing.';
   }

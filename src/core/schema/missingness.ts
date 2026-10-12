@@ -267,6 +267,29 @@ export function makeVocabulary(
 }
 
 /**
+ * The core reason an absence refines: the code itself if it is one of the core
+ * six, else the `broader` its declaration names, else -- for a code this build
+ * only knows by its degraded ancestor -- that ancestor. `undefined` for a code
+ * nothing defines.
+ *
+ * What a renderer keys on (ADR-0028: glyphs are defined over the core six, a
+ * custom code shows its ancestor's), so that no renderer switches on a literal
+ * custom code.
+ */
+export function coreReasonOf(
+  vocabulary: MissingnessVocabulary,
+  code: string,
+  criterionId?: string,
+): MissingCode | undefined {
+  if (Object.prototype.hasOwnProperty.call(CORE_MISSING_CODES, code)) return code as MissingCode;
+  const declared = vocabulary.declarationsFor(criterionId).find((d) => d.id === code);
+  if (declared) return declared.broader;
+  const resolved = vocabulary.resolve(code, criterionId);
+  return resolved.source === 'degraded' && MissingCode.safeParse(resolved.broader).success
+    ? resolved.broader as MissingCode : undefined;
+}
+
+/**
  * Counts for a set of cells. Reported as counts *and* as rates, because a rate
  * with no denominator is unreadable and a count with no total is unactionable.
  *
