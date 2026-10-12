@@ -98,7 +98,7 @@ describe('over budget, the build fails and says why', () => {
 
   it('`budget: false` reports an overrun without enforcing it', async () => {
     const entry = await entryWith('heavy-charting-lib', HEAVY);
-    const { budget } = await buildStandalone(relocationJson, { entry, budget: false });
+    const { budget } = await buildStandalone(relocationJson, { entry, budget: false, check: 'static' });
     expect(budget.limit).toBe(STANDALONE_BUDGET.limit);
     expect(budget.within).toBe(false);
     expect(budget.contributions[0]!.package).toBe('heavy-charting-lib');
@@ -108,7 +108,7 @@ describe('over budget, the build fails and says why', () => {
 describe('a reservation', () => {
   it('lapses once its package is bundled, which is then charged by measurement', async () => {
     const entry = await entryWith(DND, `export default function draggable(el) { return () => el; }\n`);
-    const { budget } = await buildStandalone(relocationJson, { entry });
+    const { budget } = await buildStandalone(relocationJson, { entry, check: 'static' });
     expect(budget.reserved.map((r) => r.package)).not.toContain(DND);
     expect(budget.contributions.map((c) => c.package)).toContain(DND);
     expect(budget.charged).toBe(budget.shellBytes);

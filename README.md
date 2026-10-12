@@ -137,8 +137,9 @@ const Matrix = defineComponent({
 One analysis in, one self-contained HTML file out: Preact, the matrix and its styles inlined, the analysis carried as readable JSON in a `<script type="application/json">`. It opens from `file://`, offline, with nothing fetched.
 
 ```sh
-npm install --save-dev comparanda vite vite-plugin-singlefile   # the build's two peers are optional
-npx comparanda build analysis.json --out analysis.html          # prints raw and gzipped size
+npm install --save-dev comparanda vite vite-plugin-singlefile playwright   # the build's peers are optional
+npx playwright install chromium                                             # the browser the zero-network check opens
+npx comparanda build analysis.json --out analysis.html                      # prints sizes and how it was checked
 ```
 
 Or from code, with an optional disclosure decision that is applied before anything is inlined (ADR-0021):
@@ -152,7 +153,9 @@ const { html, bytes, gzipBytes } = await buildStandalone(json, {
 });
 ```
 
-An analysis with validation errors is refused, with every error named. `vite` and `vite-plugin-singlefile` are optional peer dependencies: a project that only mounts the matrix never installs them, and `comparanda build` names them when they are missing.
+An analysis with validation errors is refused, with every error named. `vite`, `vite-plugin-singlefile` and `playwright` are optional peer dependencies: a project that only mounts the matrix never installs them, and `comparanda build` names them when they are missing.
+
+**Zero network is enforced where a browser can enforce it, and checked before the file is written** (ADR-0013). The page carries a Content-Security-Policy meta tag with `connect-src 'none'`, so `fetch`, XHR, `EventSource`, WebSocket and `sendBeacon` fail in the reader's browser rather than merely being absent from the code. Before writing, `comparanda build` scans the page's code for network APIs, then opens the file from `file://` in Chromium as built and under every encoding the page registers, focuses, presses and clicks every cell, runs a simulated minute on, and refuses the page on any console error, uncaught error, policy violation, request, navigation, new window or WebRTC connection. The last two are refused by the check, not by the policy: no CSP governs them. A `fetch()` inside a cell renderer only fires when that renderer runs, which is why the check drives the view instead of only loading it. On a machine with no Chromium, `--check static` (or `check: 'static'`) runs the scan alone; the policy is in the page either way.
 
 ## Status
 

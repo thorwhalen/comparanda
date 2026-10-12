@@ -19,6 +19,8 @@ export const ROOT_ELEMENT_ID = 'comparanda-root';
 export interface StandaloneSettings {
   /** The measure the cells show. */
   measure: string;
+  /** The encoding to open with; absent, the view state's. The build's browser check sets it to exercise each one. */
+  encoding?: string;
 }
 
 /**

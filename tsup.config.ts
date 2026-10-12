@@ -67,7 +67,7 @@ export default defineConfig([
     sourcemap: true,
     // `import.meta.url` in the CommonJS build, which finds the standalone entry.
     shims: true,
-    external: ['vite', 'vite-plugin-singlefile'],
+    external: ['vite', 'vite-plugin-singlefile', 'playwright'],
   },
   // The `comparanda` command.
   {
@@ -75,7 +75,7 @@ export default defineConfig([
     format: ['esm'],
     platform: 'node',
     clean: false,
-    external: ['vite', 'vite-plugin-singlefile'],
+    external: ['vite', 'vite-plugin-singlefile', 'playwright'],
   },
   // The standalone page's entry: one browser module with every dependency in
   // it, which `comparanda build` hands to Vite to inline into the HTML.

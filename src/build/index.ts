@@ -15,10 +15,12 @@
  *
  * The page is held to a raw-byte budget excluding the analysis (#116,
  * `budget.ts`): over it, the build fails and names the packages the bytes went
- * to. Out of scope here, each with its own issue: the CSP tag and the
- * build-time zero-network check (#115), the mail-filter warning (#118). What
- * this does already: a disclosure projection, when given, runs before anything
- * is inlined (ADR-0021), because View Source recovers whatever the file carries.
+ * to. The page carries a Content-Security-Policy that refuses every
+ * connection, and the build checks it asks the network for nothing -- a static
+ * pre-filter, then the page exercised in Chromium -- before returning it
+ * (#115, `network.ts`). Out of scope here, with its own issue: the mail-filter
+ * warning (#118). A disclosure projection, when given, runs before anything is
+ * inlined (ADR-0021), because View Source recovers whatever the file carries.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -33,6 +35,7 @@ import {
   type BudgetReport, type ByteBudget, type ReadPrebundled,
 } from './budget.js';
 import { projectForReader, type DisclosureDecision } from '../core/schema/disclosure.js';
+import { CSP_META, exerciseInBrowser, NetworkReached, staticNetworkFindings } from './network.js';
 import {
   ANALYSIS_ELEMENT_ID, ROOT_ELEMENT_ID, SETTINGS_ELEMENT_ID, scriptSafeJson, type StandaloneSettings,
 } from '../standalone/contract.js';
@@ -56,6 +59,21 @@ export interface BuildOptions {
    * reports against the default without enforcing it.
    */
   budget?: ByteBudget | false;
+  /**
+   * The zero-network check (ADR-0013). `'browser'`, the default: the static
+   * pre-filter, then the page opened from `file://` in Chromium and exercised
+   * under each encoding in `checkEncodings`; any console error, uncaught
+   * error, request, navigation or new window fails the build. `'static'`: the
+   * pre-filter alone, for a machine with no Chromium. The CSP is in the page
+   * either way.
+   */
+  check?: 'browser' | 'static';
+  /**
+   * The encodings the browser check exercises. Default: every one the page
+   * registers. One it does not register fails the build. Only with
+   * `check: 'browser'`.
+   */
+  checkEncodings?: readonly string[];
 }
 
 export interface BuildResult {
@@ -68,6 +86,12 @@ export interface BuildResult {
   budget: BudgetReport;
   /** Validation warnings the analysis carried (errors refuse the build). */
   warnings: string[];
+  /**
+   * How the page was checked to ask the network for nothing: the encodings
+   * whose renderers ran over every cell, and those registered that could not
+   * draw this analysis (prepared, then fallen back to text).
+   */
+  checked: { by: 'browser' | 'static'; encodings: readonly string[]; couldNotDraw: readonly string[] };
 }
 
 export {
@@ -82,7 +106,14 @@ export const BUILD_PEERS = ['vite', 'vite-plugin-singlefile'] as const;
  * one). Refuses a document with validation errors, naming every one.
  */
 export async function buildStandalone(input: unknown, options: BuildOptions = {}): Promise<BuildResult> {
-  const { measure = 'score', discloses, entry = defaultEntry(), budget = STANDALONE_BUDGET } = options;
+  const {
+    measure = 'score', discloses, entry = defaultEntry(), budget = STANDALONE_BUDGET,
+    check = 'browser', checkEncodings,
+  } = options;
+  if (check !== 'browser' && check !== 'static') throw new Error(`no page was built: the check is "browser" or "static", not ${JSON.stringify(check)}.`);
+  if (check === 'static' && checkEncodings !== undefined) {
+    throw new Error('no page was built: checkEncodings names encodings for the browser check, and the check is "static".');
+  }
   // Serialised once: what is validated is exactly what is inlined, whatever
   // `toJSON` or non-JSON values the caller's object carried.
   const wire: unknown = JSON.parse(JSON.stringify(input) ?? 'null');
@@ -101,19 +132,37 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
 
   const { shell, codeBytes, rendered } = await bundleShell(entry);
   entryIsInlined(shell);
+  cspIsFirst(shell);
+  const findings = staticNetworkFindings(shell);
+  if (findings.length > 0) {
+    throw new NetworkReached('its code reaches for the network', findings.map((f) => `${f.what}: \u2026${f.excerpt}\u2026`));
+  }
   const shellBytes = Buffer.byteLength(shell);
   const contributions = attribute(shellBytes, codeBytes, lengthsByPackage(rendered, readPrebundled));
   const report = chargeBudget(shellBytes, contributions, budget || STANDALONE_BUDGET);
   if (budget !== false && !report.within) throw new BudgetExceeded(report);
   let html = splice(shell, EMPTY_TITLE, `<title>${escapeHtml(title)}</title>`);
   html = splice(html, emptyData(ANALYSIS_ELEMENT_ID), filledData(ANALYSIS_ELEMENT_ID, inlined));
-  html = splice(html, emptyData(SETTINGS_ELEMENT_ID), filledData(SETTINGS_ELEMENT_ID, settings));
+  const withSettings = (s: StandaloneSettings) => splice(html, emptyData(SETTINGS_ELEMENT_ID), filledData(SETTINGS_ELEMENT_ID, s));
+  const page = withSettings(settings);
+  let exercised: BuildResult['checked'] = { by: 'static', encodings: [], couldNotDraw: [] };
+  if (check === 'browser') {
+    const { problems, drawn, couldNotDraw } = await exerciseInBrowser({
+      page,
+      withEncoding: (encoding) => withSettings({ ...settings, encoding }),
+      ...(checkEncodings !== undefined ? { encodings: checkEncodings } : {}),
+    });
+    if (problems.length > 0) throw new NetworkReached('opened from file:// and exercised in Chromium, it failed', problems);
+    exercised = { by: 'browser', encodings: drawn, couldNotDraw };
+  }
+  html = page;
   return {
     html,
     bytes: Buffer.byteLength(html),
     gzipBytes: gzipSync(html).length,
     budget: report,
     warnings: checked.problems.filter((p) => p.severity === 'warning').map((p) => `${p.path || '(root)'}: ${p.message}`),
+    checked: exercised,
   };
 }
 
@@ -173,6 +222,7 @@ const TEMPLATE = [
   '<html lang="en">',
   '<head>',
   '<meta charset="utf-8">',
+  CSP_META,
   '<meta name="viewport" content="width=device-width, initial-scale=1">',
   EMPTY_TITLE,
   '</head>',
@@ -193,6 +243,19 @@ function splice(html: string, empty: string, filled: string): string {
     throw new Error(`the bundled page does not carry exactly one ${empty}; the build template and the bundler disagree.`);
   }
   return html.slice(0, at) + filled + html.slice(at + empty.length);
+}
+
+/**
+ * Refuse a page whose policy did not survive bundling intact, or comes after a
+ * script: a meta CSP governs only what follows it.
+ */
+function cspIsFirst(html: string): void {
+  const policies = html.match(/http-equiv\s*=\s*["']?content-security-policy/gi) ?? [];
+  const at = html.indexOf(CSP_META);
+  const script = html.search(/<script\b/i);
+  if (policies.length !== 1 || at < 0 || (script >= 0 && script < at)) {
+    throw new Error('the bundled page does not carry the Content-Security-Policy exactly once, before every script; no page was built.');
+  }
 }
 
 /**
