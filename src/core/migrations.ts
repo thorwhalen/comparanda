@@ -55,6 +55,16 @@ export interface MigrationChain {
   registered(): Migration[];
   migrate(doc: VersionedDocument): MigrationResult;
   needsMigration(doc: VersionedDocument): boolean;
+  /**
+   * The versions in `1 .. currentVersion - 1` with no registered step. Empty
+   * means a document at any earlier version reaches the current one.
+   *
+   * The enforceable form of "every version bump registers a step, even a
+   * no-op" (ADR-0006): at version 1 it is vacuously empty, and the moment the
+   * version is bumped without a step it is not, so a test over it fails the
+   * build instead of `migrate` failing on a reader's stored document.
+   */
+  missingSteps(): number[];
   clear(): void;
 }
 
@@ -131,6 +141,7 @@ export function createMigrationChain({ currentVersion }: { currentVersion: numbe
     registered: () => [...registry.values()].sort((a, b) => a.from - b.from),
     migrate,
     needsMigration: (doc) => versionOf(doc) < currentVersion,
+    missingSteps: () => Array.from({ length: currentVersion - 1 }, (_, i) => i + 1).filter((v) => !registry.has(v)),
     clear: () => registry.clear(),
   };
 }
@@ -155,6 +166,11 @@ export function _clearMigrations(): void {
 /** Bring an analysis document up to `SCHEMA_VERSION`. See `MigrationChain.migrate`. */
 export function migrate(doc: VersionedDocument): MigrationResult {
   return documentChain.migrate(doc);
+}
+
+/** Versions on the analysis document's chain with no registered step. See `MigrationChain.missingSteps`. */
+export function missingMigrationSteps(): number[] {
+  return documentChain.missingSteps();
 }
 
 /** Whether a document needs migrating. Cheap; safe to call on every load. */
