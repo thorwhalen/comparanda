@@ -75,6 +75,8 @@ export const MATRIX_CSS = `
   background-image: repeating-linear-gradient(135deg, var(--cmp-hatch) 0 1px, transparent 1px 7px);
 }
 .comparanda-matrix td[data-state="not-assessed"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; }
+/* Focused, the gap keeps its dashed shape: the ring takes the focus colour, not a solid line. */
+.comparanda-matrix td[data-state="not-assessed"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
 .comparanda-matrix .comparanda-degraded { color: var(--cmp-ink); }
 .comparanda-matrix .comparanda-edits { list-style: none; padding: 0; margin: 0 0 0.5em; color: var(--cmp-muted); }
 .comparanda-matrix .comparanda-edits button {

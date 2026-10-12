@@ -73,7 +73,7 @@ let view = setGrouping(initialViewState(analysis), 'alternatives', ['g-europe', 
 matrix.update({ view: transpose(view) });  // criteria as rows, alternatives as columns
 ```
 
-The matrix is a `<table role="grid">` and one tab stop: arrow keys move between cells, Home and End along a row, Ctrl+Home and Ctrl+End to the corners. Where the reader is lives in the view state (`session.focus`, by id), and the matrix reports every change through `onViewChange`; keep it and pass it back, and a reload lands in the cell the reader left:
+The matrix is a `<table role="grid">` and one tab stop: arrow keys move between cells, Home and End along a row, Ctrl+Home to the top-left corner and Ctrl+End to the last cell. Where the reader is lives in the view state (`session.focus`, by id), and the matrix reports every change through `onViewChange`; keep it and pass it back, and a reload lands in the cell the reader left:
 
 ```ts
 import { parseViewState, serializeViewState } from 'comparanda';

@@ -156,16 +156,24 @@ describe('the roving position', () => {
     const stop = stops()[0]!;
     expect(stop.getAttribute('data-cell')).toBe(`${languages.alternatives.length}:2`);
     expect(stop.closest('tr')!.querySelector('th')!.textContent).toBe(languages.alternatives[0]!.label);
+    // The moved row took DOM focus with it, or focus was put back on the stop.
+    expect(document.activeElement).toBe(stop);
   });
 
-  it('a wrapper re-passing the same view keeps the reader\'s move; a new view object replaces it', async () => {
+  it('a host view that says nothing new about focus keeps the reader\'s place; one that does replaces it', async () => {
     const view = initialViewState(languages);
     const handle = mount({ analysis: languages, measure: 'score', view });
     cellAt('2:2').focus();
+    // A wrapper re-passing the same view on every render.
     handle.update({ analysis: languages, measure: 'score', view }, { replace: true });
     expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['2:2']);
-    handle.update({ view: initialViewState(languages) });
-    expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['0:0']);
+    // A host transposing without listening: same cell, swapped axes, and focus stays in the grid.
+    handle.update({ view: transpose(view) });
+    expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['2:2']);
+    expect(document.activeElement).toBe(stops()[0]);
+    // A host that places the reader.
+    handle.update({ view: { ...view, session: { focus: { criterionId: languages.criteria[0]!.id } } } });
+    expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['0:1']);
   });
 
   it('a position naming something no longer shown falls back to that axis\'s header', () => {

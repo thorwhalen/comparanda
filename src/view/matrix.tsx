@@ -119,7 +119,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
       : [rowLabel.get(rowId), columnLabel.get(columnId)];
     const sure = state === 'value' ? confidence?.read(altId, critId)?.value : undefined;
     const after = state === 'value'
-      ? `${outOf(reduced?.value, reader.measurementOf(critId))}${sure !== undefined ? `, ${CONFIDENCE} ${String(sure)}` : ''}`
+      ? `${reduced?.withheldFromReader ? '' : outOf(reduced?.value, reader.measurementOf(critId))}${sure !== undefined ? `, ${CONFIDENCE} ${String(sure)}` : ''}`
       : '';
     // Visually hidden, inside the cell: "Memory safety, Rust, 5 of 5, confidence low" (ADR-0027).
     return (
@@ -189,7 +189,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
       />
       {empty && <p class="comparanda-empty" role="note">{empty}</p>}
       <p class="comparanda-keys" id={helpId}>
-        Arrow keys move between cells; Home and End go to the start and end of a row; Ctrl+Home and Ctrl+End to the first and last cell.
+        Arrow keys move between cells; Home and End go to the start and end of a row; Ctrl+Home to the top-left corner and Ctrl+End to the last cell.
       </p>
       {/* Not itself a tab stop: focusing a cell scrolls it, and the grid is the matrix's one stop. */}
       <div class="comparanda-scroll" role="region" aria-label={analysis.subject.question}>

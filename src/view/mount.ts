@@ -97,12 +97,12 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
   let unsubscribe: (() => void) | undefined;
   let destroyed = false;
   /**
-   * Where the reader moved since the host last gave a `view`: the matrix's
-   * one piece of view state of its own, laid over the host's until the host
-   * hands over a different view object (typically the one `onViewChange` sent).
+   * Where the reader moved since the host last said where they are: the
+   * matrix's one piece of view state of its own, laid over the host's `view`
+   * until the host gives one whose `session.focus` differs from the last.
    */
   let moved: { focus: Session['focus'] } | undefined;
-  /** The `view` object the caller last gave, before parsing, to tell a new one from a re-passed one. */
+  /** The `view` the caller last gave, to tell a new focus from a re-passed one. */
   let givenView: unknown = props.view;
   /** The view state of the last render: what `onViewChange` reports. */
   let shown: ViewState;
@@ -131,7 +131,12 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
         : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
       ...(standing ? { standing } : {}),
     };
+    // A re-render that moves the focused cell (a reorder, a transpose) can
+    // drop DOM focus; a reader in the grid stays in it, on the roving stop.
+    const doc = el.ownerDocument;
+    const hadFocus = doc !== undefined && el.contains(doc.activeElement);
     render(h(component, resolved), el);
+    if (hadFocus && !el.contains(doc.activeElement)) el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus();
   };
 
   /** Subscribe to `source`; the returned function unsubscribes. */
@@ -213,15 +218,16 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       // re-render of unchanged props.
       if (props.measure !== current.measure || docChanged) measureOf(nextAnalysis, props.measure);
 
-      // A view object the caller had not given before replaces the reader's
-      // moves; the same one re-passed (a wrapper on every render) keeps them.
+      // A view that says something new about focus (typically the one
+      // `onViewChange` sent back) replaces the reader's move; any other -- the
+      // same one re-passed, or a transpose or regroup the host made -- keeps it.
       const nextGiven = replace || 'view' in next ? next.view : givenView;
       const before = { current, analysis, unsubscribe, moved, givenView };
       const followed = swapped ? follow(props.source) : unsubscribe;
       current = props;
       analysis = nextAnalysis;
       unsubscribe = followed;
-      if (nextGiven !== givenView) moved = undefined;
+      if (focusIn(nextGiven) !== focusIn(givenView)) moved = undefined;
       givenView = nextGiven;
       try {
         draw();
@@ -286,6 +292,11 @@ function checked(props: MountMatrixProps): MountMatrixProps {
     );
   }
   return props;
+}
+
+/** What a given `view` says about the reader's position, comparable by value. */
+function focusIn(view: unknown): string {
+  return JSON.stringify((view as ViewState | undefined)?.session?.focus ?? null);
 }
 
 /** Refuse a measure the analysis neither declares nor records (`unknownMeasure`). */
