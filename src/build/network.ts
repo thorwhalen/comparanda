@@ -142,7 +142,8 @@ export interface BrowserCheckOptions {
   /**
    * How much time the page is run on for after it has been driven, on a
    * simulated clock, so a request a renderer puts off with a timer is made
-   * inside the check. Simulated: it costs milliseconds, not this long.
+   * inside the check. Simulated: it costs milliseconds, not this long. A
+   * request put off for longer is not seen; the CSP still refuses it.
    */
   readonly settleMs?: number;
 }
@@ -162,13 +163,17 @@ export const RENDER_TIMEOUT_MS = 15_000;
 /** Simulated time a page is run on for after it is driven, by default: a minute. */
 export const SETTLE_MS = 60_000;
 
+/** The binding the watch reports through: exposed to every frame by Playwright, straight to Node, so no page code can clear it. */
+const REPORT = '__comparandaCheckReport';
+
 /**
- * Installed before the page's own scripts. Reports, rather than allows, the
- * reaches a Content-Security-Policy does not govern -- a new window, a WebRTC
- * connection -- and records every policy violation as it happens.
+ * Installed before the page's own scripts, in every frame -- an iframe's own
+ * `RTCPeerConnection` is a way round a stub on the top window. Refuses and
+ * reports the reaches a Content-Security-Policy does not govern -- a new
+ * window, a WebRTC connection -- and reports every policy violation.
  */
 const WATCH = `(() => {
-  const seen = (window.__comparandaCheck = []);
+  const seen = { push: (what) => { try { window.${REPORT}(what); } catch {} } };
   document.addEventListener('securitypolicyviolation', (e) => seen.push('policy violation: ' + e.violatedDirective + ' ' + e.blockedURI), true);
   window.open = (url) => { seen.push('window.open(' + url + ')'); return null; };
   for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection']) {
@@ -204,6 +209,7 @@ export async function exerciseInBrowser(options: BrowserCheckOptions): Promise<B
       const said = (what: string) => problems.push(`${name}: ${what}`);
       const context = await browser!.newContext();
       try {
+        await context.exposeBinding(REPORT, (_source, what: unknown) => said(String(what)));
         await context.addInitScript(WATCH);
         await context.clock.install();
         context.on('request', (r) => { if (r.url() !== url && !/^(?:data|blob):/.test(r.url())) said(`request for ${r.url()}`); });
@@ -212,7 +218,8 @@ export async function exerciseInBrowser(options: BrowserCheckOptions): Promise<B
         // On the context, not the page: any other page in it is a window this one opened.
         context.on('page', (p) => { if (p !== page) said(`opened a window${p.url() && p.url() !== 'about:blank' ? ` at ${p.url()}` : ''}`); });
         page.on('pageerror', (e) => said(`uncaught error: ${e.message}`));
-        page.on('framenavigated', (f) => { if (f === page.mainFrame() && f.url() !== url) said(`navigated to ${f.url()}`); });
+        // A fragment is not a navigation away: a view state kept in the hash would be the page's own.
+        page.on('framenavigated', (f) => { if (f === page.mainFrame() && f.url().replace(/#.*$/, '') !== url) said(`navigated to ${f.url()}`); });
         await page.goto(url);
         await page.waitForSelector('.comparanda-matrix, [role="alert"]', { timeout: renderTimeoutMs });
         const alert = await page.locator('[role="alert"]').allTextContents();
@@ -228,8 +235,6 @@ export async function exerciseInBrowser(options: BrowserCheckOptions): Promise<B
         });
         for (const key of ['Control+Home', 'ArrowRight', 'ArrowDown', 'End', 'Home', 'Control+End']) await page.keyboard.press(key);
         await page.clock.runFor(settleMs);
-        const seen = await page.evaluate(() => (window as unknown as { __comparandaCheck?: string[] }).__comparandaCheck ?? []);
-        for (const what of seen) said(what);
         // Awaited here, inside the try: the context closes in the finally.
         return await page.evaluate(() => {
           const root = document.querySelector('.comparanda-matrix');

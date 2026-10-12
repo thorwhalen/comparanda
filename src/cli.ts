@@ -70,7 +70,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   const { by, encodings, couldNotDraw } = result.checked;
   const unable = couldNotDraw.length > 0 ? `; ${couldNotDraw.join(', ')} could not draw this analysis` : '';
   console.log(by === 'browser'
-    ? `  zero network: refused by the page's CSP, and none asked for when opened in Chromium and driven under ${encodings.join(', ')}${unable}`
+    ? `  zero network: refused by the page's CSP, and none asked for when opened in Chromium and driven ${encodings.length > 0 ? `under ${encodings.join(', ')}` : 'as built, under no further encoding'}${unable}`
     : '  zero network: refused by the page\'s CSP, and nothing found in its code; not opened in a browser (--check static)');
   return 0;
 }

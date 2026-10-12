@@ -136,6 +136,8 @@ describe('a planted network call fails the build', () => {
     ['a fetch in a click handler', "document.addEventListener('click', () => globalThis[[...'hctef'].reverse().join('')]('https://example.invalid/').catch(() => {}), { once: true })"],
     ['a new window, which no CSP governs', "window[[...'nepo'].reverse().join('')]('https://example.invalid/' + alt)"],
     ['a WebRTC connection, which no CSP governs', "try { new window[[...'noitcennoCreePCTR'].reverse().join('')]({ iceServers: [{ urls: 'stun:127.0.0.1:9' }] }); } catch {}"],
+    ['a WebRTC connection made through an iframe', "try { const f = document.body.appendChild(document.createElement('iframe')); new f.contentWindow[[...'noitcennoCreePCTR'].reverse().join('')]({ iceServers: [] }); } catch {}"],
+    ['a new window opened through an iframe', "try { const f = document.body.appendChild(document.createElement('iframe')); f.contentWindow[[...'nepo'].reverse().join('')]('https://example.invalid/'); } catch {}"],
   ] as const) {
     it(`${what} fails it`, async () => {
       const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(what.replace(/\W+/g, '-'), reach) }).catch((e: unknown) => e);
