@@ -20,4 +20,5 @@ export {
   categorical, consensusSuppressed, datum, disagreement, disagreementSpread, missingness,
   SHIPPED_ENCODINGS, textOnly, uncertaintySuppressed, value,
 } from './encodings/shipped.js';
-export { PALETTE, type SwatchId } from './encodings/palette.js';
+export { PALETTE, type Swatch, type SwatchId } from './encodings/palette.js';
+export { mergeTree, type MergeTree, type VsupSwatchId } from './encodings/vsup.js';

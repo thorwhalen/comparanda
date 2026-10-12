@@ -10,17 +10,20 @@
  * Sequential steps run light to dark on the light theme and invert on the dark
  * one, each validated against its own surface (ADR-0010). Missing cells never
  * take a step of the value ramp (ADR-0010 clause 7). The value-suppressing
- * palette is not here: it is derived from a scale's arity, not listed (#91).
+ * palette is not here: it is derived per scale arity (`vsup-palette.ts`, #91),
+ * and drawn by a stylesheet the matrix adds for the swatches a render uses.
  */
+import { THEMES, type Theme } from '../theme.js';
 
+/** A `[fill, ink]` pair. */
+export type Pair = readonly [fill: string, ink: string];
 /** A light-theme and a dark-theme `[fill, ink]` pair. */
-type Pair = readonly [fill: string, ink: string];
-interface Swatch { readonly light: Pair; readonly dark: Pair }
+export interface Swatch { readonly light: Pair; readonly dark: Pair }
 
-const INK_LIGHT = '#1b1d21'; // --cmp-ink, light theme
-const INK_DARK = '#e6e8eb'; // --cmp-ink, dark theme
-const ON_DARK_LIGHT = '#ffffff';
-const ON_LIGHT_DARK = '#15171b';
+const INK_LIGHT = THEMES.light.ink;
+const INK_DARK = THEMES.dark.ink;
+const ON_DARK_LIGHT = THEMES.light.inkInverse;
+const ON_LIGHT_DARK = THEMES.dark.inkInverse;
 
 export const PALETTE = /* @__PURE__ */ Object.freeze({
   // value: one hue, five steps; darker is better on the light theme, lighter on the dark.
@@ -53,14 +56,14 @@ export const PALETTE = /* @__PURE__ */ Object.freeze({
 } as const satisfies Record<string, Swatch>);
 
 export type SwatchId = keyof typeof PALETTE;
-export type Theme = 'light' | 'dark';
+export type { Theme };
 
 export const SWATCH_IDS = /* @__PURE__ */ Object.freeze(Object.keys(PALETTE) as SwatchId[]);
 
-/** The custom properties a theme block declares: `--cmp-sw-<id>` and `--cmp-sw-<id>-ink`. */
-export function paletteVars(theme: Theme): string {
-  return SWATCH_IDS.map((id) => {
-    const [fill, ink] = PALETTE[id][theme];
+/** The custom properties a theme block declares for a table: `--cmp-sw-<id>` and `--cmp-sw-<id>-ink`. */
+export function paletteVars(palette: Readonly<Record<string, Swatch>>, theme: Theme): string {
+  return Object.keys(palette).map((id) => {
+    const [fill, ink] = palette[id]![theme];
     return `--cmp-sw-${id}: ${fill}; --cmp-sw-${id}-ink: ${ink};`;
   }).join(' ');
 }
@@ -69,8 +72,8 @@ export function paletteVars(theme: Theme): string {
  * One rule per swatch, painting a cell or a legend sample. `background-color`,
  * not `background`, so a not-applicable cell keeps its hatch beneath.
  */
-export function paletteRules(scope: string): string {
-  return SWATCH_IDS.map((id) =>
+export function paletteRules(palette: Readonly<Record<string, Swatch>>, scope: string): string {
+  return Object.keys(palette).map((id) =>
     // `td[...]` ties the `td[data-state]` rules that mute an empty cell's ink, and comes after them in
     // MATRIX_CSS, so the ink tested is the ink drawn.
     `${scope} td[data-swatch="${id}"], ${scope} .comparanda-swatch[data-swatch="${id}"] { background-color: var(--cmp-sw-${id}); color: var(--cmp-sw-${id}-ink); }`,

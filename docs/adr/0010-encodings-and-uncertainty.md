@@ -309,3 +309,25 @@ ships first.
 **6. `datum` is the first shown alternative.** The view state has no datum field, and Pugh's convention is the first column, so moving another alternative to the front changes the datum; the legend says so. Each cell carries a visible `+`, `=` or `−` (hidden from the screen reader, which hears "better than Lisbon" instead), and the legend gives four counts and never a net (ADR-0015).
 
 **7. The palette is a table, and its legibility is a test.** Swatches are listed per theme with the ink drawn on each; `tests/encodings.test.ts` asserts every ink clears 4.5:1 on its fill in both themes and that the value ramp runs light to dark on the light surface and inverts on the dark one. The browser suite measures the painted cells. The render path does no colour maths (clause 6). The value-suppressing palette is not in the table: it is derived, per arity, by #91.
+
+### 2026-10-12 — The value-suppressing palette as built, and the contrast test that gates it
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+- **Deciders:** Thor Whalen
+
+#91 builds clauses 2, 3, 5 and 6. This records what building them forced; nothing above is reversed.
+
+**1. The palette is derived once, checked in, and tested; the render path reads a table.** `vsup-derive.ts` computes every node of every supported tree for both themes (ramp sample at the group's midpoint, CIELAB interpolation toward the theme surface, gamut clamp, then `pickInk`), and `scripts/emit-vsup-palette.ts` writes the result to `vsup-palette.ts`. `tests/vsup.test.ts` fails when the file and the derivation disagree, and runs `assertPaletteLegible` over every entry in both themes. The colour maths (`colour.ts`: Lab, compositing, APCA, `pickInk`) is imported by the test and the script only, so no bundle carries it, and a render cannot accept a failing ink because it never chooses one.
+
+**2. The supported arities are 2–7 score levels by 2–4 confidence levels.** ADR-0032 clause 2 makes arity a property of the declared scale, so the test runs over every tree in that range (150 swatches), not one nine-colour grid. A column outside it — a ratio scale, more than seven levels, a confidence with no ranked scale — is left uncoloured and the legend says so; a cell whose confidence is not recorded likewise. The table is shaken out of a bundle that does not register `uncertainty-suppressed`, so the standalone default (text only) does not pay for it.
+
+**3. The merge tree's general rule.** Layer *i* of *m* has `round(1 + (k − 1) · i / (m − 1))` groups, each a run of the layer below's groups, as even as possible with the larger runs at the ends. It reproduces the `k = 5, m = 3` tree of clause 2 and nests for every supported arity, which the test asserts. A confidence declared as a range rather than levels is read in three layers by the reference lookup over `û = 1 − normalise(confidence)`.
+
+**4. One ink per theme clears every node, by construction of the ramps.** The light ramp stays above the lightness where dark ink fails and suppression toward white only lightens it; the dark ramp stays below where light ink fails and suppression toward the dark surface only darkens it. A ramp that crossed the middle band would put some arity's midpoint where neither ink passes, which the test demonstrates with a crossing ramp. Both ramps reserve headroom (clause 5): no stop is near black or white.
+
+**5. The overlays tested are the ones painted.** The structural-absence hatch over the missingness swatches, and over every non-leaf node a confidence hatch in the cell's own ink at the theme's hatch opacity — a stand-in for #102's foreground strokes, which must draw no denser than that or update the test. Every hand-listed swatch in `palette.ts` is now also held to the gate-then-tie-break choice: its listed ink is the one `pickInk` picks.
+
+**6. The legend lists the colours in use in words and states the aliasing.** Entries read "1 or 2, medium confidence"; notes say "At low confidence, every score is shown as one colour" and which groups share a colour at each middle layer, and state clause 9's finding — the blend changed which options readers chose, not how accurately they read values — beside the reminder that the value stays as text. The wedge form of the legend is not built: clause 2 already records that its shape had no measured effect, and a list says the same thing in words.
+
+**7. The surfaces are one source.** Theme tokens moved to `src/view/theme.ts`, which the stylesheet and the derivation both read, so "the theme surface" cannot drift from the colour the cell paints.
