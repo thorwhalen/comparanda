@@ -178,6 +178,11 @@ describe('categorical', () => {
     }
   });
 
+  it('cannot draw when every categorical cell is refused, and says why rather than showing an empty legend', () => {
+    const p = categorical.prepare(contextOf(relocation)); // lower-median refuses a nominal cell
+    expect('unavailable' in p && p.unavailable).toMatch(/no shown categorical cell has a value/);
+  });
+
   it('cannot draw an analysis with no nominal criterion, and says why', () => {
     const p = categorical.prepare(contextOf(languages));
     expect('unavailable' in p && p.unavailable).toMatch(/categories/);

@@ -81,8 +81,11 @@ export const MATRIX_CSS = `
 .comparanda-matrix td[data-state="not-assessed"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; }
 /* Focused, the gap keeps its dashed shape: the ring takes the focus colour, not a solid line. */
 .comparanda-matrix td[data-state="not-assessed"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
-/* An encoding's swatch paints the cell and sets the ink measured against it, outranking the muted state ink. */
+/* An encoding's swatch paints the cell and sets the ink measured against it. Same specificity as the
+   td[data-state] rules that mute an empty cell's ink, and later: keep it after them. */
 ${paletteRules('.comparanda-matrix')}
+/* On a fill, the focus ring takes the ink, which clears 4.5:1 there; the focus colour does not on every step. */
+.comparanda-matrix td[data-swatch]:focus-visible { outline-color: currentColor; }
 .comparanda-matrix td[data-swatch] { font-style: normal; }
 .comparanda-matrix .comparanda-badge { margin-inline-start: 0.4em; font-weight: 700; }
 .comparanda-matrix .comparanda-legend { margin: 0 0 0.5em; }

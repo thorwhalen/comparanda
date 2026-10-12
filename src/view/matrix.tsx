@@ -378,9 +378,14 @@ function chooseEncoding(
       for (const crit of context.criteria) marks.set(`${alt}\u0000${crit}`, prepared.mark(alt, crit));
     }
     const legend = prepared.legend;
+    // The legend renders outside this guard, so its shape is checked inside it.
+    if (typeof legend?.title !== 'string' || !Array.isArray(legend.entries) || !Array.isArray(legend.notes)) {
+      return cannot('its legend is not a { title, entries, notes }.');
+    }
     return { active: chosen, prepared: { legend, mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? {} } };
   } catch (error) {
-    return cannot(`it failed (${error instanceof Error ? error.message : String(error)}).`);
+    const message = (error instanceof Error ? error.message : String(error)).replace(/[.\s]+$/, '');
+    return cannot(`it failed (${message}).`);
   }
 }
 

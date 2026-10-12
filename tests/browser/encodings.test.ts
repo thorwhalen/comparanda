@@ -133,6 +133,22 @@ describe('painted cells', () => {
     });
   }
 
+  for (const theme of ['light', 'dark'] as const) {
+    it(`a focused painted cell keeps its focus ring at 3:1 on the fill, ${theme} theme`, () => {
+      el.dataset['theme'] = theme;
+      const handle = mount({ analysis: relocationLatest, measure: 'score' });
+      for (const id of ['value', 'categorical', 'missingness', 'datum']) {
+        handle.update({ encoding: id });
+        for (const td of painted()) {
+          td.focus();
+          const style = getComputedStyle(td);
+          expect(style.outlineStyle, `${id} ${td.dataset['swatch']}`).not.toBe('none');
+          expect(contrast(style.outlineColor, style.backgroundColor), `${id} ${td.dataset['swatch']} ${theme}`).toBeGreaterThanOrEqual(3);
+        }
+      }
+    });
+  }
+
   it('the datum mark is seen as a badge and heard as words', () => {
     mount({ analysis: relocation, measure: 'score', encoding: 'datum' });
     const better = el.querySelector<HTMLElement>('td[data-swatch="datum-better"]')!;

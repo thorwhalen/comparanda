@@ -104,6 +104,7 @@ export const categorical = /* @__PURE__ */ defineEncoding({
       return [crit, levels.map(String)] as const;
     }));
     let overflow = false;
+    const counts = new Map<SwatchId, number>();
     const mark = (alt: string, crit: string): CellMark => {
       const v = ctx.read(alt, crit)?.value;
       const levels = order.get(crit);
@@ -112,13 +113,21 @@ export const categorical = /* @__PURE__ */ defineEncoding({
       if (i < 0 || i >= HUES.length) { overflow ||= i >= HUES.length; return NO_MARK; }
       return { swatch: HUES[i]! };
     };
-    for (const alt of ctx.alternatives) for (const crit of ctx.criteria) mark(alt, crit);
+    for (const alt of ctx.alternatives) {
+      for (const crit of ctx.criteria) {
+        const swatch = mark(alt, crit).swatch;
+        if (swatch) counts.set(swatch, (counts.get(swatch) ?? 0) + 1);
+      }
+    }
+    if (counts.size === 0) {
+      return { unavailable: `no shown categorical cell has a value to colour (a refused reduction shows none).` };
+    }
     return {
       mark,
       legend: {
         title: 'Categories, by column',
         entries: HUES.slice(0, Math.max(...[...order.values()].map((l) => Math.min(l.length, HUES.length))))
-          .map((swatch, i) => ({ swatch, label: `Category ${i + 1} in its column's order` })),
+          .map((swatch, i) => ({ swatch, label: `Category ${i + 1} in its column's order`, count: counts.get(swatch) ?? 0 })),
         notes: [
           'Hues are assigned within each column, in its declared order: the same hue in two columns is two different categories.',
           ...(overflow ? [`A column with more than ${HUES.length} categories leaves the rest uncoloured.`] : []),
