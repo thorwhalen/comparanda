@@ -53,6 +53,15 @@
       "label": "EU residency",
       "axis": "criteria",
       "description": "Only meaningful for an EU destination."
+    },
+    {
+      "id": "g-lifestyle",
+      "label": "Lifestyle",
+      "axis": "criteria",
+      "tombstoned": true,
+      "supersededBy": [
+        "g-logistics"
+      ]
     }
   ],
   "alternatives": [

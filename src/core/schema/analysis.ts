@@ -923,6 +923,9 @@ export function completeness(
     if (!g || g.axis !== axis) {
       throw new Error(`completeness: "${groupId}" is not a group of ${axis} in this analysis`);
     }
+    if (g.tombstoned) {
+      throw new Error(`completeness: group "${groupId}" is tombstoned, so it has no members to scope by`);
+    }
     const members = new Set(membersOfGroup(axisGroups(a, axis), groupId));
     return ids.filter((id) => members.has(id));
   };

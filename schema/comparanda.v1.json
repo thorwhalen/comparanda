@@ -598,6 +598,15 @@
           },
           "color": {
             "type": "string"
+          },
+          "tombstoned": {
+            "type": "boolean"
+          },
+          "supersededBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [

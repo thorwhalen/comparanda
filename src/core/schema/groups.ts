@@ -83,7 +83,8 @@ export interface AxisGroups {
  * the build does not throw.
  */
 export function axisGroups(a: Analysis, axis: Axis): AxisGroups {
-  const groups = a.groups.filter((g) => g.axis === axis);
+  // A tombstoned group is kept for its annotations and groups nothing (#51).
+  const groups = a.groups.filter((g) => g.axis === axis && !g.tombstoned);
   const known = new Set(groups.map((g) => g.id));
   const entities = axis === 'alternatives' ? a.alternatives : a.criteria;
 
