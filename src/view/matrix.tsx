@@ -379,8 +379,11 @@ function chooseEncoding(
     }
     const legend = prepared.legend;
     // The legend renders outside this guard, so its shape is checked inside it.
-    if (typeof legend?.title !== 'string' || !Array.isArray(legend.entries) || !Array.isArray(legend.notes)) {
-      return cannot('its legend is not a { title, entries, notes }.');
+    // Every entry needs words: a sample with no label would be colour alone.
+    const entryOk = (e: unknown) => e !== null && typeof e === 'object' && typeof (e as { label?: unknown }).label === 'string';
+    if (typeof legend?.title !== 'string' || !Array.isArray(legend.entries) || !Array.isArray(legend.notes) ||
+      !legend.entries.every(entryOk) || !legend.notes.every((n) => typeof n === 'string')) {
+      return cannot('its legend is not a { title, entries: { label }[], notes: string[] }.');
     }
     return { active: chosen, prepared: { legend, mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? {} } };
   } catch (error) {

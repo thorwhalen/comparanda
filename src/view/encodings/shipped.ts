@@ -120,7 +120,11 @@ export const categorical = /* @__PURE__ */ defineEncoding({
       }
     }
     if (counts.size === 0) {
-      return { unavailable: `no shown categorical cell has a value to colour (a refused reduction shows none).` };
+      return {
+        unavailable: overflow
+          ? `every shown category is past the ${HUES.length}th hue, which this encoding does not repeat.`
+          : 'no shown categorical cell has a value to colour.',
+      };
     }
     return {
       mark,

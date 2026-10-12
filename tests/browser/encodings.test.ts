@@ -100,6 +100,17 @@ describe('an encoding that throws', () => {
       return { legend: { title: 'Broken', entries: [], notes: [] }, mark: () => { throw new Error('mark failed'); } };
     },
   });
+  for (const [what, entries] of [['a null entry', [null]], ['an entry with no words', [{ swatch: 'seq-5', label: { x: 1 } }]]] as const) {
+    it(`with ${what} in its legend falls back rather than blanking the matrix or drawing colour alone`, () => {
+      const odd = defineEncoding({
+        id: 'odd-legend', label: 'Odd legend', texture: { channel: 'none', because: 'a test.' },
+        prepare: () => ({ legend: { title: 'Odd', entries: entries as never, notes: [] }, mark: () => ({}) }),
+      });
+      mount({ analysis: relocation, measure: 'score', encoding: 'odd-legend' }, createEncodingRegistry([...SHIPPED_ENCODINGS, odd]));
+      expect(el.querySelector('.comparanda-degraded')!.textContent).toMatch(/its legend is not/);
+      expect(el.querySelectorAll('td').length).toBe(relocation.alternatives.length * relocation.criteria.length);
+    });
+  }
   for (const where of ['prepare', 'mark'] as const) {
     it(`in ${where} falls back to text and says so, rather than blanking the matrix`, () => {
       const handle = mount({ analysis: relocation, measure: 'score' }, createEncodingRegistry([...SHIPPED_ENCODINGS, broken(where)]));
