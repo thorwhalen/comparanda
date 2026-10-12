@@ -66,7 +66,10 @@ export const BUILD_PEERS = ['vite', 'vite-plugin-singlefile'] as const;
  */
 export async function buildStandalone(input: unknown, options: BuildOptions = {}): Promise<BuildResult> {
   const { measure = 'score', discloses, entry = defaultEntry() } = options;
-  const checked = validateAnalysis(input, { includeCompleteness: false });
+  // Serialised once: what is validated is exactly what is inlined, whatever
+  // `toJSON` or non-JSON values the caller's object carried.
+  const wire: unknown = JSON.parse(JSON.stringify(input) ?? 'null');
+  const checked = validateAnalysis(wire, { includeCompleteness: false });
   if (!checked.ok) {
     const errors = checked.problems.filter((p) => p.severity === 'error');
     throw new Error(`the analysis is not valid, so no page was built:\n${errors.map((p) => `  ${p.path || '(root)'}: ${p.message}`).join('\n')}`);
@@ -75,7 +78,7 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
   if (problem !== undefined) throw new Error(`no page was built: ${problem}.`);
   // Verbatim when nothing is withheld: the document as given, not the parsed
   // copy with its defaults filled in. A projection is a new document.
-  const inlined: unknown = discloses ? projectForReader(checked.analysis, discloses).analysis : input;
+  const inlined: unknown = discloses ? projectForReader(checked.analysis, discloses).analysis : wire;
   const title = options.title ?? checked.analysis.title ?? checked.analysis.subject.question;
   const settings: StandaloneSettings = { measure };
 
@@ -160,7 +163,7 @@ function splice(html: string, empty: string, filled: string): string {
  * from every inline module is the tell.
  */
 function entryIsInlined(html: string): void {
-  const modules = [...html.matchAll(/<script type="module"[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
+  const modules = [...html.matchAll(/<script\b[^>]*\btype="module"[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
   if (!modules.some((code) => code.includes(ANALYSIS_ELEMENT_ID) && code.includes(ROOT_ELEMENT_ID))) {
     throw new Error('the bundled page has no inline module that reads the analysis: the bundler dropped the standalone entry, so no page was built.');
   }
@@ -195,7 +198,9 @@ async function peers(): Promise<[Vite, SingleFile]> {
           `Install them beside comparanda: npm install --save-dev ${BUILD_PEERS.join(' ')} (${why})`,
       );
     }
-    throw new Error(`comparanda build could not load ${BUILD_PEERS.join(' or ')}: ${why}. Vite 7 needs Node 20.19 or later.`);
+    const [major = 0, minor = 0] = process.versions.node.split('.').map(Number);
+    const old = major < 20 || (major === 20 && minor < 19);
+    throw new Error(`comparanda build could not load ${BUILD_PEERS.join(' or ')}: ${why}${old ? ` (Vite 7 needs Node 20.19 or later; this is ${process.versions.node})` : ''}.`);
   }
 }
 
