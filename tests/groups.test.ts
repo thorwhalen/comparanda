@@ -294,11 +294,13 @@ describe('a tombstoned group groups nothing (#51)', () => {
       inapplicable: [...gone.inapplicable, { alternativeGroupId: 'ga', criterionGroupId: 'gc' }],
     };
     expect(tombstonedGroupProblems(gone, { ...gone, ...add }).map((p) => p.path)).toEqual([
-      'alternatives[2].groupIds', 'groups[3].parentId',
+      'alternatives[2].groupIds', 'groups[3].parentId', 'inapplicable[0]',
     ]);
-    const blocks = { ...gone, inapplicable: [{ alternativeGroupId: 'ga', criterionGroupId: 'gc' }, { alternativeGroupId: 'gsub', criterionGroupId: 'gc' }] };
-    expect(tombstonedGroupProblems(gone, blocks)).toEqual([]);
-    expect(tombstonedGroupProblems({ ...gone, inapplicable: [] }, gone).map((p) => p.path)).toEqual(['inapplicable[0]']);
+    // The sanctioned tombstone released ga's block; a block on a live group is fine, a new one on ga is not.
+    expect(gone.inapplicable).toEqual([]);
+    expect(tombstonedGroupProblems(gone, { ...gone, inapplicable: [{ alternativeGroupId: 'gsub', criterionGroupId: 'gc' }] })).toEqual([]);
+    expect(tombstonedGroupProblems(gone, { ...gone, inapplicable: [{ alternativeGroupId: 'ga', criterionGroupId: 'gc' }] })
+      .map((p) => p.path)).toEqual(['inapplicable[0]']);
     // What was attached when it was tombstoned stays; reviving it is allowed.
     expect(tombstonedGroupProblems(gone, gone)).toEqual([]);
     const revived = { ...gone, ...add, groups: add.groups.map((g) => (g.id === 'ga' ? { ...g, tombstoned: false } : g)) };

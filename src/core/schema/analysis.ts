@@ -362,8 +362,8 @@ export function validateAnalysis(
   const rawAliases = (input as { aliases?: unknown }).aliases;
   if (rawAliases && typeof rawAliases === 'object') {
     for (const [one, many] of ALIAS_PAIRS) {
-      const has1 = one in rawAliases;
-      const hasN = many in rawAliases;
+      const has1 = (rawAliases as Record<string, unknown>)[one] !== undefined;
+      const hasN = (rawAliases as Record<string, unknown>)[many] !== undefined;
       if (has1 !== hasN) {
         const [given, missing] = has1 ? [one, many] : [many, one];
         err(
@@ -641,15 +641,19 @@ export function validateAnalysis(
       }
     });
 
-    // A value its measurement does not admit. Scores given against an earlier
-    // definition of the criterion are exempt: they answered the question as it
-    // was then asked, on whatever scale it was then asked on (#62).
+    // A value its measurement does not admit. Once a criterion records that
+    // its meaning changed (`definedInVersion`), only scores known to be given
+    // under the current definition are held to the current scale: one given
+    // earlier answered the question as it was then asked, on whatever scale it
+    // was then asked on (#62), and one whose version is absent or cannot be
+    // ordered may have been -- `supersededCells` reports both rather than
+    // calling them invalid, and this rule agrees with it.
     const m = criterion ? measurementFor(criterion, cell.measure) : undefined;
     if (m) {
       cell.assertions.forEach((as, j) => {
         if (as.value === undefined) return;
-        if (criterion?.definedInVersion !== undefined && as.criteriaVersion !== undefined &&
-          compareCriteriaVersions(as.criteriaVersion, criterion.definedInVersion) === -1) return;
+        if (criterion?.definedInVersion !== undefined && (as.criteriaVersion === undefined ||
+          (compareCriteriaVersions(as.criteriaVersion, criterion.definedInVersion) ?? -1) === -1)) return;
         const reason = valueRefusal(m, as.value);
         if (reason !== undefined) {
           err(

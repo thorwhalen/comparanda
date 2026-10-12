@@ -117,10 +117,16 @@ export function orphanedSuggestionsOf(a: Analysis): { suggestion: Suggestion; re
  * A tombstoned group stops grouping, so the inapplicable blocks naming it stop
  * applying and the cells they excused become outstanding work. That is the
  * #51 decision; doing it *silently* is what #165 found. So tombstoning a group
- * that would reopen cells throws, naming how many, unless the caller passes
- * `reopensInapplicable: true` -- the same "say what you meant" as `material` on
- * `reviseCriterion`. `reopenedByTombstone` answers the question first, for a
- * confirmation prompt.
+ * **removes the blocks that name it** -- they would be inert, and a block left
+ * in place reads as still excusing cells -- and throws, naming how many cells
+ * that reopens, unless the caller passes `reopensInapplicable: true` (the same
+ * "say what you meant" as `material` on `reviseCriterion`). To keep cells
+ * excused, redeclare the blocks on a live group first. `reopenedByTombstone`
+ * answers the question beforehand, for a confirmation prompt.
+ *
+ * Because the release is in the data, a write path can tell the sanctioned
+ * tombstone from a raw one: `tombstonedGroupProblems` refuses a group
+ * tombstoned while a block still names it.
  */
 export function tombstone(
   a: Analysis,
@@ -146,7 +152,11 @@ export function tombstone(
   if (target.kind === 'alternative') return { ...a, alternatives: mark(a.alternatives) };
   if (target.kind === 'criterion') return { ...a, criteria: mark(a.criteria) };
   if (target.kind === 'group') {
-    const after = { ...a, groups: mark(a.groups) };
+    const after = {
+      ...a,
+      groups: mark(a.groups),
+      inapplicable: a.inapplicable.filter((b) => b.alternativeGroupId !== target.id && b.criterionGroupId !== target.id),
+    };
     if (!reopensInapplicable) {
       const reopened = reopenedBetween(a, after);
       if (reopened.length > 0) {
@@ -174,7 +184,9 @@ export interface CellPair { alternativeId: string; criterionId: string }
 export function reopenedByTombstone(a: Analysis, groupId: string): CellPair[] {
   if (!a.groups.some((g) => g.id === groupId)) throw new Error(`no group with id "${groupId}"`);
   return reopenedBetween(a, {
-    ...a, groups: a.groups.map((g) => (g.id === groupId ? { ...g, tombstoned: true } : g)),
+    ...a,
+    groups: a.groups.map((g) => (g.id === groupId ? { ...g, tombstoned: true } : g)),
+    inapplicable: a.inapplicable.filter((b) => b.alternativeGroupId !== groupId && b.criterionGroupId !== groupId),
   });
 }
 
@@ -202,22 +214,26 @@ export interface TombstoneProblem {
 }
 
 /**
- * What the change from `before` to `after` adds to a group that was already
- * tombstoned: a new member, a new child group, or a new inapplicable block.
+ * What the change from `before` to `after` attaches to a tombstoned group: a
+ * new member, a new child group, a new inapplicable block -- or, for a group
+ * tombstoned in this very write, a block still naming it.
  *
  * A tombstoned group is kept so its annotations stay readable, and groups
  * nothing; anything newly attached to it would be silently ignored by every
- * reader, which is the defect #165 found. What was attached when it was
- * tombstoned stays, as history. A write path runs this beside
- * `criteriaRevisionProblems`; the in-memory analysis source does.
+ * reader, which is the defect #165 found. What was attached before it was
+ * tombstoned stays, as history. A block left naming a group tombstoned in this
+ * write is the raw form of the silent reopening `tombstone()` refuses: the
+ * sanctioned tombstone removes its blocks, so a write that did not is refused.
+ *
+ * `revisionProblems` runs this; the in-memory analysis source runs that.
  */
 export function tombstonedGroupProblems(
   before: Pick<Analysis, 'groups' | 'alternatives' | 'criteria' | 'inapplicable'>,
   after: Pick<Analysis, 'groups' | 'alternatives' | 'criteria' | 'inapplicable'>,
 ): TombstoneProblem[] {
-  const dead = new Set(before.groups.filter((g) => g.tombstoned).map((g) => g.id));
-  for (const g of after.groups) if (!g.tombstoned) dead.delete(g.id);
+  const dead = new Set(after.groups.filter((g) => g.tombstoned).map((g) => g.id));
   if (dead.size === 0) return [];
+  const wasDead = new Set(before.groups.filter((g) => g.tombstoned).map((g) => g.id));
   const problems: TombstoneProblem[] = [];
   const refuse = (path: string, what: string, gid: string) => problems.push({
     path,
@@ -230,9 +246,9 @@ export function tombstonedGroupProblems(
     ['alternatives', after.alternatives, before.alternatives],
     ['criteria', after.criteria, before.criteria],
   ] as const) {
-    const prior = new Map(was.map((x) => [x.id, new Set(x.groupIds)]));
+    const prior = new Map(was.map((x) => [x.id, new Set(x.groupIds ?? [])]));
     list.forEach((x, i) => {
-      for (const gid of x.groupIds) {
+      for (const gid of x.groupIds ?? []) {
         if (dead.has(gid) && !prior.get(x.id)?.has(gid)) refuse(`${axis}[${i}].groupIds`, `"${x.id}" was added to`, gid);
       }
     });
@@ -245,9 +261,19 @@ export function tombstonedGroupProblems(
   });
   const priorBlocks = new Set(before.inapplicable.map((b) => JSON.stringify([b.alternativeGroupId, b.criterionGroupId])));
   after.inapplicable.forEach((b, i) => {
-    if (priorBlocks.has(JSON.stringify([b.alternativeGroupId, b.criterionGroupId]))) return;
+    const isNew = !priorBlocks.has(JSON.stringify([b.alternativeGroupId, b.criterionGroupId]));
     for (const gid of [b.alternativeGroupId, b.criterionGroupId]) {
-      if (dead.has(gid)) refuse(`inapplicable[${i}]`, 'a new inapplicable block names', gid);
+      if (!dead.has(gid)) continue;
+      if (isNew) refuse(`inapplicable[${i}]`, 'a new inapplicable block names', gid);
+      else if (!wasDead.has(gid)) {
+        problems.push({
+          path: `inapplicable[${i}]`,
+          message: `group "${gid}" was tombstoned while this inapplicable block still names it. A tombstoned group ` +
+            'groups nothing, so the block stops applying and the cells it excused silently become outstanding.',
+          fix: 'tombstone it with tombstone(a, {kind: "group", id}, {reopensInapplicable: true}), which releases the ' +
+            'block, or redeclare the block on a live group first.',
+        });
+      }
     }
   });
   return problems;

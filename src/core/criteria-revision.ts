@@ -21,7 +21,8 @@
  * Pure functions over plain documents: no DOM, no clock, no store.
  */
 import type { Analysis } from './schema/analysis.js';
-import { compareCriteriaVersions } from './schema/analysis.js';
+import { cellKey, compareCriteriaVersions } from './schema/analysis.js';
+import type { Assertion } from './schema/values.js';
 import type { Criterion } from './schema/structure.js';
 
 /**
@@ -134,19 +135,23 @@ export interface CriteriaRevisionProblem {
  *   change the set never recorded;
  * - a set version that moved backwards, or was dropped, which would make
  *   assertions scored under the later version read as from the future;
- * - a criterion that disappeared. Deleting one is `tombstone`, which keeps it.
+ * - a criterion that disappeared while anything referred to it -- a cell, a
+ *   thread or a suggestion. Deleting one is `tombstone`, which keeps it.
  *   Without this, the guard compares each criterion only with its previous
  *   self, so removing it in one write and adding it back with a new meaning in
- *   the next -- or renaming its id and carrying its cells along -- stored a new
- *   meaning against old scores with no version bump (#165). A criterion that
- *   cannot leave the document cannot come back as something else.
+ *   the next stored a new meaning against old scores with no version bump
+ *   (#165). An unreferenced criterion -- one dropped during elicitation before
+ *   anything was scored or said about it -- has no history to rewrite, and may go.
+ *
+ * Scores *moved* between criteria, or relabelled with a later version, are
+ * `scoreHistoryProblems`' half of the same guard; `revisionProblems` runs both.
  *
  * An absent set version reads as `"1"` throughout, as in `nextCriteriaVersion`:
  * an unversioned set "bumped" to `"1"` or `"0"` has not moved. A new criterion
  * has no earlier meaning to rewrite and is not compared.
  */
 export function criteriaRevisionProblems(
-  before: Pick<Analysis, 'criteria' | 'criteriaVersion'>,
+  before: Pick<Analysis, 'criteria' | 'criteriaVersion'> & Partial<Pick<Analysis, 'cells' | 'threads' | 'suggestions'>>,
   after: Pick<Analysis, 'criteria' | 'criteriaVersion'>,
 ): CriteriaRevisionProblem[] {
   const problems: CriteriaRevisionProblem[] = [];
@@ -167,12 +172,16 @@ export function criteriaRevisionProblems(
   }
 
   const kept = new Set(after.criteria.map((c) => c.id));
+  const referenced = new Set([
+    ...(before.cells ?? []).map((c) => c.criterionId),
+    ...[...(before.threads ?? []), ...(before.suggestions ?? [])].map((t) => t.anchor.criterionId),
+  ]);
   before.criteria.forEach((c, i) => {
-    if (kept.has(c.id)) return;
+    if (kept.has(c.id) || !referenced.has(c.id)) return;
     problems.push({
       path: `criteria[${i}]`,
-      message: `criterion "${c.id}" was removed from the document. A removed criterion can come back under the ` +
-        'same id, or its scores under a new one, with a different meaning and no version bump.',
+      message: `criterion "${c.id}" was removed from the document while cells or annotations refer to it. ` +
+        'A removed criterion can come back under the same id with a different meaning and no version bump.',
       fix: 'tombstone it instead (`tombstone(a, {kind: "criterion", id})`), which keeps it and its history.',
     });
   });
@@ -220,4 +229,66 @@ function canonical(v: unknown): string {
     x && typeof x === 'object' && !Array.isArray(x)
       ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, (x as Record<string, unknown>)[k]]))
       : x) ?? 'undefined';
+}
+
+/** The fields of a stored assertion that say what was asserted, by whom, against which frame. */
+const ASSERTED_FIELDS = ['value', 'missing', 'criteriaVersion', 'authorId', 'at'] as const;
+
+/**
+ * What the change from `before` to `after` does to scores already given.
+ *
+ * Assertions are retained, never deleted, and a change of mind is a new
+ * assertion that supersedes the old one (`Assertion.supersededBy`). So an
+ * assertion stored in `before` must still be in the same cell in `after`, with
+ * the same value, blank, author, time and `criteriaVersion`; `supersededBy`
+ * may be set once and not changed. Refused otherwise, because each of these
+ * rewrote what an old score meant with no version bump (#165):
+ *
+ * - cells moved onto another criterion, new or existing -- the old score now
+ *   answers a question it was never asked;
+ * - an old assertion's `criteriaVersion` rewritten to the current version, which
+ *   makes a superseded score read as current;
+ * - a stored value edited in place.
+ *
+ * What this cannot stop is a *new* assertion: a writer can always assert
+ * something today. That is a claim attributed to its author, not a rewrite of
+ * an old one, and attribution is ADR-0012's question, not this guard's.
+ */
+export function scoreHistoryProblems(
+  before: Pick<Analysis, 'cells'>,
+  after: Pick<Analysis, 'cells'>,
+): CriteriaRevisionProblem[] {
+  const problems: CriteriaRevisionProblem[] = [];
+  const now = new Map<string, Map<string, Assertion>>();
+  for (const c of after.cells) {
+    now.set(cellKey(c.alternativeId, c.criterionId, c.measure), new Map((c.assertions ?? []).map((s) => [s.id, s])));
+  }
+  before.cells.forEach((cell, i) => {
+    const there = now.get(cellKey(cell.alternativeId, cell.criterionId, cell.measure));
+    cell.assertions.forEach((s, j) => {
+      const at = `cells[${i}].assertions[${j}]`;
+      const t = there?.get(s.id);
+      if (!t) {
+        problems.push({
+          path: at,
+          message: `assertion "${s.id}" on ${cell.alternativeId} x ${cell.criterionId} (${cell.measure}) is gone from ` +
+            'its cell. Assertions are retained, never deleted, and a score moved to another cell answers a ' +
+            'question it was never asked.',
+          fix: 'leave it in place; record a change of mind as a new assertion and set supersededBy on this one.',
+        });
+        return;
+      }
+      const changed = ASSERTED_FIELDS.filter((f) => canonical(s[f]) !== canonical(t[f]));
+      if (s.supersededBy !== undefined && t.supersededBy !== s.supersededBy) changed.push('supersededBy' as never);
+      if (changed.length) {
+        problems.push({
+          path: at,
+          message: `assertion "${s.id}" on ${cell.alternativeId} x ${cell.criterionId} changed its ${changed.join(', ')} ` +
+            'in place, which rewrites what was asserted and against which criteria version.',
+          fix: 'add a new assertion and set supersededBy on this one; supersededBy, once set, does not change.',
+        });
+      }
+    });
+  });
+  return problems;
 }

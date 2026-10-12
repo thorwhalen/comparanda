@@ -1057,7 +1057,8 @@
                   "type": "number"
                 },
                 "supersededBy": {
-                  "type": "string"
+                  "type": "string",
+                  "minLength": 1
                 },
                 "disclosure": {
                   "type": "object",
