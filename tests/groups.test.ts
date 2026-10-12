@@ -16,6 +16,7 @@ import { Analysis, completeness, isInapplicable, validateAnalysis } from '../src
 import {
   axisGroups, groupsOf, groupScopeFilter, makeInapplicability, membersOfGroup,
 } from '../src/core/schema/groups.js';
+import { tombstone } from '../src/core/schema/anchors.js';
 
 const ORDINAL = {
   level: 'ordinal', preference: 'increasing', range: { min: 1, max: 5 }, levels: [1, 2, 3, 4, 5],
@@ -238,5 +239,41 @@ describe('groups are analysis data, and nothing else (#47 items 3-4)', () => {
     for (const alt of a.alternatives) {
       for (const crit of a.criteria) expect(f(alt.id, crit.id)).toBe(expected(alt.id, crit.id));
     }
+  });
+});
+
+describe('a tombstoned group groups nothing (#51)', () => {
+  const base = () => Analysis.parse({
+    id: 't', subject: { question: 'q' },
+    alternatives: [{ id: 'x', label: 'X', groupIds: ['ga'] }, { id: 'y', label: 'Y', groupIds: ['gsub'] }],
+    criteria: [{ id: 'c', label: 'C', groupIds: ['gc'], defaultMeasurement: { level: 'ratio', preference: 'increasing', range: { min: 0, max: 1 } } }],
+    groups: [
+      { id: 'ga', label: 'A', axis: 'alternatives' },
+      { id: 'gsub', label: 'Sub', axis: 'alternatives', parentId: 'ga' },
+      { id: 'gc', label: 'C', axis: 'criteria' },
+    ],
+    inapplicable: [{ alternativeGroupId: 'ga', criterionGroupId: 'gc' }],
+  });
+
+  it('drops its memberships and its block, and promotes its sub-groups', () => {
+    const live = base();
+    expect(makeInapplicability(live)('x', 'c')).toBe(true);
+    expect(makeInapplicability(live)('y', 'c')).toBe(true);
+    const gone = tombstone(live, { kind: 'group', id: 'ga' });
+    const ag = axisGroups(gone, 'alternatives');
+    expect(groupsOf(ag, 'x')).toEqual([]);
+    expect(groupsOf(ag, 'y')).toEqual(['gsub']);
+    expect(makeInapplicability(gone)('x', 'c')).toBe(false);
+    expect(makeInapplicability(gone)('y', 'c')).toBe(false);
+  });
+
+  it('still validates: references to a tombstoned group are not dangling', () => {
+    const gone = tombstone(base(), { kind: 'group', id: 'ga' });
+    expect(validateAnalysis(JSON.parse(JSON.stringify(gone))).problems.filter((p) => p.ruleId === 'group-exists')).toEqual([]);
+  });
+
+  it('refuses to scope completeness by it', () => {
+    const gone = tombstone(base(), { kind: 'group', id: 'ga' });
+    expect(() => completeness(gone, { measure: 'score', alternativeGroupId: 'ga' })).toThrow(/tombstoned/);
   });
 });

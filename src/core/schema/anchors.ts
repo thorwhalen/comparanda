@@ -10,7 +10,7 @@
  * 2. **Deleting an annotated entity is a tombstone, and its threads become
  *    visibly orphaned** -- reported with a reason -- rather than silently
  *    disappearing. `tombstone()` is the deletion this core offers; there is no
- *    hard delete of an alternative or a criterion.
+ *    hard delete of an alternative, a criterion or a group.
  * 3. **`repairHint` is stored and never consulted.** Nothing here reads it, and
  *    the tests pin that a misleading hint changes nothing. A human reading an
  *    orphan may use it; resolution may not.
@@ -38,7 +38,7 @@ export type AnchorResolution =
 /**
  * Resolve an anchor against the analysis's current structure. Ids only.
  *
- * A tombstoned alternative or criterion counts as orphaning its annotations --
+ * A tombstoned alternative, criterion or group counts as orphaning its annotations --
  * the entity is kept so nothing is lost, but the argument no longer has a live
  * subject, and a reader must be shown that rather than left to discover it.
  */
@@ -46,11 +46,8 @@ export function resolveAnchor(a: Analysis, anchor: Anchor): AnchorResolution {
   const check = (
     kind: 'alternative' | 'criterion' | 'group', id: string | undefined,
   ): AnchorResolution | undefined => {
-    if (kind === 'group') {
-      return id !== undefined && a.groups.some((g) => g.id === id)
-        ? undefined : { status: 'orphaned', reason: 'missing', entity: { kind, id } };
-    }
-    const list = kind === 'alternative' ? a.alternatives : a.criteria;
+    const list: readonly { id: string; tombstoned?: boolean | undefined; supersededBy?: string[] | undefined }[] =
+      kind === 'alternative' ? a.alternatives : kind === 'criterion' ? a.criteria : a.groups;
     const found = id === undefined ? undefined : list.find((x) => x.id === id);
     if (!found) return { status: 'orphaned', reason: 'missing', entity: { kind, id } };
     if (found.tombstoned) {
@@ -109,16 +106,16 @@ export function orphanedSuggestionsOf(a: Analysis): { suggestion: Suggestion; re
 }
 
 /**
- * Delete an alternative or a criterion the only way this core allows: mark it
- * tombstoned, keep it and everything anchored to it. Returns a new analysis;
- * the input is not mutated. `supersededBy` records a split or merge.
+ * Delete an alternative, a criterion or a group the only way this core allows:
+ * mark it tombstoned, keep it and everything anchored to it. Returns a new
+ * analysis; the input is not mutated. `supersededBy` records a split or merge.
  *
  * Throws on an unknown id rather than returning the input unchanged, because a
  * delete that silently did nothing is a delete the caller believes happened.
  */
 export function tombstone(
   a: Analysis,
-  target: { kind: 'alternative' | 'criterion'; id: string },
+  target: { kind: 'alternative' | 'criterion' | 'group'; id: string },
   { supersededBy }: { supersededBy?: readonly string[] } = {},
 ): Analysis {
   const mark = <T extends { id: string; tombstoned?: boolean | undefined; supersededBy?: string[] | undefined }>(
@@ -132,11 +129,11 @@ export function tombstone(
       : x));
   };
   // Checked at runtime too: a JS caller passing any other kind would otherwise
-  // silently tombstone a criterion.
+  // silently tombstone something else.
   if (target.kind === 'alternative') return { ...a, alternatives: mark(a.alternatives) };
   if (target.kind === 'criterion') return { ...a, criteria: mark(a.criteria) };
+  if (target.kind === 'group') return { ...a, groups: mark(a.groups) };
   throw new Error(
-    `cannot tombstone a "${String(target.kind)}": only alternatives and criteria carry a tombstone. ` +
-      'Groups have no tombstone field yet, so deleting one is a hard delete (see #51).',
+    `cannot tombstone a "${String(target.kind)}": only alternatives, criteria and groups carry a tombstone.`,
   );
 }

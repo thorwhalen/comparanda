@@ -197,6 +197,18 @@ export const Group = z.object({
   parentId: z.optional(z.string()),
   description: z.optional(z.string()),
   color: z.optional(z.string()),
+  /**
+   * Deleted, and kept. A group carries `group` and `group-pair` annotation
+   * anchors, so a hard delete would orphan them with nothing left to say what
+   * they were about (#51, ADR-0011). A tombstoned group stays in the document
+   * for its annotations and **stops grouping everywhere else**: it leaves the
+   * group space (`axisGroups`), so its memberships, its sub-groups' nesting
+   * under it and any inapplicable block naming it no longer take effect, and
+   * its former sub-groups become top-level.
+   */
+  tombstoned: z.optional(z.boolean()),
+  /** For a split or merge: the groups that took its place. */
+  supersededBy: z.optional(z.array(z.string())),
 });
 export type Group = z.infer<typeof Group>;
 

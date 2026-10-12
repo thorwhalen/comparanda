@@ -81,7 +81,19 @@ describe('deletion is a tombstone, and its threads are visibly orphaned', () => 
   });
 
   it('refuses a kind it cannot tombstone, rather than tombstoning a criterion', () => {
-    expect(() => tombstone(doc(), { kind: 'group' as never, id: 'g' })).toThrow(/group/);
+    expect(() => tombstone(doc(), { kind: 'cell' as never, id: 'g' })).toThrow(/cannot tombstone a "cell"/);
+  });
+
+  it('tombstones a group: kept, marked, and its group-pair thread visibly orphaned (#51)', () => {
+    const a = doc();
+    const b = tombstone(a, { kind: 'group', id: 'h' }, { supersededBy: ['h2'] });
+    expect(a.groups[1]!.tombstoned).toBeUndefined();
+    expect(b.groups.map((g) => g.id)).toEqual(['g', 'h']);
+    expect(b.groups[1]).toMatchObject({ tombstoned: true, supersededBy: ['h2'] });
+    expect(orphanedThreadsOf(b).map((o) => o.resolution)).toEqual([{
+      status: 'orphaned', reason: 'tombstoned', entity: { kind: 'group', id: 'h' }, supersededBy: ['h2'],
+    }]);
+    expect(() => tombstone(a, { kind: 'group', id: 'nope' })).toThrow(/no group with id "nope"/);
   });
 
   it('lists suggestions anchored to a tombstoned entity too (review finding)', () => {
@@ -125,5 +137,16 @@ describe('the messy fixture', () => {
     const a = Analysis.parse(JSON.parse(readFileSync(join(here, '..', 'examples', 'relocation.json'), 'utf8')));
     expect(a.threads.length).toBeGreaterThan(0);
     expect(orphanedThreadsOf(a)).toEqual([]);
+  });
+});
+
+describe('the messy fixture carries a tombstoned group (#51)', () => {
+  it('keeps it, and it groups nothing: no criterion is in it, and no thread is orphaned by it', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const a = Analysis.parse(JSON.parse(readFileSync(join(root, 'examples', 'relocation.json'), 'utf8')));
+    expect(a.groups.find((g) => g.id === 'g-lifestyle')).toMatchObject({ tombstoned: true, supersededBy: ['g-logistics'] });
+    expect(resolveAnchor(a, { scope: 'group', groupId: 'g-lifestyle' })).toEqual({
+      status: 'orphaned', reason: 'tombstoned', entity: { kind: 'group', id: 'g-lifestyle' }, supersededBy: ['g-logistics'],
+    });
   });
 });
