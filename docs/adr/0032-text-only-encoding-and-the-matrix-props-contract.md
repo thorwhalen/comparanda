@@ -100,3 +100,16 @@ Second, the clause never said what a `patch` is, and the write path that now exi
 **So:** `MatrixProps` is `{ analysis, measure, vocabulary?, encoding?, standing? }` and still names no provider. `mountMatrix` takes `MountMatrixProps`, which adds an optional `source` (followed through `subscribe`, and the only thing edits are gated on) and the host's `authorize`. Without a source the matrix is read-only and says why wherever it would have offered a write. A host that wants a callback hands over a source whose `update` is that callback. `vocabulary` and `encoding` became optional with the defaults the rest of the package already uses (`vocabularyOf(analysis)`, `text-only`); passing them is unchanged.
 
 The clause-3 argument is untouched: the type is published before the grid (#89), and an interim table written against it is deleted rather than refactored.
+
+### 2026-10-12 — `view?: ViewState` joins `MatrixProps`
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+- **Deciders:** Thor Whalen
+
+The matrix component (#89) renders both orientations and group bands, and both are view state (ADR-0006, ADR-0008: `transposed`, `grouping`), as are order and hiding. Rather than one prop per field, which would grow a second, partial view state inside the props, `MatrixProps` takes the reader's `ViewState` whole, as an optional `view`. Absent, the matrix shows `initialViewState(analysis)`: the document's order, recomputed on every render so an alternative a source adds is shown. Present, it is checked against the `ViewState` schema at the prop boundary and refused by name if it is not one.
+
+Two rules keep a stale view state honest. An id the view does not order is shown after the ordered ones, in document order, so a view saved before an edit never hides what it has not heard of; an id the document no longer has is dropped. Both live in core (`matrixLayout`), so every view lays out the same way. `encoding` remains its own prop and wins when given; otherwise the view state's `encoding` applies, then `text-only`.
+
+The addition is optional, so no consumer changes. The view state stays the host's to keep and persist (ADR-0006); the matrix renders the one it is given and owns none of its own until the interactions that change it (reorder #92, grouping #93) arrive with their port.
+

@@ -20,6 +20,7 @@ import type { Authorize } from '../core/affordances.js';
 import type { Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { MissingnessVocabulary } from '../core/schema/missingness.js';
+import type { ViewState } from '../core/view-state.js';
 import type { AnalysisSource } from '../store/index.js';
 
 /** What the matrix renders. The contract ADR-0032 publishes before the matrix. */
@@ -30,8 +31,15 @@ export interface MatrixProps {
   measure: string;
   /** How a blank is read. Default: the analysis's own vocabulary (`vocabularyOf`). */
   vocabulary?: MissingnessVocabulary;
-  /** The registered encoding's id. Default and, in v1, only: `text-only` (ADR-0032). */
+  /** The registered encoding's id. Default: the view state's, else `text-only` (ADR-0032). */
   encoding?: string;
+  /**
+   * The reader's arrangement (ADR-0006): order, hidden alternatives and
+   * criteria, grouping into bands, and `transposed`. Per-user, never part of
+   * the analysis. Default: `initialViewState(analysis)`, the document's order.
+   * An id the view state does not know is shown after the ordered ones.
+   */
+  view?: ViewState;
   /**
    * The standing of a citation check, injected so the view owns no clock and no
    * policy (ADR-0032 clause 4). Typically `(c) => checkStanding(c, { currentCheckerVersion, now })`.

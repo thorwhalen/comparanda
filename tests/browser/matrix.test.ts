@@ -1,0 +1,192 @@
+/**
+ * The matrix component (#89): the messy fixture renders completely, in both
+ * themes and both orientations, with no cell an ambiguous blank; group bands;
+ * and every write the view would offer gated on `editAffordances`, refused
+ * with its reason over a source that refuses updates.
+ *
+ * In a real browser because themes and contrast are about rendered colours.
+ */
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { Analysis, vocabularyOf } from '../../src/core/schema/analysis.js';
+import { initialViewState, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
+import { WRITE_AFFORDANCES } from '../../src/core/affordances.js';
+import { editAffordances, inMemoryAnalysisSource } from '../../src/store/index.js';
+import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
+import relocationJson from '../../examples/relocation.json';
+
+const relocation = Analysis.parse(relocationJson);
+const alternatives = relocation.alternatives.length;
+const criteria = relocation.criteria.length;
+
+let el: HTMLElement;
+const handles: MatrixHandle[] = [];
+const mount = (props: MountMatrixProps) => {
+  const handle = mountMatrix(el, props);
+  handles.push(handle);
+  return handle;
+};
+
+beforeEach(() => {
+  el = document.createElement('div');
+  document.body.append(el);
+});
+afterEach(() => {
+  for (const handle of handles.splice(0)) handle.destroy();
+  el.remove();
+});
+
+/** WCAG 2 relative luminance of an `rgb()`/`rgba()` computed colour, with the sRGB curve, not a lightness threshold. */
+function luminance(css: string): number {
+  const [r, g, b] = css.match(/[\d.]+/g)!.slice(0, 3).map(Number).map((c) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+function contrast(fg: string, bg: string): number {
+  const [hi, lo] = [luminance(fg), luminance(bg)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+const table = () => el.querySelector('table')!;
+const dataCells = () => Array.from(table().querySelectorAll('tbody td'));
+
+describe('the messy fixture, both themes, both orientations', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    for (const transposed of [false, true]) {
+      it(`${theme}, ${transposed ? 'transposed' : 'standard'}: every cell says something, legibly`, () => {
+        el.dataset.theme = theme;
+        const view = transposed ? transpose(initialViewState(relocation)) : initialViewState(relocation);
+        mount({ analysis: relocation, measure: 'score', view });
+        const [rows, cols] = transposed ? [criteria, alternatives] : [alternatives, criteria];
+        expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-orientation'))
+          .toBe(transposed ? 'transposed' : 'standard');
+        expect(table().querySelectorAll('thead th[scope="col"]')).toHaveLength(cols + 1);
+        expect(table().querySelectorAll('tbody th[scope="row"]')).toHaveLength(rows);
+        const cells = dataCells();
+        expect(cells).toHaveLength(rows * cols);
+        for (const td of cells) {
+          expect(td.textContent!.trim()).not.toBe('');
+          expect(td.getAttribute('data-state')).toMatch(/^(value|missing|not-applicable|not-assessed|refused)$/);
+        }
+        // Measured from what was painted, in this theme: every header and cell.
+        for (const node of Array.from(table().querySelectorAll('th, td'))) {
+          const style = getComputedStyle(node);
+          expect(contrast(style.color, style.backgroundColor), node.textContent!).toBeGreaterThanOrEqual(4.5);
+        }
+      });
+    }
+  }
+
+  it('the themes really differ, so the contrast test above measured two palettes', () => {
+    el.dataset.theme = 'light';
+    mount({ analysis: relocation, measure: 'score' });
+    const light = getComputedStyle(table().querySelector('td')!).backgroundColor;
+    el.dataset.theme = 'dark';
+    const dark = getComputedStyle(table().querySelector('td')!).backgroundColor;
+    expect(luminance(light)).toBeGreaterThan(0.8);
+    expect(luminance(dark)).toBeLessThan(0.05);
+  });
+
+  it('transposing shows the same cell under the swapped headers', () => {
+    const handle = mount({ analysis: relocation, measure: 'score' });
+    const at = (row: string, col: string) => {
+      const r = Array.from(table().querySelectorAll('tbody tr')).find((tr) => tr.querySelector('th')?.textContent === row)!;
+      const heads = Array.from(table().querySelectorAll('thead th')).map((th) => th.textContent);
+      return r.children[heads.indexOf(col)]!.textContent;
+    };
+    const [alt, crit] = [relocation.alternatives[2]!, relocation.criteria[4]!];
+    const before = at(alt.label, crit.label);
+    handle.update({ view: transpose(initialViewState(relocation)) });
+    expect(at(crit.label, alt.label)).toBe(before);
+  });
+
+  it('an inapplicable block reads as not applicable, and a gap as not assessed, without colour', () => {
+    mount({ analysis: relocation, measure: 'score' });
+    const vocab = vocabularyOf(relocation);
+    const states = new Set(dataCells().map((td) => td.getAttribute('data-state')));
+    expect(states).toContain('not-applicable');
+    const na = dataCells().find((td) => td.getAttribute('data-state') === 'not-applicable')!;
+    expect(na.textContent).toBe(vocab.means('not-applicable', 'eu-residency-path') ?? 'not-applicable');
+    // A shape, not only a colour: the hatch and the dashed frame differ in kind.
+    expect(getComputedStyle(na).backgroundImage).toMatch(/gradient/);
+  });
+
+  it('refuses a view state that is not one, by name', () => {
+    expect(() => mountMatrix(el, { analysis: relocation, measure: 'score', view: { transposed: true } as unknown as ViewState }))
+      .toThrow(/props\.view must be a ViewState/);
+  });
+});
+
+describe('group bands', () => {
+  it('rows: one tbody per chosen group, headed by its label, then the rest, worded', () => {
+    const view = setGrouping(initialViewState(relocation), 'alternatives', ['g-asia', 'g-europe']);
+    mount({ analysis: relocation, measure: 'score', view });
+    const bodies = Array.from(table().querySelectorAll('tbody'));
+    expect(bodies.map((b) => b.querySelector('th[scope="rowgroup"]')!.textContent)).toEqual([
+      relocation.groups.find((g) => g.id === 'g-asia')!.label,
+      relocation.groups.find((g) => g.id === 'g-europe')!.label,
+      expect.stringMatching(/^Not in /),
+    ]);
+    expect(dataCells()).toHaveLength(alternatives * criteria);
+  });
+
+  it('columns: a colgroup band row whose spans add up to the criteria', () => {
+    const view = setGrouping(initialViewState(relocation), 'criteria', ['g-cost', 'g-climate']);
+    mount({ analysis: relocation, measure: 'score', view });
+    const bands = Array.from(table().querySelectorAll('thead th[scope="colgroup"]'));
+    expect(bands.length).toBe(3);
+    expect(bands.reduce((n, th) => n + Number(th.getAttribute('colspan')), 0)).toBe(criteria);
+    expect(table().querySelectorAll('colgroup')).toHaveLength(4);
+    for (const td of dataCells()) expect(td.textContent!.trim()).not.toBe('');
+  });
+});
+
+describe('edits are offered only through editAffordances', () => {
+  it('over a source that refuses updates, every write control is disabled and shows its reason', () => {
+    const source = inMemoryAnalysisSource(relocation, { canUpdate: false });
+    mount({ analysis: relocation, measure: 'score', source });
+    const affordances = editAffordances(source, relocation);
+    const shown = new Map(Array.from(el.querySelectorAll('.comparanda-edits li')).map((li) => [li.getAttribute('data-edit'), li]));
+    const keyOf: Record<(typeof WRITE_AFFORDANCES)[number], string> = {
+      assert: 'assert', suggest: 'suggest', comment: 'comment', revise: 'revise',
+      changeLock: 'change-lock', decideSuggestion: 'decide-suggestion',
+    };
+    const reasons = {
+      assert: affordances.assert('lisbon', 'rent', 'score').reason,
+      suggest: affordances.suggest('lisbon', 'rent', 'score').reason,
+      comment: affordances.comment().reason,
+      revise: affordances.revise('revising the analysis').reason,
+      changeLock: affordances.changeLock().reason,
+      decideSuggestion: affordances.decideSuggestion('sg-day-tai', 'accept').reason,
+    };
+    for (const action of WRITE_AFFORDANCES) {
+      const li = shown.get(keyOf[action]);
+      expect(li, action).toBeTruthy();
+      const button = li!.querySelector('button')!;
+      expect(button.getAttribute('aria-disabled')).toBe('true');
+      const described = document.getElementById(button.getAttribute('aria-describedby')!)!;
+      expect(described.textContent!.toLowerCase()).toContain(reasons[action]!.toLowerCase());
+    }
+  });
+
+  it('without a source, the same: read-only, and says why', () => {
+    mount({ analysis: relocation, measure: 'score' });
+    expect(el.querySelectorAll('.comparanda-edits button[aria-disabled="true"]')).toHaveLength(WRITE_AFFORDANCES.length);
+    for (const reason of Array.from(el.querySelectorAll('.comparanda-reason'))) expect(reason.textContent!.trim()).not.toBe('');
+  });
+
+  it('over a writable source, nothing is refused, so no inert control is shown', () => {
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation) });
+    expect(el.querySelector('.comparanda-edits')).toBeNull();
+  });
+
+  it('a lock refuses direct values but not suggestions, and the control list follows the document as the source writes', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    mount({ analysis: relocation, measure: 'score', source });
+    await source.update(relocation.id, { locked: true });
+    const edits = Array.from(el.querySelectorAll('.comparanda-edits li')).map((li) => li.getAttribute('data-edit'));
+    expect(edits).toEqual(['assert', 'revise']);
+  });
+});
