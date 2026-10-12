@@ -58,7 +58,7 @@ const violations = [...checkSources(), ...checkBundle()];
 if (violations.length === 0) {
   console.log(
     'boundaries ok: core has no DOM, core does not import view, no network outside store, ' +
-      'no classic zod, no module-scope registration' +
+      'no classic zod, no module-scope registration, view edits through store' +
       (existsSync(join(ROOT, 'dist')) ? '; core bundle holds no view code and no classic zod' : ''),
   );
   process.exit(0);

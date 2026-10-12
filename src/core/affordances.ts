@@ -37,15 +37,32 @@ export interface Affordance {
 
 const ALLOWED: Affordance = Object.freeze({ enabled: true });
 const refuse = (reason: string): Affordance => ({ enabled: false, reason });
+const LOCKED = 'this analysis is locked; propose a suggestion instead of editing it.';
 
-/** What a host is asked to authorise. Coordinates are opaque ids. */
-export interface EditRequest {
+/** A write to one cell. Coordinates are opaque ids. */
+export interface CellEditRequest {
   /** `assert` writes an assertion; `suggest` proposes one on a locked or read-only cell. */
   action: 'assert' | 'suggest';
   alternativeId: string;
   criterionId: string;
   measure: string;
 }
+
+/**
+ * A write to the analysis outside any one cell.
+ *
+ * `comment` starts or answers a thread; `revise` is every other change to what
+ * the analysis says -- its alternatives, criteria, groups, definitions and
+ * declarations. `doing` names the edit in words ("renaming a criterion"), for
+ * the host and for the refusal.
+ */
+export interface DocumentEditRequest {
+  action: 'comment' | 'revise';
+  doing: string;
+}
+
+/** What a host is asked to authorise. */
+export type EditRequest = CellEditRequest | DocumentEditRequest;
 
 /**
  * The host's authorisation, injected. Returning `false` refuses with a generic
@@ -62,8 +79,26 @@ export function cellPolicy(
   analysis: Pick<Analysis, 'locked'>,
   cell: Pick<Cell, 'readOnly'> | undefined,
 ): Affordance {
-  if (analysis.locked) return refuse('this analysis is locked; propose a suggestion instead of editing it.');
+  if (analysis.locked) return refuse(LOCKED);
   if (cell?.readOnly) return refuse('this cell is declared read-only in the analysis.');
+  return ALLOWED;
+}
+
+/**
+ * The document's own policy on an edit outside a cell.
+ *
+ * `Analysis.locked` means the analysis "accepts direct edits, or only
+ * suggestions", so a lock refuses every `revise`. It does not refuse a
+ * `comment`: a thread changes nothing the analysis asserts, and ADR-0011
+ * clause 5 exists so that a reviewer can take part in a locked analysis
+ * without mutating it -- a reviewer who could propose but not say why would
+ * be half a reviewer.
+ */
+export function documentPolicy(
+  analysis: Pick<Analysis, 'locked'>,
+  action: DocumentEditRequest['action'],
+): Affordance {
+  if (action === 'revise' && analysis.locked) return refuse(LOCKED);
   return ALLOWED;
 }
 
@@ -100,7 +135,24 @@ export interface Affordances {
   inapplicable(alternativeId: string, criterionId: string): boolean;
   /** Every acceptability screen `screen()` applies for this measure. */
   screens(measure: string): Screen[];
+  /** Whether a comment thread may be started or answered. A lock does not refuse it (`documentPolicy`). */
+  comment(): Affordance;
+  /**
+   * Whether the analysis may be revised outside its cells: alternatives,
+   * criteria, groups, definitions, declarations. `doing` names the edit in
+   * words, and is what the host is asked about.
+   */
+  revise(doing: string): Affordance;
 }
+
+/**
+ * The members of `Affordances` that answer "may this be written?". Every other
+ * member answers a question about legality or structure, which no provider
+ * capability can change. The store's `editAffordances` gates exactly these on
+ * the provider, and a test holds this list to the interface.
+ */
+export const WRITE_AFFORDANCES = ['assert', 'suggest', 'comment', 'revise'] as const satisfies readonly (keyof Affordances)[];
+export type WriteAffordance = typeof WRITE_AFFORDANCES[number];
 
 /**
  * The affordances of one analysis. Prepared once; every query is a lookup.
@@ -188,6 +240,12 @@ export function makeAffordances(
           rationale: c.acceptability.rationale, preference: m.preference,
         }];
       });
+    },
+    comment() {
+      return withHost({ action: 'comment', doing: 'commenting' }, documentPolicy(a, 'comment'));
+    },
+    revise(doing) {
+      return withHost({ action: 'revise', doing }, documentPolicy(a, 'revise'));
     },
   };
 }

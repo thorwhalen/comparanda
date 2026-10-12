@@ -8,9 +8,11 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Analysis } from '../src/core/schema/analysis.js';
+import { makeAffordances, WRITE_AFFORDANCES, type Affordance, type Affordances } from '../src/core/affordances.js';
 import {
-  affordanceOf, anonymousIdentity, capabilitiesOf, cellAffordanceOf, embeddedEvidenceResolver,
+  affordanceOf, anonymousIdentity, capabilitiesOf, cellAffordanceOf, editAffordances, embeddedEvidenceResolver,
   inMemoryAnalysisSource, oneItemProvider, writeSafety, DEFAULT_CAPABILITIES,
+  type DataChangeEvent, type ProviderCapabilities,
 } from '../src/store/index.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -160,5 +162,128 @@ describe('every editable affordance is derived from getCapabilities', () => {
       ))
       .map(([rel]) => rel);
     expect(offenders, 'editability has one source of truth: getCapabilities, plus the document policy it meets in store/').toEqual([]);
+  });
+});
+
+describe('editAffordances: what the view reads, every write gated on getCapabilities (#72)', () => {
+  /** One call per write the view can offer, on a cell the fixture leaves open to edits. */
+  const ask: Record<typeof WRITE_AFFORDANCES[number], (aff: Affordances) => Affordance> = {
+    assert: (aff) => aff.assert('lisbon', 'rent', 'score'),
+    suggest: (aff) => aff.suggest('lisbon', 'rent', 'score'),
+    comment: (aff) => aff.comment(),
+    revise: (aff) => aff.revise('renaming a criterion'),
+  };
+
+  it('flipping canUpdate disables every write the view can offer, each with a stated reason', () => {
+    const a = relocation();
+    let caps: ProviderCapabilities = { ...DEFAULT_CAPABILITIES, canUpdate: true };
+    // One provider, one affordances object: the capability is read at query
+    // time, so a flip shows on the next question without rebuilding anything.
+    const aff = editAffordances({ getCapabilities: () => caps }, a);
+    for (const name of WRITE_AFFORDANCES) expect(ask[name](aff), name).toEqual({ enabled: true });
+    caps = { ...caps, canUpdate: false };
+    for (const name of WRITE_AFFORDANCES) {
+      const r = ask[name](aff);
+      expect(r.enabled, name).toBe(false);
+      expect(r.reason, name).toMatch(/^this source does not accept updates, so .+ is not possible here\.$/);
+    }
+    expect(aff.revise('renaming a criterion').reason).toMatch(/renaming a criterion/);
+    caps = { ...caps, canUpdate: true };
+    for (const name of WRITE_AFFORDANCES) expect(ask[name](aff).enabled, name).toBe(true);
+  });
+
+  it('a frozen in-memory source is the same flip, through the real adapter', () => {
+    const a = relocation();
+    const frozen = editAffordances(inMemoryAnalysisSource(a, { canUpdate: false }), a);
+    for (const name of WRITE_AFFORDANCES) expect(ask[name](frozen).reason, name).toMatch(/does not accept updates/);
+  });
+
+  it('classifies every member of the affordance layer as a write or not, so a new one cannot slip past the gate', () => {
+    // A member added to Affordances must be added to one of these two lists;
+    // only the first is gated on the provider.
+    const notWrites = ['value', 'missingCodes', 'missingCode', 'inapplicable', 'screens'];
+    const members = Object.keys(makeAffordances(relocation())).sort();
+    expect(members).toEqual([...WRITE_AFFORDANCES, ...notWrites].sort());
+  });
+
+  it('passes the document-only questions through unchanged: a frozen source changes no legality', () => {
+    const a = relocation();
+    const doc = makeAffordances(a);
+    const frozen = editAffordances(inMemoryAnalysisSource(a, { canUpdate: false }), a);
+    expect(frozen.missingCodes('rent')).toEqual(doc.missingCodes('rent'));
+    expect(frozen.missingCode('rent', 'unknown')).toEqual(doc.missingCode('rent', 'unknown'));
+    expect(frozen.value('rent', 'score', 99)).toEqual(doc.value('rent', 'score', 99));
+    expect(frozen.inapplicable('taipei', 'eu-residency-path')).toBe(true);
+    expect(frozen.screens('score')).toEqual(doc.screens('score'));
+  });
+
+  it('asks the provider first, then the document, then the host', () => {
+    const a = { ...relocation(), locked: true };
+    const asked: string[] = [];
+    const authorize = (r: { action: string }) => { asked.push(r.action); return r.action !== 'comment'; };
+    const open = editAffordances(inMemoryAnalysisSource(a), a, { authorize });
+    // The document refuses a direct edit and a revision of a locked analysis, and the host is not asked.
+    expect(open.assert('lisbon', 'rent', 'score').reason).toMatch(/locked; propose a suggestion/);
+    expect(open.revise('adding a criterion').reason).toMatch(/locked/);
+    expect(asked).toEqual([]);
+    // A lock leaves suggestions and comments to the host.
+    expect(open.suggest('lisbon', 'rent', 'score').enabled).toBe(true);
+    expect(open.comment()).toEqual({ enabled: false, reason: 'you are not authorised to do this here.' });
+    expect(asked).toEqual(['suggest', 'comment']);
+    // A frozen source answers before either, with its own reason.
+    asked.length = 0;
+    const frozen = editAffordances(inMemoryAnalysisSource(a, { canUpdate: false }), a, { authorize });
+    expect(frozen.assert('lisbon', 'rent', 'score').reason).toMatch(/does not accept updates/);
+    expect(frozen.comment().reason).toMatch(/does not accept updates/);
+    expect(asked).toEqual([]);
+  });
+
+  it('the host is asked about document edits by name, and may refuse them with its own reason', () => {
+    const a = relocation();
+    const aff = editAffordances(inMemoryAnalysisSource(a), a, {
+      authorize: (r) => (r.action === 'revise' ? { enabled: false, reason: `only the owner may be ${r.doing}.` } : true),
+    });
+    expect(aff.revise('renaming a criterion')).toEqual({ enabled: false, reason: 'only the owner may be renaming a criterion.' });
+    expect(aff.comment()).toEqual({ enabled: true });
+  });
+});
+
+describe('subscribe: the analysis source is load-and-subscribe (ADR-0013, ADR-0006 clause 2)', () => {
+  it('tells a subscriber about every write, and stops when unsubscribed', async () => {
+    const a = relocation();
+    const source = inMemoryAnalysisSource(a);
+    const heard: DataChangeEvent<typeof a>[] = [];
+    const stop = source.subscribe!((e) => heard.push(e));
+    await source.update(a.id, { title: 'Relocation, revisited' });
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatchObject({ type: 'updated', id: a.id, item: { title: 'Relocation, revisited' } });
+    stop();
+    await source.update(a.id, { title: 'Relocation, again' });
+    expect(heard).toHaveLength(1);
+  });
+
+  it('says nothing about a write it refused', async () => {
+    const a = relocation();
+    const frozen = inMemoryAnalysisSource(a, { canUpdate: false });
+    const guarded = inMemoryAnalysisSource(a);
+    const heard: unknown[] = [];
+    frozen.subscribe!((e) => heard.push(e));
+    guarded.subscribe!((e) => heard.push(e));
+    await expect(frozen.update(a.id, { title: 'x' })).rejects.toThrow(/read-only/);
+    // A schema version the write path refuses (revisionProblems).
+    await expect(guarded.update(a.id, { schemaVersion: 2 } as never)).rejects.toThrow(/refused/);
+    expect(heard).toEqual([]);
+  });
+
+  it('a subscriber that throws neither fails the write nor silences the next subscriber', async () => {
+    const errors: unknown[] = [];
+    const p = oneItemProvider({ id: 'doc', n: 0 }, { onSubscriberError: (e) => errors.push(e) });
+    const heard: number[] = [];
+    p.subscribe!(() => { throw new Error('subscriber broke'); });
+    p.subscribe!((e) => { if (e.type === 'updated') heard.push(e.item.n); });
+    expect((await p.update('doc', { n: 1 })).n).toBe(1);
+    expect(heard).toEqual([1]);
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0])).toMatch(/subscriber broke/);
   });
 });

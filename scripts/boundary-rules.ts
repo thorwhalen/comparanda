@@ -6,7 +6,7 @@
  * *same* predicates against deliberately-violating fixtures instead of a copy of
  * them that could drift (#39).
  *
- * Five source rules and three bundle rules, each of which has failed silently
+ * Six source rules and three bundle rules, each of which has failed silently
  * somewhere real:
  *
  *   core-has-no-dom            ADR-0005: "If you need a DOM API in `core`, the
@@ -23,6 +23,12 @@
  *                              at import time is deleted by the bundler under
  *                              `"sideEffects": false` -- an empty registry, no
  *                              error (findings-visualisation.md §5.2).
+ *   view-edits-through-store   ADR-0006 clause 3: the view derives every enable
+ *                              from getCapabilities(). The document's policy
+ *                              functions are blind to the provider, so a view
+ *                              that called one would offer edits a frozen
+ *                              source refuses -- a control present and silently
+ *                              inert. The view reads `editAffordances` (store).
  *
  * The bundle rules re-check the first and fourth against what the build actually
  * contains, following chunk imports, and name the import chain that got there.
@@ -53,6 +59,17 @@ export function isClassicZod(specifier: string): boolean {
   // mini users too.
   return !/^zod\/(?:mini|v4\/mini|v4\/core|v4-mini|locales|v4\/locales)(?:\/|$)/.test(specifier);
 }
+
+/**
+ * The core functions that answer "may this be written?" without asking the
+ * provider. Correct in core and store; in the view, each is a second source of
+ * truth for editability.
+ */
+export const PROVIDER_BLIND = ['makeAffordances', 'cellPolicy', 'documentPolicy'] as const;
+
+const PROVIDER_BLIND_WHY =
+  'read editability through editAffordances (comparanda/store) instead: this one ignores the ' +
+  'provider\'s capability, so a frozen source would still show the control (ADR-0006 clause 3).';
 
 /** Strip comments and string literals so a mention in prose is not a violation. */
 export function strip(src: string): string {
@@ -172,6 +189,15 @@ export function sourceViolations(file: string, text: string): Violation[] {
   if (inCore) {
     strip(text).split('\n').forEach((line, i) => {
       for (const g of DOM_GLOBALS) if (usesDomGlobal(line, g)) add(i, `core-has-no-dom (${g})`);
+    });
+  }
+  if (inView) {
+    strip(text).split('\n').forEach((line, i) => {
+      for (const name of PROVIDER_BLIND) {
+        if (new RegExp(`(?<![\\w$])${name}(?![\\w$])`).test(line)) {
+          add(i, `view-edits-through-store (${name})`, `${name} in view code: ${PROVIDER_BLIND_WHY}`);
+        }
+      }
     });
   }
   if (inCore || inView) {

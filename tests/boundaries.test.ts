@@ -111,6 +111,32 @@ describe('each rule catches its deliberately violating fixture', () => {
     }
   });
 
+  it('keeps the view off the provider-blind policy functions, however it reaches them (#72)', () => {
+    const blind = [
+      "import { makeAffordances } from '../core/affordances.js';",
+      "import { cellPolicy as policy } from '../index.js';",
+      "import * as core from '../index.js'; const ok = core.documentPolicy(a, 'revise');",
+      "const aff = makeAffordances(analysis);",
+    ];
+    for (const src of blind) {
+      const hits = rulesHit('src/view/matrix.ts', src);
+      expect(hits.some((r) => r.startsWith('view-edits-through-store')), src).toBe(true);
+    }
+    const [v] = sourceViolations('src/view/matrix.ts', blind[0]!);
+    expect(v!.text).toMatch(/editAffordances/);
+    // The provider-aware reading, a mention in prose, a longer name, and the
+    // same call outside the view are all fine.
+    for (const [file, src] of [
+      ['src/view/matrix.ts', "import { editAffordances } from '../store/index.js';"],
+      ['src/view/matrix.ts', '// never call makeAffordances here'],
+      ['src/view/matrix.ts', 'const makeAffordancesLater = 1;'],
+      ['src/store/index.ts', "import { makeAffordances } from '../core/affordances.js';"],
+      ['src/core/analyses/a.ts', 'const p = cellPolicy(a, c);'],
+    ] as const) {
+      expect(rulesHit(file, src).filter((r) => r.startsWith('view-edits-through-store')), `${file}: ${src}`).toEqual([]);
+    }
+  });
+
   it('resolves the path rather than matching the word "view"', () => {
     for (const src of [
       "import { x } from './view/helpers.js';", // a core subdirectory that happens to be called view

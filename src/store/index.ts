@@ -16,10 +16,13 @@
  * **`getCapabilities()` is the only source of truth for what the UI offers**
  * (ADR-0006 clause 3): `affordanceOf()` derives every enable/disable from it and
  * returns the *reason* alongside, so a control is never present and silently
- * inert. `comparanda` invents no parallel read-only flag; the one document-level
- * policy that exists -- `Cell.readOnly` / `Analysis.locked`, which the schema
- * owns (a declaration, not a capability) -- is combined by
- * `cellAffordanceOf()` rather than consulted anywhere else. The capability
+ * inert. `editAffordances()` is what a view reads: the document's affordances
+ * (core's `makeAffordances`), with every write -- the `WRITE_AFFORDANCES` --
+ * gated on the provider first. `comparanda` invents no parallel read-only flag;
+ * the one document-level policy that exists -- `Cell.readOnly` /
+ * `Analysis.locked`, which the schema owns (a declaration, not a capability) --
+ * is read by core's policy functions and meets the capability only here. A
+ * boundary rule keeps the view from reaching the provider-blind ones. The capability
  * report also carries the amendment's load-bearing pair: `multiWriter` may be
  * true only where `perContributorFiles` is, and `writeSafety()` refuses the
  * combination the amendment calls a defect.
@@ -29,18 +32,20 @@
  * `inMemory*` adapters with no network at all.
  */
 import { DEFAULT_CAPABILITIES, createInMemoryProvider } from '@zodal/store';
-import type { DataProvider, ProviderCapabilities } from '@zodal/store';
+import type { DataChangeEvent, DataProvider, ProviderCapabilities } from '@zodal/store';
 
 import type { Analysis } from '../core/schema/analysis.js';
 import { revisionProblems } from '../core/revision.js';
-import { cellPolicy, type Affordance } from '../core/affordances.js';
+import {
+  cellPolicy, makeAffordances, type Affordance, type Affordances, type Authorize, type WriteAffordance,
+} from '../core/affordances.js';
 import type { Cell } from '../core/schema/values.js';
 import type { Author } from '../core/schema/provenance.js';
 import {
   checkStanding, verdictFound, type CheckStanding, type EvidenceRef, type Rendition,
 } from '../core/schema/evidence.js';
 
-export type { DataProvider, ProviderCapabilities };
+export type { DataChangeEvent, DataProvider, ProviderCapabilities };
 export { DEFAULT_CAPABILITIES, createInMemoryProvider };
 
 /** The analysis, as a degenerate one-item provider (ADR-0006 amendment, clause 2). */
@@ -120,19 +125,64 @@ export type EditAction = keyof typeof ACTION_CAPABILITY;
 export function affordanceOf(
   provider: Pick<DataProvider<unknown>, 'getCapabilities'>,
   action: EditAction,
-  { what = 'this' }: { what?: string } = {},
+  { what = 'this', doing }: {
+    /** What would be changed: "this cell cannot be updated here". */
+    what?: string;
+    /** The edit, as a gerund, when that reads better: "commenting is not possible here". */
+    doing?: string;
+  } = {},
 ): Affordance {
   const caps = capabilitiesOf(provider);
   if (caps[ACTION_CAPABILITY[action]]) return { enabled: true };
+  const refused = `this source does not accept ${action === 'create' ? 'new items' : `${action}s`}`;
   return {
     enabled: false,
-    reason: `this source does not accept ${action === 'create' ? 'new items' : `${action}s`}, so ${what} cannot be ${action === 'create' ? 'added' : `${action}d`} here.`,
+    reason: doing === undefined
+      ? `${refused}, so ${what} cannot be ${action === 'create' ? 'added' : `${action}d`} here.`
+      : `${refused}, so ${doing} is not possible here.`,
   };
 }
 
 /**
+ * What a view reads to decide what it offers: the document's affordances, with
+ * every write gated on the provider.
+ *
+ * In v1 every edit -- a score, a suggestion, a comment, a revision of the
+ * structure -- is an `update` of the one analysis document (ADR-0006's
+ * 2026-08-22 amendment), so each of the `WRITE_AFFORDANCES` asks `canUpdate`
+ * first and returns the provider's reason when it is refused; only then the
+ * document's policy and the host's `authorize`. The capability is read at
+ * query time, so a provider whose capabilities change is reflected on the next
+ * question. Everything else -- legal values, legal blanks, inapplicable
+ * blocks, screens -- is the document's alone, and passes through.
+ *
+ * When the other ports arrive (saved views, annotations, assertions in their
+ * own providers), the edit that moves gates on *its* provider here, and no view
+ * changes.
+ */
+export function editAffordances(
+  source: Pick<DataProvider<unknown>, 'getCapabilities'>,
+  analysis: Analysis,
+  options: { authorize?: Authorize } = {},
+): Affordances {
+  const doc = makeAffordances(analysis, options);
+  const gated = (doing: string, own: () => Affordance): Affordance => {
+    const fromProvider = affordanceOf(source, 'update', { doing });
+    return fromProvider.enabled ? own() : fromProvider;
+  };
+  const writes: Pick<Affordances, WriteAffordance> = {
+    assert: (alt, crit, measure) => gated('writing to this cell', () => doc.assert(alt, crit, measure)),
+    suggest: (alt, crit, measure) => gated('proposing a suggestion', () => doc.suggest(alt, crit, measure)),
+    comment: () => gated('commenting', () => doc.comment()),
+    revise: (doing) => gated(doing, () => doc.revise(doing)),
+  };
+  return { ...doc, ...writes };
+}
+
+/**
  * The affordance for editing one cell: the provider's capability, and the
- * document's own policy.
+ * document's own policy. The narrow form, with no structural check and no
+ * host; a view reads `editAffordances(...).assert`, which includes both.
  *
  * `Cell.readOnly` and `Analysis.locked` are *declarations in the document*
  * (the schema owns policy, ADR-0004), not a second answer to "can this backend
@@ -148,16 +198,37 @@ export function cellAffordanceOf(
   return cellPolicy(analysis, cell);
 }
 
+export interface OneItemProviderOptions {
+  /** `false` for a frozen source: reported by `getCapabilities`, and `update` refuses. */
+  canUpdate?: boolean;
+  /** Where an error thrown by a subscriber goes. Default: rethrown on a microtask. */
+  onSubscriberError?: (error: unknown) => void;
+}
+
+const rethrowLater = (error: unknown): void => queueMicrotask(() => { throw error; });
+
 /**
  * A one-item provider over a single document, as ADR-0006 clause 2 describes:
- * `getOne` loads it, `update` writes it, and `getList` returns the one item.
- * `create`/`delete` are refused rather than pretended.
+ * `getOne` loads it, `update` writes it, `getList` returns the one item, and
+ * `subscribe` hears every write made through it -- ADR-0013's "load /
+ * subscribe". `create`/`delete` are refused rather than pretended.
+ *
+ * A subscriber that throws does not undo or fail the write that notified it,
+ * nor keep the next subscriber from hearing it: the write has happened, and
+ * the caller is told so. The error goes to `onSubscriberError`, which by
+ * default rethrows it on a microtask so it is loud rather than swallowed.
  */
 export function oneItemProvider<T extends { id: string }>(
   initial: T,
-  { canUpdate = true }: { canUpdate?: boolean } = {},
+  { canUpdate = true, onSubscriberError = rethrowLater }: OneItemProviderOptions = {},
 ): DataProvider<T> {
   let current = initial;
+  const listeners = new Set<(event: DataChangeEvent<T>) => void>();
+  const notify = (event: DataChangeEvent<T>) => {
+    for (const listener of [...listeners]) {
+      try { listener(event); } catch (error) { onSubscriberError(error); }
+    }
+  };
   const refuse = (what: string) => async (): Promise<never> => {
     throw new Error(`a one-item provider cannot ${what}; it holds exactly one document ("${current.id}").`);
   };
@@ -172,7 +243,12 @@ export function oneItemProvider<T extends { id: string }>(
       if (!canUpdate) throw new Error('this source is read-only.');
       if (id !== current.id) throw new Error(`no item with id "${id}"; this provider holds "${current.id}".`);
       current = { ...current, ...data };
+      notify({ type: 'updated', id: current.id, item: current });
       return current;
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
     },
     updateMany: refuse('update many items'),
     delete: refuse('delete'),
@@ -196,7 +272,7 @@ export function oneItemProvider<T extends { id: string }>(
  * stored, nothing in the document says it happened. An error already in the
  * document does not block an unrelated write; warnings never block.
  */
-export function inMemoryAnalysisSource(analysis: Analysis, options?: { canUpdate?: boolean }): AnalysisSource {
+export function inMemoryAnalysisSource(analysis: Analysis, options?: OneItemProviderOptions): AnalysisSource {
   const inner = oneItemProvider(analysis, options);
   return {
     ...inner,
