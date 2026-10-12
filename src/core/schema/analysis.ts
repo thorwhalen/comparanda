@@ -13,7 +13,7 @@ import {
   measurementFor,
 } from './structure.js';
 import {
-  Cell, Reduction, ReductionDeclaration, CORE_REDUCTIONS, reduce, isProjectedOut, isWidenedByDisclosure, liveAssertions,
+  Cell, Reduction, ReductionDeclaration, CORE_REDUCTIONS, reduce, isWidenedByDisclosure, isWithheldFromReader, liveAssertions,
   type Reduced,
 } from './values.js';
 import { Author, Procedure, Round } from './provenance.js';
@@ -1134,9 +1134,13 @@ export function completeness(
       // A withheld assertion counts as valued here: a projection only ever
       // withholds a value (`projectForReader`), so the work it stands for was
       // done; the cell is marked `widened` all the same. (#171)
+      // Disagreement among the visible values is not why such a cell was
+      // refused, so it does not hold the cell back either.
       const asserted = r?.value !== undefined ||
+        (r?.refusedBecause === 'withheld-from-reader' &&
+          r.contributing.every((s) => s.value !== undefined || isWithheldFromReader(s))) ||
         (r?.refused !== undefined && r.contributing.length > 0 &&
-          r.contributing.every((s) => s.value !== undefined || isProjectedOut(s)) && !r.disagreement);
+          r.contributing.every((s) => s.value !== undefined) && !r.disagreement);
       if (asserted) cells.push({ hasValue: true, criterionId: critId, widened });
       else if (r?.missing) cells.push({ hasValue: false, code: r.missing.code, criterionId: critId, widened });
       else cells.push({ hasValue: false, code: NOT_ASSESSED, criterionId: critId, widened });

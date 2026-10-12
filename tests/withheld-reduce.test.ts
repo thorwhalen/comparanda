@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 import { Analysis, completeness, makeCellReader } from '../src/core/schema/analysis.js';
 import { projectForReader } from '../src/core/schema/disclosure.js';
-import { reduce, type Assertion, type Cell } from '../src/core/schema/values.js';
+import { widenedCells } from '../src/core/analyses/readings.js';
+import { isWidenedByDisclosure, reduce, type Assertion, type Cell } from '../src/core/schema/values.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
 const relocation = Analysis.parse(JSON.parse(readFileSync(join(examples, 'relocation.json'), 'utf8')));
@@ -105,10 +106,31 @@ describe('ordering against the other refusals (review of #173)', () => {
     expect(r.refusedBecause).toBeUndefined();
   });
 
-  it('a "single" cell wholly withheld shows the withheld absence, not a conflict the reader cannot see', () => {
-    const r = reduce(cellOf([3, 5], [0, 1], 'single'), opts);
-    expect(r.refused).toBeUndefined();
-    expect(r.missing?.code).toBe('withheld');
+  it('"single" over several live assertions is a conflict even when their values are withheld: the owner refuses it too', () => {
+    for (const hidden of [[0], [0, 1]]) {
+      const r = reduce(cellOf([3, 5], hidden, 'single'), opts);
+      expect(r.refused).toMatch(/resolve the conflict/);
+      expect(r.refusedBecause).toBeUndefined();
+    }
+  });
+
+  it('a visible value beside a visible absence is a disagreement, whatever else is withheld', () => {
+    const cell = cellOf([3, 4, 5], [2]);
+    const absent = cell.assertions[1]!;
+    delete absent.value;
+    absent.missing = { code: 'not-evidenced' };
+    const r = reduce(cell, opts);
+    expect(r.refused).toMatch(/disagree about whether a value exists/);
+    expect(r.refusedBecause).toBeUndefined();
+  });
+
+  it('a flagged, valueless assertion that kept its justification still hides a value: not an authored absence', () => {
+    const cell = cellOf([3, 5], [0]);
+    cell.assertions[0]!.justification = 'left behind by a hand-rolled projection';
+    const r = reduce(cell, opts);
+    expect(r.refused).not.toMatch(/disagree about whether a value exists/);
+    expect(r.refusedBecause).toBe('withheld-from-reader');
+    expect(isWidenedByDisclosure(cell)).toBe(true);
   });
 
   it('"latest" is answered when the newest assertion is visible, and refused when it is withheld', () => {
@@ -129,6 +151,33 @@ describe('ordering against the other refusals (review of #173)', () => {
 });
 
 describe('consumers', () => {
+  it('completeness: a partly withheld cell whose visible values disagree is still done', () => {
+    const cell = relocation.cells.find((c) => {
+      const values = new Set(c.assertions.filter((s) => !s.supersededBy && s.value !== undefined).map((s) => s.value));
+      return values.size > 1 && c.assertions.filter((s) => !s.supersededBy && s.value !== undefined).length > 2;
+    })!;
+    const values = cell.assertions.filter((s) => !s.supersededBy && s.value !== undefined);
+    // Withhold one of the repeated values, so the visible ones still disagree.
+    const repeated = values.find((s, i) => values.some((t, j) => j !== i && t.value === s.value))!;
+    const scope = { measure: cell.measure, alternativeIds: [cell.alternativeId], criterionIds: [cell.criterionId] };
+    const owner = completeness(relocation, scope);
+    const reader = completeness(projectForReader(relocation, (s) => s.id !== repeated.id).analysis, scope);
+    expect(reader.present).toBe(owner.present);
+    expect(reader.outstanding).toBe(owner.outstanding);
+  });
+
+  it('widenedCells does not count a cell whose value core could still prove', () => {
+    const doc = projected(new Set([first.id]));
+    const cell = doc.cells.find(sameCell)!;
+    const visible = cell.assertions.filter((s) => !s.supersededBy && s.value !== undefined);
+    // The newest assertion visible: a `latest` is provable, so no blank was read.
+    for (const s of cell.assertions) if (s.id === first.id) s.at = '2000-01-01T00:00:00Z';
+    cell.reduction = 'latest';
+    expect(makeCellReader(doc, target.measure).read(target.alternativeId, target.criterionId)!.value).toBeDefined();
+    expect(visible.length).toBeGreaterThan(0);
+    expect(widenedCells(doc, [target.alternativeId], [target.criterionId], target.measure)).toBe(0);
+  });
+
   it('completeness counts a partly withheld cell as done, as its owner does, and marks it widened', () => {
     const owner = completeness(relocation, { measure: target.measure });
     const reader = completeness(projected(new Set([first.id])), { measure: target.measure });

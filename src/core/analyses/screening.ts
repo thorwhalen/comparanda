@@ -66,8 +66,9 @@ export function screen(a: Analysis, measure: string): ScreeningResult {
     for (const alt of a.alternatives) {
       if (alt.tombstoned) continue;
       const cell = index.get(cellKey(alt.id, crit.id, measure));
-      if (cell && isWidenedByDisclosure(cell)) widenedByDisclosure += 1;
       const r = reducedValue(a, alt.id, crit.id, measure);
+      // As dominance counts it: only where the withholding left no value.
+      if (cell && isWidenedByDisclosure(cell) && r?.value === undefined) widenedByDisclosure += 1;
       const v = typeof r?.value === 'number' ? r.value : undefined;
       if (v === undefined) {
         flags.push({
