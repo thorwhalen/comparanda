@@ -76,6 +76,11 @@ const hostile = {
     { id: 'c', label: 'C', defaultMeasurement: ORDINAL },
     { id: 'bare', label: 'No measurement', weights: { substitution: 1 } },
     { id: 'n', label: 'Ordinal with no range', defaultMeasurement: { level: 'ordinal', preference: 'increasing' } },
+    // A missing rule naming a code nothing defines.
+    {
+      id: 'r', label: 'Rule with an undefined blank', defaultMeasurement: ORDINAL,
+      definition: { missingRules: [{ when: 'the vendor will not say', code: 'stonewalled' }] },
+    },
   ],
   missingCodes: [
     { id: 'withheld', broader: 'withheld', means: 'redeclares core' },

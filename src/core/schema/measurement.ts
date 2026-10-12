@@ -312,6 +312,42 @@ export function anchorProblems(anchors: AnchorSet, path = 'anchors'): Measuremen
 }
 
 /**
+ * Whether every anchored level is a level this measurement can take (#61).
+ *
+ * An anchor keyed to a level the scale does not have is text nobody can ever
+ * score against: "6" on a 1-5 scale, or "3" on a scale whose levels are
+ * `low`/`mid`/`high`. Checked against the declared `levels` when there are any
+ * (they are the scale), otherwise against `range`. Keys are the string form of
+ * the level, as `AnchorSet.levels` documents.
+ */
+function anchorLevelProblems(m: Measurement, anchors: AnchorSet, path: string): MeasurementProblem[] {
+  const declared = m.levels ? new Set(m.levels.map(String)) : undefined;
+  const fits = (key: string): string | undefined => {
+    if (declared) {
+      return declared.has(key) ? undefined : `is not one of the declared levels (${[...declared].join(', ')})`;
+    }
+    if (!m.range) return undefined;
+    const n = Number(key);
+    if (key.trim() === '' || !Number.isFinite(n)) return `is not a number, and the scale is the range [${m.range.min}, ${m.range.max}]`;
+    return n < m.range.min || n > m.range.max ? `lies outside the range [${m.range.min}, ${m.range.max}]` : undefined;
+  };
+  const problems: MeasurementProblem[] = [];
+  for (const [field, keys] of [['levels', Object.keys(anchors.levels)], ['requires', anchors.requires]] as const) {
+    for (const key of keys) {
+      const why = fits(key);
+      if (why) {
+        problems.push({
+          path: `${path}.${field}.${key}`,
+          message: `the anchor level "${key}" ${why}. An anchor on a level the scale cannot take is ` +
+            'a condition no score can ever meet.',
+        });
+      }
+    }
+  }
+  return problems;
+}
+
+/**
  * The full measurement declaration for one (criterion, measure) pair.
  *
  * Declared per pair rather than per criterion because a criterion routinely
@@ -414,6 +450,7 @@ export function validateMeasurement(m: Measurement, path = ''): MeasurementProbl
 
   if (m.anchors) {
     problems.push(...anchorProblems(m.anchors, at('anchors')));
+    problems.push(...anchorLevelProblems(m, m.anchors, at('anchors')));
     if (m.level !== 'ordinal') {
       problems.push({
         path: at('anchors'),

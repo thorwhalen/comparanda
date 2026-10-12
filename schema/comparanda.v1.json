@@ -200,20 +200,26 @@
               "question": {
                 "type": "string"
               },
-              "anchors": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "string"
-                }
-              },
               "evidenceRule": {
                 "type": "string"
               },
-              "missingRule": {
-                "type": "string"
+              "missingRules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "when": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "when",
+                    "code"
+                  ]
+                }
               },
               "exclusions": {
                 "type": "array",

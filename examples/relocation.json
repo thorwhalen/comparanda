@@ -125,6 +125,28 @@
     {
       "id": "income-tax",
       "label": "Income tax burden",
+      "definition": {
+        "objective": "keep enough of one salary to cover two years abroad",
+        "question": "What effective rate would a household on our expected income pay, according to the published schedule?",
+        "evidenceRule": "the tax authority's own schedule for the year; a calculator or a forum post is not support",
+        "missingRules": [
+          {
+            "when": "the authoritative schedule exists but is behind a paywall we did not pass",
+            "code": "paywalled"
+          },
+          {
+            "when": "no schedule for the year is published at all",
+            "code": "not-evidenced"
+          },
+          {
+            "when": "a figure is known but we chose not to disclose it",
+            "code": "withheld"
+          }
+        ],
+        "exclusions": [
+          "social-security contributions, which differ by contract and are not a property of the city"
+        ]
+      },
       "groupIds": [
         "g-cost"
       ],

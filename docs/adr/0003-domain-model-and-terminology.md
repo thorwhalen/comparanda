@@ -120,6 +120,19 @@ Full reasoning and the complete literature: `docs/research/findings-terminology.
 7. [The outranking approach and the foundations of ELECTRE methods — B. Roy, *Theory and Decision* 31:49–73 (1991)](https://link.springer.com/article/10.1007/BF00134132)
 8. [Electre Methods — J. Figueira, V. Mousseau & B. Roy, in *Multiple Criteria Decision Analysis: State of the Art Surveys*, pp. 133–153 (2005)](https://doi.org/10.1007/0-387-23081-5_4) — closed access and the copy the research transcribed from is no longer online, so its wording is **not** quoted here; the substantive claim rests on [7]. *(See the 2026-08-22 amendment below: the wording has since been re-verified and this caveat is lifted.)*
 
+### 2026-10-12 — A criterion's definition is structured, and its anchors have one home
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+
+#61, mirroring the companion repo's request (its `findings-method.md` § Schema requests, from §1), asks for a criterion that carries a structured definition rather than a free-text description. `CriterionDefinition` has carried `objective`, `question`, `evidenceRule` and `exclusions` as optional fields since v1. This amendment settles the two parts that were still free or doubled.
+
+**1. The scale anchors live on the measurement, and only there.** `Measurement.anchors` (an `AnchorSet`: per-level evidence conditions, a content hash, the levels the scale requires) is where the companion repo already writes them. It is per `(criterion, measure)`, because a `score` and a `confidence` are different scales. `CriterionDefinition` also carried an unhashed `anchors` map that nothing wrote and nothing cross-checked. It is removed: two homes for one fact is how they come to disagree. `validateMeasurement` now refuses an anchor, or a required anchor level, keyed to a level the scale cannot take. The check is against the declared `levels` when there are any, otherwise against `range`.
+
+**2. `missingRule` becomes `missingRules`, a list of `{ when, code }`.** `when` is the condition in prose; `code` names a missingness code from #44's vocabulary (core, analysis-declared or criterion-declared). Free text could say that a blank was allowed but not *which* blank, so the cell could never be checked against the rule. A code the document does not define is refused by the honesty rule `missing-rule-code-defined`, the criterion-scope twin of `blank-is-defined`.
+
+Both are shape changes inside v1, which has not been frozen or published. That follows the precedent of #126's reduction renames: no version bump and no migration. No stored document and neither repository used either changed field. Every definition field stays optional, so a terse criterion is still a valid one.
+
 ## Amendments — citation
 
 ### 2026-08-22 — Reference 8's access caveat is lifted

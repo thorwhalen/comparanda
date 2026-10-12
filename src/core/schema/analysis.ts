@@ -198,6 +198,7 @@ export const RULE_SOURCES = Object.freeze({
   'no-redeclaring-core': 'ADR-0009',
   'unique-declarations': 'ADR-0030',
   'blank-is-defined': 'ADR-0030',
+  'missing-rule-code-defined': 'ADR-0030',
   // Multi-rater cells.
   'cells-unique': 'ADR-0011',
   'independence-recorded': 'ADR-0022',
@@ -431,6 +432,20 @@ export function validateAnalysis(
         );
       }
     }
+    // A missing rule says which blank to record (#61). One naming a code the
+    // document never defines is the criterion-scope twin of `blank-is-defined`:
+    // a rule nobody can follow, because nothing says what its blank means.
+    c.definition?.missingRules?.forEach((r, k) => {
+      if (vocabulary.resolve(r.code, c.id).source === 'undeclared') {
+        honesty(
+          'missing-rule-code-defined', `criteria[${i}].definition.missingRules[${k}].code`,
+          `criterion "${c.id}" tells raters to record "${r.code}" when ${r.when.trim() || 'its rule fires'}, ` +
+            'but that code is neither a core code nor declared in this document or on this criterion.',
+          'name a core code, or declare this one in `missingCodes` (on the analysis or on the criterion) ' +
+            'with a `broader` parent and what it means.',
+        );
+      }
+    });
     for (const g of c.groupIds) {
       if (!groupIds.has(g)) {
         err('group-exists', `criteria[${i}].groupIds`, `unknown group "${g}"`,

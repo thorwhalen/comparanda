@@ -28,6 +28,26 @@ export const Alternative = z.object({
 export type Alternative = z.infer<typeof Alternative>;
 
 /**
+ * When this criterion's rater records an absence, and which one.
+ *
+ * `code` names a missingness code -- a core one, or one declared on the analysis
+ * or on this criterion -- so the rule says *which* blank, not merely that a blank
+ * is allowed (#61, using #44's codes). Free text in this position was
+ * unenforceable: "record not-evidenced if nothing is published" and a cell
+ * recording `withheld` could not be compared. `validateAnalysis` refuses a code
+ * the document does not define.
+ *
+ * `when` is the condition, in words a rater can apply ("the schedule for the
+ * year is behind a paywall"). It is prose on purpose: the condition is a
+ * judgement about a source, and the code is what makes the outcome checkable.
+ */
+export const MissingRule = z.object({
+  when: z.string(),
+  code: z.string(),
+});
+export type MissingRule = z.infer<typeof MissingRule>;
+
+/**
  * What a criterion *means*, in enough detail to be scored consistently.
  *
  * Free text is not enough. An undefined criterion gets scored inconsistently by
@@ -40,20 +60,27 @@ export type Alternative = z.infer<typeof Alternative>;
  *                 alternatives happen to differ on.
  * - `question`    the question a rater answers. Phrasing it as a question is
  *                 what makes "high" and "low" mean the same thing twice.
- * - `anchors`     what each level *means*. Described levels beat bare numbers.
  * - `evidenceRule` what counts as support here. Prevents "I read something once".
- * - `missingRule`  when to record an absence rather than reach for a number.
- *                  This is where the honesty rule becomes criterion-specific.
+ * - `missingRules` when to record an absence rather than reach for a number,
+ *                  and *which* absence. This is where the honesty rule becomes
+ *                  criterion-specific; see `MissingRule`.
  * - `exclusions`  what this criterion deliberately does *not* cover, which is
  *                 how you stop two criteria quietly measuring the same thing.
+ *
+ * The scale anchors -- what each level means -- are **not** here. They live on
+ * the measurement (`Measurement.anchors`), because a criterion routinely carries
+ * a `score` and a `confidence` on different scales and each needs its own, and
+ * because that is where the content hash and the required levels already are.
+ * This object carried a second, unhashed `anchors` map until #61; two places for
+ * one fact is one too many, and nothing wrote to this one.
+ *
+ * Every field is optional, so a terse criterion stays terse.
  */
 export const CriterionDefinition = z.object({
   objective: z.optional(z.string()),
   question: z.optional(z.string()),
-  /** Level value -> what that level means. Keys match `Measurement.levels`. */
-  anchors: z.optional(z.record(z.string(), z.string())),
   evidenceRule: z.optional(z.string()),
-  missingRule: z.optional(z.string()),
+  missingRules: z.optional(z.array(MissingRule)),
   exclusions: z.optional(z.array(z.string())),
 });
 export type CriterionDefinition = z.infer<typeof CriterionDefinition>;
