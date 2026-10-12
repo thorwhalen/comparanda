@@ -416,3 +416,31 @@ describe('the second review pass', () => {
     expect(el.querySelectorAll('li')).toHaveLength(4);
   });
 });
+
+describe('the third review pass', () => {
+  it('a rollback whose own render fails leaves a clean, empty element the next good render fills', () => {
+    let broken = false;
+    const Row = ({ i }: { i: number }) => {
+      if (i === 2 && broken) throw new Error('row failed');
+      return h('li', null, String(i));
+    };
+    const component = (p: MatrixViewProps) =>
+      h('ul', null, [0, 1, 2, 3].map((i) => h(Row, { i, key: `${p.encoding}-${i}` })));
+    const handle = mount(el, { analysis: relocation, measure: 'score' }, { component });
+    broken = true; // something outside the props: old and new props both fail
+    expect(() => handle.update({ encoding: 'value' })).toThrow('row failed');
+    broken = false;
+    handle.update({ encoding: 'later' });
+    expect(el.querySelectorAll('li')).toHaveLength(4);
+  });
+
+  it('a source that drops the shown measure does not refuse re-renders of unchanged props', async () => {
+    const two = { ...relocation, measures: [...relocation.measures, { name: 'confidence', label: 'Confidence' }] };
+    const source = inMemoryAnalysisSource(two);
+    const props = { analysis: two, measure: 'confidence', source };
+    const handle = mount(el, props);
+    await source.update(two.id, { measures: relocation.measures });
+    expect(() => handle.update(props, { replace: true })).not.toThrow();
+    expect(() => handle.update({ ...props, measure: 'scroe' }, { replace: true })).toThrow(/not a measure/);
+  });
+});

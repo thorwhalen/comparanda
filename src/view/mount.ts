@@ -118,7 +118,9 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
    */
   const redraw = () => {
     render(null, el);
-    try { draw(); } catch { /* the element is empty; the next good render fills it */ }
+    // If the old props fail too, unmount again: an empty element and a clean
+    // tree, so the next good render fills it rather than diffing against debris.
+    try { draw(); } catch { render(null, el); }
   };
 
   mounted.add(el);
@@ -150,7 +152,8 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       // document gated on the new source's capabilities.
       if (swapped && props.source && (next.analysis === undefined || next.analysis === current.analysis)) {
         throw new TypeError(
-          'a new source needs its own document in the same update: update({ source, analysis: await source.getOne(id) }). ' +
+          'a new source needs its own document in the same update, as an object not given before: ' +
+            'update({ source, analysis: await source.getOne(id) }), fetched at the time of the swap. ' +
             'Without it the matrix would show the old source\'s document gated on the new source\'s capabilities.',
         );
       }
@@ -159,8 +162,11 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       // on every render) must not undo writes the source has delivered since.
       const docChanged = props.analysis !== current.analysis || (swapped && props.source !== undefined);
       const nextAnalysis = docChanged ? props.analysis : analysis;
-      // Against the document that will be shown, which a source may have moved on from the props'.
-      measureOf(nextAnalysis, props.measure);
+      // Against the document that will be shown, which a source may have moved
+      // on from the props'; and only when the caller changed the measure or the
+      // document, so a source that dropped a measure does not refuse every
+      // re-render of unchanged props.
+      if (props.measure !== current.measure || docChanged) measureOf(nextAnalysis, props.measure);
 
       const before = { current, analysis, unsubscribe };
       const followed = swapped ? follow(props.source) : unsubscribe;
