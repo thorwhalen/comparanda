@@ -287,3 +287,25 @@ constant.
 Nothing here is reversed and no shipped encoding is withdrawn — read the roster as nine, read the
 palette's arity as derived rather than fixed, and read ADR-0032 for why the ninth is the one v1
 ships first.
+
+### 2026-10-12 — The registry as built, and what each registered encoding draws in v1
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+- **Deciders:** Thor Whalen
+
+#90 builds the registry clause 8 describes and registers the nine. This records the choices that building it forced; nothing above is reversed.
+
+**1. The registration's shape.** `defineEncoding({ id, label, texture, prepare })` describes and registers nothing; `createEncodingRegistry(definitions)` is called by the composition root and refuses a duplicate id. `texture` is a required field of the type, so a registration without one fails `tsc`, and both functions refuse one at run time for a caller outside TypeScript. `texture` is one of `{ channel: 'none', because }`, `{ channel: 'hatch', carries: 'confidence' | 'disagreement', levels: 1–3 }` or `{ channel: 'glyph', carries: 'missing-reason' }`: clause 4 and ADR-0028 reserve texture for uncertainty and absence, and the type admits nothing else. `prepare(context)` is called once per render over the matrix as shown and returns either a per-cell `mark` and the encoding's `legend`, or `{ unavailable: reason }`. A mark is data (a palette swatch, a hatch level, a glyph, a visible badge, words for the screen reader), so encodings hold no DOM and are tested in Node.
+
+**2. `mountMatrix` registers `text-only` alone unless given `encodings`.** ADR-0032's v1 default stands, and a consumer ships only the encodings it names (`createEncodingRegistry([textOnly, value])`); `SHIPPED_ENCODINGS` is all nine for a root that wants them. The definitions are `/* @__PURE__ */`-annotated so an unnamed one is shaken out.
+
+**3. Never a silent substitute.** An id the registry does not hold, or an encoding whose `prepare` says it cannot draw this analysis, falls back to `text-only` with a note giving the reason. The matrix's `data-encoding` names the encoding actually drawn.
+
+**4. Five draw in v1, four are registered and refuse with a reason.** `text-only`, `value`, `categorical`, `missingness` and `datum` draw. `uncertainty-suppressed` and `consensus-suppressed` wait for the value-suppressing palette derived from a scale's arity (#91, ADR-0032 clause 2); `disagreement` for the rater dot strip (#110); `disagreement-spread` for a per-cell `(1 − A) / 2` (ADR-0024's amendment), which core does not compute yet. Each lands behind its existing registration, not as a new one.
+
+**5. `value` is read along each criterion's own declared range and preference.** A matrix mixes rents, tax rates and 1–5 ratings, so "darker means a larger number" would make a cheap city look worse in one column and better in the next. The step is the position between the criterion's worst and best end: `increasing` and `decreasing` only. `target` is left uncoloured because placing a value needs a distance to the target, the cardinal assumption ADR-0019 clause 7 keeps out of v1; `ordered` and `none` have no best end. The legend says both things in words.
+
+**6. `datum` is the first shown alternative.** The view state has no datum field, and Pugh's convention is the first column, so moving another alternative to the front changes the datum; the legend says so. Each cell carries a visible `+`, `=` or `−` (hidden from the screen reader, which hears "better than Lisbon" instead), and the legend gives four counts and never a net (ADR-0015).
+
+**7. The palette is a table, and its legibility is a test.** Swatches are listed per theme with the ink drawn on each; `tests/encodings.test.ts` asserts every ink clears 4.5:1 on its fill in both themes and that the value ramp runs light to dark on the light surface and inverts on the dark one. The browser suite measures the painted cells. The render path does no colour maths (clause 6). The value-suppressing palette is not in the table: it is derived, per arity, by #91.

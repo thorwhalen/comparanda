@@ -86,6 +86,17 @@ mountMatrix(el, {
 });
 ```
 
+Encodings are registered by you, not by the package (ADR-0010): without `encodings`, the matrix shows values as text. Name the ones you ship, and switch with the `encoding` prop or the view state's; the legend follows:
+
+```ts
+import { createEncodingRegistry, missingness, textOnly, value } from 'comparanda/view';
+
+const matrix = mountMatrix(el, { analysis, measure: 'score', encoding: 'value' }, {
+  encodings: createEncodingRegistry([textOnly, value, missingness]),  // or SHIPPED_ENCODINGS for all nine
+});
+matrix.update({ encoding: 'missingness' });  // what is left to do, by reason
+```
+
 Light and dark follow `prefers-color-scheme`; `data-theme="light"` or `"dark"` on the mount element forces one; failing that, the same attribute on `<html>`.
 
 Without a `source` the matrix is read-only and says so. Changing the source takes its document in the same call: `update({ source, analysis: await source.getOne(id) })`. No React or Vue binding ships; each is a few lines:

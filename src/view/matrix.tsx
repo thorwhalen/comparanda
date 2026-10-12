@@ -50,17 +50,24 @@ import { NOT_APPLICABLE, NOT_ASSESSED, type MissingnessVocabulary } from '../cor
 import { aliasesOf } from '../core/schema/structure.js';
 import type { Reduced } from '../core/schema/values.js';
 import type { Session, ViewState } from '../core/view-state.js';
+import { textOnly } from './encodings/shipped.js';
+import {
+  describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
+} from './encodings/registry.js';
 import { MATRIX_CSS } from './matrix-css.js';
 
-/** The one encoding v1 registers (ADR-0032 clause 1). #90 replaces this with the registry. */
-export const TEXT_ONLY = 'text-only';
+/** The default encoding, and the fallback when the chosen one cannot draw (ADR-0032 clause 1). */
+export const TEXT_ONLY = textOnly.id;
 
 /** What the component renders from: `MatrixProps` resolved, plus the edits the source allows. */
 export interface MatrixViewProps {
   analysis: Analysis;
   measure: string;
   vocabulary: MissingnessVocabulary;
+  /** The chosen encoding's id, looked up in `encodings`. */
   encoding: string;
+  /** The encodings this view was composed with (ADR-0010 clause 8). */
+  encodings: EncodingRegistry;
   /** The reader's arrangement: order, hiding, grouping, orientation. */
   view: ViewState;
   standing?: (check: CitationCheck | undefined) => CheckStanding;
@@ -85,8 +92,14 @@ const CONFIDENCE = 'confidence';
  */
 export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' | 'refused';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, view, affordances, onFocusChange }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, affordances, onFocusChange }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
+  const reads = new Map<string, ReturnType<typeof reader.read>>();
+  const read = (alt: string, crit: string) => {
+    const key = `${alt}\u0000${crit}`;
+    if (!reads.has(key)) reads.set(key, reader.read(alt, crit));
+    return reads.get(key);
+  };
   const confidence = measure !== CONFIDENCE && unknownMeasure(analysis, CONFIDENCE) === undefined
     ? makeCellReader(analysis, CONFIDENCE) : undefined;
   const helpId = useId();
@@ -100,6 +113,12 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
   // An axis with nothing shown leaves a table of headers and no cells; say why.
   const empty = hiddenAxis && `No ${plural(hiddenAxis)} are shown: every one is hidden in this view, or there are none.`;
 
+  const [alternatives, criteria] = transposed ? [columns.entries, rows.entries] : [rows.entries, columns.entries];
+  const { active, prepared, fallback } = chooseEncoding(encodings, encoding, {
+    analysis, measure, vocabulary, read, inapplicable: affordances.inapplicable,
+    alternatives: alternatives.map((e) => e.id), criteria: criteria.map((e) => e.id),
+  });
+
   const grid = gridOf(rows.entries, columns.entries, transposed);
   const at = grid.positionOf(view.session.focus);
   /** The roving `tabindex` and the address the keyboard handler moves by. */
@@ -112,7 +131,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
 
   const cell = (rowId: string, columnId: string, r: number, c: number) => {
     const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
-    const reduced = reader.read(altId, critId);
+    const reduced = read(altId, critId);
+    const mark = prepared.mark(altId, critId);
     const { state, text } = cellContent(reduced, affordances.inapplicable(altId, critId), vocabulary, critId);
     const [altLabel, critLabel] = transposed
       ? [columnLabel.get(columnId), rowLabel.get(rowId)]
@@ -121,12 +141,18 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
     const after = state === 'value'
       ? `${reduced?.withheldFromReader ? '' : outOf(reduced?.value, reader.measurementOf(critId))}${sure !== undefined ? `, ${CONFIDENCE} ${String(sure)}` : ''}`
       : '';
+    const said = `${after}${mark.said ?? ''}`;
     // Visually hidden, inside the cell: "Memory safety, Rust, 5 of 5, confidence low" (ADR-0027).
+    // The encoding's badge is seen; its meaning, in `said`, is what is heard.
     return (
-      <td key={columnId} data-state={state} {...stop(r, c)}>
+      <td
+        key={columnId} data-state={state} {...stop(r, c)}
+        data-swatch={mark.swatch} data-hatch={mark.hatch} data-glyph={mark.glyph}
+      >
         <span class="comparanda-sr">{`${critLabel}, ${altLabel}, `}</span>
         <span class="comparanda-shown">{text}</span>
-        {after && <span class="comparanda-sr">{after}</span>}
+        {mark.badge && <span class="comparanda-badge" aria-hidden="true">{mark.badge}</span>}
+        {said && <span class="comparanda-sr">{said}</span>}
       </td>
     );
   };
@@ -174,15 +200,11 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
   return (
     <div
       class="comparanda-matrix"
-      data-encoding={TEXT_ONLY}
+      data-encoding={active.id}
       data-orientation={transposed ? 'transposed' : 'standard'}
     >
       <style>{MATRIX_CSS}</style>
-      {encoding !== TEXT_ONLY && (
-        <p class="comparanda-degraded" role="note">
-          {`The "${encoding}" encoding is not available in this build; showing values as text.`}
-        </p>
-      )}
+      {fallback && <p class="comparanda-degraded" role="note">{fallback}</p>}
       <RefusedEdits
         analysis={analysis} measure={measure} affordances={affordances}
         rows={rows.entries} columns={columns.entries} transposed={transposed}
@@ -191,6 +213,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
       <p class="comparanda-keys" id={helpId}>
         Arrow keys move between cells; Home and End go to the start and end of a row; Ctrl+Home to the top-left corner and Ctrl+End to the last cell.
       </p>
+      <Legend definition={active} legend={prepared.legend} />
       {/* Not itself a tab stop: focusing a cell scrolls it, and the grid is the matrix's one stop. */}
       <div class="comparanda-scroll" role="region" aria-label={analysis.subject.question}>
         <table role="grid" aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}>
@@ -325,6 +348,74 @@ function cellContent(
   return inapplicable
     ? { state: 'not-applicable', text: means(NOT_APPLICABLE) }
     : { state: 'not-assessed', text: means(NOT_ASSESSED) };
+}
+
+/**
+ * The encoding to draw with, prepared over the matrix as shown. One the build
+ * does not register, or one that cannot draw this analysis, falls back to
+ * `text-only` and says why: a reader is never shown a different encoding from
+ * the one they chose without being told. An encoding that throws -- `defineEncoding`
+ * is public, so a third party's may -- falls back the same way rather than
+ * blanking the matrix: every shown cell is marked here, inside the guard.
+ */
+function chooseEncoding(
+  encodings: EncodingRegistry, id: string, context: Parameters<EncodingDefinition['prepare']>[0],
+): { active: EncodingDefinition; prepared: PreparedEncoding; fallback?: string } {
+  const plain = () => textOnly.prepare(context) as PreparedEncoding;
+  const chosen = encodings.get(id);
+  if (!chosen) {
+    return { active: textOnly, prepared: plain(), fallback: `The "${id}" encoding is not available in this build; showing values as text.` };
+  }
+  const cannot = (why: string) => ({
+    active: textOnly, prepared: plain(),
+    fallback: `The "${chosen.label}" encoding cannot be shown here: ${why} Showing values as text.`,
+  });
+  try {
+    const prepared = chosen.prepare(context);
+    if ('unavailable' in prepared) return cannot(prepared.unavailable);
+    const marks = new Map<string, CellMark>();
+    for (const alt of context.alternatives) {
+      for (const crit of context.criteria) marks.set(`${alt}\u0000${crit}`, prepared.mark(alt, crit));
+    }
+    const legend = prepared.legend;
+    // The legend renders outside this guard, so its shape is checked inside it.
+    // Every entry needs words: a sample with no label would be colour alone.
+    const entryOk = (e: unknown) => e !== null && typeof e === 'object' && typeof (e as { label?: unknown }).label === 'string';
+    if (typeof legend?.title !== 'string' || !Array.isArray(legend.entries) || !Array.isArray(legend.notes) ||
+      !legend.entries.every(entryOk) || !legend.notes.every((n) => typeof n === 'string')) {
+      return cannot('its legend is not a { title, entries: { label }[], notes: string[] }.');
+    }
+    return { active: chosen, prepared: { legend, mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? {} } };
+  } catch (error) {
+    const message = (error instanceof Error ? error.message : String(error)).replace(/[.\s]+$/, '');
+    return cannot(`it failed (${message}).`);
+  }
+}
+
+/** The active encoding's legend: samples with their meaning in words, counts, notes, and its texture. */
+function Legend({ definition, legend }: { definition: EncodingDefinition; legend: LegendData }) {
+  const titleId = useId();
+  return (
+    <section class="comparanda-legend" aria-labelledby={titleId} data-legend={definition.id}>
+      <p class="comparanda-legend-title" id={titleId}>{`${definition.label}: ${legend.title}`}</p>
+      {legend.entries.length > 0 && (
+        <ul>
+          {legend.entries.map((e) => (
+            <li key={e.label}>
+              <span class="comparanda-swatch" data-swatch={e.swatch} aria-hidden="true">{e.badge ?? '\u00a0'}</span>
+              {' '}{e.label}{e.count !== undefined && <span class="comparanda-count">{` (${e.count})`}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {legend.notes.map((n) => <p key={n} class="comparanda-legend-note">{n}</p>)}
+      <p class="comparanda-legend-note">
+        {describeTexture(definition.texture)}
+        {/* The texture is declared here and drawn by #102; until then the legend does not promise it. */}
+        {definition.texture.channel !== 'none' && ' It is not drawn in this build yet; each cell says the same in words.'}
+      </p>
+    </section>
+  );
 }
 
 /**

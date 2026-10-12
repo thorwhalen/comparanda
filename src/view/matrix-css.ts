@@ -22,14 +22,18 @@
  * structural `not-applicable` is hatched, a `not-assessed` gap has a dashed
  * frame, and every one of them also says what it is in words.
  */
+import { paletteRules, paletteVars } from './encodings/palette.js';
+
 const LIGHT = `
   --cmp-surface: #ffffff; --cmp-ink: #1b1d21; --cmp-muted: #4b5058;
   --cmp-header: #eef0f3; --cmp-band: #dfe3e8; --cmp-rule: #c4c9d0;
-  --cmp-hatch: rgba(27, 29, 33, 0.16); --cmp-focus: #1d4ed8;`;
+  --cmp-hatch: rgba(27, 29, 33, 0.16); --cmp-focus: #1d4ed8;
+  ${paletteVars('light')}`;
 const DARK = `
   --cmp-surface: #15171b; --cmp-ink: #e6e8eb; --cmp-muted: #b4bac3;
   --cmp-header: #23262c; --cmp-band: #2e323a; --cmp-rule: #464c55;
-  --cmp-hatch: rgba(230, 232, 235, 0.18); --cmp-focus: #8ab4ff;`;
+  --cmp-hatch: rgba(230, 232, 235, 0.18); --cmp-focus: #8ab4ff;
+  ${paletteVars('dark')}`;
 
 export const MATRIX_CSS = `
 .comparanda-matrix {${LIGHT}
@@ -77,6 +81,21 @@ export const MATRIX_CSS = `
 .comparanda-matrix td[data-state="not-assessed"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; }
 /* Focused, the gap keeps its dashed shape: the ring takes the focus colour, not a solid line. */
 .comparanda-matrix td[data-state="not-assessed"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
+/* An encoding's swatch paints the cell and sets the ink measured against it. Same specificity as the
+   td[data-state] rules that mute an empty cell's ink, and later: keep it after them. */
+${paletteRules('.comparanda-matrix')}
+/* On a fill, the focus ring takes the ink, which clears 4.5:1 there; the focus colour does not on every step. */
+.comparanda-matrix td[data-swatch]:focus-visible { outline-color: currentColor; }
+.comparanda-matrix td[data-swatch] { font-style: normal; }
+.comparanda-matrix .comparanda-badge { margin-inline-start: 0.4em; font-weight: 700; }
+.comparanda-matrix .comparanda-legend { margin: 0 0 0.5em; }
+.comparanda-matrix .comparanda-legend-title { margin: 0 0 0.25em; font-weight: 600; }
+.comparanda-matrix .comparanda-legend ul { list-style: none; padding: 0; margin: 0 0 0.25em; display: flex; flex-wrap: wrap; gap: 0.25em 1em; }
+.comparanda-matrix .comparanda-swatch {
+  display: inline-block; min-width: 1.6em; padding: 0 0.3em; text-align: center; font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--cmp-rule);
+}
+.comparanda-matrix .comparanda-legend-note { margin: 0 0 0.15em; color: var(--cmp-muted); font-size: 0.9em; }
 .comparanda-matrix .comparanda-degraded { color: var(--cmp-ink); }
 .comparanda-matrix .comparanda-edits { list-style: none; padding: 0; margin: 0 0 0.5em; color: var(--cmp-muted); }
 .comparanda-matrix .comparanda-edits button {
