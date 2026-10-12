@@ -252,6 +252,8 @@ const CONFIDENCE = 'confidence';
 /** Confidence recorded on a range rather than as levels is read in this many layers, the hatch's maximum. */
 const CONTINUOUS_CONFIDENCE_LAYERS = 3;
 const CONTINUOUS_CONFIDENCE_WORDS = ['low', 'medium', 'high'];
+/** Declared confidence levels read one layer each, up to the hatch's three densities above the leaves. */
+const MAX_CONFIDENCE_LAYERS = 4;
 
 /** One column's trees: how its values and its confidences find their node. */
 interface SuppressedColumn {
@@ -296,13 +298,21 @@ function suppressedColumn(score: Measurement | undefined, confidence: Measuremen
   let m: number;
   let layer: (c: ScalarValue) => number | undefined;
   let layerWords: string[];
-  if (confLevels) {
+  if (confLevels && confLevels.length <= MAX_CONFIDENCE_LAYERS) {
     m = confLevels.length;
     layer = (c) => {
       const i = confLevels.findIndex((l) => l === c);
       return i < 0 ? undefined : layerFor(1 - i / (m - 1), m);
     };
     layerWords = confLevels.map(String);
+  } else if (confLevels) {
+    // More levels than the hatch can show: read like a range, in three layers.
+    m = CONTINUOUS_CONFIDENCE_LAYERS;
+    layer = (c) => {
+      const i = confLevels.findIndex((l) => l === c);
+      return i < 0 ? undefined : layerFor(1 - i / (confLevels.length - 1), m);
+    };
+    layerWords = CONTINUOUS_CONFIDENCE_WORDS;
   } else if (r && r.max > r.min) {
     m = CONTINUOUS_CONFIDENCE_LAYERS;
     layer = (c) => {
@@ -376,7 +386,7 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
       return {
         unavailable: [...columns.values()].some(Boolean)
           ? `no shown cell records both a ${ctx.measure} and a confidence on their declared scales.`
-          : `no shown criterion has a ${ctx.measure} on a ranked scale of 2 to 7 levels and a ranked confidence of 2 to 4 levels, or a range, to suppress it by.`,
+          : `no shown criterion has a ${ctx.measure} on a ranked scale of 2 to 7 levels and a ranked confidence to suppress it by.`,
       };
     }
     const palette: Record<string, Swatch> = {};
@@ -411,7 +421,7 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
           ...aliasing,
           `The ${ctx.measure} stays as text in every cell. In the study that introduced this blend, it changed which options readers chose -- they avoided the least certain, and accepted worse expected value to do so -- not how accurately they read values.`,
           ...(unplaced || [...columns.values()].some((c) => !c)
-            ? [`Cells with no confidence recorded, and criteria whose ${ctx.measure} is not on a ranked scale of 2 to 7 levels, are left uncoloured.`]
+            ? [`Cells with no confidence recorded, and criteria with no ranked confidence or whose ${ctx.measure} is not on a ranked scale of 2 to 7 levels, are left uncoloured.`]
             : []),
         ],
       },

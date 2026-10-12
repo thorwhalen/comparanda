@@ -297,6 +297,13 @@ describe('uncertainty-suppressed', () => {
     }
   });
 
+  it('a confidence with more levels than the hatch can show is read in three layers', () => {
+    const p = ready(languagesWithConfidence({ measurement: { level: 'ordinal', preference: 'increasing', levels: ['low', 'l2', 'medium', 'l4', 'high'] } }));
+    expect(p.mark('rust', 'performance')).toEqual({ swatch: 'vsup-5x3-2-4' });
+    expect(p.mark('python', 'ecosystem')).toEqual({ swatch: 'vsup-5x3-0-0', hatch: 3 });
+    expect(p.mark('rust', 'learning-curve')).toEqual({ swatch: 'vsup-5x3-1-0', hatch: 2 });
+  });
+
   it('hatch density is on one scale across confidence arities: the root is always the densest', () => {
     for (const levels of [['low', 'high'], ['low', 'medium', 'high'], ['none', 'low', 'medium', 'high']]) {
       const p = ready(languagesWithConfidence({ measurement: { level: 'ordinal', preference: 'increasing', levels } }));

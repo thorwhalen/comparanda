@@ -136,6 +136,24 @@ describe('the value-suppressing blend, painted', () => {
   });
 });
 
+describe('an encoding\'s own palette', () => {
+  const withPalette = (palette: unknown) => defineEncoding({
+    id: 'own-palette', label: 'Own palette', texture: { channel: 'none', because: 'a test.' },
+    prepare: () => ({ legend: { title: 'Own', entries: [], notes: [] }, mark: () => ({}), palette: palette as never }),
+  });
+  const cases: [string, unknown][] = [
+    ['a static swatch\'s id, which would repaint it page-wide', { 'seq-5': { light: ['#ff0000', '#000000'], dark: ['#ff0000', '#000000'] } }],
+    ['a colour that is not #rrggbb', { 'mine-1': { light: ['red; } body { display: none', '#000000'], dark: ['#000000', '#ffffff'] } }],
+  ];
+  for (const [what, palette] of cases) {
+    it(`with ${what} falls back to text, and no stylesheet is written for it`, () => {
+      mount({ analysis: relocation, measure: 'score', encoding: 'own-palette' }, createEncodingRegistry([...SHIPPED_ENCODINGS, withPalette(palette)]));
+      expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-encoding')).toBe('text-only');
+      expect(el.querySelectorAll('.comparanda-matrix style')).toHaveLength(1);
+    });
+  }
+});
+
 describe('an encoding that throws', () => {
   const broken = (where: 'prepare' | 'mark') => defineEncoding({
     id: `broken-${where}`, label: `Broken ${where}`, texture: { channel: 'none', because: 'a test.' },

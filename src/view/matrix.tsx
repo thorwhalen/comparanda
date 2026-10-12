@@ -57,6 +57,7 @@ import {
   describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
 } from './encodings/registry.js';
 import { derivedPaletteCss, MATRIX_CSS } from './matrix-css.js';
+import { PALETTE } from './encodings/palette.js';
 import { revealClear } from './sticky.js';
 
 /** The default encoding, and the fallback when the chosen one cannot draw (ADR-0032 clause 1). */
@@ -479,7 +480,8 @@ const HEX = /^#[0-9a-f]{6}$/i;
 const pairOk = (pair: unknown) => Array.isArray(pair) && pair.length === 2 && pair.every((c) => typeof c === 'string' && HEX.test(c));
 function paletteOk(palette: unknown): boolean {
   return palette !== null && typeof palette === 'object' && Object.entries(palette).every(([id, swatch]) =>
-    /^[a-z0-9-]+$/i.test(id) && swatch !== null && typeof swatch === 'object' &&
+    // Never a static swatch's id: its stylesheet is page-wide, and would repaint a tested swatch in every matrix.
+    /^[a-z0-9-]+$/i.test(id) && !Object.prototype.hasOwnProperty.call(PALETTE, id) && swatch !== null && typeof swatch === 'object' &&
     pairOk((swatch as { light?: unknown }).light) && pairOk((swatch as { dark?: unknown }).dark));
 }
 
