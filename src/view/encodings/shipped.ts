@@ -16,7 +16,7 @@
  */
 import { pughTally, type PughStanding } from '../../core/analyses/pugh.js';
 import { CORE_MISSING_CODES, NOT_APPLICABLE, NOT_ASSESSED, type MissingCode } from '../../core/schema/missingness.js';
-import type { Measurement } from '../../core/schema/measurement.js';
+import { isOrdered, type Measurement } from '../../core/schema/measurement.js';
 import { measurementFor } from '../../core/schema/structure.js';
 import type { ScalarValue } from '../../core/schema/values.js';
 import type { SwatchId } from './palette.js';
@@ -97,7 +97,9 @@ export const categorical = /* @__PURE__ */ defineEncoding({
     const nominal = [...criteriaMeasured(ctx)].filter(([, m]) => m?.level === 'nominal');
     if (nominal.length === 0) return { unavailable: `no shown criterion records its ${ctx.measure} as categories (a nominal level).` };
     const order = new Map(nominal.map(([crit, m]) => {
-      const seen = ctx.alternatives.map((alt) => ctx.read(alt, crit)?.value).filter((v): v is ScalarValue => v !== undefined);
+      // Over every alternative, not the shown ones: hiding one must not recolour the rest.
+      const seen = ctx.analysis.alternatives.filter((a) => !a.tombstoned)
+        .map((a) => ctx.read(a.id, crit)?.value).filter((v): v is ScalarValue => v !== undefined);
       const levels = m?.levels ?? [...new Set(seen)].sort((x, y) => String(x).localeCompare(String(y)));
       return [crit, levels.map(String)] as const;
     }));
@@ -167,7 +169,7 @@ export const missingness = /* @__PURE__ */ defineEncoding({
         title: 'Why cells are empty',
         entries,
         notes: [
-          'Cells with a value are left plain.',
+          'Cells with a value, a refused reduction, or a reason this build cannot resolve are left plain.',
           'A reason this analysis declares for itself takes the colour of the core reason it refines, and keeps its own words in the cell.',
         ],
       },
@@ -292,18 +294,20 @@ function towardBest(v: ScalarValue | undefined, m: Measurement): number | undefi
   // `target` needs a distance metric, the cardinal assumption ADR-0019 clause 7
   // keeps out of v1.
   if (m.preference !== 'increasing' && m.preference !== 'decreasing') return null;
-  const levels = m.levels;
-  const range = m.range;
+  // A nominal level's `levels` are display order, not rank, whatever preference was written.
+  if (!isOrdered(m.level)) return null;
+  const levels = m.levels && m.levels.length >= 2 ? m.levels : undefined;
+  const range = m.range && m.range.max > m.range.min ? m.range : undefined;
   if (!range && !levels) return null;
   if (v === undefined) return 0;
   let t: number | undefined;
   if (levels && (m.level === 'ordinal' || !range)) {
     const i = levels.findIndex((l) => l === v);
-    t = i < 0 ? undefined : levels.length < 2 ? 1 : i / (levels.length - 1);
+    t = i < 0 ? undefined : i / (levels.length - 1);
     if (t !== undefined && m.preference === 'decreasing') t = 1 - t;
     return t;
   }
-  if (!range || typeof v !== 'number' || range.max <= range.min) return undefined;
+  if (!range || typeof v !== 'number') return undefined;
   const at = Math.min(1, Math.max(0, (v - range.min) / (range.max - range.min)));
   if (m.preference === 'decreasing') return 1 - at;
   return at;

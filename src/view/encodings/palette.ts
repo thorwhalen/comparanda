@@ -71,6 +71,7 @@ export function paletteVars(theme: Theme): string {
  */
 export function paletteRules(scope: string): string {
   return SWATCH_IDS.map((id) =>
-    `${scope} [data-swatch="${id}"] { background-color: var(--cmp-sw-${id}); color: var(--cmp-sw-${id}-ink); }`,
+    // `td[...]` outranks the `td[data-state]` rules that mute an empty cell's ink, so the ink tested is the ink drawn.
+    `${scope} td[data-swatch="${id}"], ${scope} .comparanda-swatch[data-swatch="${id}"] { background-color: var(--cmp-sw-${id}); color: var(--cmp-sw-${id}-ink); }`,
   ).join('\n');
 }

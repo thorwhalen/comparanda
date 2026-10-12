@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, setEncoding } from '../../src/core/view-state.js';
 import {
-  createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps,
+  createEncodingRegistry, defineEncoding, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps,
 } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
@@ -92,6 +92,25 @@ describe('switching encodings', () => {
   });
 });
 
+describe('an encoding that throws', () => {
+  const broken = (where: 'prepare' | 'mark') => defineEncoding({
+    id: `broken-${where}`, label: `Broken ${where}`, texture: { channel: 'none', because: 'a test.' },
+    prepare: () => {
+      if (where === 'prepare') throw new Error('prepare failed');
+      return { legend: { title: 'Broken', entries: [], notes: [] }, mark: () => { throw new Error('mark failed'); } };
+    },
+  });
+  for (const where of ['prepare', 'mark'] as const) {
+    it(`in ${where} falls back to text and says so, rather than blanking the matrix`, () => {
+      const handle = mount({ analysis: relocation, measure: 'score' }, createEncodingRegistry([...SHIPPED_ENCODINGS, broken(where)]));
+      handle.update({ encoding: `broken-${where}` });
+      expect(el.querySelector('.comparanda-degraded')!.textContent).toMatch(new RegExp(`cannot be shown here: it failed \\(${where} failed\\)`));
+      expect(el.querySelectorAll('td').length).toBe(relocation.alternatives.length * relocation.criteria.length);
+      expect(legend().dataset['legend']).toBe('text-only');
+    });
+  }
+});
+
 describe('painted cells', () => {
   for (const theme of ['light', 'dark'] as const) {
     it(`keep their text at 4.5:1 on the rendered fill, ${theme} theme`, () => {
@@ -120,6 +139,15 @@ describe('painted cells', () => {
     expect(better.querySelector('.comparanda-badge')!.getAttribute('aria-hidden')).toBe('true');
     expect(better.querySelector('.comparanda-badge')!.textContent).toBe('+');
     expect(Array.from(better.querySelectorAll('.comparanda-sr')).map((s) => s.textContent).join('')).toMatch(/better than /);
+  });
+
+  it('an empty cell draws the palette\'s ink, not the muted one, so the tested pair is the drawn pair', () => {
+    el.dataset['theme'] = 'light';
+    mount({ analysis: relocation, measure: 'score', encoding: 'missingness' });
+    const deferred = el.querySelector<HTMLElement>('td[data-swatch="miss-deferred"]')!;
+    expect(getComputedStyle(deferred).color).toBe('rgb(27, 29, 33)');
+    // The glyph is declared, not yet drawn: the legend does not promise it.
+    expect(legend().textContent).toMatch(/not drawn in this build yet/);
   });
 
   it('a not-applicable cell keeps its hatch under the missingness colour', () => {

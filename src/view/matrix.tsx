@@ -52,7 +52,7 @@ import type { Reduced } from '../core/schema/values.js';
 import type { Session, ViewState } from '../core/view-state.js';
 import { textOnly } from './encodings/shipped.js';
 import {
-  describeTexture, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
+  describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
 } from './encodings/registry.js';
 import { MATRIX_CSS } from './matrix-css.js';
 
@@ -354,7 +354,9 @@ function cellContent(
  * The encoding to draw with, prepared over the matrix as shown. One the build
  * does not register, or one that cannot draw this analysis, falls back to
  * `text-only` and says why: a reader is never shown a different encoding from
- * the one they chose without being told.
+ * the one they chose without being told. An encoding that throws -- `defineEncoding`
+ * is public, so a third party's may -- falls back the same way rather than
+ * blanking the matrix: every shown cell is marked here, inside the guard.
  */
 function chooseEncoding(
   encodings: EncodingRegistry, id: string, context: Parameters<EncodingDefinition['prepare']>[0],
@@ -364,14 +366,22 @@ function chooseEncoding(
   if (!chosen) {
     return { active: textOnly, prepared: plain(), fallback: `The "${id}" encoding is not available in this build; showing values as text.` };
   }
-  const prepared = chosen.prepare(context);
-  if ('unavailable' in prepared) {
-    return {
-      active: textOnly, prepared: plain(),
-      fallback: `The "${chosen.label}" encoding cannot be shown here: ${prepared.unavailable} Showing values as text.`,
-    };
+  const cannot = (why: string) => ({
+    active: textOnly, prepared: plain(),
+    fallback: `The "${chosen.label}" encoding cannot be shown here: ${why} Showing values as text.`,
+  });
+  try {
+    const prepared = chosen.prepare(context);
+    if ('unavailable' in prepared) return cannot(prepared.unavailable);
+    const marks = new Map<string, CellMark>();
+    for (const alt of context.alternatives) {
+      for (const crit of context.criteria) marks.set(`${alt}\u0000${crit}`, prepared.mark(alt, crit));
+    }
+    const legend = prepared.legend;
+    return { active: chosen, prepared: { legend, mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? {} } };
+  } catch (error) {
+    return cannot(`it failed (${error instanceof Error ? error.message : String(error)}).`);
   }
-  return { active: chosen, prepared };
 }
 
 /** The active encoding's legend: samples with their meaning in words, counts, notes, and its texture. */
@@ -391,7 +401,11 @@ function Legend({ definition, legend }: { definition: EncodingDefinition; legend
         </ul>
       )}
       {legend.notes.map((n) => <p key={n} class="comparanda-legend-note">{n}</p>)}
-      <p class="comparanda-legend-note">{describeTexture(definition.texture)}</p>
+      <p class="comparanda-legend-note">
+        {describeTexture(definition.texture)}
+        {/* The texture is declared here and drawn by #102; until then the legend does not promise it. */}
+        {definition.texture.channel !== 'none' && ' It is not drawn in this build yet; each cell says the same in words.'}
+      </p>
     </section>
   );
 }

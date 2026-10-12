@@ -126,7 +126,7 @@ export interface EncodingRegistry {
 export function createEncodingRegistry(definitions: readonly EncodingDefinition[]): EncodingRegistry {
   const byId = new Map<string, EncodingDefinition>();
   for (const d of definitions) {
-    const problem = textureProblem((d as { texture?: unknown }).texture);
+    const problem = textureProblem((d as { texture?: unknown } | null)?.texture);
     if (problem !== undefined) throw new TypeError(`the encoding "${String(d?.id)}" ${problem}; it cannot be registered.`);
     if (byId.has(d.id)) throw new Error(`two encodings share the id "${d.id}"; ids must be unique in a registry`);
     byId.set(d.id, d);

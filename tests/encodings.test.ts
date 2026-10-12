@@ -126,6 +126,17 @@ describe('value', () => {
     expect(p.legend.notes.join(' ')).toMatch(/left uncoloured/);
   });
 
+  it('never ranks a nominal criterion, whatever preference was written on it', () => {
+    const json = structuredClone(relocationJson) as typeof relocationJson;
+    const visa = json.criteria.find((c) => c.id === 'visa-free')!;
+    visa.defaultMeasurement = { ...visa.defaultMeasurement, preference: 'increasing' } as typeof visa.defaultMeasurement;
+    const a = Analysis.parse(json);
+    expect(a.criteria.find((c) => c.id === 'visa-free')!.defaultMeasurement!.level).toBe('nominal');
+    const ctx = contextOf(a);
+    const p = prepared(value, ctx);
+    for (const alt of ctx.alternatives) expect(p.mark(alt, 'visa-free').swatch).toBeUndefined();
+  });
+
   it('a 1-5 rating spans the ramp end to end', () => {
     const ctx = contextOf(languages);
     const p = prepared(value, ctx);
@@ -150,6 +161,21 @@ describe('categorical', () => {
       expect(p.mark(alt, 'rent').swatch).toBeUndefined();
     }
     expect(coloured).toBe(ctx.alternatives.length);
+  });
+
+  it('hiding an alternative does not recolour the others', () => {
+    const json = structuredClone(relocationJson) as typeof relocationJson;
+    // No declared levels: the order comes from the values, which must be all of them.
+    const climate = json.criteria.find((c) => c.id === 'climate-type')!;
+    const { levels: _drop, ...rest } = climate.defaultMeasurement as { levels?: unknown };
+    climate.defaultMeasurement = rest as typeof climate.defaultMeasurement;
+    const ctx = contextOf(Analysis.parse({ ...json, defaultReduction: 'latest' }));
+    const full = prepared(categorical, ctx);
+    for (const hidden of ctx.alternatives) {
+      const shown = ctx.alternatives.filter((x) => x !== hidden);
+      const fewer = prepared(categorical, { ...ctx, alternatives: shown });
+      for (const alt of shown) expect(fewer.mark(alt, 'climate-type')).toEqual(full.mark(alt, 'climate-type'));
+    }
   });
 
   it('cannot draw an analysis with no nominal criterion, and says why', () => {

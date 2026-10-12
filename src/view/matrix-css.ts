@@ -81,7 +81,7 @@ export const MATRIX_CSS = `
 .comparanda-matrix td[data-state="not-assessed"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; }
 /* Focused, the gap keeps its dashed shape: the ring takes the focus colour, not a solid line. */
 .comparanda-matrix td[data-state="not-assessed"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
-/* An encoding's swatch paints the cell and sets the ink measured against it; after the state rules, so it wins. */
+/* An encoding's swatch paints the cell and sets the ink measured against it, outranking the muted state ink. */
 ${paletteRules('.comparanda-matrix')}
 .comparanda-matrix td[data-swatch] { font-style: normal; }
 .comparanda-matrix .comparanda-badge { margin-inline-start: 0.4em; font-weight: 700; }
