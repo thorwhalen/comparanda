@@ -956,6 +956,20 @@ export function getCell(a: Analysis, alternativeId: string, criterionId: string,
 }
 
 /**
+ * Why `measure` cannot be shown from `a`, or `undefined` when it can: a
+ * measure the analysis neither declares nor records. Rendering one anyway
+ * would read every cell as "nobody has looked yet" -- a claim about the work,
+ * when the fault is a name. The one check `mountMatrix` and `comparanda build`
+ * both apply.
+ */
+export function unknownMeasure(a: Pick<Analysis, 'measures' | 'cells'>, measure: string): string | undefined {
+  if (measure.trim() === '') return 'the measure name is empty';
+  const declared = (a.measures ?? []).map((m) => m.name);
+  if (declared.length === 0 || declared.includes(measure) || (a.cells ?? []).some((c) => c.measure === measure)) return undefined;
+  return `"${measure}" is not a measure of this analysis; it declares ${declared.map((m) => `"${m}"`).join(', ')}`;
+}
+
+/**
  * A prepared reader over one analysis and one measure.
  *
  * Every analysis that walks the whole matrix -- completeness, dominance,

@@ -83,6 +83,11 @@ jobs:
       - name: Browser tests
         run: pnpm test:browser
 
+      - name: Standalone build, opened from file://
+        # Built first, so the shipped dist/cli.js and dist/standalone/main.js
+        # are tested as well as the source.
+        run: pnpm build && pnpm test:standalone
+
   hygiene:
     runs-on: ubuntu-latest
     steps:

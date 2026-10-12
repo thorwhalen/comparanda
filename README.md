@@ -108,6 +108,28 @@ const Matrix = defineComponent({
 });
 ```
 
+## A standalone file
+
+One analysis in, one self-contained HTML file out: Preact, the matrix and its styles inlined, the analysis carried as readable JSON in a `<script type="application/json">`. It opens from `file://`, offline, with nothing fetched.
+
+```sh
+npm install --save-dev comparanda vite vite-plugin-singlefile   # the build's two peers are optional
+npx comparanda build analysis.json --out analysis.html          # prints raw and gzipped size
+```
+
+Or from code, with an optional disclosure decision that is applied before anything is inlined (ADR-0021):
+
+```ts
+import { buildStandalone } from 'comparanda/build';
+
+const { html, bytes, gzipBytes } = await buildStandalone(json, {
+  measure: 'score',
+  discloses: (assertion) => assertion.disclosure?.label !== 'household-finances',
+});
+```
+
+An analysis with validation errors is refused, with every error named. `vite` and `vite-plugin-singlefile` are optional peer dependencies: a project that only mounts the matrix never installs them, and `comparanda build` names them when they are missing.
+
 ## Status
 
 Pre-implementation. This repository currently contains the specification — a domain model, a set

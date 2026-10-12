@@ -7,6 +7,7 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     // Real-browser tests run under vitest.browser.config.ts (`pnpm test:browser`).
-    exclude: ['tests/browser/**', '**/node_modules/**'],
+    // The standalone build runs under vitest.standalone.config.ts (`pnpm test:standalone`).
+    exclude: ['tests/browser/**', 'tests/standalone/**', '**/node_modules/**'],
   },
 });

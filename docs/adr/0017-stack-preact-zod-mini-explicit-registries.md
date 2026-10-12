@@ -168,3 +168,18 @@ and is to be read the same way; per ADR-0001 neither is corrected by an edit.
 4. `docs/research/sections/c8-prior-art-and-stack.md` §B.8–§B.9 — the build pipeline, the CSP tag,
    the browser test and the static pre-filter. Condensed in
    `docs/research/findings-visualisation.md` §5.3.
+
+### 2026-10-12 — the build's peers are optional, and the data is inlined after Vite runs
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+- **Deciders:** Thor Whalen
+
+Clause 6 chose Vite plus `vite-plugin-singlefile`. Building it (#114) settled two details the clause left open.
+
+**The two are optional peer dependencies, not dependencies.** `comparanda build` ships in the package, but most consumers only mount the matrix, and Vite is far heavier at install time than anything it would replace for them. They are optional peers (as `preact` already is), `comparanda/build` imports them dynamically, and a missing one is refused with the install command. The build module is Node-only, behind its own `comparanda/build` subpath, so no browser consumer's module graph reaches it.
+
+**The analysis is inlined after Vite has run, not passed through it.** Vite rewrites an HTML template (it substitutes `%ENV%` placeholders, among other things), and an analysis is arbitrary text. So Vite bundles a page with an empty `<title>` and two empty `<script type="application/json">` elements, and the build splices the title, the analysis and its settings into them afterwards; the JSON has `<` written as `\u003c` so no string can close the element. The analysis is inlined verbatim, as given, unless a disclosure projection was asked for. The page's entry is a pre-bundled browser module (`dist/standalone/main.js`) that Vite only inlines; it is the one module the package declares as having side effects (`sideEffects`), and the build refuses a page whose bundle lost it.
+
+The CSP tag and the build-time zero-network check, the byte budget and the mail-filter warning remain clause 6's and clause 8's, each with its own issue (#115, #116, #118).
+

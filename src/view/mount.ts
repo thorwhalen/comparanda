@@ -10,7 +10,7 @@
  */
 import { h, render, type ComponentType } from 'preact';
 
-import { vocabularyOf, type Analysis } from '../core/schema/analysis.js';
+import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/analysis.js';
 import type { Affordances } from '../core/affordances.js';
 import { initialViewState, ViewState } from '../core/view-state.js';
 import {
@@ -260,16 +260,10 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   return props;
 }
 
-/**
- * Refuse a measure the analysis neither declares nor records: it would render
- * every cell as "nobody has looked yet" -- a claim about the work, when the
- * fault is a name.
- */
+/** Refuse a measure the analysis neither declares nor records (`unknownMeasure`). */
 function measureOf(analysis: Analysis, measure: string): void {
-  const declared = (analysis.measures ?? []).map((m) => m.name);
-  if (declared.length > 0 && !declared.includes(measure) && !(analysis.cells ?? []).some((c) => c.measure === measure)) {
-    throw new TypeError(`props.measure "${measure}" is not a measure of this analysis; it declares ${declared.map((m) => `"${m}"`).join(', ')}.`);
-  }
+  const problem = unknownMeasure(analysis, measure);
+  if (problem !== undefined) throw new TypeError(`props.measure ${problem}.`);
 }
 
 function unknownKeys(props: object): void {
