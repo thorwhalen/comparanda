@@ -167,8 +167,9 @@ describe('a focused cell is never under the sticky headers (#103)', () => {
     expect(document.activeElement).toBe(td);
     expect(obscured().inline).toBeLessThanOrEqual(1);
     // A clicked, half-covered cell is uncovered by the first key the reader presses there.
+    // Pressed by the pointer where it is (dispatched: Playwright's click scrolls its target into view first).
     s.scrollLeft += td.getBoundingClientRect().left - corner.right + td.getBoundingClientRect().width / 2;
-    await userEvent.click(td, { position: { x: td.getBoundingClientRect().width - 4, y: 4 } });
+    for (const type of ['pointerdown', 'pointerup']) td.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'mouse' }));
     expect(obscured().inline).toBeGreaterThan(1);
     await userEvent.keyboard('{Shift}');
     expect(obscured().inline).toBeLessThanOrEqual(1);
