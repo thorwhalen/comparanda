@@ -19,7 +19,7 @@ function start(): void {
   try {
     const analysis = Analysis.parse(JSON.parse(inlined(ANALYSIS_ELEMENT_ID)));
     const settings = JSON.parse(inlined(SETTINGS_ELEMENT_ID)) as StandaloneSettings;
-    mountMatrix(root, { analysis, measure: settings.measure });
+    mountMatrix(root, { analysis, measure: settings.measure, ...(settings.encoding !== undefined ? { encoding: settings.encoding } : {}) });
   } catch (error) {
     const p = document.createElement('p');
     p.setAttribute('role', 'alert');
