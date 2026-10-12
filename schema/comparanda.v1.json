@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/thorwhalen/comparanda/schema/comparanda.v1.json",
+  "$id": "https://raw.githubusercontent.com/thorwhalen/comparanda/schema-v1/schema/comparanda.v1.json",
   "title": "comparanda analysis, schema version 1",
   "description": "A structured comparison: alternatives x criteria, with qualified missingness, confidence, evidence references to spans, and no default aggregation. This is the INPUT shape -- what a producer must emit. Fields with a default are not required here and are present after parsing, so a consumer reading a parsed analysis will see more than this schema demands. Shape only: the rules a shape cannot express (a value with no justification, a blank whose code the document never defines, an undated verdict) are the honesty family of validateAnalysis, and a document that satisfies this schema can still fail them.",
   "type": "object",
@@ -36,7 +36,8 @@
       },
       "required": [
         "question"
-      ]
+      ],
+      "additionalProperties": false
     },
     "title": {
       "type": "string"
@@ -67,6 +68,7 @@
           "type": "string"
         }
       },
+      "additionalProperties": false,
       "dependentRequired": {
         "alternative": [
           "alternatives"
@@ -100,7 +102,8 @@
         },
         "required": [
           "name"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "defaultReduction": {
@@ -142,7 +145,8 @@
         "required": [
           "id",
           "label"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "criteria": {
@@ -196,7 +200,8 @@
                 "id",
                 "broader",
                 "means"
-              ]
+              ],
+              "additionalProperties": false
             }
           },
           "id": {
@@ -232,7 +237,8 @@
                   "required": [
                     "when",
                     "code"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               },
               "exclusions": {
@@ -241,7 +247,8 @@
                   "type": "string"
                 }
               }
-            }
+            },
+            "additionalProperties": false
           },
           "provenance": {
             "type": "object",
@@ -274,7 +281,8 @@
             },
             "required": [
               "origin"
-            ]
+            ],
+            "additionalProperties": false
           },
           "measurements": {
             "default": {},
@@ -333,7 +341,8 @@
                   "required": [
                     "levels",
                     "contentHash"
-                  ]
+                  ],
+                  "additionalProperties": false
                 },
                 "range": {
                   "type": "object",
@@ -354,7 +363,8 @@
                   "required": [
                     "min",
                     "max"
-                  ]
+                  ],
+                  "additionalProperties": false
                 },
                 "thresholds": {
                   "type": "object",
@@ -365,7 +375,8 @@
                     "preference": {
                       "type": "number"
                     }
-                  }
+                  },
+                  "additionalProperties": false
                 },
                 "acceptability": {
                   "type": "object",
@@ -380,7 +391,8 @@
                   "required": [
                     "threshold",
                     "rationale"
-                  ]
+                  ],
+                  "additionalProperties": false
                 },
                 "levels": {
                   "type": "array",
@@ -402,7 +414,8 @@
               "required": [
                 "level",
                 "preference"
-              ]
+              ],
+              "additionalProperties": false
             }
           },
           "defaultMeasurement": {
@@ -456,7 +469,8 @@
                 "required": [
                   "levels",
                   "contentHash"
-                ]
+                ],
+                "additionalProperties": false
               },
               "range": {
                 "type": "object",
@@ -477,7 +491,8 @@
                 "required": [
                   "min",
                   "max"
-                ]
+                ],
+                "additionalProperties": false
               },
               "thresholds": {
                 "type": "object",
@@ -488,7 +503,8 @@
                   "preference": {
                     "type": "number"
                   }
-                }
+                },
+                "additionalProperties": false
               },
               "acceptability": {
                 "type": "object",
@@ -503,7 +519,8 @@
                 "required": [
                   "threshold",
                   "rationale"
-                ]
+                ],
+                "additionalProperties": false
               },
               "levels": {
                 "type": "array",
@@ -525,7 +542,8 @@
             "required": [
               "level",
               "preference"
-            ]
+            ],
+            "additionalProperties": false
           },
           "acceptability": {
             "type": "object",
@@ -540,7 +558,8 @@
             "required": [
               "threshold",
               "rationale"
-            ]
+            ],
+            "additionalProperties": false
           },
           "weights": {
             "type": "object",
@@ -557,7 +576,8 @@
               "rationale": {
                 "type": "string"
               }
-            }
+            },
+            "additionalProperties": false
           },
           "groupIds": {
             "default": [],
@@ -582,7 +602,8 @@
         "required": [
           "id",
           "label"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "groups": {
@@ -627,7 +648,8 @@
           "id",
           "label",
           "axis"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "inapplicable": {
@@ -649,7 +671,8 @@
         "required": [
           "alternativeGroupId",
           "criterionGroupId"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "rejectedCriteria": {
@@ -688,7 +711,8 @@
         "required": [
           "label",
           "reason"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "criteriaVersion": {
@@ -749,7 +773,8 @@
                   },
                   "required": [
                     "code"
-                  ]
+                  ],
+                  "additionalProperties": false
                 },
                 "justification": {
                   "type": "string"
@@ -791,7 +816,8 @@
                               "required": [
                                 "type",
                                 "exact"
-                              ]
+                              ],
+                              "additionalProperties": false
                             },
                             {
                               "type": "object",
@@ -811,7 +837,8 @@
                                 "type",
                                 "start",
                                 "end"
-                              ]
+                              ],
+                              "additionalProperties": false
                             },
                             {
                               "type": "object",
@@ -844,13 +871,15 @@
                                     "y",
                                     "w",
                                     "h"
-                                  ]
+                                  ],
+                                  "additionalProperties": false
                                 }
                               },
                               "required": [
                                 "type",
                                 "page"
-                              ]
+                              ],
+                              "additionalProperties": false
                             },
                             {
                               "type": "object",
@@ -873,7 +902,8 @@
                                 "type",
                                 "startLine",
                                 "endLine"
-                              ]
+                              ],
+                              "additionalProperties": false
                             },
                             {
                               "type": "object",
@@ -893,7 +923,8 @@
                                 "type",
                                 "startSeconds",
                                 "endSeconds"
-                              ]
+                              ],
+                              "additionalProperties": false
                             },
                             {
                               "type": "object",
@@ -917,7 +948,8 @@
                                 "type",
                                 "syntax",
                                 "value"
-                              ]
+                              ],
+                              "additionalProperties": false
                             }
                           ]
                         }
@@ -993,7 +1025,8 @@
                         },
                         "required": [
                           "status"
-                        ]
+                        ],
+                        "additionalProperties": false
                       },
                       "label": {
                         "type": "string"
@@ -1006,7 +1039,8 @@
                       "id",
                       "target",
                       "sourceType"
-                    ]
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "independence": {
@@ -1041,7 +1075,8 @@
                   },
                   "required": [
                     "kind"
-                  ]
+                  ],
+                  "additionalProperties": false
                 },
                 "roundId": {
                   "type": "string"
@@ -1069,14 +1104,16 @@
                     "withheldFromReader": {
                       "type": "boolean"
                     }
-                  }
+                  },
+                  "additionalProperties": false
                 }
               },
               "required": [
                 "id",
                 "authorId",
                 "at"
-              ]
+              ],
+              "additionalProperties": false
             }
           },
           "reduction": {
@@ -1093,7 +1130,8 @@
           "alternativeId",
           "criterionId",
           "measure"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "authors": {
@@ -1144,7 +1182,8 @@
             },
             "required": [
               "method"
-            ]
+            ],
+            "additionalProperties": false
           },
           "agent": {
             "type": "object",
@@ -1164,7 +1203,8 @@
             },
             "required": [
               "name"
-            ]
+            ],
+            "additionalProperties": false
           },
           "avatarUrl": {
             "type": "string"
@@ -1177,7 +1217,8 @@
           "id",
           "displayName",
           "kind"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "procedures": {
@@ -1217,7 +1258,8 @@
         "required": [
           "id",
           "describedAs"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "rounds": {
@@ -1260,7 +1302,8 @@
         "required": [
           "id",
           "index"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "threads": {
@@ -1307,7 +1350,8 @@
             },
             "required": [
               "scope"
-            ]
+            ],
+            "additionalProperties": false
           },
           "comments": {
             "default": [],
@@ -1336,7 +1380,8 @@
                 "authorId",
                 "at",
                 "body"
-              ]
+              ],
+              "additionalProperties": false
             }
           },
           "resolved": {
@@ -1353,7 +1398,8 @@
         "required": [
           "id",
           "anchor"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "suggestions": {
@@ -1400,7 +1446,8 @@
             },
             "required": [
               "scope"
-            ]
+            ],
+            "additionalProperties": false
           },
           "authorId": {
             "type": "string"
@@ -1438,7 +1485,8 @@
           "authorId",
           "at",
           "proposed"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "missingCodes": {
@@ -1486,7 +1534,8 @@
           "id",
           "broader",
           "means"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "scales": {
@@ -1520,7 +1569,8 @@
           "id",
           "broader",
           "means"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "reductions": {
@@ -1559,7 +1609,8 @@
           "id",
           "broader",
           "means"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "renditions": {
@@ -1595,7 +1646,8 @@
           "originalLocator",
           "originalSha256",
           "normaliserId"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     "locked": {
@@ -1605,5 +1657,6 @@
   "required": [
     "id",
     "subject"
-  ]
+  ],
+  "additionalProperties": false
 }

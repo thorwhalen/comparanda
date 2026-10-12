@@ -17,9 +17,9 @@
  * so today that is most of what strict mode checks; it is on so that the day the
  * emitter starts producing either, a malformed one fails here first.
  *
- * Note what this does **not** prove: the emitted shape is open (no
- * `additionalProperties: false`), so a misspelled optional field passes both
- * Ajv and zod, which strips unknown keys.
+ * Since the v1 freeze the shape is closed (`additionalProperties: false`,
+ * `docs/schema-v1.md`), so a misspelled optional field fails here and in zod
+ * alike; `tests/schema-v1-freeze.test.ts` pins that both refuse it.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';

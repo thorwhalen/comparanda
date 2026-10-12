@@ -94,6 +94,12 @@ It exercises what the clean example does not:
 - two rejected criteria kept in `rejectedCriteria` rather than discarded: one `merged` into rent,
   one `not-discriminating`;
 - three annotation threads: one resolved, one open, one anchored to a criterion rather than a cell;
+- a **criteria-set version** (`criteriaVersion: "2"`): the climate column was redefined (`definedInVersion: "2"`), and Berlin's climate score was given under version 1, so `supersededCells` reports exactly that one;
+- a **round**: Berlin's three winter-daylight raters scored in one blind round (`feedback: none`, `attribution: anonymous`), and their assertions carry its `roundId`;
+- an **open suggestion** on the Montreal visa cell, proposing the value its `not-yet-negotiated` blank was waiting for, now that the contract is signed;
+- a citation that records what it was **derived from**: the news report on Berlin rents names the rent index it summarises.
+
+These four, with everything above, are the fields schema v1 pulled forward to avoid a later migration; `tests/schema-v1-freeze.test.ts` fails if the fixture stops carrying one (`docs/schema-v1.md`).
 - two assertions carrying a host `disclosure` label (`household-finances`: the Lisbon income-tax score and one Taipei rent figure), so a reviewer's projection (`projectForReader`) withholds them and every analysis reports the cells widened for that reader — distinct from the Taipei income-tax cell, which its author stored as `withheld` outright.
 
 ### It is also the falsification fixture

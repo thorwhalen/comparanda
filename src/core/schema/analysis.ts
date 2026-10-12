@@ -41,7 +41,7 @@ import { Rendition, validateEvidence, type EvidenceRuleId } from './evidence.js'
 export const SCHEMA_VERSION = 1;
 
 /** The question being decided. One per analysis. */
-export const Subject = z.object({
+export const Subject = z.strictObject({
   question: z.string(),
   /** What decision this informs, and who is making it. Surfaces the frame. */
   decision: z.optional(z.string()),
@@ -72,14 +72,14 @@ export type Subject = z.infer<typeof Subject>;
  * Encodings are *not* here. An encoding is derived and belongs to the view
  * (ADR-0003); storing one would mean persisting computed data.
  */
-export const MeasureDeclaration = z.object({
+export const MeasureDeclaration = z.strictObject({
   name: z.string(),
   label: z.optional(z.string()),
   description: z.optional(z.string()),
 });
 export type MeasureDeclaration = z.infer<typeof MeasureDeclaration>;
 
-export const Analysis = z.object({
+export const Analysis = z.strictObject({
   schemaVersion: z._default(z.number(), SCHEMA_VERSION),
   id: z.string(),
   subject: Subject,

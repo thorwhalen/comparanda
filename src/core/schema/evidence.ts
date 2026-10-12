@@ -17,7 +17,7 @@
 import * as z from 'zod/mini';
 
 /** Exact text plus enough context to relocate it after an edit. */
-export const TextQuoteSelector = z.object({
+export const TextQuoteSelector = z.strictObject({
   type: z.literal('TextQuoteSelector'),
   exact: z.string(),
   prefix: z.optional(z.string()),
@@ -25,22 +25,22 @@ export const TextQuoteSelector = z.object({
 });
 
 /** Character offsets. Exact, and the first thing to break. */
-export const TextPositionSelector = z.object({
+export const TextPositionSelector = z.strictObject({
   type: z.literal('TextPositionSelector'),
   start: z.number(),
   end: z.number(),
 });
 
 /** A page and a rectangle, for PDFs and images. */
-export const PageRegionSelector = z.object({
+export const PageRegionSelector = z.strictObject({
   type: z.literal('PageRegionSelector'),
   page: z.number(),
   /** Fractions of page width/height, so the box survives a re-render at another DPI. */
-  rect: z.optional(z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })),
+  rect: z.optional(z.strictObject({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })),
 });
 
 /** A line range, for source code. Line numbers drift, hence `contentHash`. */
-export const LineRangeSelector = z.object({
+export const LineRangeSelector = z.strictObject({
   type: z.literal('LineRangeSelector'),
   startLine: z.number(),
   endLine: z.number(),
@@ -49,14 +49,14 @@ export const LineRangeSelector = z.object({
 });
 
 /** A time span, for audio and video. Follows Media Fragments. */
-export const TimeRangeSelector = z.object({
+export const TimeRangeSelector = z.strictObject({
   type: z.literal('TimeRangeSelector'),
   startSeconds: z.number(),
   endSeconds: z.number(),
 });
 
 /** A CSS or XPath path into a structured document. */
-export const PathSelector = z.object({
+export const PathSelector = z.strictObject({
   type: z.literal('PathSelector'),
   syntax: z.enum(['css', 'xpath']),
   value: z.string(),
@@ -92,7 +92,7 @@ export type Selector = z.infer<typeof Selector>;
  * | resolves | **differs** | checkable against what we ingested; the source has moved on |
  * | missing | -- | not resolvable here, and *why* -- never a bare "unverified" |
  */
-export const Rendition = z.object({
+export const Rendition = z.strictObject({
   id: z.string(),
   /** Where the original came from. Opaque; meaningful to the host's resolver. */
   originalLocator: z.string(),
@@ -203,7 +203,7 @@ export function verdictFound(v: CitationVerdict): boolean {
   return FOUND.has(v);
 }
 
-export const CitationCheck = z.object({
+export const CitationCheck = z.strictObject({
   status: CitationVerdict,
   /**
    * When the check ran. **Required for every status except `unchecked`**, which
@@ -364,7 +364,7 @@ export function validateCitationCheck(
  * `target` is opaque to the core -- a URI, an id, whatever the host's resolver
  * understands. The core never assumes documents live anywhere in particular.
  */
-export const EvidenceRef = z.object({
+export const EvidenceRef = z.strictObject({
   id: z.string(),
   /** Opaque; meaningful only to the host's `EvidenceResolver`. */
   target: z.string(),

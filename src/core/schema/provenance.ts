@@ -56,7 +56,7 @@ export type AttestationMethod = z.infer<typeof AttestationMethod>;
  * deciding how much an attribution is worth needs the issuer and the moment, and
  * a field that cannot carry them invites the reader to assume.
  */
-export const Attestation = z.object({
+export const Attestation = z.strictObject({
   method: AttestationMethod,
   /** Who vouched: an identity provider, a signing key id, a host name. */
   issuer: z.optional(z.string()),
@@ -65,7 +65,7 @@ export const Attestation = z.object({
 });
 export type Attestation = z.infer<typeof Attestation>;
 
-export const Author = z.object({
+export const Author = z.strictObject({
   id: z.string(),
   displayName: z.string(),
   kind: AuthorKind,
@@ -112,7 +112,7 @@ export const Author = z.object({
   attestation: z.optional(Attestation),
   /** Present when `kind` is `agent`. What actually produced the value. */
   agent: z.optional(
-    z.object({
+    z.strictObject({
       /** The agent's name, e.g. a tool that produces analyses. */
       name: z.string(),
       /** Model identifier, verbatim as reported by the provider. */
@@ -262,7 +262,7 @@ export function distinctPrincipals(
  * *point* of perturbing is to convert a systematic order effect into random
  * noise that averaging can remove -- which only works if you know it happened.
  */
-export const Perturbation = z.object({
+export const Perturbation = z.strictObject({
   /** e.g. "traversal-order", "option-order", "prior-withheld". */
   kind: z.string(),
   /** The seed, where one was used. Makes the run reproducible. */
@@ -279,7 +279,7 @@ export type Perturbation = z.infer<typeof Perturbation>;
  * "we sampled one model five times at temperature 0.7", which is the difference
  * between a finding and an artefact.
  */
-export const Procedure = z.object({
+export const Procedure = z.strictObject({
   id: z.string(),
   describedAs: z.string(),
   /** Repeats per cell, where the procedure sampled repeatedly. */
@@ -303,7 +303,7 @@ export type Procedure = z.infer<typeof Procedure>;
  * and round 2 are stored indistinguishably, the revision -- which is the entire
  * information content of a Delphi process -- is gone.
  */
-export const Round = z.object({
+export const Round = z.strictObject({
   id: z.string(),
   index: z.number(),
   label: z.optional(z.string()),

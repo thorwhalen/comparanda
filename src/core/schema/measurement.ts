@@ -95,7 +95,7 @@ export function admitsDominance(pref: Preference): boolean {
  * of the preference, not of the range, and putting it in both is how they come
  * to disagree.
  */
-export const Range = z.object({
+export const Range = z.strictObject({
   min: z.number(),
   max: z.number(),
   /** For `target` preference: the value that is best. Must lie within [min, max]. */
@@ -122,7 +122,7 @@ export type Range = z.infer<typeof Range>;
  * different questions, so the floor lives on the criterion as `acceptability`
  * and the name `veto` is reserved for the ELECTRE sense if it is ever needed.
  */
-export const Thresholds = z.object({
+export const Thresholds = z.strictObject({
   indifference: z.optional(z.number()),
   preference: z.optional(z.number()),
 });
@@ -137,7 +137,7 @@ export type Thresholds = z.infer<typeof Thresholds>;
  * and it is *flagging*, never filtering: the alternative stays in the matrix and
  * stays visible, because an analysis that silently drops rows is not auditable.
  */
-export const Acceptability = z.object({
+export const Acceptability = z.strictObject({
   /** The floor, in the criterion's units. Interpreted against `preference`. */
   threshold: z.number(),
   /** Why this floor. Required, because an unexplained floor is unarguable. */
@@ -173,7 +173,7 @@ export type ScaleCore = z.infer<typeof SCALE_CORE>;
  * author was working to*, which is what makes two analyses comparable on a
  * criterion, and what a degradation banner names when a build cannot interpret it.
  */
-export const ScaleDeclaration = z.object(declarationFields(SCALE_CORE));
+export const ScaleDeclaration = z.strictObject(declarationFields(SCALE_CORE));
 export type ScaleDeclaration = z.infer<typeof ScaleDeclaration>;
 
 /**
@@ -184,7 +184,7 @@ export type ScaleDeclaration = z.infer<typeof ScaleDeclaration>;
  * the reader's taste; a condition is scored against a document, which is the
  * only kind of anchor two people can argue about productively.
  */
-export const AnchorSet = z.object({
+export const AnchorSet = z.strictObject({
   /**
    * Level value -> the evidence condition that earns it. Keyed by the string
    * form of the level, because JSON object keys are strings and a silent
@@ -355,7 +355,7 @@ function anchorLevelProblems(m: Measurement, anchors: AnchorSet, path: string): 
  * and they are not the same scale. A per-criterion default keeps the common case
  * terse -- see `Criterion.defaultMeasurement`.
  */
-export const Measurement = z.object({
+export const Measurement = z.strictObject({
   level: LevelOfMeasurement,
   preference: Preference,
   /**
