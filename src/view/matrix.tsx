@@ -47,7 +47,7 @@ import { makeCellReader, unknownMeasure, type Analysis } from '../core/schema/an
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { Measurement } from '../core/schema/measurement.js';
 import {
-  absenceStanding, NOT_APPLICABLE, NOT_ASSESSED, type AbsenceStanding, type MissingnessVocabulary,
+  absenceStanding, coreReasonOf, NOT_APPLICABLE, NOT_ASSESSED, type AbsenceStanding, type MissingnessVocabulary,
 } from '../core/schema/missingness.js';
 import { aliasesOf } from '../core/schema/structure.js';
 import type { Reduced } from '../core/schema/values.js';
@@ -56,6 +56,7 @@ import { textOnly } from './encodings/shipped.js';
 import {
   describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
 } from './encodings/registry.js';
+import { Glyph, GLYPH_KEYS, glyphName, Hatch, isHatchLevel, type GlyphKey, type HatchLevel } from './channels.js';
 import { derivedPaletteCss, MATRIX_CSS } from './matrix-css.js';
 import { PALETTE } from './encodings/palette.js';
 import { revealClear } from './sticky.js';
@@ -154,6 +155,23 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     alternatives: alternatives.map((e) => e.id), criteria: criteria.map((e) => e.id),
   });
 
+  // The foreground channels (ADR-0028): a glyph on every missing cell, whatever the
+  // encoding; a hatch only where the active encoding declares one, at a level it declares.
+  const hatchCeiling = active.texture.channel === 'hatch' ? active.texture.levels : 0;
+  const contents = new Map<string, ReturnType<typeof cellContent> & { hatch?: HatchLevel }>();
+  const contentOf = (altId: string, critId: string) => {
+    const key = `${altId}\u0000${critId}`;
+    if (!contents.has(key)) {
+      const content = cellContent(read(altId, critId), affordances.inapplicable(altId, critId), vocabulary, critId);
+      const hatch = prepared.mark(altId, critId).hatch;
+      contents.set(key, content.state === 'value' && isHatchLevel(hatch, hatchCeiling) ? { ...content, hatch } : content);
+    }
+    return contents.get(key)!;
+  };
+  for (const alt of alternatives) for (const crit of criteria) contentOf(alt.id, crit.id);
+  const shownGlyphs = new Set([...contents.values()].flatMap((c) => (c.glyph ? [c.glyph] : [])));
+  const shownHatches = new Set([...contents.values()].flatMap((c) => (c.hatch ? [c.hatch] : [])));
+
   const grid = gridOf(rows.entries, columns.entries, transposed);
   const at = grid.positionOf(view.session.focus);
   /** The roving `tabindex` and the address the keyboard handler moves by. */
@@ -168,7 +186,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
     const reduced = read(altId, critId);
     const mark = prepared.mark(altId, critId);
-    const { state, text, absence } = cellContent(reduced, affordances.inapplicable(altId, critId), vocabulary, critId);
+    const { state, text, absence, glyph, hatch } = contentOf(altId, critId);
     const [altLabel, critLabel] = transposed
       ? [columnLabel.get(columnId), rowLabel.get(rowId)]
       : [rowLabel.get(rowId), columnLabel.get(columnId)];
@@ -188,10 +206,12 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     return (
       <td
         key={columnId} data-state={state} data-absence={absence} {...stop(r, c)}
-        data-swatch={mark.swatch} data-hatch={mark.hatch} data-glyph={mark.glyph}
+        data-swatch={mark.swatch} data-hatch={hatch} data-glyph={glyph}
       >
         <span class="comparanda-sr">{`${critLabel}, ${altLabel}, `}</span>
+        {glyph && <Glyph reason={glyph} />}
         <span class="comparanda-shown">{text}</span>
+        {hatch && <Hatch level={hatch} />}
         {mark.badge && <span class="comparanda-badge" aria-hidden="true">{mark.badge}</span>}
         {said && <span class="comparanda-sr">{said}</span>}
       </td>
@@ -273,7 +293,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       <p class="comparanda-keys" id={helpId}>
         Arrow keys move between cells; Home and End go to the start and end of a row; Ctrl+Home to the top-left corner and Ctrl+End to the last cell.
       </p>
-      <Legend definition={active} legend={prepared.legend} />
+      <Legend definition={active} legend={prepared.legend} glyphs={shownGlyphs} hatches={shownHatches} />
       {/* Not itself a tab stop: focusing a cell scrolls it, and the grid is the matrix's one stop. */}
       <div class="comparanda-scroll" role="region" aria-label={analysis.subject.question}>
         <table
@@ -391,16 +411,18 @@ function cellContent(
   inapplicable: boolean,
   vocabulary: MissingnessVocabulary,
   criterionId: string,
-): { state: CellState; text: string; absence?: CellAbsence } {
+): { state: CellState; text: string; absence?: CellAbsence; glyph?: GlyphKey } {
   const absent = (code: string, state: CellState) => {
     const facts = vocabulary.resolve(code, criterionId).facts;
+    // Keyed on the core reason the code refines, never on the code itself (ADR-0028).
+    const glyph: GlyphKey = (facts && coreReasonOf(vocabulary, code, criterionId)) ?? 'undeclared';
     // An undeclared code has no meaning to show, and a declared one may have an
     // empty one: either way its id is worded, never shown bare or left blank.
     const means = facts?.means.trim();
     const worded = `Absent for a reason this analysis does not ${facts ? 'describe' : 'define'} (\u201c${code}\u201d).`;
     return facts
-      ? { state, text: means || worded, absence: absenceStanding(facts) }
-      : { state, text: worded, absence: 'undeclared' as const };
+      ? { state, text: means || worded, absence: absenceStanding(facts), glyph }
+      : { state, text: worded, absence: 'undeclared' as const, glyph };
   };
   if (reduced?.refused !== undefined) {
     // A cell this reader sees only part of: the projection's gap (ADR-0021),
@@ -485,8 +507,22 @@ function paletteOk(palette: unknown): boolean {
     pairOk((swatch as { light?: unknown }).light) && pairOk((swatch as { dark?: unknown }).dark));
 }
 
-/** The active encoding's legend: samples with their meaning in words, counts, notes, and its texture. */
-function Legend({ definition, legend }: { definition: EncodingDefinition; legend: LegendData }) {
+/** The words for each hatch density, by what the hatch carries: denser is less settled. */
+const HATCH_SAID: Readonly<Record<'confidence' | 'disagreement', Readonly<Record<HatchLevel, string>>>> = {
+  confidence: { 1: 'somewhat less confident', 2: 'less confident', 3: 'least confident' },
+  disagreement: { 1: 'some disagreement', 2: 'more disagreement', 3: 'most disagreement' },
+};
+const HATCH_WORD: Readonly<Record<HatchLevel, string>> = { 1: 'Sparse', 2: 'Medium', 3: 'Dense' };
+
+/**
+ * The active encoding's legend: samples with their meaning in words, counts,
+ * notes, its texture, and a key to the glyphs and hatches shown -- each a
+ * shape with its meaning in words, so the key survives forced colors and
+ * print as the cells do (ADR-0028).
+ */
+function Legend({ definition, legend, glyphs, hatches }: {
+  definition: EncodingDefinition; legend: LegendData; glyphs: ReadonlySet<GlyphKey>; hatches: ReadonlySet<HatchLevel>;
+}) {
   const titleId = useId();
   return (
     <section class="comparanda-legend" aria-labelledby={titleId} data-legend={definition.id}>
@@ -502,11 +538,35 @@ function Legend({ definition, legend }: { definition: EncodingDefinition; legend
         </ul>
       )}
       {legend.notes.map((n) => <p key={n} class="comparanda-legend-note">{n}</p>)}
-      <p class="comparanda-legend-note">
-        {describeTexture(definition.texture)}
-        {/* The texture is declared here and drawn by #102; until then the legend does not promise it. */}
-        {definition.texture.channel !== 'none' && ' It is not drawn in this build yet; each cell says the same in words.'}
-      </p>
+      <p class="comparanda-legend-note">{describeTexture(definition.texture)}</p>
+      {/* Shown only when the display has replaced the colours: the samples above then stand for nothing in the cells. */}
+      {legend.entries.some((e) => e.swatch) && (
+        <p class="comparanda-legend-note comparanda-forced-only">
+          Your display has replaced this view's colours with its own, so the cells are not coloured; every cell still says its value or its reason in words, and the shapes keyed here are drawn as before.
+        </p>
+      )}
+      {legend.entries.some((e) => e.swatch) && (
+        <p class="comparanda-legend-note comparanda-print-only">
+          Printed without the cells' colours: every cell says its value or its reason in words, and the shapes keyed here are drawn as on screen.
+        </p>
+      )}
+      {definition.texture.channel === 'hatch' && hatches.size > 0 && (
+        <ul class="comparanda-key" aria-label="Hatch key">
+          {([1, 2, 3] as const).filter((l) => hatches.has(l)).map((l) => (
+            <li key={l}><Hatch level={l} />{` ${HATCH_WORD[l]} hatch: ${HATCH_SAID[(definition.texture as { carries: 'confidence' | 'disagreement' }).carries][l]}`}</li>
+          ))}
+        </ul>
+      )}
+      {glyphs.size > 0 && (
+        <ul class="comparanda-key" aria-label="Why cells are empty: shapes">
+          {GLYPH_KEYS.filter((k) => glyphs.has(k)).map((k) => (
+            <li key={k} data-glyph-key={k}>
+              <Glyph reason={k} />
+              {` ${capitalise(k === 'undeclared' ? 'a reason this analysis does not define' : k.replace(/-/g, ' '))} (${glyphName(k)})`}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

@@ -140,14 +140,21 @@ describe('every absent cell says its reason in words (#101)', () => {
     }
   });
 
-  it('a gap keeps its dashed shape whatever its code; a structural absence its hatch', () => {
+  it('a gap keeps its dashed shape whatever its code; an answer its solid frame; every absence its core reason\'s glyph', () => {
     const { analysis } = everyCode();
     handle = mountMatrix(el, { analysis, measure: 'score' });
     for (const td of Array.from(el.querySelectorAll<HTMLElement>('td[data-absence="outstanding"]'))) {
       expect(getComputedStyle(td).outlineStyle).toBe('dashed');
     }
-    for (const td of Array.from(el.querySelectorAll<HTMLElement>('td[data-absence="structural"]'))) {
-      expect(getComputedStyle(td).backgroundImage).toContain('repeating-linear-gradient');
+    for (const td of Array.from(el.querySelectorAll<HTMLElement>('td[data-absence="answered"]'))) {
+      expect(getComputedStyle(td).outlineStyle).toBe('solid');
     }
+    for (const td of Array.from(el.querySelectorAll<HTMLElement>('td[data-absence]'))) {
+      const glyph = td.querySelector('svg.comparanda-glyph');
+      expect(glyph?.getAttribute('data-glyph'), td.textContent!).toBe(td.getAttribute('data-glyph'));
+      expect(getComputedStyle(td).backgroundImage).toBe('none');
+    }
+    expect(el.querySelector('td[data-absence="structural"] svg[data-glyph="not-applicable"]')).not.toBeNull();
+    expect(el.querySelector('td[data-absence="undeclared"] svg[data-glyph="undeclared"]')).not.toBeNull();
   });
 });

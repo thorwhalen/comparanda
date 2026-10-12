@@ -18,17 +18,15 @@ export interface ThemeTokens {
   readonly band: string;
   readonly rule: string;
   readonly focus: string;
-  /** The structural-absence hatch: the ink, at this opacity. */
-  readonly hatchAlpha: number;
 }
 
 export const THEMES: Readonly<Record<Theme, ThemeTokens>> = /* @__PURE__ */ Object.freeze({
   light: Object.freeze({
     surface: '#ffffff', ink: '#1b1d21', inkInverse: '#ffffff', muted: '#4b5058',
-    header: '#eef0f3', band: '#dfe3e8', rule: '#c4c9d0', focus: '#1d4ed8', hatchAlpha: 0.16,
+    header: '#eef0f3', band: '#dfe3e8', rule: '#c4c9d0', focus: '#1d4ed8',
   }),
   dark: Object.freeze({
     surface: '#15171b', ink: '#e6e8eb', inkInverse: '#15171b', muted: '#b4bac3',
-    header: '#23262c', band: '#2e323a', rule: '#464c55', focus: '#8ab4ff', hatchAlpha: 0.18,
+    header: '#23262c', band: '#2e323a', rule: '#464c55', focus: '#8ab4ff',
   }),
 });

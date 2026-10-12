@@ -1,4 +1,15 @@
+import type { BrowserCommand } from 'vitest/node';
 import { defineConfig } from 'vitest/config';
+
+/**
+ * Emulate a display mode the page cannot set for itself: forced colors, or the
+ * print medium (#102, ADR-0028). Chromium applies forced colors for real under
+ * this emulation, so a test reads what such a reader sees, not a stylesheet.
+ */
+const emulateMedia: BrowserCommand<[{ forcedColors?: 'active' | 'none'; media?: 'print' | 'screen' | null }]> = async (ctx, options) => {
+  if (ctx.provider.name !== 'playwright') throw new Error('emulateMedia needs the playwright provider');
+  await (ctx as unknown as { page: { emulateMedia(o: object): Promise<void> } }).page.emulateMedia(options);
+};
 
 /**
  * The browser suite (#41, ADR-0029): tests that must run in a real browser.
@@ -19,6 +30,7 @@ export default defineConfig({
       provider: 'playwright',
       headless: true,
       instances: [{ browser: 'chromium' }],
+      commands: { emulateMedia },
     },
   },
 });

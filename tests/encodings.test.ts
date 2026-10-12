@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 
 import { pughTally } from '../src/core/analyses/pugh.js';
 import { Analysis, makeCellReader, vocabularyOf } from '../src/core/schema/analysis.js';
+import { coreReasonOf } from '../src/core/schema/missingness.js';
 import { editAffordances, inMemoryAnalysisSource } from '../src/store/index.js';
 import {
   categorical, createEncodingRegistry, datum, defineEncoding, describeTexture, missingness, SHIPPED_ENCODINGS,
@@ -201,7 +202,11 @@ describe('missingness', () => {
       const r = ctx.read(alt, crit);
       const m = p.mark(alt, crit);
       if (r?.value !== undefined || r?.refused !== undefined) expect(m).toEqual({});
-      else { empty += 1; expect(m.swatch).toBe(`miss-${m.glyph}`); }
+      else {
+        empty += 1;
+        const core = r?.missing ? coreReasonOf(ctx.vocabulary, r.missing.code, crit) : ctx.inapplicable(alt, crit) ? 'not-applicable' : 'not-assessed';
+        expect(m.swatch).toBe(`miss-${core}`);
+      }
     }
     const counted = p.legend.entries.reduce((s, e) => s + (e.count ?? 0), 0);
     expect(counted).toBe(empty);
@@ -213,7 +218,7 @@ describe('missingness', () => {
     const p = prepared(missingness, ctx);
     const custom = cells(ctx).find(([a, c]) => ctx.read(a, c)?.missing?.code === 'not-yet-negotiated');
     expect(custom).toBeDefined();
-    expect(p.mark(...custom!).glyph).toBe('deferred');
+    expect(p.mark(...custom!).swatch).toBe('miss-deferred');
   });
 });
 

@@ -141,6 +141,21 @@ from the cell's `terminal` flag there as everywhere else.
 records why: it is advisory, it is not in the shipped schema, and it is derivable from the reason code
 the glyph already carries.
 
+### 2026-10-12 — How the channels are drawn (#102)
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+- **Deciders:** Thor Whalen (delegated to the implementing agent; reversible)
+
+Recorded so the next reader does not re-derive them from the code.
+
+- **The hatch is a small framed tile beside the value, not a texture under it.** Under the text, a hatch either thins to an opacity that no longer clears 3:1 as a graphic or eats into the text's 4.5:1; beside it, the strokes are the cell's own ink at full strength and the text's contrast is the ink on the fill alone. The frame makes each tile a fixed area, so a density is read inside one tile rather than by comparing two cells. Denser means less settled.
+- **The glyph is the matrix's, drawn on every missing cell under every encoding**, keyed through `coreReasonOf` (core). An encoding no longer marks a glyph per cell (`CellMark.glyph` is removed); declaring `channel: 'glyph'` still says what the encoding's legend is about.
+- **A code nothing defines gets a seventh glyph, a question mark,** rather than borrowing a core reason's shape, which would assert a meaning nobody declared (ADR-0009: an undeclared code is never defaulted).
+- **The answered absence gets a solid inset frame**, the counterpart of the gap's dashed one, so `terminal` reads as a style in every mode, not only under forced colors.
+- **"Swap the colour legend for a text legend" is done by addition:** the legend's samples keep the palette (`forced-color-adjust: none`, the one exemption), and a note shown only under forced colors, and another only in print, says the cells are not coloured and carry their meaning in words and the shapes keyed beside it. Every legend entry already had words.
+- **Print is the light theme with no fills**: the stylesheet removes cell backgrounds itself rather than relying on the printer, so the page is correct whether or not `print-color-adjust: exact` (set only on the legend samples) is honoured.
+
 ## References
 The evidence and the full argument are in `docs/research/findings-visualisation.md` § 4.5; the
 coarse-channel reasoning is in § 3.4 and the two-channel resolution in § 7.6. Viénot (1999) and

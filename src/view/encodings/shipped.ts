@@ -15,7 +15,7 @@
  * registration rather than as a new one.
  */
 import { pughTally, type PughStanding } from '../../core/analyses/pugh.js';
-import { CORE_MISSING_CODES, NOT_APPLICABLE, NOT_ASSESSED, type MissingCode } from '../../core/schema/missingness.js';
+import { CORE_MISSING_CODES, coreReasonOf, NOT_APPLICABLE, NOT_ASSESSED, type MissingCode } from '../../core/schema/missingness.js';
 import { isOrdered, type Measurement } from '../../core/schema/measurement.js';
 import { measurementFor } from '../../core/schema/structure.js';
 import type { ScalarValue } from '../../core/schema/values.js';
@@ -155,22 +155,15 @@ export const missingness = /* @__PURE__ */ defineEncoding({
   texture: { channel: 'glyph', carries: 'missing-reason' },
   prepare: (ctx) => {
     const counts = new Map<MissingCode, number>();
-    const coreOf = (code: string, crit: string): MissingCode | undefined => {
-      if (Object.prototype.hasOwnProperty.call(CORE_MISSING_CODES, code)) return code as MissingCode;
-      const declared = ctx.vocabulary.declarationsFor(crit).find((d) => d.id === code);
-      if (declared) return declared.broader;
-      const resolved = ctx.vocabulary.resolve(code, crit);
-      return resolved.source === 'degraded' ? resolved.broader as MissingCode : undefined;
-    };
     const mark = (alt: string, crit: string): CellMark => {
       const reduced = ctx.read(alt, crit);
       if (reduced?.value !== undefined || reduced?.refused !== undefined) return NO_MARK;
       const code = reduced?.missing !== undefined
-        ? coreOf(reduced.missing.code, crit)
+        ? coreReasonOf(ctx.vocabulary, reduced.missing.code, crit)
         : ctx.inapplicable(alt, crit) ? NOT_APPLICABLE : NOT_ASSESSED;
       if (code === undefined) return NO_MARK;
       counts.set(code, (counts.get(code) ?? 0) + 1);
-      return { swatch: `miss-${code}`, glyph: code };
+      return { swatch: `miss-${code}` };
     };
     for (const alt of ctx.alternatives) for (const crit of ctx.criteria) mark(alt, crit);
     const entries: LegendEntry[] = (Object.keys(CORE_MISSING_CODES) as MissingCode[]).map((code) => ({

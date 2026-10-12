@@ -20,25 +20,28 @@
  * A cell's announced measures are visually hidden with the clip pattern, not
  * `display: none`, which would hide them from the screen reader too.
  *
- * The kinds of absence differ in shape, not only in colour (ADR-0009): a
- * structural `not-applicable` is hatched, a `not-assessed` gap has a dashed
- * frame, and every one of them also says what it is in words.
+ * The kinds of absence differ in shape, not only in colour (ADR-0009, ADR-0028):
+ * each carries its reason's glyph, drawn in the foreground by `channels.tsx`;
+ * the frame's style says whether work remains -- dashed for a gap, solid for an
+ * answer -- and every one of them also says what it is in words.
+ *
+ * No meaning rides on a background image or a box shadow (ADR-0028): forced
+ * colors deletes both, and a printer drops backgrounds. The rules here are drawn
+ * as box shadows because they carry structure, not meaning, and the
+ * forced-colors and print blocks replace them with real borders whose width and
+ * colour they set and whose style they never touch: the style is the cell's
+ * `terminal` channel. Print is the light theme with no fills, legible without
+ * `print-color-adjust`, which is set only on the legend's samples, as a hint.
  */
 import { paletteRules, paletteVars, PALETTE, type Swatch } from './encodings/palette.js';
 import { THEMES, type Theme } from './theme.js';
-
-/** `#rrggbb` at an opacity, as `rgba()`. */
-function rgba(hex: string, alpha: number): string {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 function tokens(theme: Theme): string {
   const t = THEMES[theme];
   return `
   --cmp-surface: ${t.surface}; --cmp-ink: ${t.ink}; --cmp-muted: ${t.muted};
   --cmp-header: ${t.header}; --cmp-band: ${t.band}; --cmp-rule: ${t.rule};
-  --cmp-hatch: ${rgba(t.ink, t.hatchAlpha)}; --cmp-focus: ${t.focus};
+  --cmp-focus: ${t.focus};
   ${paletteVars(PALETTE, theme)}`;
 }
 
@@ -87,6 +90,8 @@ export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
   padding: 0.35em 0.6em; line-height: 1.4; text-align: start; vertical-align: top;
   background: var(--cmp-surface); color: var(--cmp-ink);
   box-shadow: inset -1px -1px 0 var(--cmp-rule);
+  /* No width here; forced colors and print give it one. The style is the terminal channel, set below. */
+  border: 0 solid transparent;
 }
 .comparanda-matrix th { background: var(--cmp-header); font-weight: 600; }
 .comparanda-matrix thead th { position: sticky; top: 0; z-index: 2; }
@@ -100,15 +105,12 @@ export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
 .comparanda-matrix td[data-state="refused"],
 .comparanda-matrix td[data-state="not-applicable"],
 .comparanda-matrix td[data-state="not-assessed"] { color: var(--cmp-muted); font-style: italic; }
-.comparanda-matrix td[data-state="not-applicable"],
-.comparanda-matrix td[data-absence="structural"] {
-  background-image: repeating-linear-gradient(135deg, var(--cmp-hatch) 0 1px, transparent 1px 7px);
-}
 /* Any absence counted as work outstanding (\`not-assessed\`, \`deferred\`, their extensions, an undeclared
-   code) has the gap's dashed shape. */
+   code) has the gap's dashed shape; an answered one, the answer's solid frame (ADR-0028 amendment). */
 .comparanda-matrix td[data-state="not-assessed"],
 .comparanda-matrix td[data-absence="outstanding"],
-.comparanda-matrix td[data-absence="undeclared"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; }
+.comparanda-matrix td[data-absence="undeclared"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; border-style: dashed; }
+.comparanda-matrix td[data-absence="answered"] { outline: 1px solid var(--cmp-muted); outline-offset: -4px; }
 /* Focused, the gap keeps its dashed shape: the ring takes the focus colour, not a solid line. */
 .comparanda-matrix td[data-state="not-assessed"]:focus-visible,
 .comparanda-matrix td[data-absence="outstanding"]:focus-visible,
@@ -120,6 +122,13 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 .comparanda-matrix td[data-swatch]:focus-visible { outline-color: currentColor; }
 .comparanda-matrix td[data-swatch] { font-style: normal; }
 .comparanda-matrix .comparanda-badge { margin-inline-start: 0.4em; font-weight: 700; }
+.comparanda-matrix .comparanda-glyph, .comparanda-matrix .comparanda-hatch {
+  display: inline-block; width: 0.9em; height: 0.9em; vertical-align: -0.1em; overflow: hidden;
+}
+.comparanda-matrix td .comparanda-glyph { margin-inline-end: 0.35em; }
+.comparanda-matrix td .comparanda-hatch { margin-inline-start: 0.4em; }
+.comparanda-matrix .comparanda-key { list-style: none; padding: 0; margin: 0 0 0.25em; display: flex; flex-wrap: wrap; gap: 0.25em 1em; }
+.comparanda-matrix .comparanda-forced-only, .comparanda-matrix .comparanda-print-only { display: none; }
 .comparanda-matrix .comparanda-legend { margin: 0 0 0.5em; }
 .comparanda-matrix .comparanda-legend-title { margin: 0 0 0.25em; font-weight: 600; }
 .comparanda-matrix .comparanda-legend ul { list-style: none; padding: 0; margin: 0 0 0.25em; display: flex; flex-wrap: wrap; gap: 0.25em 1em; }
@@ -135,11 +144,22 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   border: 1px dashed var(--cmp-rule); padding: 0.1em 0.5em; cursor: not-allowed;
 }
 @media (forced-colors: active) {
-  .comparanda-matrix th, .comparanda-matrix td { box-shadow: none; border: 1px solid CanvasText; }
+  /* Width and colour only: the style is each cell's terminal channel (ADR-0028 amendment). */
+  .comparanda-matrix th, .comparanda-matrix td { box-shadow: none; border-width: 1px; border-color: CanvasText; }
   .comparanda-matrix thead tr.comparanda-band + tr th { top: calc(2.1em + 2px); }
+  /* The one exemption: the legend's samples, whose only job is to show the palette. */
+  .comparanda-matrix .comparanda-swatch { forced-color-adjust: none; }
+  .comparanda-matrix .comparanda-forced-only { display: block; }
 }
-@media print {
+@media print {${themed(tokens('light'), tokens('light'))}
   .comparanda-matrix .comparanda-scroll { overflow: visible; max-height: none; }
   .comparanda-matrix thead th, .comparanda-matrix tbody th { position: static; }
+  /* Backgrounds off, whatever the printer does: the cells' fills go, their ink returns to the page's. */
+  .comparanda-matrix th, .comparanda-matrix tbody td[data-cell] {
+    background: none; box-shadow: none; border-width: 1px; border-color: var(--cmp-muted);
+  }
+  .comparanda-matrix tbody td[data-swatch] { color: var(--cmp-ink); }
+  .comparanda-matrix .comparanda-swatch { print-color-adjust: exact; -webkit-print-color-adjust: exact; outline: 1px solid var(--cmp-ink); }
+  .comparanda-matrix .comparanda-print-only { display: block; }
 }
 `;

@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { makeCellReader, vocabularyOf, type Analysis } from '../src/core/schema/analysis.js';
 import { wcagContrastRatio } from '../src/view/encodings/contrast.js';
 import {
-  apcaLc, assertPaletteLegible, deltaE, hexToLab, interpolateLab, labToHex, pickInk, type Overlay, type PaintedSwatch,
+  apcaLc, assertPaletteLegible, deltaE, hexToLab, interpolateLab, labToHex, pickInk,
 } from '../src/view/encodings/colour.js';
 import { PALETTE } from '../src/view/encodings/palette.js';
 import { uncertaintySuppressed } from '../src/view/encodings/shipped.js';
@@ -29,21 +29,9 @@ import { THEMES, type Theme } from '../src/view/theme.js';
 import { languagesWithConfidence } from './fixtures/confidence.js';
 
 const THEME_NAMES = ['light', 'dark'] as const satisfies readonly Theme[];
-/**
- * The translucent layers painted over a fill, where they are painted: the
- * structural-absence hatch (the theme's ink) over a missingness swatch, and the
- * confidence hatch (#102, the cell's own ink, `currentColor`) over every
- * value-suppressing node but the leaves, which are the most confident and carry
- * none. #102 draws its strokes no denser than this, or updates it.
- */
-function overlays(theme: Theme) {
-  return ({ id, ink }: PaintedSwatch): Overlay[] => {
-    if (id.startsWith('miss-')) return [{ name: 'the absence hatch', colour: THEMES[theme].ink, alpha: THEMES[theme].hatchAlpha }];
-    const node = /^vsup-\d+x(\d+)-(\d+)-\d+$/.exec(id);
-    if (node && Number(node[2]) < Number(node[1]) - 1) return [{ name: 'the confidence hatch', colour: ink, alpha: THEMES[theme].hatchAlpha }];
-    return [];
-  };
-}
+// Nothing is painted under a cell's text: the hatch and the glyph (#102, ADR-0028) are drawn beside it,
+// in the cell's own ink, which clears 4.5:1 on the fill and so the 3:1 a graphic needs. If a channel is ever
+// drawn under the text, its layer goes in `assertPaletteLegible`'s `overlays` here.
 
 describe('the ordinal merge tree', () => {
   it('for five scores and three confidences is {1}{2}{3}{4}{5} → {1,2}{3}{4,5} → {1..5}: nine colours', () => {
@@ -136,15 +124,15 @@ describe('the build-time palette test', () => {
   });
 
   for (const theme of THEME_NAMES) {
-    it(`every value-suppressing swatch clears 4.5:1, under the hatch too, ${theme} theme`, () => {
+    it(`every value-suppressing swatch clears 4.5:1, ${theme} theme`, () => {
       const swatches = Object.entries(VSUP_PALETTE).map(([id, s]) => ({ id, fill: s[theme][0], ink: s[theme][1] }));
       expect(swatches.length).toBeGreaterThan(9);
-      expect(() => assertPaletteLegible(swatches, { theme, overlays: overlays(theme) })).not.toThrow();
+      expect(() => assertPaletteLegible(swatches, { theme })).not.toThrow();
     });
 
-    it(`every static swatch clears 4.5:1, under the hatch too, ${theme} theme`, () => {
+    it(`every static swatch clears 4.5:1, ${theme} theme`, () => {
       const swatches = Object.entries(PALETTE).map(([id, s]) => ({ id, fill: s[theme][0], ink: s[theme][1] }));
-      expect(() => assertPaletteLegible(swatches, { theme, overlays: overlays(theme) })).not.toThrow();
+      expect(() => assertPaletteLegible(swatches, { theme })).not.toThrow();
     });
 
     it(`every listed ink is the one the gate and the tie-break pick, ${theme} theme`, () => {
