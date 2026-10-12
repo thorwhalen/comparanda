@@ -46,7 +46,7 @@ export function makeReadings(a: Analysis, measure: string): (altId: string, crit
   };
 }
 
-/** Cells in `alts x crits` for `measure` whose content a disclosure projection withheld (ADR-0021). */
+/** Cells in `alts x crits` for `measure` that a disclosure projection left without a value (ADR-0021). */
 export function widenedCells(
   a: Analysis, altIds: readonly string[], critIds: readonly string[], measure: string,
 ): number {
@@ -56,7 +56,9 @@ export function widenedCells(
   for (const alt of altIds) {
     for (const crit of critIds) {
       const c = index.get(cellKey(alt, crit, measure));
-      if (c && isWidenedByDisclosure(c)) n += 1;
+      // Only where the withholding left the cell without a value: a value core
+      // can still prove (an owner's consensus, a `latest`) was not read as a blank.
+      if (c && isWidenedByDisclosure(c) && reducedValue(a, alt, crit, measure)?.value === undefined) n += 1;
     }
   }
   return n;

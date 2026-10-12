@@ -17,22 +17,9 @@
  */
 import type { Analysis } from './analysis.js';
 import { WITHHELD } from './missingness.js';
-import { isWidenedByDisclosure, type Assertion, type Cell } from './values.js';
+import { isProjectedOut, isWidenedByDisclosure, type Assertion, type Cell } from './values.js';
 
-/**
- * Whether an assertion is already the output of a projection: flagged, and
- * carrying nothing but its identity and an absence.
- *
- * The flag alone is not enough. A producer that sets `withheldFromReader` on an
- * assertion with its value still in it -- the field name reads like a request --
- * would otherwise be passed through with the value intact. (Review finding.)
- */
-export function isProjectedOut(s: Assertion): boolean {
-  // Not keyed on the `withheld` code itself: core never branches on a reason
-  // code (#44). Emptiness is the property that matters.
-  return s.disclosure?.withheldFromReader === true && s.value === undefined && s.missing !== undefined &&
-    !s.missing.note && !s.justification?.trim() && s.evidence.length === 0;
-}
+export { isProjectedOut };
 
 /** The host's disclosure decision: may this reader see this assertion? */
 export type DisclosureDecision = (assertion: Assertion, cell: Cell) => boolean;
@@ -110,7 +97,12 @@ export function projectForReader(source: Analysis, discloses: DisclosureDecision
   return { analysis: a, widenedCells: widenedCellCount(a) };
 }
 
-/** Cells in `a` widened by a disclosure projection, optionally for one measure. */
+/**
+ * Cells in `a` widened by a disclosure projection, optionally for one measure:
+ * every cell with something withheld from this reader. The analyses count a
+ * narrower thing -- cells the withholding left *without a value* -- because a
+ * value core can still prove (a consensus, a `latest`) was not read as a blank.
+ */
 export function widenedCellCount(a: Analysis, { measure }: { measure?: string } = {}): number {
   return a.cells.filter((c) => (measure === undefined || c.measure === measure) && isWidenedByDisclosure(c)).length;
 }

@@ -121,7 +121,49 @@ export type Assertion = z.infer<typeof Assertion>;
  * was not widened by *this reader's* access.
  */
 export function isWidenedByDisclosure(cell: { assertions: readonly Assertion[] }): boolean {
-  return cell.assertions.some((s) => !s.supersededBy && s.disclosure?.withheldFromReader === true);
+  return cell.assertions.some((s) => !s.supersededBy && isWithheldFromReader(s));
+}
+
+function arithmeticRefusal(named: string, level: LevelOfMeasurement): string {
+  return `"${named}" produces a value nobody asserted, which is not legal on an ` +
+    `${level} level; use lower-median. Averaging ordinal codes produces a value no ` +
+    'rater could have chosen.';
+}
+
+/**
+ * Whether this reader is missing an assertion's value: flagged by a
+ * projection, and holding no value. The definition `reduce`,
+ * `isWidenedByDisclosure` and completeness read (#171).
+ *
+ * Deliberately looser than `isProjectedOut`: a flagged, valueless assertion
+ * that kept a note or evidence (a hand-rolled projection, an invalid document)
+ * still hides a value from this reader, and reading it as an authored absence
+ * would turn the gap into a disagreement. A flagged assertion that still
+ * holds its value hides nothing, and is visible data.
+ *
+ * Assumes what `projectForReader` guarantees: only a *value* is ever withheld
+ * (an absence keeps its own code and is not flagged), so a withheld assertion
+ * stands for a value. A host projector that flags a withheld absence breaks
+ * that, and `reduce`'s `latest` exception and completeness would over-read it.
+ */
+export function isWithheldFromReader(s: Assertion): boolean {
+  return s.disclosure?.withheldFromReader === true && s.value === undefined;
+}
+
+/**
+ * Whether an assertion is already the *output* of a projection: flagged, and
+ * carrying nothing but its identity and an absence. What `projectForReader`
+ * passes through untouched; anything less empty it projects again.
+ *
+ * The flag alone is not enough. A producer that sets `withheldFromReader` on an
+ * assertion with its value still in it -- the field name reads like a request --
+ * would otherwise be passed through with the value intact. (Review finding.)
+ */
+export function isProjectedOut(s: Assertion): boolean {
+  // Not keyed on the `withheld` code itself: core never branches on a reason
+  // code (#44). Emptiness is the property that matters.
+  return s.disclosure?.withheldFromReader === true && s.value === undefined && s.missing !== undefined &&
+    !s.missing.note && !s.justification?.trim() && s.evidence.length === 0;
 }
 
 /**
@@ -276,7 +318,7 @@ export interface Reduced {
   missing?: Missing | undefined;
   /** Assertions that fed the reduction (excludes superseded ones). */
   contributing: Assertion[];
-  /** True when contributing assertions disagree. Often the finding itself. */
+  /** True when contributing assertions this reader can see disagree. Often the finding itself. */
   disagreement: boolean;
   /** Distinct asserted values, in ascending order where ordered. */
   spread: ScalarValue[];
@@ -294,6 +336,20 @@ export interface Reduced {
    * The value is still computed: the flag qualifies it, it does not withhold it.
    */
   independence?: ReductionIndependence | undefined;
+  /**
+   * How many contributing assertions a disclosure projection withheld from
+   * this reader (ADR-0021), when any were. A withheld assertion is not a
+   * recorded absence: it takes no part in `disagreement` or `spread`, and a
+   * reduction over the rest is refused rather than shown as the cell's value,
+   * because an aggregate over part of a cell is never returned bare.
+   */
+  withheldFromReader?: number | undefined;
+  /**
+   * Why `refused` was set, where a consumer must tell it apart from a conflict:
+   * `withheld-from-reader` when the reduction was refused only because part of
+   * the cell is withheld from this reader. Absent for every other refusal.
+   */
+  refusedBecause?: 'withheld-from-reader' | undefined;
 }
 
 /** See `Reduced.independence`. */
@@ -386,8 +442,14 @@ export function reduce(
 ): Reduced {
   const reduced = reduceValue(cell, opts);
   const independence = independenceOf(reduced.contributing, opts.authors);
-  return independence ? { ...reduced, independence } : reduced;
+  const withheld = reduced.contributing.filter(isWithheldFromReader).length;
+  return {
+    ...reduced,
+    ...(independence ? { independence } : {}),
+    ...(withheld > 0 ? { withheldFromReader: withheld } : {}),
+  };
 }
+
 
 /** `reduce` without the independence reading; the value logic, unchanged. */
 function reduceValue(
@@ -424,14 +486,19 @@ function reduceValue(
   // Past this point the name resolved to a core algorithm.
   const mode = named as CoreReduction;
 
-  const valued = contributing.filter((a) => a.value !== undefined);
-  const absent = contributing.filter((a) => a.value === undefined && a.missing);
+  // What this reader can see. A withheld assertion is the projection's gap, not
+  // an author's recorded absence, so it never counts as one (#171).
+  const visible = contributing.filter((a) => !isWithheldFromReader(a));
+  const valued = visible.filter((a) => a.value !== undefined);
+  const absent = visible.filter((a) => a.value === undefined && a.missing);
   const spread = [...new Set(valued.map((a) => a.value as ScalarValue))].sort((a, b) =>
     typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b)),
   );
   const disagreement = spread.length > 1 || (valued.length > 0 && absent.length > 0);
 
   if (mode === 'consensus') {
+    // The owner's recorded choice, not an aggregate: shown even when other
+    // assertions are withheld from this reader, and `withheldFromReader` says so.
     const chosen = contributing.find((a) => a.id === cell.consensusAssertionId);
     if (!chosen) {
       return { contributing, disagreement, spread, refused: 'reduction is "consensus" but consensusAssertionId names no live assertion' };
@@ -439,36 +506,70 @@ function reduceValue(
     return { value: chosen.value, missing: chosen.missing, contributing, disagreement, spread };
   }
 
+  // Conflicts the reader can see are conflicts whatever else is withheld, and
+  // they are the owner's too: say that, not that something is hidden. A
+  // projection keeps every assertion's identity, so "more than one live
+  // assertion" under `single` is visible even when their values are not.
   if (mode === 'single' && contributing.length > 1) {
     return {
       contributing, disagreement, spread,
       refused: `reduction is "single" but ${contributing.length} live assertions exist; resolve the conflict rather than hiding it`,
     };
   }
-
-  if (valued.length > 0 && absent.length > 0) {
+  // A withheld assertion always stands for a value (`isWithheldFromReader`),
+  // so a visible absence beside one is a mix the owner sees too.
+  const withheld = contributing.filter(isWithheldFromReader);
+  if ((valued.length > 0 || withheld.length > 0) && absent.length > 0) {
     return {
       contributing, disagreement: true, spread,
       refused: 'assertions disagree about whether a value exists; no reduction over a mix of values and absences is defensible',
     };
   }
 
+  // Refusals that depend only on the level or on the values the reader can
+  // see are the owner's too, so they are reported as themselves.
+  const arithmeticIllegal = resolved.facts.arithmetic && opts.level !== undefined && !meanIsLegal(opts.level);
+  if (arithmeticIllegal && valued.length > 0) {
+    return { contributing, disagreement, spread, refused: arithmeticRefusal(named, opts.level!) };
+  }
+  if ((mode === 'lower-median' || mode === 'mean') && valued.some((a) => !isNumeric(a.value))) {
+    return { contributing, disagreement, spread, refused: `${mode} needs numeric values` };
+  }
+
+  // Some withheld, some visible: a reduction over the visible ones would
+  // present part of the cell as all of it (ADR-0021: aggregates over partially
+  // disclosed data are labelled or suppressed, never returned bare). One
+  // exception is provable: `latest`, when the newest assertion is one the
+  // reader can see and holds a value. A projection keeps every `at`, and only
+  // ever withholds values, so the owner's `latest` is that same assertion.
+  if (withheld.length > 0 && visible.length > 0) {
+    if (mode === 'latest' && absent.length === 0) {
+      const newest = [...valued].sort((a, b) => a.at.localeCompare(b.at)).at(-1)!;
+      if (withheld.every((w) => w.at.localeCompare(newest.at) < 0)) {
+        return { value: newest.value, contributing, disagreement, spread };
+      }
+    }
+    return {
+      contributing, disagreement, spread,
+      refusedBecause: 'withheld-from-reader',
+      refused: `${withheld.length} of ${contributing.length} assertions in this cell ${withheld.length === 1 ? 'is' : 'are'} withheld from you; ` +
+        `a "${named}" over the ${visible.length} you can see would present part of the cell as all of it, so nothing is shown`,
+    };
+  }
+
   if (valued.length === 0) {
-    // All absent. Show the most recent absence, which is the current answer.
-    const latest = [...absent].sort((a, b) => a.at.localeCompare(b.at)).at(-1);
+    // All absent, or all withheld from this reader. Show the most recent
+    // absence, which is the current answer; when every assertion is withheld,
+    // that is the projection's `withheld`, which is what this reader can know.
+    const latest = [...(visible.length > 0 ? absent : contributing)].sort((a, b) => a.at.localeCompare(b.at)).at(-1);
     return { missing: latest?.missing, contributing, disagreement, spread };
   }
 
   // The arithmetic rule, stated once over the reduction's facts rather than as a
   // case for `mean`. A declared reduction that inherits `arithmetic: true` is
   // refused here without anyone having remembered to add it.
-  if (resolved.facts.arithmetic && opts.level && !meanIsLegal(opts.level)) {
-    return {
-      contributing, disagreement, spread,
-      refused: `"${named}" produces a value nobody asserted, which is not legal on an ` +
-        `${opts.level} level; use lower-median. Averaging ordinal codes produces a value no ` +
-        'rater could have chosen.',
-    };
+  if (arithmeticIllegal) {
+    return { contributing, disagreement, spread, refused: arithmeticRefusal(named, opts.level!) };
   }
 
   switch (mode) {
