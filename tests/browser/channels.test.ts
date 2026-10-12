@@ -15,7 +15,8 @@
 import { commands } from '@vitest/browser/context';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { Analysis, coreReasonOf, vocabularyOf } from '../../src/index.js';
+import { Analysis, coreReasonOf, initialViewState, setGrouping, vocabularyOf } from '../../src/index.js';
+import { GRAPHIC_CONTRAST_MIN, TEXT_CONTRAST_MIN } from '../../src/view/encodings/contrast.js';
 import { createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import languagesJson from '../../examples/languages.json';
 import relocationJson from '../../examples/relocation.json';
@@ -84,10 +85,10 @@ function expectForegroundChannels() {
     const bg = backdrop(td);
     const shown = td.querySelector('.comparanda-shown')!;
     expect(shown.textContent!.trim(), 'a cell says something').not.toBe('');
-    expect(contrast(getComputedStyle(shown).color, bg), shown.textContent!).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(getComputedStyle(shown).color, bg), shown.textContent!).toBeGreaterThanOrEqual(TEXT_CONTRAST_MIN);
     for (const svg of Array.from(td.querySelectorAll('svg.comparanda-glyph, svg.comparanda-hatch'))) {
       expect(visible(svg), svg.outerHTML).toBe(true);
-      expect(contrast(getComputedStyle(svg).stroke, bg), svg.outerHTML).toBeGreaterThanOrEqual(3);
+      expect(contrast(getComputedStyle(svg).stroke, bg), svg.outerHTML).toBeGreaterThanOrEqual(GRAPHIC_CONTRAST_MIN);
     }
   }
 }
@@ -176,10 +177,9 @@ describe('forced colors (ADR-0028)', () => {
         const style = getComputedStyle(td);
         expect(style.backgroundImage).toBe('none');
         expect(style.borderTopWidth).toBe('1px');
-        expect(contrast(style.borderTopColor, backdrop(td))).toBeGreaterThanOrEqual(3);
+        expect(contrast(style.borderTopColor, backdrop(td))).toBeGreaterThanOrEqual(GRAPHIC_CONTRAST_MIN);
         // Width and colour restored; the style is still the cell's terminal channel.
-        const outstanding = td.dataset['absence'] === 'outstanding' || td.dataset['absence'] === 'undeclared';
-        expect(style.borderTopStyle, td.textContent!).toBe(outstanding ? 'dashed' : 'solid');
+        expect(style.borderTopStyle, td.textContent!).toBe(td.dataset['terminal'] === 'false' ? 'dashed' : 'solid');
       }
       const note = el.querySelector('.comparanda-forced-only');
       if (encoding === 'text-only') expect(note).toBeNull();
@@ -202,18 +202,22 @@ describe('print (ADR-0028)', () => {
       el.dataset['theme'] = theme;
       await commands.emulateMedia({ media: 'print' });
       expect(matchMedia('print').matches).toBe(true);
+      // Grouped, so the band headers are printed too.
+      const banded = setGrouping(initialViewState(relocation), 'criteria', ['g-cost', 'g-climate']);
       for (const [encoding, analysis] of [['missingness', relocation], ['uncertainty-suppressed', confident]] as const) {
-        const handle = mountMatrix(el, { analysis, measure: 'score', encoding }, { encodings: all });
+        const view = analysis === relocation ? { view: banded } : {};
+        const handle = mountMatrix(el, { analysis, measure: 'score', encoding, ...view }, { encodings: all });
+        if (analysis === relocation) expect(el.querySelectorAll('tr.comparanda-band th').length).toBeGreaterThan(0);
         for (const node of Array.from(el.querySelectorAll('th, td'))) {
           const style = getComputedStyle(node);
           // A printer may drop backgrounds: none is drawn, so the paper is what the text is on.
           expect(style.backgroundColor, `${encoding} ${node.textContent}`).toBe(TRANSPARENT);
           expect(style.backgroundImage).toBe('none');
           expect(style.borderTopWidth).toBe('1px');
-          expect(contrast(style.color, 'rgb(255, 255, 255)'), `${encoding} ${node.textContent}`).toBeGreaterThanOrEqual(4.5);
+          expect(contrast(style.color, 'rgb(255, 255, 255)'), `${encoding} ${node.textContent}`).toBeGreaterThanOrEqual(TEXT_CONTRAST_MIN);
         }
         for (const svg of Array.from(el.querySelectorAll('td svg'))) {
-          expect(contrast(getComputedStyle(svg).stroke, 'rgb(255, 255, 255)')).toBeGreaterThanOrEqual(3);
+          expect(contrast(getComputedStyle(svg).stroke, 'rgb(255, 255, 255)')).toBeGreaterThanOrEqual(GRAPHIC_CONTRAST_MIN);
         }
         expect(el.querySelectorAll('td svg').length).toBeGreaterThan(0);
         expect(visible(el.querySelector('.comparanda-print-only')!)).toBe(true);

@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  Analysis, absenceStanding, CORE_MISSING_CODES, makeCellReader, vocabularyOf,
+  Analysis, absenceStanding, CORE_MISSING_CODES, coreReasonOf, makeCellReader, vocabularyOf,
 } from '../../src/index.js';
 import { createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
@@ -21,6 +21,8 @@ const UNDECLARED = 'no-such-reason';
 const AWKWARD = [
   { id: 'blank-meaning', broader: 'not-evidenced' as const, means: '   ', params: {} },
   { id: 'no-full-stop', broader: 'not-assessed' as const, means: 'Asked; no reply yet', params: {} },
+  // Structural, yet declared open: its border style follows the flag, not the standing (ADR-0028 amendment).
+  { id: 'structural-open', broader: 'not-applicable' as const, terminal: false, means: 'Should be empty; nobody has confirmed it.', params: {} },
 ];
 
 /** Every code in force, each on a cell of its own: core codes, analysis-scope and criterion-scope declarations, one undeclared. */
@@ -141,20 +143,24 @@ describe('every absent cell says its reason in words (#101)', () => {
   });
 
   it('a gap keeps its dashed shape whatever its code; an answer its solid frame; every absence its core reason\'s glyph', () => {
-    const { analysis } = everyCode();
+    const { analysis, placed } = everyCode();
+    const vocabulary = vocabularyOf(analysis);
     handle = mountMatrix(el, { analysis, measure: 'score' });
-    for (const td of Array.from(el.querySelectorAll<HTMLElement>('td[data-absence="outstanding"]'))) {
-      expect(getComputedStyle(td).outlineStyle).toBe('dashed');
+    const byCell = new Map(cellsOf(analysis).map((x) => [`${x.alt}\u0000${x.crit}`, x.td]));
+    const glyphs = new Set<string>();
+    for (const { alt, crit, code } of placed) {
+      const td = byCell.get(`${alt}\u0000${crit}`)!;
+      const facts = vocabulary.resolve(code, crit).facts;
+      // Keyed on the core reason the code refines, read from the vocabulary, never from the cell.
+      const expected = facts ? coreReasonOf(vocabulary, code, crit) : 'undeclared';
+      expect(td.querySelector('svg.comparanda-glyph')?.getAttribute('data-glyph'), code).toBe(expected);
+      glyphs.add(expected!);
+      const terminal = facts?.terminal ?? false;
+      const style = getComputedStyle(td);
+      expect(style.outlineStyle, code).toBe(!terminal ? 'dashed' : facts!.structural ? 'none' : 'solid');
+      expect(style.borderTopStyle, code).toBe(terminal ? 'solid' : 'dashed');
+      expect(style.backgroundImage).toBe('none');
     }
-    for (const td of Array.from(el.querySelectorAll<HTMLElement>('td[data-absence="answered"]'))) {
-      expect(getComputedStyle(td).outlineStyle).toBe('solid');
-    }
-    for (const td of Array.from(el.querySelectorAll<HTMLElement>('td[data-absence]'))) {
-      const glyph = td.querySelector('svg.comparanda-glyph');
-      expect(glyph?.getAttribute('data-glyph'), td.textContent!).toBe(td.getAttribute('data-glyph'));
-      expect(getComputedStyle(td).backgroundImage).toBe('none');
-    }
-    expect(el.querySelector('td[data-absence="structural"] svg[data-glyph="not-applicable"]')).not.toBeNull();
-    expect(el.querySelector('td[data-absence="undeclared"] svg[data-glyph="undeclared"]')).not.toBeNull();
+    expect(glyphs).toEqual(new Set([...Object.keys(CORE_MISSING_CODES), 'undeclared']));
   });
 });

@@ -186,7 +186,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
     const reduced = read(altId, critId);
     const mark = prepared.mark(altId, critId);
-    const { state, text, absence, glyph, hatch } = contentOf(altId, critId);
+    const { state, text, absence, terminal, glyph, hatch } = contentOf(altId, critId);
     const [altLabel, critLabel] = transposed
       ? [columnLabel.get(columnId), rowLabel.get(rowId)]
       : [rowLabel.get(rowId), columnLabel.get(columnId)];
@@ -205,7 +205,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     // The encoding's badge is seen; its meaning, in `said`, is what is heard.
     return (
       <td
-        key={columnId} data-state={state} data-absence={absence} {...stop(r, c)}
+        key={columnId} data-state={state} data-absence={absence} data-terminal={terminal === undefined ? undefined : String(terminal)} {...stop(r, c)}
         data-swatch={mark.swatch} data-hatch={hatch} data-glyph={glyph}
       >
         <span class="comparanda-sr">{`${critLabel}, ${altLabel}, `}</span>
@@ -411,7 +411,7 @@ function cellContent(
   inapplicable: boolean,
   vocabulary: MissingnessVocabulary,
   criterionId: string,
-): { state: CellState; text: string; absence?: CellAbsence; glyph?: GlyphKey } {
+): { state: CellState; text: string; absence?: CellAbsence; terminal?: boolean; glyph?: GlyphKey } {
   const absent = (code: string, state: CellState) => {
     const facts = vocabulary.resolve(code, criterionId).facts;
     // Keyed on the core reason the code refines, never on the code itself (ADR-0028).
@@ -421,8 +421,10 @@ function cellContent(
     const means = facts?.means.trim();
     const worded = `Absent for a reason this analysis does not ${facts ? 'describe' : 'define'} (\u201c${code}\u201d).`;
     return facts
-      ? { state, text: means || worded, absence: absenceStanding(facts), glyph }
-      : { state, text: worded, absence: 'undeclared' as const, glyph };
+      // `terminal` is its own channel (border style, ADR-0028), read from the flag itself: a
+      // structural code declared non-terminal is still work outstanding. Undeclared counts as open.
+      ? { state, text: means || worded, absence: absenceStanding(facts), terminal: facts.terminal, glyph }
+      : { state, text: worded, absence: 'undeclared' as const, terminal: false, glyph };
   };
   if (reduced?.refused !== undefined) {
     // A cell this reader sees only part of: the projection's gap (ADR-0021),

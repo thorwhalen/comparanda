@@ -66,6 +66,8 @@ export function themed(light: string, dark: string): string {
 /** The stylesheet for swatches an encoding adds to the static palette: their variables per theme, and their rules. */
 export function derivedPaletteCss(palette: Readonly<Record<string, Swatch>>): string {
   return `${themed(paletteVars(palette, 'light'), paletteVars(palette, 'dark'))}
+@media print {${themed(paletteVars(palette, 'light'), paletteVars(palette, 'light'))}
+}
 ${paletteRules(palette, '.comparanda-matrix')}`;
 }
 
@@ -105,16 +107,16 @@ export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
 .comparanda-matrix td[data-state="refused"],
 .comparanda-matrix td[data-state="not-applicable"],
 .comparanda-matrix td[data-state="not-assessed"] { color: var(--cmp-muted); font-style: italic; }
-/* Any absence counted as work outstanding (\`not-assessed\`, \`deferred\`, their extensions, an undeclared
-   code) has the gap's dashed shape; an answered one, the answer's solid frame (ADR-0028 amendment). */
-.comparanda-matrix td[data-state="not-assessed"],
-.comparanda-matrix td[data-absence="outstanding"],
-.comparanda-matrix td[data-absence="undeclared"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; border-style: dashed; }
-.comparanda-matrix td[data-absence="answered"] { outline: 1px solid var(--cmp-muted); outline-offset: -4px; }
+/* The terminal channel (ADR-0028 amendment), read from the code's own flag: an absence that is not terminal
+   (\`not-assessed\`, \`deferred\`, their extensions, an undeclared code, a structural code declared open) has
+   the gap's dashed shape; an answered one, the answer's solid frame. A structural, terminal absence has no
+   frame: it reads as ground, not as a placeholder. */
+.comparanda-matrix td[data-terminal="false"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; border-style: dashed; }
+.comparanda-matrix td[data-terminal="true"]:not([data-absence="structural"]) { outline: 1px solid var(--cmp-muted); outline-offset: -4px; }
 /* Focused, the gap keeps its dashed shape: the ring takes the focus colour, not a solid line. */
-.comparanda-matrix td[data-state="not-assessed"]:focus-visible,
-.comparanda-matrix td[data-absence="outstanding"]:focus-visible,
-.comparanda-matrix td[data-absence="undeclared"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
+.comparanda-matrix td[data-terminal="false"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
+/* The answer's frame outranks the plain ring on specificity; focused, it is the ring. */
+.comparanda-matrix td[data-terminal="true"]:focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: -2px; }
 /* An encoding's swatch paints the cell and sets the ink measured against it. Same specificity as the
    td[data-state] rules that mute an empty cell's ink, and later: keep it after them. */
 ${paletteRules(PALETTE, '.comparanda-matrix')}
@@ -155,7 +157,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   .comparanda-matrix .comparanda-scroll { overflow: visible; max-height: none; }
   .comparanda-matrix thead th, .comparanda-matrix tbody th { position: static; }
   /* Backgrounds off, whatever the printer does: the cells' fills go, their ink returns to the page's. */
-  .comparanda-matrix th, .comparanda-matrix tbody td[data-cell] {
+  .comparanda-matrix th, .comparanda-matrix tr.comparanda-band th, .comparanda-matrix tbody td[data-cell] {
     background: none; box-shadow: none; border-width: 1px; border-color: var(--cmp-muted);
   }
   .comparanda-matrix tbody td[data-swatch] { color: var(--cmp-ink); }

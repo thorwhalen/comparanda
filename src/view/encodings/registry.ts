@@ -167,7 +167,7 @@ function textureProblem(texture: unknown): string | undefined {
 /** The texture declaration, in words, for the legend. */
 export function describeTexture(texture: Texture): string {
   switch (texture.channel) {
-    case 'none': return `No texture: ${texture.because}`;
+    case 'none': return `No texture of its own: ${texture.because}`;
     case 'hatch': return `Hatch density carries ${texture.carries}, in ${texture.levels} level${texture.levels === 1 ? '' : 's'}.`;
     case 'glyph': return 'A glyph shape carries the reason a cell is missing.';
   }
