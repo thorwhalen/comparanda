@@ -332,6 +332,14 @@
       }
     },
     {
+      "id": "cleo",
+      "displayName": "Cleo Marsh",
+      "kind": "human",
+      "attestation": {
+        "method": "unverified"
+      }
+    },
+    {
       "id": "ana:the-frugal-one",
       "displayName": "the frugal one",
       "kind": "human",
@@ -353,6 +361,20 @@
         "model": "example-model",
         "promptVersion": "score-cell@1.2.0",
         "runId": "run-7"
+      }
+    },
+    {
+      "id": "agent-run-8",
+      "displayName": "rubricator run 8",
+      "kind": "agent",
+      "attestation": {
+        "method": "unverified"
+      },
+      "agent": {
+        "name": "rubricator",
+        "model": "example-model",
+        "promptVersion": "score-cell@1.2.0",
+        "runId": "run-8"
       }
     }
   ],
@@ -404,6 +426,15 @@
       "reduction": "single",
       "traversal": "cell-wise",
       "startedAt": "2026-08-22T09:00:00Z"
+    },
+    {
+      "id": "p-agent-8",
+      "describedAs": "three resampled draws per cell from one model and one prompt, nothing shared between draws",
+      "repeats": 3,
+      "reduction": "mode",
+      "traversal": "cell-wise",
+      "temperature": 0.7,
+      "startedAt": "2026-08-23T09:00:00Z"
     }
   ],
   "rounds": [],
@@ -825,6 +856,16 @@
           "value": 3,
           "justification": "the condition should be read as usable daylight, not astronomical; the difference is the whole disagreement",
           "independence": "independent"
+        },
+        {
+          "id": "a-day-ber-cleo",
+          "authorId": "cleo",
+          "at": "2026-08-23T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 1,
+          "justification": "scored without seeing the other two; the solstice figure is the number that matters to someone who works indoors",
+          "independence": "independent"
         }
       ]
     },
@@ -1138,9 +1179,44 @@
           "missing": {
             "code": "not-assessed"
           },
-          "independence": "shared-context"
+          "independence": "shared-context",
+          "supersededBy": "a-sch-seo-d1"
+        },
+        {
+          "id": "a-sch-seo-d1",
+          "authorId": "agent-run-8",
+          "at": "2026-08-23T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 3,
+          "justification": "two international schools publish the accreditation the level-3 condition names; neither publishes outcomes",
+          "independence": "resampled",
+          "procedureId": "p-agent-8"
+        },
+        {
+          "id": "a-sch-seo-d2",
+          "authorId": "agent-run-8",
+          "at": "2026-08-23T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 3,
+          "justification": "accreditation is published for two schools, which meets level 3 and not level 5",
+          "independence": "resampled",
+          "procedureId": "p-agent-8"
+        },
+        {
+          "id": "a-sch-seo-d3",
+          "authorId": "agent-run-8",
+          "at": "2026-08-23T09:00:00Z",
+          "evidence": [],
+          "version": 1,
+          "value": 4,
+          "justification": "three schools list the accreditation and one publishes leaver outcomes, which reads as above level 3",
+          "independence": "resampled",
+          "procedureId": "p-agent-8"
         }
-      ]
+      ],
+      "reduction": "mode"
     },
     {
       "alternativeId": "montreal",

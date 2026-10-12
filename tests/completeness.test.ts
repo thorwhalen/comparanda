@@ -22,30 +22,32 @@ describe('the messy fixture, hand-checked (#81)', () => {
    * structural (3): eu-residency-path for taipei and seoul (inapplicable block
    *   g-asia x g-eu; no cell stored at all) and for montreal (block g-americas x
    *   g-eu, and stored as not-applicable anyway).
-   * present (27): rent 4 (all but seoul) + income-tax 1 (lisbon) + climate-type 5
+   * present (28): rent 4 (all but seoul) + income-tax 1 (lisbon) + climate-type 5
    *   + winter-daylight 3 (lisbon, berlin, montreal) + visa-free 4 (all but
-   *   montreal) + flight-hours 5 + school-quality 3 (lisbon, berlin, montreal)
-   *   + eu-residency-path 2 (lisbon, berlin). Two-rater cells reduce to a value
-   *   under the document's lower-median default.
+   *   montreal) + flight-hours 5 + school-quality 4 (lisbon, berlin, seoul,
+   *   montreal) + eu-residency-path 2 (lisbon, berlin). Multi-rater cells reduce
+   *   to a value under the document's lower-median default; seoul/school-quality
+   *   is three draws of one model under its own `mode` reduction, and the
+   *   `not-assessed` they supersede no longer counts (#64).
    * settledAbsent (4): seoul/rent indeterminate, berlin/income-tax paywalled
    *   (declared on the criterion, broader not-evidenced -> terminal),
    *   taipei/income-tax withheld, seoul/income-tax not-evidenced.
    * informativeAbsent (2): indeterminate and not-evidenced. paywalled overrides
    *   informative to false; withheld is not informative.
-   * outstanding (6): montreal/income-tax, taipei/winter-daylight,
-   *   seoul/winter-daylight, seoul/school-quality (not-assessed x4),
+   * outstanding (5): montreal/income-tax, taipei/winter-daylight,
+   *   seoul/winter-daylight (not-assessed x3),
    *   taipei/school-quality (deferred), montreal/visa-free (not-yet-negotiated,
    *   declared broader deferred -> non-terminal).
-   * 27 + 4 + 6 + 3 = 40. applicable = 37.
+   * 28 + 4 + 5 + 3 = 40. applicable = 37.
    */
   it('has the five counts and three rates a hand count gives', () => {
     const c = completeness(relocation(), { measure: 'score' });
     expect(c).toMatchObject({
-      total: 40, structural: 3, applicable: 37, present: 27,
-      settledAbsent: 4, informativeAbsent: 2, outstanding: 6, widenedByDisclosure: 0,
+      total: 40, structural: 3, applicable: 37, present: 28,
+      settledAbsent: 4, informativeAbsent: 2, outstanding: 5, widenedByDisclosure: 0,
     });
-    expect(c.examinedRate).toBeCloseTo(31 / 37, 12);
-    expect(c.valuedRate).toBeCloseTo(27 / 37, 12);
+    expect(c.examinedRate).toBeCloseTo(32 / 37, 12);
+    expect(c.valuedRate).toBeCloseTo(28 / 37, 12);
     expect(c.silenceRate).toBeCloseTo(2 / 37, 12);
   });
 
