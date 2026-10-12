@@ -397,6 +397,31 @@ export interface MeasurementProblem {
 }
 
 /**
+ * Why a measurement does not admit this value, or `undefined` when it does: a
+ * declared level when it lists levels, a finite number within the range when it
+ * is ordered and declares one.
+ *
+ * **The one answer to "is this value legal here".** `validateAnalysis` refuses
+ * a stored value with it and the affordance layer refuses an edit with it, so a
+ * value the editor will not offer is never one the validator accepts (#165,
+ * ADR-0004: a second view enforces the same rules without reimplementing them).
+ */
+export function valueRefusal(m: Measurement, value: number | string | boolean): string | undefined {
+  if (m.levels) {
+    return m.levels.some((l) => l === value)
+      ? undefined
+      : `${JSON.stringify(value)} is not one of the declared levels (${m.levels.map((l) => JSON.stringify(l)).join(', ')}).`;
+  }
+  if (isOrdered(m.level)) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return `a ${m.level} measurement takes a number, not ${JSON.stringify(value)}.`;
+    if (m.range && (value < m.range.min || value > m.range.max)) {
+      return `${value} lies outside the declared range [${m.range.min}, ${m.range.max}].`;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Structural checks a schema type cannot express.
  *
  * Kept as a separate function rather than a refinement so that callers can run

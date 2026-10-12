@@ -133,6 +133,46 @@ describe('criteriaRevisionProblems refuses a silent rewrite', () => {
       .map((p) => p.message).join(' ')).toMatch(/later than the criteria-set version/);
   });
 
+  it('reads an unversioned set as "1": a bump to "1" or "0" has not moved (#165)', () => {
+    const a = analysis({ criteriaVersion: undefined });
+    for (const v of ['1', '0', '01']) {
+      const p = criteriaRevisionProblems(a, edit(a, { label: 'Other' }, { criteriaVersion: v }));
+      expect(p.map((x) => x.message).join(' '), v).toMatch(/changed its label/);
+    }
+    expect(criteriaRevisionProblems(a, edit(a, { label: 'Other' }, { criteriaVersion: '2' }))).toEqual([]);
+    expect(() => reviseCriterion(a, 'c', { label: 'L' }, { material: true, nextVersion: '0' })).toThrow(/reads as "1"/);
+    expect(() => reviseCriterion(a, 'c', { label: 'L' }, { material: true, nextVersion: '1' })).toThrow(/does not come after/);
+    expect(reviseCriterion(a, 'c', { label: 'L' }, { material: true }).criteriaVersion).toBe('2');
+  });
+
+  it('refuses a set version that moves backwards or is dropped, even with no meaning change (#165)', () => {
+    const a = analysis();
+    expect(criteriaRevisionProblems(a, { ...a, criteriaVersion: '2' })[0]!.path).toBe('criteriaVersion');
+    expect(criteriaRevisionProblems(a, { ...a, criteriaVersion: undefined })[0]!.message).toMatch(/reads as "1"/);
+    expect(criteriaRevisionProblems(a, { ...a, criteriaVersion: '3' })).toEqual([]);
+  });
+
+  it('refuses removing a criterion, so it cannot come back with another meaning (#165, path A)', () => {
+    const a = analysis();
+    const removed = { ...a, criteria: [] };
+    const p = criteriaRevisionProblems(a, removed);
+    expect(p).toHaveLength(1);
+    expect(p[0]!.fix).toMatch(/tombstone/);
+    // The second half of the bypass is then never reachable from a stored state;
+    // and tombstoning, the sanctioned delete, is accepted.
+    expect(criteriaRevisionProblems(a, { ...a, criteria: [{ ...a.criteria[0]!, tombstoned: true }] })).toEqual([]);
+  });
+
+  it('refuses renaming a criterion id with its cells carried along (#165, path B)', () => {
+    const a = analysis();
+    const renamed = {
+      ...a,
+      criteria: [{ ...a.criteria[0]!, id: 'c2', label: 'Something else' }],
+      cells: a.cells.map((c) => ({ ...c, criterionId: 'c2' })),
+    };
+    expect(criteriaRevisionProblems(a, renamed).map((x) => x.message).join(' ')).toMatch(/"c" was removed/);
+  });
+
   it('does not compare criteria that were added', () => {
     const a = analysis();
     const b = { ...a, criteria: [...a.criteria, { ...a.criteria[0]!, id: 'new' }] };
@@ -156,6 +196,15 @@ describe('the in-memory analysis source enforces it on update', () => {
     const stored = await src.getOne('a');
     expect(stored.criteriaVersion).toBe('4');
     expect(supersededCells(stored).count).toBe(1);
+  });
+
+  it('refuses both halves of the remove-then-re-add bypass (#165)', async () => {
+    const a = analysis();
+    const src = inMemoryAnalysisSource(a);
+    await expect(src.update('a', { criteria: [] })).rejects.toThrow(/was removed/);
+    const stored = await src.getOne('a');
+    expect(stored.criteria).toHaveLength(1);
+    expect(stored.criteria[0]!.label).toBe('Support');
   });
 
   it('still lets an update that does not touch criteria through', async () => {

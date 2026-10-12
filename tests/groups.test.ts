@@ -16,7 +16,8 @@ import { Analysis, completeness, isInapplicable, validateAnalysis } from '../src
 import {
   axisGroups, groupsOf, groupScopeFilter, makeInapplicability, membersOfGroup,
 } from '../src/core/schema/groups.js';
-import { tombstone } from '../src/core/schema/anchors.js';
+import { tombstone, reopenedByTombstone, tombstonedGroupProblems } from '../src/core/schema/anchors.js';
+import { inMemoryAnalysisSource } from '../src/store/index.js';
 
 const ORDINAL = {
   level: 'ordinal', preference: 'increasing', range: { min: 1, max: 5 }, levels: [1, 2, 3, 4, 5],
@@ -259,7 +260,7 @@ describe('a tombstoned group groups nothing (#51)', () => {
     const live = base();
     expect(makeInapplicability(live)('x', 'c')).toBe(true);
     expect(makeInapplicability(live)('y', 'c')).toBe(true);
-    const gone = tombstone(live, { kind: 'group', id: 'ga' });
+    const gone = tombstone(live, { kind: 'group', id: 'ga' }, { reopensInapplicable: true });
     const ag = axisGroups(gone, 'alternatives');
     expect(groupsOf(ag, 'x')).toEqual([]);
     expect(groupsOf(ag, 'y')).toEqual(['gsub']);
@@ -268,12 +269,49 @@ describe('a tombstoned group groups nothing (#51)', () => {
   });
 
   it('still validates: references to a tombstoned group are not dangling', () => {
-    const gone = tombstone(base(), { kind: 'group', id: 'ga' });
+    const gone = tombstone(base(), { kind: 'group', id: 'ga' }, { reopensInapplicable: true });
     expect(validateAnalysis(JSON.parse(JSON.stringify(gone))).problems.filter((p) => p.ruleId === 'group-exists')).toEqual([]);
   });
 
+  it('will not reopen excused cells silently: tombstoning a blocking group must say it means to (#165)', () => {
+    expect(reopenedByTombstone(base(), 'ga')).toEqual([
+      { alternativeId: 'x', criterionId: 'c' }, { alternativeId: 'y', criterionId: 'c' },
+    ]);
+    expect(() => tombstone(base(), { kind: 'group', id: 'ga' })).toThrow(/would reopen 2 cells/);
+    // A sub-group's members inherit the block through nesting, so they count too.
+    expect(reopenedByTombstone(base(), 'gsub')).toEqual([{ alternativeId: 'y', criterionId: 'c' }]);
+    // A group whose tombstone excuses nothing needs no acknowledgement.
+    const unblocked = { ...base(), inapplicable: [] };
+    expect(reopenedByTombstone(unblocked, 'ga')).toEqual([]);
+    expect(tombstone(unblocked, { kind: 'group', id: 'ga' }).groups[0]!.tombstoned).toBe(true);
+  });
+
+  it('accepts no new members, children or blocks once tombstoned (#165)', async () => {
+    const gone = tombstone(base(), { kind: 'group', id: 'ga' }, { reopensInapplicable: true });
+    const add = {
+      alternatives: [...gone.alternatives, { id: 'z', label: 'Z', groupIds: ['ga'] }],
+      groups: [...gone.groups, { id: 'gnew', label: 'New', axis: 'alternatives' as const, parentId: 'ga' }],
+      inapplicable: [...gone.inapplicable, { alternativeGroupId: 'ga', criterionGroupId: 'gc' }],
+    };
+    expect(tombstonedGroupProblems(gone, { ...gone, ...add }).map((p) => p.path)).toEqual([
+      'alternatives[2].groupIds', 'groups[3].parentId', 'inapplicable[0]',
+    ]);
+    // The sanctioned tombstone released ga's block; a block on a live group is fine, a new one on ga is not.
+    expect(gone.inapplicable).toEqual([]);
+    expect(tombstonedGroupProblems(gone, { ...gone, inapplicable: [{ alternativeGroupId: 'gsub', criterionGroupId: 'gc' }] })).toEqual([]);
+    expect(tombstonedGroupProblems(gone, { ...gone, inapplicable: [{ alternativeGroupId: 'ga', criterionGroupId: 'gc' }] })
+      .map((p) => p.path)).toEqual(['inapplicable[0]']);
+    // What was attached when it was tombstoned stays; reviving it is allowed.
+    expect(tombstonedGroupProblems(gone, gone)).toEqual([]);
+    const revived = { ...gone, ...add, groups: add.groups.map((g) => (g.id === 'ga' ? { ...g, tombstoned: false } : g)) };
+    expect(tombstonedGroupProblems(gone, revived)).toEqual([]);
+    // The store enforces it.
+    const src = inMemoryAnalysisSource(gone);
+    await expect(src.update('t', { alternatives: add.alternatives })).rejects.toThrow(/tombstoned/);
+  });
+
   it('refuses to scope completeness by it', () => {
-    const gone = tombstone(base(), { kind: 'group', id: 'ga' });
+    const gone = tombstone(base(), { kind: 'group', id: 'ga' }, { reopensInapplicable: true });
     expect(() => completeness(gone, { measure: 'score', alternativeGroupId: 'ga' })).toThrow(/tombstoned/);
   });
 });

@@ -13,3 +13,4 @@ export * from './core/reorder.js';
 export * from './core/assertion-set.js';
 export * from './core/criteria-revision.js';
 export * from './core/affordances.js';
+export * from './core/revision.js';

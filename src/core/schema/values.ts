@@ -100,8 +100,13 @@ export const Assertion = z.object({
   criteriaVersion: z.optional(z.string()),
   /** Optimistic-concurrency token. A write against a stale version is rejected. */
   version: z._default(z.number(), 1),
-  /** Superseded assertions are retained, never deleted. */
-  supersededBy: z.optional(z.string()),
+  /**
+   * The id of the assertion in this cell that replaced this one. Superseded
+   * assertions are retained, never deleted. Non-empty: an empty string would be
+   * read as live by every `if (s.supersededBy)` and as a reference by the
+   * validator (#165).
+   */
+  supersededBy: z.optional(z.string().check(z.minLength(1))),
   /** Disclosure, orthogonal to presence. Absent means no restriction declared. See `Disclosure`. */
   disclosure: z.optional(Disclosure),
 });

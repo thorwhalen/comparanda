@@ -9,7 +9,7 @@
  */
 import * as z from 'zod/mini';
 import {
-  Alternative, Criterion, Group, InapplicableBlock, RejectedCriterion, Aliases,
+  Alternative, Criterion, Group, InapplicableBlock, RejectedCriterion, Aliases, ALIAS_PAIRS,
   measurementFor,
 } from './structure.js';
 import {
@@ -25,7 +25,7 @@ import {
 } from './missingness.js';
 import { degradationOf, type Degradation } from './declarations.js';
 import {
-  ScaleDeclaration, isOrdered, resolveScale, validateMeasurement, type Measurement,
+  ScaleDeclaration, isOrdered, resolveScale, validateMeasurement, valueRefusal, type Measurement,
 } from './measurement.js';
 import { axisGroups, makeInapplicability, membersOfGroup } from './groups.js';
 import { Rendition, validateEvidence, type EvidenceRuleId } from './evidence.js';
@@ -183,6 +183,7 @@ export const RULE_SOURCES = Object.freeze({
   // Structural integrity: the document refers to what it contains (the
   // `schema` family, as ADR-0031 defines it).
   'unique-ids': 'ADR-0031',
+  'alias-pair-complete': 'ADR-0003',
   'cell-coordinates-exist': 'ADR-0031',
   'cell-measure-declared': 'ADR-0031',
   'group-exists': 'ADR-0008',
@@ -202,6 +203,11 @@ export const RULE_SOURCES = Object.freeze({
   // Multi-rater cells.
   'cells-unique': 'ADR-0011',
   'independence-recorded': 'ADR-0022',
+  'supersession-resolves': 'ADR-0011',
+  'supersession-acyclic': 'ADR-0011',
+  // A stored value the measurement does not admit: the affordance layer
+  // refuses the same value through the same function (ADR-0004).
+  'value-admitted': 'ADR-0004',
   // Honesty and completeness.
   'score-has-a-reason': 'ADR-0031',
   'assertion-attributed': 'ADR-0012',
@@ -349,6 +355,25 @@ export function validateAnalysis(
       `document is version ${a.schemaVersion}; this build reads up to ${SCHEMA_VERSION}`,
       'upgrade the reader, or ask the producer to emit an earlier schema version.',
     );
+  }
+
+  // Read from the input, not the parse: parsing fills the missing half of a
+  // pair with its default, and the half-pair is then invisible.
+  const rawAliases = (input as { aliases?: unknown }).aliases;
+  if (rawAliases && typeof rawAliases === 'object') {
+    for (const [one, many] of ALIAS_PAIRS) {
+      const has1 = (rawAliases as Record<string, unknown>)[one] !== undefined;
+      const hasN = (rawAliases as Record<string, unknown>)[many] !== undefined;
+      if (has1 !== hasN) {
+        const [given, missing] = has1 ? [one, many] : [many, one];
+        err(
+          'alias-pair-complete', `aliases.${missing}`,
+          `aliases sets "${given}" but not "${missing}", so the view would mix the alias with the default ` +
+            `("${Aliases.parse({})[missing]}") in one sentence.`,
+          `set aliases.${missing} too, or remove aliases.${given}.`,
+        );
+      }
+    }
   }
 
   const altIds = new Set(a.alternatives.map((x) => x.id));
@@ -570,6 +595,75 @@ export function validateAnalysis(
         honesty(p.ruleId, p.path, p.message, p.fix);
       }
     });
+
+    // `supersededBy` names the assertion that replaced this one, in this cell.
+    // Unchecked, a reference to nothing -- or two assertions superseding each
+    // other -- left a cell with no live assertion: counted as outstanding work
+    // although it holds assessments, and exempted from the independence rule
+    // below because a set of zero needs no rung (#165).
+    const byId = new Map<string, number>();
+    cell.assertions.forEach((as, j) => {
+      if (byId.has(as.id)) {
+        err('unique-ids', `${at}.assertions[${j}]`, `duplicate assertion id "${as.id}" in this cell`,
+          `give one of them a different id; a supersededBy naming "${as.id}" is currently ambiguous.`);
+      } else byId.set(as.id, j);
+    });
+    cell.assertions.forEach((as, j) => {
+      if (as.supersededBy === undefined) return;
+      if (as.supersededBy === as.id || !byId.has(as.supersededBy)) {
+        err(
+          'supersession-resolves', `${at}.assertions[${j}].supersededBy`,
+          as.supersededBy === as.id
+            ? `assertion "${as.id}" supersedes itself, so it is not live and nothing replaced it`
+            : `assertion "${as.id}" is superseded by "${as.supersededBy}", which is not an assertion in this cell. ` +
+              'It no longer counts as live, and nothing in the document replaced it.',
+          'name the assertion in this cell that replaced it, or remove supersededBy if it was not replaced.',
+        );
+        return;
+      }
+      // Follow the chain; a chain that returns to where it started has no live end.
+      const seen = new Set([as.id]);
+      let next: string | undefined = as.supersededBy;
+      while (next !== undefined && byId.has(next)) {
+        if (seen.has(next)) {
+          if (next === as.id) {
+            err(
+              'supersession-acyclic', `${at}.assertions[${j}].supersededBy`,
+              `assertion "${as.id}" is on a supersession cycle (${[...seen].join(' -> ')} -> ${as.id}), ` +
+                'so none of the assertions on it is live and the cell reads as never assessed.',
+              'break the cycle: the latest assertion on it is the one with no supersededBy.',
+            );
+          }
+          break;
+        }
+        seen.add(next);
+        next = cell.assertions[byId.get(next)!]!.supersededBy;
+      }
+    });
+
+    // A value its measurement does not admit. Once a criterion records that
+    // its meaning changed (`definedInVersion`), only scores known to be given
+    // under the current definition are held to the current scale: one given
+    // earlier answered the question as it was then asked, on whatever scale it
+    // was then asked on (#62), and one whose version is absent or cannot be
+    // ordered may have been -- `supersededCells` reports both rather than
+    // calling them invalid, and this rule agrees with it.
+    const m = criterion ? measurementFor(criterion, cell.measure) : undefined;
+    if (m) {
+      cell.assertions.forEach((as, j) => {
+        if (as.value === undefined) return;
+        if (criterion?.definedInVersion !== undefined && (as.criteriaVersion === undefined ||
+          (compareCriteriaVersions(as.criteriaVersion, criterion.definedInVersion) ?? -1) === -1)) return;
+        const reason = valueRefusal(m, as.value);
+        if (reason !== undefined) {
+          err(
+            'value-admitted', `${at}.assertions[${j}].value`,
+            `the "${cell.measure}" measurement of criterion "${cell.criterionId}" does not admit this value: ${reason}`,
+            'record a value the measurement declares, or correct the measurement if it is what is wrong.',
+          );
+        }
+      });
+    }
 
     // Several live assertions on one cell are a claim that the cell was assessed
     // more than once, and the reader's first question about that claim -- "three
