@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h } from 'preact';
 
 import { Analysis, vocabularyOf } from '../../src/core/schema/analysis.js';
+import { projectForReader } from '../../src/core/schema/disclosure.js';
 import { inMemoryAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
 import { mountMatrix, type MatrixHandle, type MatrixViewProps } from '../../src/view/index.js';
 import languagesJson from '../../examples/languages.json';
@@ -377,11 +378,10 @@ describe('the adversarial review of #88', () => {
 
   it('a cell partly withheld from this reader says so, not that raters disagree', () => {
     const cell = relocation.cells.find((c) => c.assertions.length > 1 && c.assertions.some((x) => x.value !== undefined))!;
-    const withheld = structuredClone(relocation);
-    const target = withheld.cells.find((c) => c.alternativeId === cell.alternativeId && c.criterionId === cell.criterionId && c.measure === cell.measure)!;
-    const first = target.assertions[0]!;
-    delete (first as { value?: unknown }).value;
-    Object.assign(first, { missing: { code: 'withheld' }, disclosure: { ...(first.disclosure ?? {}), withheldFromReader: true } });
+    // Through the real projection: since #171 a flag on an assertion that kept
+    // its note, justification or evidence is not a projection (`isProjectedOut`).
+    const hidden = cell.assertions.find((s) => s.value !== undefined)!.id;
+    const withheld = projectForReader(relocation, (s) => s.id !== hidden).analysis;
     mount(el, { analysis: withheld, measure: cell.measure });
     expect(el.textContent).not.toMatch(/assertions disagree about whether a value exists/);
     expect(el.textContent).toMatch(/Partly withheld from you/);

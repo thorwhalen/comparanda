@@ -229,12 +229,17 @@ function cellContent(
     // which core reports as such (#171), not the raters' disagreement.
     return {
       state: 'refused',
-      text: reduced.withheldFromReader !== undefined
+      text: reduced.refusedBecause === 'withheld-from-reader'
         ? 'Partly withheld from you; what you can see does not settle this cell.'
         : `Not shown: ${reduced.refused}`,
     };
   }
-  if (reduced?.value !== undefined) return { state: 'value', text: String(reduced.value) };
+  if (reduced?.value !== undefined) {
+    // A value shown beside withheld assertions (an owner's consensus, a provable
+    // `latest`) is labelled, never bare (ADR-0021).
+    const withheld = reduced.withheldFromReader;
+    return { state: 'value', text: withheld ? `${String(reduced.value)} (${withheld} withheld from you)` : String(reduced.value) };
+  }
   if (reduced?.missing !== undefined) {
     const code = reduced.missing.code;
     const state = code === NOT_APPLICABLE ? 'not-applicable' : code === NOT_ASSESSED ? 'not-assessed' : 'missing';

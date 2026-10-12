@@ -121,7 +121,24 @@ export type Assertion = z.infer<typeof Assertion>;
  * was not widened by *this reader's* access.
  */
 export function isWidenedByDisclosure(cell: { assertions: readonly Assertion[] }): boolean {
-  return cell.assertions.some((s) => !s.supersededBy && s.disclosure?.withheldFromReader === true);
+  return cell.assertions.some((s) => !s.supersededBy && isProjectedOut(s));
+}
+
+/**
+ * Whether an assertion is the output of a projection: flagged, and carrying
+ * nothing but its identity and an absence. The one definition of "withheld
+ * from this reader" -- `reduce`, `isWidenedByDisclosure` and the projection
+ * itself all read this.
+ *
+ * The flag alone is not enough. A producer that sets `withheldFromReader` on an
+ * assertion with its value still in it -- the field name reads like a request --
+ * would otherwise be passed through with the value intact. (Review finding.)
+ */
+export function isProjectedOut(s: Assertion): boolean {
+  // Not keyed on the `withheld` code itself: core never branches on a reason
+  // code (#44). Emptiness is the property that matters.
+  return s.disclosure?.withheldFromReader === true && s.value === undefined && s.missing !== undefined &&
+    !s.missing.note && !s.justification?.trim() && s.evidence.length === 0;
 }
 
 /**
@@ -276,7 +293,7 @@ export interface Reduced {
   missing?: Missing | undefined;
   /** Assertions that fed the reduction (excludes superseded ones). */
   contributing: Assertion[];
-  /** True when contributing assertions disagree. Often the finding itself. */
+  /** True when contributing assertions this reader can see disagree. Often the finding itself. */
   disagreement: boolean;
   /** Distinct asserted values, in ascending order where ordered. */
   spread: ScalarValue[];
@@ -302,6 +319,12 @@ export interface Reduced {
    * because an aggregate over part of a cell is never returned bare.
    */
   withheldFromReader?: number | undefined;
+  /**
+   * Why `refused` was set, where a consumer must tell it apart from a conflict:
+   * `withheld-from-reader` when the reduction was refused only because part of
+   * the cell is withheld from this reader. Absent for every other refusal.
+   */
+  refusedBecause?: 'withheld-from-reader' | undefined;
 }
 
 /** See `Reduced.independence`. */
@@ -394,7 +417,7 @@ export function reduce(
 ): Reduced {
   const reduced = reduceValue(cell, opts);
   const independence = independenceOf(reduced.contributing, opts.authors);
-  const withheld = reduced.contributing.filter(isWithheldFromReader).length;
+  const withheld = reduced.contributing.filter(isProjectedOut).length;
   return {
     ...reduced,
     ...(independence ? { independence } : {}),
@@ -402,14 +425,6 @@ export function reduce(
   };
 }
 
-/**
- * Projected out for this reader: flagged by the projection and carrying no
- * value. A flagged assertion that still holds a value is visible data (and a
- * validation problem, `disclosure-flag-is-projection-only`), not a gap.
- */
-function isWithheldFromReader(s: Assertion): boolean {
-  return s.disclosure?.withheldFromReader === true && s.value === undefined;
-}
 
 /** `reduce` without the independence reading; the value logic, unchanged. */
 function reduceValue(
@@ -448,7 +463,7 @@ function reduceValue(
 
   // What this reader can see. A withheld assertion is the projection's gap, not
   // an author's recorded absence, so it never counts as one (#171).
-  const visible = contributing.filter((a) => !isWithheldFromReader(a));
+  const visible = contributing.filter((a) => !isProjectedOut(a));
   const valued = visible.filter((a) => a.value !== undefined);
   const absent = visible.filter((a) => a.value === undefined && a.missing);
   const spread = [...new Set(valued.map((a) => a.value as ScalarValue))].sort((a, b) =>
@@ -457,6 +472,8 @@ function reduceValue(
   const disagreement = spread.length > 1 || (valued.length > 0 && absent.length > 0);
 
   if (mode === 'consensus') {
+    // The owner's recorded choice, not an aggregate: shown even when other
+    // assertions are withheld from this reader, and `withheldFromReader` says so.
     const chosen = contributing.find((a) => a.id === cell.consensusAssertionId);
     if (!chosen) {
       return { contributing, disagreement, spread, refused: 'reduction is "consensus" but consensusAssertionId names no live assertion' };
@@ -464,22 +481,34 @@ function reduceValue(
     return { value: chosen.value, missing: chosen.missing, contributing, disagreement, spread };
   }
 
-  // Some withheld, some visible: any reduction over the visible ones would
-  // present part of the cell as all of it (ADR-0021: aggregates over partially
-  // disclosed data are labelled or suppressed, never returned bare).
-  const withheld = contributing.length - visible.length;
-  if (withheld > 0 && visible.length > 0) {
-    return {
-      contributing, disagreement, spread,
-      refused: `${withheld} of ${contributing.length} assertions in this cell ${withheld === 1 ? 'is' : 'are'} withheld from you; ` +
-        `a "${named}" over the ${visible.length} you can see would present part of the cell as all of it, so nothing is shown`,
-    };
-  }
-
-  if (mode === 'single' && contributing.length > 1) {
+  // A conflict the reader can see is a conflict whatever else is withheld, and
+  // it is the owner's too: say that, not that something is hidden.
+  if (mode === 'single' && visible.length > 1) {
     return {
       contributing, disagreement, spread,
       refused: `reduction is "single" but ${contributing.length} live assertions exist; resolve the conflict rather than hiding it`,
+    };
+  }
+
+  // Some withheld, some visible: a reduction over the visible ones would
+  // present part of the cell as all of it (ADR-0021: aggregates over partially
+  // disclosed data are labelled or suppressed, never returned bare). One
+  // exception is provable: `latest`, when the newest assertion is one the
+  // reader can see and holds a value. A projection keeps every `at`, and only
+  // ever withholds values, so the owner's `latest` is that same assertion.
+  const withheld = contributing.filter(isProjectedOut);
+  if (withheld.length > 0 && visible.length > 0) {
+    if (mode === 'latest' && absent.length === 0) {
+      const newest = [...valued].sort((a, b) => a.at.localeCompare(b.at)).at(-1)!;
+      if (withheld.every((w) => w.at.localeCompare(newest.at) < 0)) {
+        return { value: newest.value, contributing, disagreement, spread };
+      }
+    }
+    return {
+      contributing, disagreement, spread,
+      refusedBecause: 'withheld-from-reader',
+      refused: `${withheld.length} of ${contributing.length} assertions in this cell ${withheld.length === 1 ? 'is' : 'are'} withheld from you; ` +
+        `a "${named}" over the ${visible.length} you can see would present part of the cell as all of it, so nothing is shown`,
     };
   }
 
