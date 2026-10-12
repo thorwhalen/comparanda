@@ -167,6 +167,7 @@ export function describeOverrun(report: BudgetReport): string {
     'Where the bytes went, largest first (per package, approximate):',
     ...report.contributions.slice(0, NAMED).map((c) => line(c.package, c.bytes)),
     ...report.reserved.map((r) => line(`${r.package} (reserved, not yet bundled)`, r.bytes)),
-    'A dependency added since the last build that passed is the likeliest cause. The budget is STANDALONE_BUDGET in src/build/budget.ts.',
+    'A dependency added since the last build that passed is the likeliest cause. The budget is STANDALONE_BUDGET ' +
+      '(comparanda/build, set in src/build/budget.ts); buildStandalone takes another as its `budget` option.',
   ].join('\n');
 }

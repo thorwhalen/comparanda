@@ -56,9 +56,9 @@ export async function main(argv: readonly string[]): Promise<number> {
   await writeFile(out, result.html);
   for (const w of result.warnings) console.error(`warning: ${w}`);
   console.log(`${out}: ${kb(result.bytes)} raw, ${kb(result.gzipBytes)} gzipped`);
-  const { charged, limit, reserved } = result.budget;
-  const held = reserved.length > 0 ? ` (${reserved.map((r) => `${kb(r.bytes)} reserved for ${r.package}`).join(', ')})` : '';
-  console.log(`  the page without the analysis: ${kb(charged)} of its ${kb(limit)} budget${held}`);
+  const { shellBytes, charged, limit, reserved } = result.budget;
+  const held = reserved.map((r) => ` + ${kb(r.bytes)} reserved for ${r.package}`).join('');
+  console.log(`  the page without the analysis: ${kb(shellBytes)}${held}${held ? ` = ${kb(charged)}` : ''}, of a ${kb(limit)} budget`);
   return 0;
 }
 

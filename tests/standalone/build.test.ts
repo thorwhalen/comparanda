@@ -161,6 +161,8 @@ describe('the command', () => {
       { cwd: dir },
     );
     expect(stdout).toMatch(/kB raw, .* kB gzipped/);
+    // The shell, then the reservation, then what is charged, against the budget (#116).
+    expect(stdout).toMatch(/the page without the analysis: [\d.]+ kB \+ [\d.]+ kB reserved for @atlaskit\/pragmatic-drag-and-drop = [\d.]+ kB, of a 200\.0 kB budget/);
     expect(Analysis.parse(inlinedAnalysis(await readFile(out, 'utf8')))).toEqual(relocation);
   });
 });
