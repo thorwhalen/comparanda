@@ -21,9 +21,11 @@
  *
  * Pure: no DOM, no clock, no store.
  */
-import { Analysis, validateAnalysis } from './schema/analysis.js';
+import { Analysis, cellKey, compareCriteriaVersions, validateAnalysis, type ValidationProblem } from './schema/analysis.js';
 import { criteriaRevisionProblems, scoreHistoryProblems } from './criteria-revision.js';
 import { tombstonedGroupProblems } from './schema/anchors.js';
+import { valueRefusal } from './schema/measurement.js';
+import { measurementFor } from './schema/structure.js';
 
 /** A write a provider must refuse. */
 export interface RevisionProblem {
@@ -32,34 +34,116 @@ export interface RevisionProblem {
   fix: string;
 }
 
+/** The rules whose failures name an assertion a repair has to be allowed to change. */
+const REPAIRABLE_RULES = new Set(['supersession-resolves', 'supersession-acyclic', 'unique-ids']);
+
 /**
  * Why the write from `before` to `after` must be refused. Empty when it may go.
  *
  * `after` is untrusted: it is parsed here, and a shape error is reported as a
- * problem rather than thrown from inside a later check.
+ * problem rather than thrown from inside a later check. A `before` that does not
+ * parse -- stored before a rule existed -- is held only to the by-difference
+ * rule, so the write that repairs it is not refused for what it repairs.
  */
 export function revisionProblems(before: Analysis, after: unknown): RevisionProblem[] {
-  const errorsOf = (doc: unknown) =>
-    validateAnalysis(doc, { includeCompleteness: false }).problems.filter((p) => p.severity === 'error');
-  const parsed = Analysis.safeParse(after);
-  if (!parsed.success) return errorsOf(after);
+  const beforeErrors = errorsOf(before);
+  const afterErrors = errorsOf(after);
+  const introduced = byDifference(before, beforeErrors, after, afterErrors);
 
+  const parsed = Analysis.safeParse(after);
+  const prior = Analysis.safeParse(before);
+  if (!parsed.success || !prior.success) return introduced;
   const a = parsed.data;
-  // Problem identity without the path, which shifts when a list is edited.
-  const key = (p: { ruleId: string; message: string }) => `${p.ruleId}\u0000${p.message}`;
-  const already = new Map<string, number>();
-  for (const p of errorsOf(before)) already.set(key(p), (already.get(key(p)) ?? 0) + 1);
-  const introduced = errorsOf(a).filter((p) => {
-    const n = already.get(key(p)) ?? 0;
-    if (n === 0) return true;
-    already.set(key(p), n - 1);
-    return false;
-  });
+  const b = prior.data;
+
+  const repairable = new Set<string>();
+  for (const p of beforeErrors) {
+    const m = /^cells\[(\d+)\]\.assertions\[(\d+)\]/.exec(p.path);
+    const cell = m ? b.cells[Number(m[1])] : undefined;
+    const s = cell?.assertions[Number(m![2])];
+    if (cell && s && REPAIRABLE_RULES.has(p.ruleId)) {
+      repairable.add(JSON.stringify([cellKey(cell.alternativeId, cell.criterionId, cell.measure), s.id]));
+    }
+  }
 
   return [
-    ...criteriaRevisionProblems(before, a),
-    ...scoreHistoryProblems(before, a),
-    ...tombstonedGroupProblems(before, a),
+    ...criteriaRevisionProblems(b, a),
+    ...scoreHistoryProblems(b, a, { repairable }),
+    ...tombstonedGroupProblems(b, a),
+    ...newValuesOffScale(b, a),
     ...introduced,
   ];
+}
+
+function errorsOf(doc: unknown): ValidationProblem[] {
+  return validateAnalysis(doc, { includeCompleteness: false }).problems.filter((p) => p.severity === 'error');
+}
+
+/**
+ * The errors in `after` that `before` did not have. A problem's identity is its
+ * rule, its message and the *entities* its path names -- `cells[3]` read as the
+ * cell's coordinates, `assertions[1]` as the assertion's id -- because indexes
+ * shift when a list is edited, and a message alone does not always say where:
+ * two off-scale values in different cells share one message (#165).
+ */
+function byDifference(before: unknown, bErrors: ValidationProblem[], after: unknown, aErrors: ValidationProblem[]) {
+  const key = (doc: unknown, p: ValidationProblem) => `${p.ruleId}\u0000${p.message}\u0000${stablePath(doc, p.path)}`;
+  const already = new Map<string, number>();
+  for (const p of bErrors) already.set(key(before, p), (already.get(key(before, p)) ?? 0) + 1);
+  return aErrors.filter((p) => {
+    const n = already.get(key(after, p)) ?? 0;
+    if (n === 0) return true;
+    already.set(key(after, p), n - 1);
+    return false;
+  });
+}
+
+/** A validation path with list indexes replaced by the ids of what they index. */
+function stablePath(doc: unknown, path: string): string {
+  const d = (doc ?? {}) as Record<string, unknown>;
+  const at = (list: unknown, i: number) => (Array.isArray(list) ? list[i] : undefined) as Record<string, unknown> | undefined;
+  let cell: Record<string, unknown> | undefined;
+  return path.replace(/\b(cells|assertions|criteria|alternatives|groups)\[(\d+)\]/g, (whole, list: string, n: string) => {
+    const i = Number(n);
+    if (list === 'cells') {
+      cell = at(d.cells, i);
+      return cell ? `cells[${JSON.stringify([cell.alternativeId, cell.criterionId, cell.measure])}]` : whole;
+    }
+    const item = list === 'assertions' ? at(cell?.assertions, i) : at(d[list], i);
+    return item && typeof item.id === 'string' ? `${list}[${JSON.stringify(item.id)}]` : whole;
+  });
+}
+
+/**
+ * A new assertion's value, held to the current scale. The validator exempts a
+ * score whose version is absent or unorderable once its criterion has changed
+ * meaning, because it may predate the change; a score written *now* does not,
+ * so the store refuses exactly what the affordance layer would not offer --
+ * unless it says it was scored against an earlier definition (#165).
+ */
+function newValuesOffScale(before: Analysis, after: Analysis): RevisionProblem[] {
+  const old = new Set(before.cells.flatMap((c) =>
+    c.assertions.map((s) => JSON.stringify([cellKey(c.alternativeId, c.criterionId, c.measure), s.id]))));
+  const crits = new Map(after.criteria.map((c) => [c.id, c]));
+  const problems: RevisionProblem[] = [];
+  after.cells.forEach((cell, i) => {
+    const crit = crits.get(cell.criterionId);
+    const m = crit ? measurementFor(crit, cell.measure) : undefined;
+    if (!crit || !m) return;
+    const key = cellKey(cell.alternativeId, cell.criterionId, cell.measure);
+    cell.assertions.forEach((s, j) => {
+      if (s.value === undefined || old.has(JSON.stringify([key, s.id]))) return;
+      if (crit.definedInVersion !== undefined && s.criteriaVersion !== undefined &&
+        compareCriteriaVersions(s.criteriaVersion, crit.definedInVersion) === -1) return;
+      const reason = valueRefusal(m, s.value);
+      if (reason !== undefined) {
+        problems.push({
+          path: `cells[${i}].assertions[${j}].value`,
+          message: `new assertion "${s.id}" on ${cell.alternativeId} x ${cell.criterionId}: ${reason}`,
+          fix: 'record a value the current measurement admits, or state the earlier criteriaVersion it was scored against.',
+        });
+      }
+    });
+  });
+  return problems;
 }

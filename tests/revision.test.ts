@@ -58,13 +58,13 @@ describe('scores cannot be moved, deleted or relabelled (#165)', () => {
     expect(supersededCells(b).count).toBe(1);
     await rejects(b, {
       cells: b.cells.map((c) => ({ ...c, assertions: c.assertions.map((s) => ({ ...s, criteriaVersion: '4' })) })),
-    }, /changed its criteriaVersion/);
+    }, /edited in place/);
   });
 
   it('refuses editing a stored value in place, and changing supersededBy once set', () => {
     const a = analysis();
     const edited = { ...a, cells: a.cells.map((c) => ({ ...c, assertions: [{ ...c.assertions[0]!, value: 4 }] })) };
-    expect(scoreHistoryProblems(a, edited)[0]!.message).toMatch(/changed its value/);
+    expect(scoreHistoryProblems(a, edited)[0]!.message).toMatch(/edited in place/);
     const two = analysis({ cells: [{ alternativeId: 'x', criterionId: 'c', measure: 'score',
       assertions: [score('s1', 3, { supersededBy: 's2' }), score('s2', 4), score('s3', 4)] }] });
     const repointed = { ...two, cells: two.cells.map((c) => ({ ...c, assertions: c.assertions.map((s) => (s.id === 's1' ? { ...s, supersededBy: 's3' } : s)) })) };
@@ -168,3 +168,76 @@ describe('small shape holes', () => {
     expect(r.problems.map((p) => p.ruleId)).toEqual(['alias-pair-complete']);
   });
 });
+
+describe('second adversarial pass (#165)', () => {
+  it('refuses editing any asserted field in place: independence, justification, evidence', () => {
+    const a = analysis();
+    for (const patch of [{ independence: 'independent' }, { justification: 'rewritten' }, { roundId: 'r9' }]) {
+      const b = { ...a, cells: a.cells.map((c) => ({ ...c, assertions: [{ ...c.assertions[0]!, ...patch }] })) };
+      expect(scoreHistoryProblems(a, b as Analysis)[0]?.message, JSON.stringify(patch)).toMatch(/edited in place/);
+    }
+    // What may change: the concurrency token and disclosure.
+    const ok = { ...a, cells: a.cells.map((c) => ({ ...c, assertions: [{ ...c.assertions[0]!, version: 2, disclosure: { audience: 'internal' } }] })) };
+    expect(scoreHistoryProblems(a, ok as Analysis)).toEqual([]);
+  });
+
+  it('does not let a new error hide behind an old one with the same message', async () => {
+    const two = analysis({
+      alternatives: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }],
+      cells: [{ alternativeId: 'x', criterionId: 'c', measure: 'score', assertions: [score('s1', 99, { criteriaVersion: '3' })] }],
+    });
+    const src = inMemoryAnalysisSource(two);
+    await expect(src.update('a', { cells: [...two.cells, { alternativeId: 'y', criterionId: 'c', measure: 'score', assertions: [
+      { ...score('s1', 99, { criteriaVersion: '3' }), version: 1, evidence: [] },
+    ] }] })).rejects.toThrow(/value-admitted|new assertion/);
+  });
+
+  it('holds a new unversioned score to the current scale once the criterion has changed meaning', async () => {
+    const b = reviseCriterion(analysis(), 'c', { label: 'Dated support' }, { material: true });
+    const src = inMemoryAnalysisSource(b);
+    await expect(src.update('a', { cells: [{ ...b.cells[0]!, assertions: [...b.cells[0]!.assertions,
+      { ...score('s2', 99), version: 1, evidence: [] }] }] })).rejects.toThrow(/new assertion "s2"/);
+  });
+
+  it('treats a rewritten scale declaration as a change of the criteria authored to it', () => {
+    const decl = { id: 'support-5', broader: 'stevens', means: 'five dated levels', params: {} };
+    const a = analysis({
+      scales: [decl],
+      criteria: [{ id: 'c', label: 'Support', defaultMeasurement: { ...ORDINAL, scale: 'support-5' } }],
+    });
+    const b = { ...a, scales: [{ ...decl, means: 'five undated levels' }] };
+    expect(revisionProblems(a, b).map((p) => p.message).join(' ')).toMatch(/scale declaration/);
+    expect(revisionProblems(a, { ...b, criteriaVersion: '4' })).toEqual([]);
+  });
+
+  it('lets a document flagged by the new rules be repaired', async () => {
+    const cyc = analysis({ cells: [{ alternativeId: 'x', criterionId: 'c', measure: 'score', assertions: [
+      score('s1', 3, { supersededBy: 's2', independence: 'independent' }), score('s2', 3, { supersededBy: 's1', independence: 'independent' }),
+    ] }] });
+    expect(validateAnalysis(cyc).ok).toBe(false);
+    const fixed = cyc.cells.map((c) => ({ ...c, assertions: [c.assertions[0]!, { ...c.assertions[1]!, supersededBy: undefined }] }));
+    await expect(inMemoryAnalysisSource(cyc).update('a', { cells: fixed })).resolves.toBeDefined();
+
+    const dup = analysis({ cells: [{ alternativeId: 'x', criterionId: 'c', measure: 'score', assertions: [
+      score('s1', 3, { independence: 'independent' }), score('s1', 4, { independence: 'independent' }),
+    ] }] });
+    const renamed = dup.cells.map((c) => ({ ...c, assertions: [c.assertions[0]!, { ...c.assertions[1]!, id: 's1b' }] }));
+    await expect(inMemoryAnalysisSource(dup).update('a', { cells: renamed })).resolves.toBeDefined();
+  });
+
+  it('a stored empty supersededBy does not lock the document, and can be cleared', async () => {
+    const raw = { ...analysis(), cells: [{ alternativeId: 'x', criterionId: 'c', measure: 'score', assertions: [
+      { ...score('s1', 3, { criteriaVersion: '3' }), version: 1, evidence: [], supersededBy: '' },
+    ] }] } as unknown as Analysis;
+    const src = inMemoryAnalysisSource(raw);
+    await expect(src.update('a', { title: 'renamed' } as Partial<Analysis>)).resolves.toBeDefined();
+    await expect(src.update('a', { cells: [{ ...raw.cells[0]!, assertions: [{ ...raw.cells[0]!.assertions[0]!, supersededBy: undefined }] }] }))
+      .resolves.toBeDefined();
+  });
+
+  it('lets a criterion go together with its only, empty, cell', () => {
+    const a = analysis({ cells: [{ alternativeId: 'x', criterionId: 'd', measure: 'score', assertions: [] }] });
+    expect(revisionProblems(a, { ...a, criteria: [a.criteria[0]!], cells: [] })).toEqual([]);
+  });
+});
+

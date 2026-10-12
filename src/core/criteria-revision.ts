@@ -151,8 +151,8 @@ export interface CriteriaRevisionProblem {
  * has no earlier meaning to rewrite and is not compared.
  */
 export function criteriaRevisionProblems(
-  before: Pick<Analysis, 'criteria' | 'criteriaVersion'> & Partial<Pick<Analysis, 'cells' | 'threads' | 'suggestions'>>,
-  after: Pick<Analysis, 'criteria' | 'criteriaVersion'>,
+  before: Pick<Analysis, 'criteria' | 'criteriaVersion'> & Partial<Pick<Analysis, 'cells' | 'threads' | 'suggestions' | 'scales'>>,
+  after: Pick<Analysis, 'criteria' | 'criteriaVersion'> & Partial<Pick<Analysis, 'scales'>>,
 ): CriteriaRevisionProblem[] {
   const problems: CriteriaRevisionProblem[] = [];
   const old = new Map(before.criteria.map((c) => [c.id, c]));
@@ -173,7 +173,8 @@ export function criteriaRevisionProblems(
 
   const kept = new Set(after.criteria.map((c) => c.id));
   const referenced = new Set([
-    ...(before.cells ?? []).map((c) => c.criterionId),
+    // An empty cell holds no score, so it is no history to protect.
+    ...(before.cells ?? []).filter((c) => c.assertions.length > 0).map((c) => c.criterionId),
     ...[...(before.threads ?? []), ...(before.suggestions ?? [])].map((t) => t.anchor.criterionId),
   ]);
   before.criteria.forEach((c, i) => {
@@ -190,7 +191,10 @@ export function criteriaRevisionProblems(
     const at = `criteria[${i}]`;
     const prev = old.get(c.id);
     if (prev) {
-      const changed = CRITERION_MEANING_FIELDS.filter((f) => canonical(prev[f]) !== canonical(c[f]));
+      const changed: string[] = CRITERION_MEANING_FIELDS.filter((f) => canonical(prev[f]) !== canonical(c[f]));
+      // A criterion authored to a named scale means what the scale declares:
+      // rewriting the declaration rewrites the criterion (#165).
+      if (scalesMeaning(before, prev) !== scalesMeaning(after, c)) changed.push('scale declaration');
       if (changed.length && !moved) {
         problems.push({
           path: at,
@@ -223,6 +227,14 @@ export function criteriaRevisionProblems(
   return problems;
 }
 
+/** The declarations of every named scale a criterion's measurements are authored to. */
+function scalesMeaning(doc: Partial<Pick<Analysis, 'scales'>>, c: Criterion): string {
+  const ids = new Set(
+    [c.defaultMeasurement, ...Object.values(c.measurements ?? {})].flatMap((m) => (m?.scale ? [m.scale] : [])),
+  );
+  return canonical((doc.scales ?? []).filter((d) => ids.has(d.id)).sort((x, y) => (x.id < y.id ? -1 : 1)));
+}
+
 /** JSON with sorted keys, so a reordered object is not mistaken for a changed one. */
 function canonical(v: unknown): string {
   return JSON.stringify(v, (_k, x) =>
@@ -231,32 +243,52 @@ function canonical(v: unknown): string {
       : x) ?? 'undefined';
 }
 
-/** The fields of a stored assertion that say what was asserted, by whom, against which frame. */
-const ASSERTED_FIELDS = ['value', 'missing', 'criteriaVersion', 'authorId', 'at'] as const;
+/**
+ * What may change on a stored assertion: the concurrency token, the disclosure
+ * declaration (a view-time property, ADR-0021), a re-run citation `check`, and
+ * `supersededBy`, set once. Everything else is what was asserted.
+ */
+function assertedContent(s: Assertion): string {
+  const { version: _v, disclosure: _d, supersededBy: _s, evidence, ...rest } = s;
+  return canonical({ ...rest, evidence: (evidence ?? []).map(({ check: _c, ...e }) => e) });
+}
 
 /**
  * What the change from `before` to `after` does to scores already given.
  *
  * Assertions are retained, never deleted, and a change of mind is a new
  * assertion that supersedes the old one (`Assertion.supersededBy`). So an
- * assertion stored in `before` must still be in the same cell in `after`, with
- * the same value, blank, author, time and `criteriaVersion`; `supersededBy`
- * may be set once and not changed. Refused otherwise, because each of these
- * rewrote what an old score meant with no version bump (#165):
+ * assertion stored in `before` must still be in the same cell in `after`, and
+ * unchanged except for `version`, `disclosure`, its evidence's `check`, and a
+ * `supersededBy` set once. Refused otherwise, because each of these rewrote
+ * what an old score meant (#165):
  *
  * - cells moved onto another criterion, new or existing -- the old score now
  *   answers a question it was never asked;
  * - an old assertion's `criteriaVersion` rewritten to the current version, which
  *   makes a superseded score read as current;
- * - a stored value edited in place.
+ * - a value, justification, `independence` or evidence edited in place --
+ *   `independence` above all, which is the one fact no later reader can recover.
  *
- * What this cannot stop is a *new* assertion: a writer can always assert
- * something today. That is a claim attributed to its author, not a rewrite of
- * an old one, and attribution is ADR-0012's question, not this guard's.
+ * **Repairs are exempt.** An assertion that `before` already reports as broken
+ * -- a dangling or cyclic `supersededBy`, a duplicate id in its cell -- may be
+ * changed or renamed, or the document could never be fixed.
+ *
+ * **The threat model, stated so it is not mistaken for more.** This stops a
+ * write from silently rewriting a *stored* claim. It cannot stop a *new* one: a
+ * writer can always assert something today, including a copy of an old score
+ * under the current version that supersedes the original. That is a claim
+ * attributed to its author, visible as a new assertion with its own id, and
+ * whether that author may make it is identity and authorisation (ADR-0012,
+ * `Analysis.locked`), not this guard.
  */
 export function scoreHistoryProblems(
   before: Pick<Analysis, 'cells'>,
   after: Pick<Analysis, 'cells'>,
+  { repairable = new Set<string>() }: {
+    /** `cellKey` + assertion id pairs `before` already reports as broken, as `JSON.stringify([cellKey, id])`. */
+    repairable?: ReadonlySet<string>;
+  } = {},
 ): CriteriaRevisionProblem[] {
   const problems: CriteriaRevisionProblem[] = [];
   const now = new Map<string, Map<string, Assertion>>();
@@ -264,8 +296,10 @@ export function scoreHistoryProblems(
     now.set(cellKey(c.alternativeId, c.criterionId, c.measure), new Map((c.assertions ?? []).map((s) => [s.id, s])));
   }
   before.cells.forEach((cell, i) => {
-    const there = now.get(cellKey(cell.alternativeId, cell.criterionId, cell.measure));
+    const key = cellKey(cell.alternativeId, cell.criterionId, cell.measure);
+    const there = now.get(key);
     cell.assertions.forEach((s, j) => {
+      if (repairable.has(JSON.stringify([key, s.id]))) return;
       const at = `cells[${i}].assertions[${j}]`;
       const t = there?.get(s.id);
       if (!t) {
@@ -278,13 +312,13 @@ export function scoreHistoryProblems(
         });
         return;
       }
-      const changed = ASSERTED_FIELDS.filter((f) => canonical(s[f]) !== canonical(t[f]));
-      if (s.supersededBy !== undefined && t.supersededBy !== s.supersededBy) changed.push('supersededBy' as never);
-      if (changed.length) {
+      const rewritten = assertedContent(s) !== assertedContent(t);
+      const repointed = s.supersededBy !== undefined && t.supersededBy !== s.supersededBy;
+      if (rewritten || repointed) {
         problems.push({
           path: at,
-          message: `assertion "${s.id}" on ${cell.alternativeId} x ${cell.criterionId} changed its ${changed.join(', ')} ` +
-            'in place, which rewrites what was asserted and against which criteria version.',
+          message: `assertion "${s.id}" on ${cell.alternativeId} x ${cell.criterionId} was ` +
+            `${rewritten ? 'edited in place' : 'given a different supersededBy'}, which rewrites what was asserted.`,
           fix: 'add a new assertion and set supersededBy on this one; supersededBy, once set, does not change.',
         });
       }
