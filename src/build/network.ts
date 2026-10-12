@@ -163,7 +163,7 @@ export const RENDER_TIMEOUT_MS = 15_000;
 /** Simulated time a page is run on for after it is driven, by default: a minute. */
 export const SETTLE_MS = 60_000;
 
-/** The binding the watch reports through: exposed to every frame by Playwright, straight to Node, so no page code can clear it. */
+/** The binding the watch reports through: exposed to every frame by Playwright, straight to Node; page code would have to overwrite it on purpose. */
 const REPORT = '__comparandaCheckReport';
 
 /**
@@ -173,7 +173,8 @@ const REPORT = '__comparandaCheckReport';
  * window, a WebRTC connection -- and reports every policy violation.
  */
 const WATCH = `(() => {
-  const seen = { push: (what) => { try { window.${REPORT}(what); } catch {} } };
+  // A report that cannot be made is itself a console error, which fails the check.
+  const seen = { push: (what) => { try { window.${REPORT}(what); } catch { console.error('comparanda check could not report: ' + what); } } };
   document.addEventListener('securitypolicyviolation', (e) => seen.push('policy violation: ' + e.violatedDirective + ' ' + e.blockedURI), true);
   window.open = (url) => { seen.push('window.open(' + url + ')'); return null; };
   for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection']) {
