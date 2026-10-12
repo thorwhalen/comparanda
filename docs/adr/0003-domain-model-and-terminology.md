@@ -133,6 +133,19 @@ Full reasoning and the complete literature: `docs/research/findings-terminology.
 
 Both are shape changes inside v1, which has not been frozen or published. That follows the precedent of #126's reduction renames: no version bump and no migration. No stored document and neither repository used either changed field. Every definition field stays optional, so a terse criterion is still a valid one.
 
+### 2026-10-12 — Changing what a criterion means bumps the criteria-set version
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+
+#62 (mirroring the companion repo's request) asks that changing a criterion definition bump the criteria-set version rather than silently rewrite history. The fields already exist: `Analysis.criteriaVersion`, `Criterion.definedInVersion`, `Assertion.criteriaVersion`, and `supersededCells` to report what they imply.
+
+**A criterion's meaning is `label`, `definition`, `measurements`, `defaultMeasurement`, `acceptability` and `missingCodes`** (`CRITERION_MEANING_FIELDS`). Weights, groups and provenance are how much it matters and where it sits, not what it asks.
+
+**`reviseCriterion(a, id, revision, { material })` always moves the set version.** `material` is the author's declaration, because the tool cannot infer whether old scores still answer the new question. It decides only whether the criterion's `definedInVersion` moves too, and so whether `supersededCells` reports the earlier scores. A typo fix is therefore a recorded edit that supersedes nothing. An absent set version reads as `1`, and only dotted integers are incremented: anything else requires an explicit `nextVersion` that orders after the current one.
+
+**The write path refuses a bypass.** `criteriaRevisionProblems(before, after)` flags three cases: a meaning field changed without the set version moving forward; a `definedInVersion` moved backwards; and a `definedInVersion` later than the set version. The in-memory analysis source runs it on every `update`, and any future provider must do the same. It needs the previous document, so it is not a `validateAnalysis` rule. No schema shape changes.
+
 ## Amendments — citation
 
 ### 2026-08-22 — Reference 8's access caveat is lifted
