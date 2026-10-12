@@ -46,6 +46,57 @@ applicable" or "nobody has looked yet".
 
 The second must not be a rewrite of the first.
 
+## Mounting the matrix
+
+One framework-agnostic call (ADR-0017), on Preact:
+
+```ts
+import { Analysis } from 'comparanda';
+import { inMemoryAnalysisSource } from 'comparanda/store';
+import { mountMatrix } from 'comparanda/view';
+
+const analysis = Analysis.parse(json);
+const matrix = mountMatrix(document.getElementById('matrix')!, { analysis, measure: 'score' });
+matrix.update({ encoding: 'text-only' });  // any subset of the props
+matrix.destroy();                         // unsubscribes and empties the element
+
+// Connected: the view follows the source's writes, and offers an edit only where it accepts one.
+mountMatrix(el, { analysis, measure: 'score', source: inMemoryAnalysisSource(analysis) });
+```
+
+Without a `source` the matrix is read-only and says so. Changing the source takes its document in the same call: `update({ source, analysis: await source.getOne(id) })`. No React or Vue binding ships; each is a few lines:
+
+```tsx
+// React
+function Matrix(props: MountMatrixProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const handle = useRef<MatrixHandle>();
+  useEffect(() => {
+    handle.current = mountMatrix(ref.current!, props);
+    return () => handle.current?.destroy();
+  }, []);
+  // replace: a prop the parent stops passing is cleared, not kept.
+  useEffect(() => handle.current?.update(props, { replace: true }), [props]);
+  return <div ref={ref} />;
+}
+```
+
+```ts
+// Vue 3
+const Matrix = defineComponent({
+  props: ['analysis', 'measure', 'vocabulary', 'encoding', 'standing', 'source', 'authorize'],
+  setup(props) {
+    const el = ref<HTMLElement>();
+    let handle: MatrixHandle | undefined;
+    const given = () => Object.fromEntries(Object.entries(props).filter(([, v]) => v !== undefined)) as MountMatrixProps;
+    onMounted(() => { handle = mountMatrix(el.value!, given()); });
+    watch(given, (next) => handle?.update(next, { replace: true }));
+    onBeforeUnmount(() => handle?.destroy());
+    return () => h('div', { ref: el });
+  },
+});
+```
+
 ## Status
 
 Pre-implementation. This repository currently contains the specification — a domain model, a set
