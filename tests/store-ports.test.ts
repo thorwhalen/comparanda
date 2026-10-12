@@ -140,7 +140,8 @@ describe('every editable affordance is derived from getCapabilities', () => {
     const allowed = new Set([
       'src/core/schema/values.ts',   // Cell.readOnly -- a declaration in the document
       'src/core/schema/analysis.ts', // Analysis.locked -- the same
-      'src/store/index.ts',          // cellAffordanceOf, where they meet capabilities
+      'src/core/affordances.ts',     // cellPolicy, the one reader of those declarations (#52)
+      'src/store/index.ts',          // cellAffordanceOf, where that policy meets capabilities
     ]);
     const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
       const p = join(dir, name);
