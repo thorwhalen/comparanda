@@ -178,7 +178,7 @@ describe('following a source', () => {
     const a = counted(inMemoryAnalysisSource(relocation));
     const b = counted(inMemoryAnalysisSource(relocation));
     const handle = mount(el, { analysis: relocation, measure: 'score', source: a.source });
-    handle.update({ source: b.source });
+    handle.update({ source: b.source, analysis: relocation });
     expect([a.live(), b.live()]).toEqual([0, 1]);
     await retitle(a.source, 'From the old source');
     expect(el.querySelector('caption')?.textContent).toBe(relocation.subject.question);
@@ -216,7 +216,7 @@ describe('edits come only from editAffordances over the source', () => {
     const s = spy();
     const handle = mount(el, { analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation) }, { component: s.component });
     expect(assertHere(s.last()).enabled).toBe(true);
-    handle.update({ source: inMemoryAnalysisSource(relocation, { canUpdate: false }) });
+    handle.update({ source: inMemoryAnalysisSource(relocation, { canUpdate: false }), analysis: relocation });
     expect(assertHere(s.last())).toMatchObject({ enabled: false, reason: expect.stringMatching(/does not accept updates/) });
   });
 
@@ -291,5 +291,99 @@ describe('destroying', () => {
       Object.assign(window, original);
       [...added, ...removed].forEach((m) => m.mockRestore());
     }
+  });
+});
+
+describe('the adversarial review of #88', () => {
+  const retitle = (source: AnalysisSource, question: string) =>
+    source.update(relocation.id, { subject: { ...relocation.subject, question } });
+
+  it('re-passing the same props (a wrapper re-rendering) keeps what the source wrote', async () => {
+    const s = spy();
+    const source = inMemoryAnalysisSource(relocation);
+    const props = { analysis: relocation, measure: 'score', source };
+    const handle = mount(el, props, { component: s.component });
+    await source.update(relocation.id, { locked: true });
+    handle.update(props, { replace: true });
+    expect(s.last().analysis.locked).toBe(true);
+    expect(s.last().affordances.assert('lisbon', 'rent', 'score').enabled).toBe(false);
+  });
+
+  it('replace clears every prop not given, including the source', () => {
+    const { source, live } = counted(inMemoryAnalysisSource(relocation));
+    const s = spy();
+    const handle = mount(el, { analysis: relocation, measure: 'score', source, encoding: 'value' }, { component: s.component });
+    handle.update({ analysis: relocation, measure: 'score' }, { replace: true });
+    expect(live()).toBe(0);
+    expect(s.last().encoding).toBe('text-only');
+    expect(s.last().affordances.assert('lisbon', 'rent', 'score').enabled).toBe(false);
+  });
+
+  it('refuses a source it cannot follow', () => {
+    const { subscribe: _, ...blind } = inMemoryAnalysisSource(relocation);
+    expect(() => mountMatrix(el, { analysis: relocation, measure: 'score', source: blind as AnalysisSource }))
+      .toThrow(/subscribe/);
+    expect(el.childNodes).toHaveLength(0);
+  });
+
+  it('an update whose render throws changes nothing: props, document and subscription come back', async () => {
+    let fail = false;
+    const component = (p: MatrixViewProps) => {
+      if (fail) throw new Error('render failed');
+      return h('p', null, p.analysis.subject.question);
+    };
+    const a = counted(inMemoryAnalysisSource(relocation));
+    const b = counted(inMemoryAnalysisSource(relocation));
+    const handle = mount(el, { analysis: relocation, measure: 'score', source: a.source }, { component });
+    fail = true;
+    expect(() => handle.update({ source: b.source, analysis: relocation })).toThrow('render failed');
+    fail = false;
+    expect([a.live(), b.live()]).toEqual([1, 0]);
+    expect(el.textContent).toBe(relocation.subject.question);
+    await retitle(a.source, 'Still following a');
+    expect(el.textContent).toBe('Still following a');
+    handle.update({});
+  });
+
+  it('a new source needs its document in the same update', async () => {
+    const a = inMemoryAnalysisSource(relocation);
+    const b = inMemoryAnalysisSource(relocation);
+    const handle = mount(el, { analysis: relocation, measure: 'score', source: a });
+    await retitle(a, 'Only in source a');
+    expect(() => handle.update({ source: b })).toThrow(/in the same update/);
+    handle.update({ source: b, analysis: await b.getOne(relocation.id) });
+    expect(el.querySelector('caption')?.textContent).toBe(relocation.subject.question);
+  });
+
+  it('dropping the source keeps the document it delivered, read-only', async () => {
+    const s = spy();
+    const source = inMemoryAnalysisSource(relocation);
+    const handle = mount(el, { analysis: relocation, measure: 'score', source }, { component: s.component });
+    await retitle(source, 'Last known');
+    handle.update({ source: undefined });
+    expect(s.last().analysis.subject.question).toBe('Last known');
+    expect(s.last().affordances.comment().enabled).toBe(false);
+  });
+
+  it('refuses a measure the analysis neither declares nor records', () => {
+    expect(() => mountMatrix(el, { analysis: relocation, measure: 'scroe' })).toThrow(/declares "score"/);
+  });
+
+  it('refuses a prop it does not know, at mount and on update', () => {
+    expect(() => mountMatrix(el, { analysis: relocation, measure: 'score', measrue: 'x' } as never)).toThrow(/"measrue"/);
+    const handle = mount(el, { analysis: relocation, measure: 'score' });
+    expect(() => handle.update({ measrue: 'score' } as never)).toThrow(/"measrue"/);
+  });
+
+  it('a cell partly withheld from this reader says so, not that raters disagree', () => {
+    const cell = relocation.cells.find((c) => c.assertions.length > 1 && c.assertions.some((x) => x.value !== undefined))!;
+    const withheld = structuredClone(relocation);
+    const target = withheld.cells.find((c) => c.alternativeId === cell.alternativeId && c.criterionId === cell.criterionId && c.measure === cell.measure)!;
+    const first = target.assertions[0]!;
+    delete (first as { value?: unknown }).value;
+    Object.assign(first, { missing: { code: 'withheld' }, disclosure: { ...(first.disclosure ?? {}), withheldFromReader: true } });
+    mount(el, { analysis: withheld, measure: cell.measure });
+    expect(el.textContent).not.toMatch(/assertions disagree about whether a value exists/);
+    expect(el.textContent).toMatch(/Partly withheld from you/);
   });
 });

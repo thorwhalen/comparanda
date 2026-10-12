@@ -13,11 +13,11 @@
  * its reason. None renders as a bare blank.
  */
 import type { Affordances } from '../core/affordances.js';
-import { makeCellReader, type Analysis } from '../core/schema/analysis.js';
+import { cellIndex, cellKey, makeCellReader, type Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import { NOT_APPLICABLE, NOT_ASSESSED, type MissingnessVocabulary } from '../core/schema/missingness.js';
 import { aliasesOf } from '../core/schema/structure.js';
-import type { Reduced } from '../core/schema/values.js';
+import { isWidenedByDisclosure, type Cell, type Reduced } from '../core/schema/values.js';
 
 /** The one encoding v1 registers (ADR-0032 clause 1). #90 replaces this with the registry. */
 export const TEXT_ONLY = 'text-only';
@@ -35,6 +35,7 @@ export interface MatrixViewProps {
 
 export function Matrix({ analysis, measure, vocabulary, encoding, affordances }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
+  const cells = cellIndex(analysis);
   const words = aliasesOf(analysis);
   return (
     <div class="comparanda-matrix" data-encoding={TEXT_ONLY}>
@@ -57,7 +58,10 @@ export function Matrix({ analysis, measure, vocabulary, encoding, affordances }:
               <th scope="row">{alt.label}</th>
               {analysis.criteria.map((c) => (
                 <td key={c.id}>
-                  {cellText(reader.read(alt.id, c.id), affordances.inapplicable(alt.id, c.id), vocabulary, c.id)}
+                  {cellText(
+                    reader.read(alt.id, c.id), cells.get(cellKey(alt.id, c.id, measure)),
+                    affordances.inapplicable(alt.id, c.id), vocabulary, c.id,
+                  )}
                 </td>
               ))}
             </tr>
@@ -71,12 +75,19 @@ export function Matrix({ analysis, measure, vocabulary, encoding, affordances }:
 /** A cell as text. Never empty: an absence is read through the vocabulary, a refusal states its reason. */
 function cellText(
   reduced: Reduced | undefined,
+  cell: Cell | undefined,
   inapplicable: boolean,
   vocabulary: MissingnessVocabulary,
   criterionId: string,
 ): string {
   const means = (code: string) => vocabulary.means(code, criterionId) ?? code;
-  if (reduced?.refused !== undefined) return `Not shown: ${reduced.refused}`;
+  if (reduced?.refused !== undefined) {
+    // A reduction refused over a cell this reader sees only part of is not the
+    // raters' disagreement; it is the projection's gap (ADR-0021). Say that.
+    return cell && isWidenedByDisclosure(cell)
+      ? 'Partly withheld from you; what you can see does not settle this cell.'
+      : `Not shown: ${reduced.refused}`;
+  }
   if (reduced?.value !== undefined) return String(reduced.value);
   if (reduced?.missing !== undefined) return means(reduced.missing.code);
   // No value and no recorded absence: a declared block says why; otherwise nobody has looked.

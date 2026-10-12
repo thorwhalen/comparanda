@@ -19,8 +19,14 @@ import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
 
 /** What `mountMatrix` returns. */
 export interface MatrixHandle {
-  /** Re-render with these props changed. An optional prop given as `undefined` is cleared. */
-  update(next: MatrixPropsUpdate): void;
+  /**
+   * Re-render with these props changed. An optional prop given as `undefined`
+   * is cleared; with `{ replace: true }` every prop not given is cleared, which
+   * is what a framework wrapper wants. Changing `source` needs that source's
+   * `analysis` in the same call. All or nothing: an update that throws changes
+   * nothing.
+   */
+  update(next: MatrixPropsUpdate, options?: { replace?: boolean }): void;
   /** Unsubscribe from the source and empty the element. Safe to call twice. */
   destroy(): void;
 }
@@ -41,6 +47,11 @@ const NO_SOURCE: Pick<DataProvider<unknown>, 'getCapabilities'> = {
   }),
 };
 
+/** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
+const PROP_KEYS = [
+  'analysis', 'measure', 'vocabulary', 'encoding', 'standing', 'source', 'authorize',
+] as const satisfies readonly (keyof MountMatrixProps)[];
+
 /** Elements with a live matrix. Two mounts on one element would each think they own its children. */
 const mounted = new WeakSet<object>();
 
@@ -59,6 +70,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     throw new Error('this element already holds a matrix: call update() on its handle, or destroy() it first.');
   }
   let current: MountMatrixProps = checked(props);
+  /** The document shown: the props' until the source writes, then the source's. */
   let analysis: Analysis = current.analysis;
   let unsubscribe: (() => void) | undefined;
   let destroyed = false;
@@ -76,13 +88,12 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     render(h(component, view), el);
   };
 
-  const follow = (source: AnalysisSource | undefined) => {
-    unsubscribe?.();
-    unsubscribe = undefined;
-    if (!source?.subscribe) return;
-    // Checked against the props on every event, not captured: a source swapped
-    // out by `update` whose provider still delivers one last event is ignored.
-    unsubscribe = source.subscribe((event: DataChangeEvent<Analysis>) => {
+  /** Subscribe to `source`; the returned function unsubscribes. */
+  const follow = (source: AnalysisSource | undefined): (() => void) | undefined => {
+    if (!source) return undefined;
+    // Checked against the props on every event, not captured: during an update
+    // both sources are briefly live, and the one not in the props is ignored.
+    return source.subscribe!((event: DataChangeEvent<Analysis>) => {
       if (destroyed || current.source !== source) return;
       if (event.type !== 'updated' || event.id !== analysis.id) return;
       analysis = event.item;
@@ -92,7 +103,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
 
   mounted.add(el);
   try {
-    follow(current.source);
+    unsubscribe = follow(current.source);
     draw();
   } catch (error) {
     // A mount that failed holds nothing: no subscription, no claim, no half a tree.
@@ -104,19 +115,44 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
   }
 
   return {
-    update(next) {
+    update(next, { replace = false } = {}) {
       if (destroyed) throw new Error('this matrix was destroyed; mount a new one instead of updating it.');
-      const merged: Record<string, unknown> = { ...current };
+      unknownKeys(next);
+      const merged: Record<string, unknown> = replace ? {} : { ...current };
       for (const [key, value] of Object.entries(next)) {
         if (value === undefined) delete merged[key];
         else merged[key] = value;
       }
       const props = checked(merged as unknown as MountMatrixProps);
       const swapped = props.source !== current.source;
+      if (swapped && props.source && next.analysis === undefined) {
+        throw new TypeError(
+          'a new source needs its document in the same update: update({ source, analysis: await source.getOne(id) }). ' +
+            'Without it the matrix would show the old source\'s document gated on the new source\'s capabilities.',
+        );
+      }
+      // The document changes when the caller hands over a different one, or a
+      // different source. Re-passing the same props object (a framework wrapper
+      // on every render) must not undo writes the source has delivered since.
+      const docChanged = props.analysis !== current.analysis || (swapped && props.source !== undefined);
+      const nextAnalysis = docChanged ? props.analysis : analysis;
+
+      const before = { current, analysis, unsubscribe };
+      const followed = swapped ? follow(props.source) : unsubscribe;
       current = props;
-      if ('analysis' in next) analysis = props.analysis;
-      if (swapped) follow(props.source);
-      draw();
+      analysis = nextAnalysis;
+      unsubscribe = followed;
+      try {
+        draw();
+      } catch (error) {
+        // All or nothing, as at mount: the previous props, document and
+        // subscription come back, and so does the previous render.
+        if (swapped) followed?.();
+        ({ current, analysis, unsubscribe } = before);
+        try { draw(); } catch { /* the previous render stands as it was */ }
+        throw error;
+      }
+      if (swapped) before.unsubscribe?.();
     },
     destroy() {
       if (destroyed) return;
@@ -134,7 +170,8 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   if (props === null || typeof props !== 'object') {
     throw new TypeError(`mountMatrix needs props ({ analysis, measure, ... }); got ${describe(props)}.`);
   }
-  const { analysis, measure } = props;
+  unknownKeys(props);
+  const { analysis, measure, source } = props;
   if (analysis === null || typeof analysis !== 'object' ||
     !Array.isArray(analysis.alternatives) || !Array.isArray(analysis.criteria)) {
     throw new TypeError(
@@ -144,7 +181,28 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   if (typeof measure !== 'string' || measure.trim() === '') {
     throw new TypeError(`props.measure must name a measure ("score", "confidence", or a declared one); got ${describe(measure)}.`);
   }
+  // A measure nothing declares and no cell records would render every cell as
+  // "nobody has looked yet" -- a claim about the work, when the fault is a name.
+  const declared = (analysis.measures ?? []).map((m) => m.name);
+  if (declared.length > 0 && !declared.includes(measure) && !(analysis.cells ?? []).some((c) => c.measure === measure)) {
+    throw new TypeError(`props.measure "${measure}" is not a measure of this analysis; it declares ${declared.map((m) => `"${m}"`).join(', ')}.`);
+  }
+  if (source !== undefined && typeof source.subscribe !== 'function') {
+    // A source the view cannot follow would offer edits against a document it
+    // never refreshes -- a lock written elsewhere would never close them.
+    throw new TypeError(
+      'props.source must implement subscribe(), so the matrix can follow its writes; ' +
+        'to show an analysis read-only, pass no source.',
+    );
+  }
   return props;
+}
+
+function unknownKeys(props: object): void {
+  const unknown = Object.keys(props).filter((k) => !(PROP_KEYS as readonly string[]).includes(k));
+  if (unknown.length > 0) {
+    throw new TypeError(`unknown matrix prop${unknown.length > 1 ? 's' : ''} ${unknown.map((k) => `"${k}"`).join(', ')}; the props are ${PROP_KEYS.join(', ')}.`);
+  }
 }
 
 function describe(value: unknown): string {

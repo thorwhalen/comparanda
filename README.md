@@ -57,14 +57,14 @@ import { mountMatrix } from 'comparanda/view';
 
 const analysis = Analysis.parse(json);
 const matrix = mountMatrix(document.getElementById('matrix')!, { analysis, measure: 'score' });
-matrix.update({ measure: 'confidence' }); // any subset of the props
+matrix.update({ encoding: 'text-only' });  // any subset of the props
 matrix.destroy();                         // unsubscribes and empties the element
 
 // Connected: the view follows the source's writes, and offers an edit only where it accepts one.
 mountMatrix(el, { analysis, measure: 'score', source: inMemoryAnalysisSource(analysis) });
 ```
 
-Without a `source` the matrix is read-only and says so. No React or Vue binding ships; each is a few lines:
+Without a `source` the matrix is read-only and says so. Changing the source takes its document in the same call: `update({ source, analysis: await source.getOne(id) })`. No React or Vue binding ships; each is a few lines:
 
 ```tsx
 // React
@@ -75,7 +75,8 @@ function Matrix(props: MountMatrixProps) {
     handle.current = mountMatrix(ref.current!, props);
     return () => handle.current?.destroy();
   }, []);
-  useEffect(() => handle.current?.update(props), [props]);
+  // replace: a prop the parent stops passing is cleared, not kept.
+  useEffect(() => handle.current?.update(props, { replace: true }), [props]);
   return <div ref={ref} />;
 }
 ```
@@ -83,12 +84,13 @@ function Matrix(props: MountMatrixProps) {
 ```ts
 // Vue 3
 const Matrix = defineComponent({
-  props: ['analysis', 'measure', 'source'],
+  props: ['analysis', 'measure', 'vocabulary', 'encoding', 'standing', 'source', 'authorize'],
   setup(props) {
     const el = ref<HTMLElement>();
     let handle: MatrixHandle | undefined;
-    onMounted(() => { handle = mountMatrix(el.value!, { ...props }); });
-    watch(() => ({ ...props }), (next) => handle?.update(next));
+    const given = () => Object.fromEntries(Object.entries(props).filter(([, v]) => v !== undefined)) as MountMatrixProps;
+    onMounted(() => { handle = mountMatrix(el.value!, given()); });
+    watch(given, (next) => handle?.update(next, { replace: true }));
     onBeforeUnmount(() => handle?.destroy());
     return () => h('div', { ref: el });
   },
