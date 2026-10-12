@@ -82,3 +82,21 @@ directly, where under a colour encoding it would merely degrade a tooltip. That 
   on the critical path of a product that has not yet rendered a cell.
 - *Let the consumer define its own props and adapt later.* An adapter between two shapes that mean
   the same thing, maintained forever, to avoid publishing a type today.
+
+## Amendments
+
+### 2026-10-12 — `onEdit` leaves `MatrixProps`; edits go through the source
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+- **Deciders:** Thor Whalen
+
+Clause 3 listed `onEdit?: (patch) => void`. It is not in the published `MatrixProps` (#88), for two reasons that arrived after this ADR.
+
+First, ADR-0006 clause 3 makes `getCapabilities()` the only source of truth for what the view offers, and #72 built that as `editAffordances(source, analysis, { authorize })` with a boundary rule (`view-edits-through-store`) that fails any other reading. A callback with no provider behind it has no capability to gate on, so a view holding only `onEdit` would either offer every edit or invent the parallel read-only flag ADR-0006 forbids.
+
+Second, the clause never said what a `patch` is, and the write path that now exists does: `source.update(id, partial)`, checked by `revisionProblems` before anything is stored. A second edit channel would be a second place for that check to be skipped.
+
+**So:** `MatrixProps` is `{ analysis, measure, vocabulary?, encoding?, standing? }` and still names no provider. `mountMatrix` takes `MountMatrixProps`, which adds an optional `source` (followed through `subscribe`, and the only thing edits are gated on) and the host's `authorize`. Without a source the matrix is read-only and says why wherever it would have offered a write. A host that wants a callback hands over a source whose `update` is that callback. `vocabulary` and `encoding` became optional with the defaults the rest of the package already uses (`vocabularyOf(analysis)`, `text-only`); passing them is unchanged.
+
+The clause-3 argument is untouched: the type is published before the grid (#89), and an interim table written against it is deleted rather than refactored.

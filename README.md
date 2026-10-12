@@ -46,6 +46,55 @@ applicable" or "nobody has looked yet".
 
 The second must not be a rewrite of the first.
 
+## Mounting the matrix
+
+One framework-agnostic call (ADR-0017), on Preact:
+
+```ts
+import { Analysis } from 'comparanda';
+import { inMemoryAnalysisSource } from 'comparanda/store';
+import { mountMatrix } from 'comparanda/view';
+
+const analysis = Analysis.parse(json);
+const matrix = mountMatrix(document.getElementById('matrix')!, { analysis, measure: 'score' });
+matrix.update({ measure: 'confidence' }); // any subset of the props
+matrix.destroy();                         // unsubscribes and empties the element
+
+// Connected: the view follows the source's writes, and offers an edit only where it accepts one.
+mountMatrix(el, { analysis, measure: 'score', source: inMemoryAnalysisSource(analysis) });
+```
+
+Without a `source` the matrix is read-only and says so. No React or Vue binding ships; each is a few lines:
+
+```tsx
+// React
+function Matrix(props: MountMatrixProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const handle = useRef<MatrixHandle>();
+  useEffect(() => {
+    handle.current = mountMatrix(ref.current!, props);
+    return () => handle.current?.destroy();
+  }, []);
+  useEffect(() => handle.current?.update(props), [props]);
+  return <div ref={ref} />;
+}
+```
+
+```ts
+// Vue 3
+const Matrix = defineComponent({
+  props: ['analysis', 'measure', 'source'],
+  setup(props) {
+    const el = ref<HTMLElement>();
+    let handle: MatrixHandle | undefined;
+    onMounted(() => { handle = mountMatrix(el.value!, { ...props }); });
+    watch(() => ({ ...props }), (next) => handle?.update(next));
+    onBeforeUnmount(() => handle?.destroy());
+    return () => h('div', { ref: el });
+  },
+});
+```
+
 ## Status
 
 Pre-implementation. This repository currently contains the specification — a domain model, a set
