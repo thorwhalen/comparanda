@@ -102,8 +102,8 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
    * until the host gives one whose `session.focus` differs from the last.
    */
   let moved: { focus: Session['focus'] } | undefined;
-  /** The `view` the caller last gave, to tell a new focus from a re-passed one. */
-  let givenView: unknown = props.view;
+  /** What the `view` the caller last gave said about focus, to tell a new focus from a re-passed one. */
+  let givenFocus = focusIn(props.view);
   /** The view state of the last render: what `onViewChange` reports. */
   let shown: ViewState;
 
@@ -131,12 +131,27 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
         : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
       ...(standing ? { standing } : {}),
     };
-    // A re-render that moves the focused cell (a reorder, a transpose) can
-    // drop DOM focus; a reader in the grid stays in it, on the roving stop.
-    const doc = el.ownerDocument;
-    const hadFocus = doc !== undefined && el.contains(doc.activeElement);
+    const was = focused();
     render(h(component, resolved), el);
-    if (hadFocus && !el.contains(doc.activeElement)) el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus();
+    settle(was);
+  };
+
+  /** The focused element, if it is in the matrix; read from the root it lives in, a shadow root's own. */
+  const focused = (): Element | null => {
+    const active = (el.getRootNode() as Document | ShadowRoot).activeElement ?? null;
+    return active !== null && el.contains(active) ? active : null;
+  };
+  /**
+   * A reader who was in the matrix before a render is on the roving stop after
+   * it: a render that moved the focused cell (a reorder, a transpose, a
+   * rollback) can drop focus, and a host that moved the stop leaves focus on a
+   * cell that is no longer one -- two tab stops, where ADR-0027 allows one.
+   */
+  const settle = (was: Element | null) => {
+    if (was === null) return;
+    const stop = el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]');
+    const now = focused();
+    if (stop && (now === null || (now !== stop && now.matches('[data-cell]')))) stop.focus();
   };
 
   /** Subscribe to `source`; the returned function unsubscribes. */
@@ -167,10 +182,12 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
    * first is what makes a rollback a rollback.
    */
   const redraw = () => {
+    const was = focused();
     render(null, el);
     // If the old props fail too, unmount again: an empty element and a clean
     // tree, so the next good render fills it rather than diffing against debris.
     try { draw(); } catch { render(null, el); }
+    settle(was);
   };
 
   mounted.add(el);
@@ -221,21 +238,21 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       // A view that says something new about focus (typically the one
       // `onViewChange` sent back) replaces the reader's move; any other -- the
       // same one re-passed, or a transpose or regroup the host made -- keeps it.
-      const nextGiven = replace || 'view' in next ? next.view : givenView;
-      const before = { current, analysis, unsubscribe, moved, givenView };
+      const nextFocus = replace || 'view' in next ? focusIn(next.view) : givenFocus;
+      const before = { current, analysis, unsubscribe, moved, givenFocus };
       const followed = swapped ? follow(props.source) : unsubscribe;
       current = props;
       analysis = nextAnalysis;
       unsubscribe = followed;
-      if (focusIn(nextGiven) !== focusIn(givenView)) moved = undefined;
-      givenView = nextGiven;
+      if (nextFocus !== givenFocus) moved = undefined;
+      givenFocus = nextFocus;
       try {
         draw();
       } catch (error) {
         // All or nothing, as at mount: the previous props, document and
         // subscription come back, and so does the previous render.
         if (swapped) followed?.();
-        ({ current, analysis, unsubscribe, moved, givenView } = before);
+        ({ current, analysis, unsubscribe, moved, givenFocus } = before);
         redraw();
         throw error;
       }
@@ -294,9 +311,10 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   return props;
 }
 
-/** What a given `view` says about the reader's position, comparable by value. */
+/** What a given `view` says about the reader's position, comparable by value and blind to key order. */
 function focusIn(view: unknown): string {
-  return JSON.stringify((view as ViewState | undefined)?.session?.focus ?? null);
+  const focus = (view as ViewState | undefined)?.session?.focus;
+  return JSON.stringify([focus?.alternativeId ?? null, focus?.criterionId ?? null]);
 }
 
 /** Refuse a measure the analysis neither declares nor records (`unknownMeasure`). */

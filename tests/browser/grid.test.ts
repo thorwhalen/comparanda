@@ -13,7 +13,10 @@ import { Analysis } from '../../src/core/schema/analysis.js';
 import {
   applyOrder, initialViewState, parseViewState, serializeViewState, setGrouping, transpose, type ViewState,
 } from '../../src/core/view-state.js';
+import { h } from 'preact';
+
 import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
+import { Matrix, type MatrixViewProps } from '../../src/view/matrix.js';
 import languagesJson from '../../examples/languages.json';
 import relocationJson from '../../examples/relocation.json';
 
@@ -174,6 +177,58 @@ describe('the roving position', () => {
     // A host that places the reader.
     handle.update({ view: { ...view, session: { focus: { criterionId: languages.criteria[0]!.id } } } });
     expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['0:1']);
+  });
+
+  it('a host that moves the stop while the reader is in the grid moves focus with it: still one tab stop', () => {
+    const view = initialViewState(languages);
+    const handle = mount({ analysis: languages, measure: 'score', view });
+    cellAt('1:1').focus();
+    handle.update({ view: { ...view, session: { focus: { alternativeId: languages.alternatives[2]!.id, criterionId: languages.criteria[2]!.id } } } });
+    expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['3:3']);
+    expect(document.activeElement).toBe(cellAt('3:3'));
+  });
+
+  it('a focus given again in another key order is the same focus, and keeps the reader\'s move', async () => {
+    const [alternativeId, criterionId] = [languages.alternatives[0]!.id, languages.criteria[0]!.id];
+    const view = { ...initialViewState(languages), session: { focus: { alternativeId, criterionId } } };
+    const handle = mount({ analysis: languages, measure: 'score', view });
+    cellAt('1:1').focus();
+    await userEvent.keyboard('{ArrowRight}{ArrowRight}');
+    // As a store that reorders JSON keys would hand it back.
+    handle.update({ view: { ...view, session: { focus: { criterionId, alternativeId } } } });
+    expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['1:3']);
+  });
+
+  it('a rolled-back update leaves the reader focused on the stop', () => {
+    // Fails for the new props only, so the rollback has the old ones to render.
+    const Failing = (props: MatrixViewProps) => {
+      if (props.encoding === 'cannot-render') throw new Error('cannot render this');
+      return h(Matrix, props);
+    };
+    const handle = mountMatrix(el, { analysis: languages, measure: 'score' }, { component: Failing });
+    handles.push(handle);
+    cellAt('2:2').focus();
+    expect(() => handle.update({ encoding: 'cannot-render' })).toThrow(/cannot render/);
+    expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['2:2']);
+    expect(document.activeElement).toBe(cellAt('2:2'));
+  });
+
+  it('inside a shadow root, a re-render keeps the reader in the grid', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    const inner = document.createElement('div');
+    root.append(inner);
+    const view = initialViewState(languages);
+    const handle = mountMatrix(inner, { analysis: languages, measure: 'score', view });
+    try {
+      inner.querySelector<HTMLElement>('[data-cell="2:1"]')!.focus();
+      handle.update({ view: transpose(view) });
+      expect(root.activeElement).toBe(inner.querySelector('[role="grid"] [tabindex="0"]'));
+    } finally {
+      handle.destroy();
+      host.remove();
+    }
   });
 
   it('a position naming something no longer shown falls back to that axis\'s header', () => {
