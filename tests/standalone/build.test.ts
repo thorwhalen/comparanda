@@ -4,6 +4,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -66,8 +67,8 @@ describe('the built file', () => {
     expect(built.gzipBytes).toBeLessThan(built.bytes);
   });
 
-  it('carries the analysis as readable JSON, the same document that went in', () => {
-    expect(Analysis.parse(inlinedAnalysis(built.html))).toEqual(relocation);
+  it('carries the analysis as readable JSON, verbatim: the document as given, not the parsed copy', () => {
+    expect(inlinedAnalysis(built.html)).toEqual(relocationJson);
   });
 
   it('opens from file:// and renders the messy fixture completely, asking the network for nothing', async () => {
@@ -96,6 +97,22 @@ describe('what goes into the file', () => {
     expect((inlinedAnalysis(html) as { alternatives: { label: string }[] }).alternatives[0]!.label).toBe(hostile.alternatives[0].label);
   });
 
+  it('keeps the title away from Vite\'s HTML transforms', async () => {
+    const { html } = await buildStandalone(relocationJson, { title: 'Plans %MODE% & %BASE_URL% <b>' });
+    expect(html).toContain('<title>Plans %MODE% &amp; %BASE_URL% &lt;b&gt;</title>');
+  });
+
+  it('refuses a measure the analysis does not have, rather than building a page that cannot show it', async () => {
+    await expect(buildStandalone(relocationJson, { measure: 'nosuchmeasure' })).rejects.toThrow(/"nosuchmeasure" is not a measure/);
+    await expect(buildStandalone(relocationJson, { measure: ' ' })).rejects.toThrow(/measure name is empty/);
+  });
+
+  it('refuses a page whose entry the bundler dropped', async () => {
+    const entry = join(dir, 'inert.js');
+    await writeFile(entry, 'export const nothing = 1;\n');
+    await expect(buildStandalone(relocationJson, { entry })).rejects.toThrow(/dropped the standalone entry/);
+  });
+
   it('refuses an analysis with validation errors, naming them', async () => {
     const broken = structuredClone(relocationJson);
     broken.cells[0].criterionId = 'no-such-criterion';
@@ -110,6 +127,18 @@ describe('what goes into the file', () => {
     const projected = inlined.cells.flatMap((c) => c.assertions).find((s) => s.id === secret.id)!;
     expect(projected.value).toBeUndefined();
     expect(html).not.toContain(JSON.stringify(secret.justification).slice(1, -1));
+  });
+});
+
+describe('the shipped build (dist/), when it has been built', () => {
+  const cli = join(repo, 'dist', 'cli.js');
+  it.runIf(existsSync(cli))('dist/cli.js writes a page that opens from file:// and renders completely', async () => {
+    const out = join(dir, 'from-dist.html');
+    await promisify(execFile)(process.execPath, [cli, 'build', join(repo, 'examples', 'relocation.json'), '--out', out], { cwd: dir });
+    const { cells, errors, offPage } = await open(await readFile(out, 'utf8'), 'from-dist-opened.html');
+    expect(errors).toEqual([]);
+    expect(cells).toHaveLength(relocation.alternatives.length * relocation.criteria.length);
+    expect(offPage).toEqual([]);
   });
 });
 

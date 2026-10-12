@@ -6,7 +6,7 @@
  * Plain constants and a type; no DOM, no Node, importable from both sides.
  */
 
-/** The `<script type="application/json">` holding the analysis, verbatim (ADR-0017 clause 6). */
+/** The `<script type="application/json">` holding the analysis: verbatim, or its projection for the reader (ADR-0017 clause 6). */
 export const ANALYSIS_ELEMENT_ID = 'comparanda-analysis';
 
 /** The `<script type="application/json">` holding `StandaloneSettings`. */

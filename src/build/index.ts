@@ -26,7 +26,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
-import { validateAnalysis, type Analysis } from '../core/schema/analysis.js';
+import { unknownMeasure, validateAnalysis } from '../core/schema/analysis.js';
 import { projectForReader, type DisclosureDecision } from '../core/schema/disclosure.js';
 import {
   ANALYSIS_ELEMENT_ID, ROOT_ELEMENT_ID, SETTINGS_ELEMENT_ID, scriptSafeJson, type StandaloneSettings,
@@ -71,12 +71,19 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
     const errors = checked.problems.filter((p) => p.severity === 'error');
     throw new Error(`the analysis is not valid, so no page was built:\n${errors.map((p) => `  ${p.path || '(root)'}: ${p.message}`).join('\n')}`);
   }
-  const analysis: Analysis = discloses ? projectForReader(checked.analysis, discloses).analysis : checked.analysis;
-  const title = options.title ?? analysis.title ?? analysis.subject.question;
+  const problem = unknownMeasure(checked.analysis, measure);
+  if (problem !== undefined) throw new Error(`no page was built: ${problem}.`);
+  // Verbatim when nothing is withheld: the document as given, not the parsed
+  // copy with its defaults filled in. A projection is a new document.
+  const inlined: unknown = discloses ? projectForReader(checked.analysis, discloses).analysis : input;
+  const title = options.title ?? checked.analysis.title ?? checked.analysis.subject.question;
   const settings: StandaloneSettings = { measure };
 
-  const shell = await bundleShell(entry, title);
-  const html = inline(shell, analysis, settings);
+  const shell = await bundleShell(entry);
+  let html = splice(shell, EMPTY_TITLE, `<title>${escapeHtml(title)}</title>`);
+  html = splice(html, emptyData(ANALYSIS_ELEMENT_ID), filledData(ANALYSIS_ELEMENT_ID, inlined));
+  html = splice(html, emptyData(SETTINGS_ELEMENT_ID), filledData(SETTINGS_ELEMENT_ID, settings));
+  entryIsInlined(html);
   return {
     html,
     bytes: Buffer.byteLength(html),
@@ -86,12 +93,12 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
 }
 
 /** The page without its data: Vite and the single-file plugin over the entry. */
-async function bundleShell(entry: string, title: string): Promise<string> {
+async function bundleShell(entry: string): Promise<string> {
   const [vite, singleFile] = await peers();
   const root = await mkdtemp(join(tmpdir(), 'comparanda-build-'));
   try {
     await writeFile(join(root, 'main.js'), `import ${JSON.stringify(pathToFileURL(entry).href)};\n`);
-    await writeFile(join(root, 'index.html'), template(title));
+    await writeFile(join(root, 'index.html'), TEMPLATE);
     await vite.build({
       root,
       base: './',
@@ -110,40 +117,53 @@ async function bundleShell(entry: string, title: string): Promise<string> {
   }
 }
 
-function template(title: string): string {
-  return [
-    '<!doctype html>',
-    '<html lang="en">',
-    '<head>',
-    '<meta charset="utf-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    `<title>${escapeHtml(title)}</title>`,
-    '</head>',
-    '<body>',
-    `<main id="${ROOT_ELEMENT_ID}"></main>`,
-    `<script type="application/json" id="${ANALYSIS_ELEMENT_ID}"></script>`,
-    `<script type="application/json" id="${SETTINGS_ELEMENT_ID}"></script>`,
-    '<script type="module" src="./main.js"></script>',
-    '</body>',
-    '</html>',
-    '',
-  ].join('\n');
+/**
+ * The page Vite bundles. Everything that comes from the analysis -- the title
+ * as much as the data -- is left empty here and spliced in afterwards, so no
+ * Vite HTML transform (its `%MODE%`-style substitution) ever sees it.
+ */
+const EMPTY_TITLE = '<title></title>';
+const emptyData = (id: string) => `<script type="application/json" id="${id}"></script>`;
+const filledData = (id: string, value: unknown) =>
+  `<script type="application/json" id="${id}">${scriptSafeJson(value)}</script>`;
+const TEMPLATE = [
+  '<!doctype html>',
+  '<html lang="en">',
+  '<head>',
+  '<meta charset="utf-8">',
+  '<meta name="viewport" content="width=device-width, initial-scale=1">',
+  EMPTY_TITLE,
+  '</head>',
+  '<body>',
+  `<main id="${ROOT_ELEMENT_ID}"></main>`,
+  emptyData(ANALYSIS_ELEMENT_ID),
+  emptyData(SETTINGS_ELEMENT_ID),
+  '<script type="module" src="./main.js"></script>',
+  '</body>',
+  '</html>',
+  '',
+].join('\n');
+
+/** Replace the one occurrence of `empty` in `html`. Spliced, not String.replace: a `$&` in the data stays literal. */
+function splice(html: string, empty: string, filled: string): string {
+  const at = html.indexOf(empty);
+  if (at < 0 || html.indexOf(empty, at + 1) >= 0) {
+    throw new Error(`the bundled page does not carry exactly one ${empty}; the build template and the bundler disagree.`);
+  }
+  return html.slice(0, at) + filled + html.slice(at + empty.length);
 }
 
-/** Fill the two empty data elements Vite passed through. Each must be there exactly once. */
-function inline(shell: string, analysis: Analysis, settings: StandaloneSettings): string {
-  let html = shell;
-  for (const [id, value] of [[ANALYSIS_ELEMENT_ID, analysis], [SETTINGS_ELEMENT_ID, settings]] as const) {
-    const empty = `<script type="application/json" id="${id}"></script>`;
-    const at = html.indexOf(empty);
-    if (at < 0 || html.indexOf(empty, at + 1) >= 0) {
-      throw new Error(`the bundled page does not carry exactly one empty #${id} element; the build template and the bundler disagree.`);
-    }
-    // Spliced, not String.replace: a `$&` in the data must stay literal.
-    const filled = `<script type="application/json" id="${id}">${scriptSafeJson(value)}</script>`;
-    html = html.slice(0, at) + filled + html.slice(at + empty.length);
+/**
+ * Refuse a page whose entry did not survive bundling. A bundler that reads the
+ * entry as side-effect-free drops it whole and still writes a valid-looking
+ * page with no matrix in it; the entry names the data element, so its absence
+ * from every inline module is the tell.
+ */
+function entryIsInlined(html: string): void {
+  const modules = [...html.matchAll(/<script type="module"[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
+  if (!modules.some((code) => code.includes(ANALYSIS_ELEMENT_ID) && code.includes(ROOT_ELEMENT_ID))) {
+    throw new Error('the bundled page has no inline module that reads the analysis: the bundler dropped the standalone entry, so no page was built.');
   }
-  return html;
 }
 
 /**
@@ -166,11 +186,16 @@ async function peers(): Promise<[Vite, SingleFile]> {
   try {
     return await Promise.all([import('vite'), import('vite-plugin-singlefile')]);
   } catch (error) {
-    throw new Error(
-      `comparanda build needs ${BUILD_PEERS.join(' and ')}, which are optional and not installed here. ` +
-        `Install them beside comparanda: npm install --save-dev ${BUILD_PEERS.join(' ')}` +
-        ` (${error instanceof Error ? error.message : String(error)})`,
-    );
+    const why = error instanceof Error ? error.message : String(error);
+    // Not installed is one failure; installed and refusing to load (an older
+    // Node than Vite supports, say) is another, and says so.
+    if ((error as { code?: string } | null)?.code === 'ERR_MODULE_NOT_FOUND') {
+      throw new Error(
+        `comparanda build needs ${BUILD_PEERS.join(' and ')}, which are optional and not installed here. ` +
+          `Install them beside comparanda: npm install --save-dev ${BUILD_PEERS.join(' ')} (${why})`,
+      );
+    }
+    throw new Error(`comparanda build could not load ${BUILD_PEERS.join(' or ')}: ${why}. Vite 7 needs Node 20.19 or later.`);
   }
 }
 

@@ -68,7 +68,10 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.cts",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/standalone/*.js",
+    "./src/standalone/main.ts"
+  ],
   "files": [
     "dist",
     "schema"
