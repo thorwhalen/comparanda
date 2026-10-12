@@ -64,6 +64,17 @@ matrix.destroy();                         // unsubscribes and empties the elemen
 mountMatrix(el, { analysis, measure: 'score', source: inMemoryAnalysisSource(analysis) });
 ```
 
+The reader's arrangement is a `ViewState` (order, hidden alternatives and criteria, group bands, orientation), passed as `view`; without one the matrix shows the document's own order:
+
+```ts
+import { initialViewState, setGrouping, transpose } from 'comparanda';
+
+let view = setGrouping(initialViewState(analysis), 'alternatives', ['g-europe', 'g-asia']);
+matrix.update({ view: transpose(view) });  // criteria as rows, alternatives as columns
+```
+
+Light and dark follow `prefers-color-scheme`; `data-theme="light"` or `"dark"` on the mount element forces one; failing that, the same attribute on `<html>`.
+
 Without a `source` the matrix is read-only and says so. Changing the source takes its document in the same call: `update({ source, analysis: await source.getOne(id) })`. No React or Vue binding ships; each is a few lines:
 
 ```tsx

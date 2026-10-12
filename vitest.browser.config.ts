@@ -9,6 +9,9 @@ import { defineConfig } from 'vitest/config';
  * extends it by adding files under `tests/browser/`, without changing the job.
  */
 export default defineConfig({
+  // Discovered late, a dependency makes Vite reload mid-run and fail the tests
+  // already in flight; name the view's runtime imports up front.
+  optimizeDeps: { include: ['preact', 'preact/hooks', 'preact/jsx-runtime'] },
   test: {
     include: ['tests/browser/**/*.test.ts'],
     browser: {

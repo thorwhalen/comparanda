@@ -11,6 +11,8 @@
 import { h, render, type ComponentType } from 'preact';
 
 import { vocabularyOf, type Analysis } from '../core/schema/analysis.js';
+import type { Affordances } from '../core/affordances.js';
+import { initialViewState, ViewState } from '../core/view-state.js';
 import {
   DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
 } from '../store/index.js';
@@ -38,7 +40,8 @@ export interface MountOptions {
 
 /**
  * Without a source there is nothing to write to: every write affordance is
- * refused, with the provider's reason, by the same path a frozen source takes.
+ * refused by the same path a frozen source takes, and `withoutSource` then
+ * words the reason about the matrix rather than about a source it lacks.
  */
 const NO_SOURCE: Pick<DataProvider<unknown>, 'getCapabilities'> = {
   getCapabilities: () => ({
@@ -47,9 +50,27 @@ const NO_SOURCE: Pick<DataProvider<unknown>, 'getCapabilities'> = {
   }),
 };
 
+/**
+ * The write affordances without a source, in words about the matrix rather
+ * than about a source that does not exist. Still asked through, so a malformed
+ * request (an empty `doing`, an unknown decision) throws as it would with one.
+ */
+function withoutSource(a: Affordances): Affordances {
+  const refused = Object.freeze({ enabled: false, reason: 'there is no source behind this matrix, so it does not accept updates; it is read-only.' });
+  return {
+    ...a,
+    assert: () => refused,
+    suggest: () => refused,
+    comment: () => refused,
+    revise: (doing, target) => (a.revise(doing, target), refused),
+    changeLock: () => refused,
+    decideSuggestion: (id, decision) => (a.decideSuggestion(id, decision), refused),
+  };
+}
+
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
-  'analysis', 'measure', 'vocabulary', 'encoding', 'standing', 'source', 'authorize',
+  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
 /** Elements with a live matrix. Two mounts on one element would each think they own its children. */
@@ -77,16 +98,20 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
   let destroyed = false;
 
   const draw = () => {
-    const { measure, vocabulary, encoding, standing, source, authorize } = current;
-    const view: MatrixViewProps = {
+    const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
+    const resolved: MatrixViewProps = {
       analysis,
       measure,
       vocabulary: vocabulary ?? vocabularyOf(analysis),
-      encoding: encoding ?? TEXT_ONLY,
-      affordances: editAffordances(source ?? NO_SOURCE, analysis, authorize ? { authorize } : {}),
+      encoding: encoding ?? view?.encoding ?? TEXT_ONLY,
+      // Without one, the document's own order, so a source's added alternative shows.
+      view: view ?? initialViewState(analysis),
+      affordances: source
+        ? editAffordances(source, analysis, authorize ? { authorize } : {})
+        : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
       ...(standing ? { standing } : {}),
     };
-    render(h(component, view), el);
+    render(h(component, resolved), el);
   };
 
   /** Subscribe to `source`; the returned function unsubscribes. */
@@ -202,7 +227,7 @@ function checked(props: MountMatrixProps): MountMatrixProps {
     throw new TypeError(`mountMatrix needs props ({ analysis, measure, ... }); got ${describe(props)}.`);
   }
   unknownKeys(props);
-  const { analysis, measure, source } = props;
+  const { analysis, measure, view, source } = props;
   if (analysis === null || typeof analysis !== 'object' ||
     !Array.isArray(analysis.alternatives) || !Array.isArray(analysis.criteria)) {
     throw new TypeError(
@@ -211,6 +236,18 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   }
   if (typeof measure !== 'string' || measure.trim() === '') {
     throw new TypeError(`props.measure must name a measure ("score", "confidence", or a declared one); got ${describe(measure)}.`);
+  }
+  if (view !== undefined) {
+    const parsed = ViewState.safeParse(view);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      throw new TypeError(
+        `props.view must be a ViewState (initialViewState(analysis), or one parsed with parseViewState); ` +
+          `${issue ? `${issue.path.join('.') || 'it'}: ${issue.message}` : `got ${describe(view)}`}.`,
+      );
+    }
+    // The parsed copy, defaults filled, so the component never meets a partial one.
+    props = { ...props, view: parsed.data };
   }
   if (source !== undefined && typeof source.subscribe !== 'function') {
     // A source the view cannot follow would offer edits against a document it
