@@ -161,11 +161,13 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const after = state === 'value'
       ? `${reduced?.withheldFromReader ? '' : outOf(reduced?.value, reader.measurementOf(critId))}${sure !== undefined ? `, ${CONFIDENCE} ${String(sure)}` : ''}`
       : '';
-    // After a value, the encoding's words continue the phrase; after an absence's
-    // sentence they are a sentence of their own, and the standing comes last.
-    const said = absence
-      ? `${mark.said ? ` ${asSentence(mark.said)}` : ''} ${STANDING_SAID[absence]}`
-      : `${after}${mark.said ?? ''}`;
+    // After a value, the encoding's words continue the phrase. After an absence or
+    // a refusal -- a sentence -- they are a sentence of their own, and an absence's
+    // standing comes last. A declared meaning without a full stop is given one.
+    const extra = state === 'value' ? '' : asSentence(mark.said ?? '');
+    const said = state === 'value'
+      ? `${after}${mark.said ?? ''}`
+      : `${/[.!?]$/.test(text) ? '' : '.'}${extra && ` ${extra}`}${absence ? ` ${STANDING_SAID[absence]}` : ''}`;
     // Visually hidden, inside the cell: "Memory safety, Rust, 5 of 5, confidence low" (ADR-0027).
     // The encoding's badge is seen; its meaning, in `said`, is what is heard.
     return (
@@ -352,10 +354,13 @@ function cellContent(
 ): { state: CellState; text: string; absence?: CellAbsence } {
   const absent = (code: string, state: CellState) => {
     const facts = vocabulary.resolve(code, criterionId).facts;
-    // An undeclared code has no meaning to show; its id is worded, never shown bare.
+    // An undeclared code has no meaning to show, and a declared one may have an
+    // empty one: either way its id is worded, never shown bare or left blank.
+    const means = facts?.means.trim();
+    const worded = `Absent for a reason this analysis does not ${facts ? 'describe' : 'define'} (\u201c${code}\u201d).`;
     return facts
-      ? { state, text: facts.means, absence: absenceStanding(facts) }
-      : { state, text: `Absent for a reason this analysis does not define (\u201c${code}\u201d).`, absence: 'undeclared' as const };
+      ? { state, text: means || worded, absence: absenceStanding(facts) }
+      : { state, text: worded, absence: 'undeclared' as const };
   };
   if (reduced?.refused !== undefined) {
     // A cell this reader sees only part of: the projection's gap (ADR-0021),
@@ -514,10 +519,10 @@ function bandLabel(b: Band, axis: AxisLayout): string {
   return named.length === 0 ? 'In none of the chosen groups' : `Not in ${named.join(' or ')}`;
 }
 
-/** A trailing phrase (", the datum") as a sentence of its own ("The datum."). */
+/** A trailing phrase (", the datum") as a sentence of its own ("The datum."); nothing if it has no words. */
 function asSentence(phrase: string): string {
-  const bare = phrase.replace(/^[\s,;]+/, '').replace(/[\s.]+$/, '');
-  return `${capitalise(bare)}.`;
+  const bare = phrase.replace(/^[\s,;.]+/, '').replace(/[\s,;.]+$/, '');
+  return bare ? `${capitalise(bare)}.` : '';
 }
 
 function capitalise(word: string): string {

@@ -17,12 +17,18 @@ import relocationJson from '../../examples/relocation.json';
 
 const relocation = Analysis.parse(relocationJson);
 const UNDECLARED = 'no-such-reason';
+/** Declarations an author can write that the view must still word: a blank meaning, and one with no full stop. */
+const AWKWARD = [
+  { id: 'blank-meaning', broader: 'not-evidenced' as const, means: '   ', params: {} },
+  { id: 'no-full-stop', broader: 'not-assessed' as const, means: 'Asked; no reply yet', params: {} },
+];
 
 /** Every code in force, each on a cell of its own: core codes, analysis-scope and criterion-scope declarations, one undeclared. */
 function everyCode(): { analysis: Analysis; placed: { alt: string; crit: string; code: string }[] } {
   const overlays = relocation.criteria.flatMap((c) => (c.missingCodes ?? []).map((d) => ({ code: d.id, crit: c.id })));
   const plain = relocation.criteria.filter((c) => !(c.missingCodes ?? []).length).map((c) => c.id);
-  const anywhere = [...Object.keys(CORE_MISSING_CODES), ...(relocation.missingCodes ?? []).map((d) => d.id), UNDECLARED];
+  const declared = [...(relocationJson.missingCodes ?? []), ...AWKWARD];
+  const anywhere = [...Object.keys(CORE_MISSING_CODES), ...declared.map((d) => d.id), UNDECLARED];
   const alts = relocation.alternatives.map((a) => a.id);
   const placed = [
     ...overlays.map((o, i) => ({ alt: alts[i % alts.length]!, crit: o.crit, code: o.code })),
@@ -36,7 +42,7 @@ function everyCode(): { analysis: Analysis; placed: { alt: string; crit: string;
       assertions: [{ id: `absence-${i}`, authorId: relocationJson.authors[0]!.id, at: '2026-09-01T00:00:00Z', evidence: [], version: 1, missing: { code: p.code } }],
     })),
   ];
-  return { analysis: Analysis.parse({ ...relocationJson, cells }), placed };
+  return { analysis: Analysis.parse({ ...relocationJson, missingCodes: declared, cells }), placed };
 }
 
 let el: HTMLElement;
@@ -85,7 +91,15 @@ describe('every absent cell says its reason in words (#101)', () => {
         // An encoding's words after an absence are a sentence, not a dangling phrase.
         expect(said, code).not.toMatch(/\.\s*,/);
         const facts = vocabulary.resolve(code, crit).facts;
-        if (facts) {
+        // The shown text ends a sentence before anything else is heard after it.
+        const shown = td.querySelector('.comparanda-shown')!.textContent!;
+        expect(shown.trim(), code).not.toBe('');
+        expect(/[.!?]$/.test(shown) || said.slice(said.indexOf(shown) + shown.length).startsWith('.'), code).toBe(true);
+        if (facts && !facts.means.trim()) {
+          // A declared but blank meaning is worded from the id, never shown empty.
+          expect(said).toContain(code);
+          expect(td.getAttribute('data-absence')).toBe(absenceStanding(facts));
+        } else if (facts) {
           expect(said, code).toContain(facts.means);
           expect(td.getAttribute('data-absence'), code).toBe(absenceStanding(facts));
           standings.set(absenceStanding(facts), said.slice(said.lastIndexOf('.', said.length - 2) + 1).trim());
