@@ -107,7 +107,7 @@ export type CellAbsence = AbsenceStanding | 'undeclared';
 const STANDING_SAID: Readonly<Record<CellAbsence, string>> = {
   structural: 'Nothing to record here.',
   outstanding: 'Still to be done.',
-  answered: 'Not a gap: this is the answer.',
+  answered: 'Settled: not work outstanding.',
   // As completeness counts it: the safe direction is to treat it as work remaining.
   undeclared: 'Counted as still to be done.',
 };
@@ -167,7 +167,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const extra = state === 'value' ? '' : asSentence(mark.said ?? '');
     const said = state === 'value'
       ? `${after}${mark.said ?? ''}`
-      : `${/[.!?]$/.test(text) ? '' : '.'}${extra && ` ${extra}`}${absence ? ` ${STANDING_SAID[absence]}` : ''}`;
+      : `${/[.!?\u2026)\]"\u201d\u2019]$/.test(text) ? '' : '.'}${extra && ` ${extra}`}${absence ? ` ${STANDING_SAID[absence]}` : ''}`;
     // Visually hidden, inside the cell: "Memory safety, Rust, 5 of 5, confidence low" (ADR-0027).
     // The encoding's badge is seen; its meaning, in `said`, is what is heard.
     return (

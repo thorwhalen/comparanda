@@ -94,7 +94,7 @@ describe('every absent cell says its reason in words (#101)', () => {
         // The shown text ends a sentence before anything else is heard after it.
         const shown = td.querySelector('.comparanda-shown')!.textContent!;
         expect(shown.trim(), code).not.toBe('');
-        expect(/[.!?]$/.test(shown) || said.slice(said.indexOf(shown) + shown.length).startsWith('.'), code).toBe(true);
+        expect(/[.!?\u2026)\]"\u201d\u2019]$/.test(shown) || said.slice(said.indexOf(shown) + shown.length).startsWith('.'), code).toBe(true);
         if (facts && !facts.means.trim()) {
           // A declared but blank meaning is worded from the id, never shown empty.
           expect(said).toContain(code);
@@ -117,7 +117,7 @@ describe('every absent cell says its reason in words (#101)', () => {
       // And each is heard the right way round: the structural one as nothing to do, the outstanding one as a gap.
       expect(standings.get('structural')).toMatch(/nothing to record/i);
       expect(standings.get('outstanding')).toMatch(/still to be done/i);
-      expect(standings.get('answered')).toMatch(/not a gap/i);
+      expect(standings.get('answered')).toMatch(/not work outstanding/i);
     });
   }
 
