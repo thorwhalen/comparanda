@@ -46,7 +46,9 @@ import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../c
 import { makeCellReader, unknownMeasure, type Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { Measurement } from '../core/schema/measurement.js';
-import { NOT_APPLICABLE, NOT_ASSESSED, type MissingnessVocabulary } from '../core/schema/missingness.js';
+import {
+  absenceStanding, NOT_APPLICABLE, NOT_ASSESSED, type AbsenceStanding, type MissingnessVocabulary,
+} from '../core/schema/missingness.js';
 import { aliasesOf } from '../core/schema/structure.js';
 import type { Reduced } from '../core/schema/values.js';
 import type { Session, ViewState } from '../core/view-state.js';
@@ -92,6 +94,23 @@ const CONFIDENCE = 'confidence';
  */
 export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' | 'refused';
 
+/**
+ * What an absent cell says about the work, beside its code's meaning: read from
+ * the code's flags (`absenceStanding`), so a deployment's extension is heard the
+ * same way as the core code it refines (#101). `not-applicable` is correctly
+ * nothing; `not-assessed` is a gap. `undeclared` is a code this analysis does
+ * not define, and nothing about it may be guessed.
+ */
+export type CellAbsence = AbsenceStanding | 'undeclared';
+
+/** The words for each standing, after the code's own meaning. */
+const STANDING_SAID: Readonly<Record<CellAbsence, string>> = {
+  structural: 'Nothing to record here.',
+  outstanding: 'Still to be done.',
+  answered: 'Not a gap: someone looked.',
+  undeclared: 'Whether work remains is not known.',
+};
+
 export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, affordances, onFocusChange }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
@@ -133,7 +152,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
     const reduced = read(altId, critId);
     const mark = prepared.mark(altId, critId);
-    const { state, text } = cellContent(reduced, affordances.inapplicable(altId, critId), vocabulary, critId);
+    const { state, text, absence } = cellContent(reduced, affordances.inapplicable(altId, critId), vocabulary, critId);
     const [altLabel, critLabel] = transposed
       ? [columnLabel.get(columnId), rowLabel.get(rowId)]
       : [rowLabel.get(rowId), columnLabel.get(columnId)];
@@ -141,12 +160,12 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const after = state === 'value'
       ? `${reduced?.withheldFromReader ? '' : outOf(reduced?.value, reader.measurementOf(critId))}${sure !== undefined ? `, ${CONFIDENCE} ${String(sure)}` : ''}`
       : '';
-    const said = `${after}${mark.said ?? ''}`;
+    const said = `${after}${absence ? ` ${STANDING_SAID[absence]}` : ''}${mark.said ?? ''}`;
     // Visually hidden, inside the cell: "Memory safety, Rust, 5 of 5, confidence low" (ADR-0027).
     // The encoding's badge is seen; its meaning, in `said`, is what is heard.
     return (
       <td
-        key={columnId} data-state={state} {...stop(r, c)}
+        key={columnId} data-state={state} data-absence={absence} {...stop(r, c)}
         data-swatch={mark.swatch} data-hatch={mark.hatch} data-glyph={mark.glyph}
       >
         <span class="comparanda-sr">{`${critLabel}, ${altLabel}, `}</span>
@@ -315,14 +334,24 @@ function RefusedEdits({ analysis, measure, affordances, rows, columns, transpose
   );
 }
 
-/** A cell as text and the state it is in. Never empty: an absence is read through the vocabulary, a refusal states its reason. */
+/**
+ * A cell as text and the state it is in. Never empty: an absence is read
+ * through the vocabulary -- its code's own `means`, and its standing from the
+ * code's flags -- and a refusal states its reason.
+ */
 function cellContent(
   reduced: Reduced | undefined,
   inapplicable: boolean,
   vocabulary: MissingnessVocabulary,
   criterionId: string,
-): { state: CellState; text: string } {
-  const means = (code: string) => vocabulary.means(code, criterionId) ?? code;
+): { state: CellState; text: string; absence?: CellAbsence } {
+  const absent = (code: string, state: CellState) => {
+    const facts = vocabulary.resolve(code, criterionId).facts;
+    // An undeclared code has no meaning to show; its id is worded, never shown bare.
+    return facts
+      ? { state, text: facts.means, absence: absenceStanding(facts) }
+      : { state, text: `Absent for a reason this analysis does not define (\u201c${code}\u201d).`, absence: 'undeclared' as const };
+  };
   if (reduced?.refused !== undefined) {
     // A cell this reader sees only part of: the projection's gap (ADR-0021),
     // which core reports as such (#171), not the raters' disagreement.
@@ -341,13 +370,10 @@ function cellContent(
   }
   if (reduced?.missing !== undefined) {
     const code = reduced.missing.code;
-    const state = code === NOT_APPLICABLE ? 'not-applicable' : code === NOT_ASSESSED ? 'not-assessed' : 'missing';
-    return { state, text: means(code) };
+    return absent(code, code === NOT_APPLICABLE ? 'not-applicable' : code === NOT_ASSESSED ? 'not-assessed' : 'missing');
   }
   // No value and no recorded absence: a declared block says why; otherwise nobody has looked.
-  return inapplicable
-    ? { state: 'not-applicable', text: means(NOT_APPLICABLE) }
-    : { state: 'not-assessed', text: means(NOT_ASSESSED) };
+  return inapplicable ? absent(NOT_APPLICABLE, 'not-applicable') : absent(NOT_ASSESSED, 'not-assessed');
 }
 
 /**
