@@ -79,9 +79,10 @@ export function reviseCriterion(
   const i = a.criteria.findIndex((c) => c.id === criterionId);
   if (i < 0) throw new Error(`no criterion "${criterionId}" in analysis "${a.id}".`);
   const version = nextVersion ?? nextCriteriaVersion(a.criteriaVersion);
-  if (a.criteriaVersion !== undefined && compareCriteriaVersions(version, a.criteriaVersion) !== 1) {
+  if (compareCriteriaVersions(version, effectiveCriteriaVersion(a.criteriaVersion)) !== 1) {
     throw new Error(
-      `the next criteria-set version "${version}" does not come after the current "${a.criteriaVersion}". ` +
+      `the next criteria-set version "${version}" does not come after the current ` +
+        `"${effectiveCriteriaVersion(a.criteriaVersion)}"${a.criteriaVersion === undefined ? ' (an unversioned set reads as "1")' : ''}. ` +
         'A version that does not order after the last one cannot say which scores came before the change.',
     );
   }
@@ -103,6 +104,15 @@ export function reviseCriterion(
   return { ...a, criteria, criteriaVersion: version };
 }
 
+/**
+ * The version a set is at, reading an absent version as `"1"` -- the same
+ * reading `nextCriteriaVersion` makes. One reading, so that "the first revision
+ * of an unversioned set" cannot be `"1"` in one function and `"2"` in another.
+ */
+export function effectiveCriteriaVersion(v: string | undefined): string {
+  return v ?? '1';
+}
+
 /** A revision a write path must refuse. */
 export interface CriteriaRevisionProblem {
   path: string;
@@ -121,10 +131,19 @@ export interface CriteriaRevisionProblem {
  * - a `definedInVersion` that moved backwards, which would make superseded
  *   scores read as current;
  * - a `definedInVersion` later than the set's own version, which claims a
- *   change the set never recorded.
+ *   change the set never recorded;
+ * - a set version that moved backwards, or was dropped, which would make
+ *   assertions scored under the later version read as from the future;
+ * - a criterion that disappeared. Deleting one is `tombstone`, which keeps it.
+ *   Without this, the guard compares each criterion only with its previous
+ *   self, so removing it in one write and adding it back with a new meaning in
+ *   the next -- or renaming its id and carrying its cells along -- stored a new
+ *   meaning against old scores with no version bump (#165). A criterion that
+ *   cannot leave the document cannot come back as something else.
  *
- * Criteria added or removed are not compared; a removed criterion is tombstoned
- * rather than deleted elsewhere, and a new one has no earlier meaning to rewrite.
+ * An absent set version reads as `"1"` throughout, as in `nextCriteriaVersion`:
+ * an unversioned set "bumped" to `"1"` or `"0"` has not moved. A new criterion
+ * has no earlier meaning to rewrite and is not compared.
  */
 export function criteriaRevisionProblems(
   before: Pick<Analysis, 'criteria' | 'criteriaVersion'>,
@@ -132,9 +151,31 @@ export function criteriaRevisionProblems(
 ): CriteriaRevisionProblem[] {
   const problems: CriteriaRevisionProblem[] = [];
   const old = new Map(before.criteria.map((c) => [c.id, c]));
-  const moved = before.criteriaVersion === undefined
-    ? after.criteriaVersion !== undefined
-    : after.criteriaVersion !== undefined && compareCriteriaVersions(after.criteriaVersion, before.criteriaVersion) === 1;
+  const was = effectiveCriteriaVersion(before.criteriaVersion);
+  const now = effectiveCriteriaVersion(after.criteriaVersion);
+  const order = compareCriteriaVersions(now, was);
+  const moved = order === 1;
+
+  if (order === -1 || (before.criteriaVersion !== undefined && after.criteriaVersion === undefined)) {
+    problems.push({
+      path: 'criteriaVersion',
+      message: `the criteria-set version moved from "${was}" back to ` +
+        `${after.criteriaVersion === undefined ? 'nothing (which reads as "1")' : `"${now}"`}. Assertions record the ` +
+        'version they were scored against, and those scored under the later one would read as from the future.',
+      fix: 'leave the version where it is, or move it forward.',
+    });
+  }
+
+  const kept = new Set(after.criteria.map((c) => c.id));
+  before.criteria.forEach((c, i) => {
+    if (kept.has(c.id)) return;
+    problems.push({
+      path: `criteria[${i}]`,
+      message: `criterion "${c.id}" was removed from the document. A removed criterion can come back under the ` +
+        'same id, or its scores under a new one, with a different meaning and no version bump.',
+      fix: 'tombstone it instead (`tombstone(a, {kind: "criterion", id})`), which keeps it and its history.',
+    });
+  });
 
   after.criteria.forEach((c, i) => {
     const at = `criteria[${i}]`;
@@ -161,12 +202,11 @@ export function criteriaRevisionProblems(
         });
       }
     }
-    if (c.definedInVersion !== undefined && after.criteriaVersion !== undefined &&
-      compareCriteriaVersions(c.definedInVersion, after.criteriaVersion) === 1) {
+    if (c.definedInVersion !== undefined && compareCriteriaVersions(c.definedInVersion, now) === 1) {
       problems.push({
         path: `${at}.definedInVersion`,
         message: `criterion "${c.id}" claims to be defined in "${c.definedInVersion}", later than the ` +
-          `criteria-set version "${after.criteriaVersion}".`,
+          `criteria-set version "${now}"${after.criteriaVersion === undefined ? ' (an unversioned set reads as "1")' : ''}.`,
         fix: 'set definedInVersion to the set version at which the criterion last changed meaning.',
       });
     }

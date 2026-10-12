@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   createMigrationChain, migrate, needsMigration, registerMigration, registeredMigrations,
-  missingMigrationSteps, _clearMigrations, type VersionedDocument,
+  missingMigrationSteps, _clearMigrations, DOCUMENT_MIGRATIONS, type VersionedDocument,
 } from '../src/core/migrations.js';
 import { viewStateMigrations, VIEW_STATE_VERSION } from '../src/core/view-state.js';
 import { SCHEMA_VERSION, validateAnalysis } from '../src/core/schema/analysis.js';
@@ -155,6 +155,20 @@ describe('every version bump registers a step (#54)', () => {
     chain.register(v1ToV2);
     chain.register({ from: 3, describes: 'a no-op still counts', migrate: (d) => d });
     expect(chain.missingSteps()).toEqual([2]);
+  });
+
+  it('a chain keeps its shipped steps through clear(), so the seam cannot fake a gap (#165)', () => {
+    const chain = createMigrationChain({ currentVersion: 2, steps: [v1ToV2] });
+    expect(chain.missingSteps()).toEqual([]);
+    chain.clear();
+    expect(chain.missingSteps()).toEqual([]);
+    expect(chain.migrate(languagesV1()).path).toEqual([1, 2]);
+    expect(() => chain.register(v1ToV2)).toThrow(/already registered/);
+  });
+
+  it('the package chain\'s seam keeps the shipped steps too', () => {
+    _clearMigrations();
+    expect(registeredMigrations()).toEqual([...DOCUMENT_MIGRATIONS]);
   });
 
   it('the shipped document chain is complete: bumping SCHEMA_VERSION without a step fails here', () => {

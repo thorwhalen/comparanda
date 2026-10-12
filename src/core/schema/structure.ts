@@ -243,6 +243,17 @@ export const Aliases = z.object({
 export type Aliases = z.infer<typeof Aliases>;
 
 /**
+ * The singular/plural pairs of `Aliases`. A pair is given whole or not at all:
+ * half a pair falls back to the default for the other half, and the view then
+ * says "Option X ... 3 more vendors" (#165). `validateAnalysis` refuses half a
+ * pair, and the emitted JSON Schema says the same with `dependentRequired`.
+ */
+export const ALIAS_PAIRS = Object.freeze([
+  ['alternative', 'alternatives'],
+  ['criterion', 'criteria'],
+] as const satisfies readonly (readonly [keyof Aliases, keyof Aliases])[]);
+
+/**
  * The display aliases in force: the analysis's own, else the defaults.
  *
  * The one place a fallback word comes from. Readers that wrote

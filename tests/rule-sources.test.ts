@@ -65,6 +65,8 @@ const hostile = {
   schemaVersion: 99,
   subject: { question: 'which one?' },
   authors: [AUTHOR],
+  // Half an alias pair (#165).
+  aliases: { alternatives: 'vendors' },
   alternatives: [{ id: 'x', label: 'X', groupIds: ['ghost-group', 'gc'] }, { id: 'x', label: 'X again' }],
   groups: [
     // A nesting cycle, and a criteria group used on an alternative.
@@ -114,6 +116,16 @@ const hostile = {
       ],
     },
     { alternativeId: 'x', criterionId: 'c', measure: 'score', assertions: [] },
+    // A value off the scale, a supersession pointing at nothing, and a cycle (#165).
+    {
+      alternativeId: 'x', criterionId: 'n', measure: 'score',
+      assertions: [
+        { id: 'v1', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, value: 'zz', justification: 'j', evidence: [] },
+        { id: 'v2', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, value: 2, justification: 'j', evidence: [], supersededBy: 'ghost' },
+        { id: 'v3', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, value: 2, justification: 'j', evidence: [], supersededBy: 'v4' },
+        { id: 'v4', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, value: 2, justification: 'j', evidence: [], supersededBy: 'v3' },
+      ],
+    },
     { alternativeId: 'nobody', criterionId: 'nothing', measure: 'score', assertions: [] },
     { alternativeId: 'x', criterionId: 'bare', measure: 'score', assertions: [] },
   ],

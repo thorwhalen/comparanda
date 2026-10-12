@@ -33,6 +33,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Analysis, SCHEMA_VERSION } from '../src/core/schema/analysis.js';
+import { ALIAS_PAIRS } from '../src/core/schema/structure.js';
 import { CORE_MISSING_CODES } from '../src/core/schema/missingness.js';
 import { CORE_REDUCTIONS } from '../src/core/schema/values.js';
 import { SCALE_CORE } from '../src/core/schema/measurement.js';
@@ -148,6 +149,12 @@ function main(): void {
     target: 'draft-2020-12',
     io: 'input',
   }) as Record<string, unknown>;
+  // What zod cannot say: an alias pair is given whole or not at all. Built from
+  // the same table validateAnalysis reads, so the two cannot disagree.
+  const aliases = (document.properties as Record<string, Record<string, unknown>>).aliases!;
+  aliases.dependentRequired = Object.fromEntries(
+    ALIAS_PAIRS.flatMap(([one, many]) => [[one, [many]], [many, [one]]]),
+  );
   const schema = {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     $id: `https://github.com/thorwhalen/comparanda/schema/comparanda.v${SCHEMA_VERSION}.json`,

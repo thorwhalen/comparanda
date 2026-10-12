@@ -31,8 +31,9 @@
 import { DEFAULT_CAPABILITIES, createInMemoryProvider } from '@zodal/store';
 import type { DataProvider, ProviderCapabilities } from '@zodal/store';
 
-import type { Analysis } from '../core/schema/analysis.js';
+import { validateAnalysis, type Analysis } from '../core/schema/analysis.js';
 import { criteriaRevisionProblems } from '../core/criteria-revision.js';
+import { tombstonedGroupProblems } from '../core/schema/anchors.js';
 import { cellPolicy, type Affordance } from '../core/affordances.js';
 import type { Cell } from '../core/schema/values.js';
 import type { Author } from '../core/schema/provenance.js';
@@ -191,6 +192,15 @@ export function oneItemProvider<T extends { id: string }>(
  * the criteria-set version (`criteriaRevisionProblems`, #62): the write path is
  * where a silent rewrite has to stop, because once stored, nothing in the
  * document says the old scores answered a different question.
+ *
+ * It also refuses a write whose result `validateAnalysis` rejects. The rules a
+ * view consults through the affordance layer -- which values a measurement
+ * admits, above all -- are the validator's rules, so a write that bypassed the
+ * view still meets them; without this the store accepted a 99 on a 1-5 scale
+ * the affordance layer would never offer (#165). Warnings do not block: an
+ * unfinished matrix is a normal working state. And it refuses attaching
+ * anything new to a tombstoned group (`tombstonedGroupProblems`), which every
+ * reader would silently ignore.
  */
 export function inMemoryAnalysisSource(analysis: Analysis, options?: { canUpdate?: boolean }): AnalysisSource {
   const inner = oneItemProvider(analysis, options);
@@ -198,7 +208,12 @@ export function inMemoryAnalysisSource(analysis: Analysis, options?: { canUpdate
     ...inner,
     update: async (id: string, data: Partial<Analysis>) => {
       const before = await inner.getOne(id);
-      const problems = criteriaRevisionProblems(before, { ...before, ...data });
+      const after = { ...before, ...data };
+      const problems = [
+        ...criteriaRevisionProblems(before, after),
+        ...tombstonedGroupProblems(before, after),
+        ...validateAnalysis(after, { includeCompleteness: false }).problems.filter((p) => p.severity === 'error'),
+      ];
       if (problems.length) {
         throw new Error(
           'refused: ' + problems.map((p) => `${p.path}: ${p.message} Fix: ${p.fix}`).join(' | '),

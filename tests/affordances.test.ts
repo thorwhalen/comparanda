@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Analysis } from '../src/core/schema/analysis.js';
+import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
 import { screen } from '../src/core/analyses/screening.js';
 import { tombstone } from '../src/core/schema/anchors.js';
 import { makeAffordances, cellPolicy, valueAffordance, type EditRequest } from '../src/core/affordances.js';
@@ -108,6 +108,32 @@ describe('values and blanks a view may offer', () => {
     expect(aff.value('rent', 'score', 'cheap').reason).toMatch(/takes a number/);
     expect(aff.value('nothing', 'score', 1).enabled).toBe(false);
     expect(valueAffordance({ level: 'ratio', preference: 'increasing', range: { min: 0, max: 10 } }, 11).reason).toMatch(/outside/);
+  });
+
+  it('agrees with the validator: a value the editor refuses is a document the validator refuses (#165)', () => {
+    const a = relocation();
+    const aff = makeAffordances(a);
+    const i = a.cells.findIndex((c) => c.criterionId === 'school-quality' && c.assertions.some((s) => s.value !== undefined));
+    const j = a.cells[i]!.assertions.findIndex((s) => s.value !== undefined);
+    for (const value of [99, 'zz', 4] as const) {
+      const cells = a.cells.map((c, k) => (k !== i ? c : {
+        ...c, assertions: c.assertions.map((s, l) => (l === j ? { ...s, value } : s)),
+      }));
+      const r = validateAnalysis({ ...a, cells }, { includeCompleteness: false });
+      const refused = r.problems.some((p) => p.ruleId === 'value-admitted');
+      expect(refused, String(value)).toBe(!aff.value('school-quality', 'score', value).enabled);
+    }
+  });
+
+  it('the store refuses the value the editor would not offer (#165)', async () => {
+    const a = relocation();
+    const src = inMemoryAnalysisSource(a);
+    const i = a.cells.findIndex((c) => c.criterionId === 'school-quality' && c.assertions.some((s) => s.value !== undefined));
+    const cells = a.cells.map((c, k) => (k !== i ? c : {
+      ...c, assertions: c.assertions.map((s) => (s.value !== undefined ? { ...s, value: 99 } : s)),
+    }));
+    await expect(src.update(a.id, { cells })).rejects.toThrow(/value-admitted/);
+    expect((await src.getOne(a.id)).cells[i]).toEqual(a.cells[i]);
   });
 
   it('lists the codes legal on a criterion, criterion overlay included, and refuses the rest', () => {

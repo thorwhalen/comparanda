@@ -66,6 +66,20 @@
           "default": "criteria",
           "type": "string"
         }
+      },
+      "dependentRequired": {
+        "alternative": [
+          "alternatives"
+        ],
+        "alternatives": [
+          "alternative"
+        ],
+        "criterion": [
+          "criteria"
+        ],
+        "criteria": [
+          "criterion"
+        ]
       }
     },
     "measures": {

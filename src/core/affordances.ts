@@ -24,7 +24,7 @@ import type { Analysis } from './schema/analysis.js';
 import { vocabularyOf } from './schema/analysis.js';
 import { makeInapplicability } from './schema/groups.js';
 import { CORE_MISSING_CODES } from './schema/missingness.js';
-import { isOrdered, type Measurement, type Preference } from './schema/measurement.js';
+import { valueRefusal, type Measurement, type Preference } from './schema/measurement.js';
 import { measurementFor } from './schema/structure.js';
 import type { Cell, ScalarValue } from './schema/values.js';
 
@@ -193,20 +193,11 @@ export function makeAffordances(
 }
 
 /**
- * Whether a measurement admits this value: a declared level when it lists
- * levels, a number within the range when it is ordered and declares one.
+ * Whether a measurement admits this value. The reason comes from
+ * `valueRefusal`, the same function `validateAnalysis` refuses a stored value
+ * with, so the two cannot disagree.
  */
 export function valueAffordance(m: Measurement, value: ScalarValue): Affordance {
-  if (m.levels) {
-    return m.levels.some((l) => l === value)
-      ? ALLOWED
-      : refuse(`${JSON.stringify(value)} is not one of the declared levels (${m.levels.map((l) => JSON.stringify(l)).join(', ')}).`);
-  }
-  if (isOrdered(m.level)) {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return refuse(`a ${m.level} measurement takes a number, not ${JSON.stringify(value)}.`);
-    if (m.range && (value < m.range.min || value > m.range.max)) {
-      return refuse(`${value} lies outside the declared range [${m.range.min}, ${m.range.max}].`);
-    }
-  }
-  return ALLOWED;
+  const reason = valueRefusal(m, value);
+  return reason === undefined ? ALLOWED : refuse(reason);
 }

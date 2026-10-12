@@ -65,10 +65,21 @@ export interface MigrationChain {
    * build instead of `migrate` failing on a reader's stored document.
    */
   missingSteps(): number[];
+  /**
+   * Forget every step registered after construction. The steps the chain was
+   * built with stay: they are what ships, and a test seam that removed them
+   * would make the completeness test above fail exactly when a real step exists.
+   */
   clear(): void;
 }
 
-export function createMigrationChain({ currentVersion }: { currentVersion: number }): MigrationChain {
+export function createMigrationChain(
+  { currentVersion, steps = [] }: {
+    currentVersion: number;
+    /** The steps that ship with this chain. `clear()` keeps these. */
+    steps?: readonly Migration[];
+  },
+): MigrationChain {
   if (!Number.isInteger(currentVersion) || currentVersion < 1) {
     throw new Error(`currentVersion must be a positive integer (got ${currentVersion})`);
   }
@@ -135,19 +146,36 @@ export function createMigrationChain({ currentVersion }: { currentVersion: numbe
     return { document: current, path, applied };
   }
 
-  return {
+  const chain: MigrationChain = {
     currentVersion,
     register,
     registered: () => [...registry.values()].sort((a, b) => a.from - b.from),
     migrate,
     needsMigration: (doc) => versionOf(doc) < currentVersion,
     missingSteps: () => Array.from({ length: currentVersion - 1 }, (_, i) => i + 1).filter((v) => !registry.has(v)),
-    clear: () => registry.clear(),
+    clear: () => {
+      registry.clear();
+      steps.forEach(register);
+    },
   };
+
+  steps.forEach(register);
+  return chain;
 }
 
+/**
+ * The analysis document's shipped migration steps, one per version bump.
+ *
+ * Empty at version 1, because there is no version 0 to migrate from: a
+ * document with no `schemaVersion` reads as 1. The first entry arrives with the
+ * first bump, `{ from: 1, ... }`, and the completeness test fails the build
+ * until it does. Data rather than a registration call at module scope, so a
+ * bundler under `sideEffects: false` cannot drop it.
+ */
+export const DOCUMENT_MIGRATIONS: readonly Migration[] = Object.freeze([]);
+
 /** The analysis document's chain, towards `SCHEMA_VERSION`. */
-const documentChain = createMigrationChain({ currentVersion: SCHEMA_VERSION });
+const documentChain = createMigrationChain({ currentVersion: SCHEMA_VERSION, steps: DOCUMENT_MIGRATIONS });
 
 /** Register a migration on the analysis document's chain. */
 export function registerMigration(m: Migration): void {
@@ -158,7 +186,11 @@ export function registeredMigrations(): Migration[] {
   return documentChain.registered();
 }
 
-/** Testing seam. Exported from the package entry point too (`export *`), so the leading underscore is the only warning. */
+/**
+ * Testing seam: forget steps registered at runtime, keeping the shipped ones.
+ * Exported from the package entry point too (`export *`), so the leading
+ * underscore is the only warning.
+ */
 export function _clearMigrations(): void {
   documentChain.clear();
 }
