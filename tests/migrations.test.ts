@@ -14,8 +14,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   createMigrationChain, migrate, needsMigration, registerMigration, registeredMigrations,
-  _clearMigrations, type VersionedDocument,
+  missingMigrationSteps, _clearMigrations, type VersionedDocument,
 } from '../src/core/migrations.js';
+import { viewStateMigrations, VIEW_STATE_VERSION } from '../src/core/view-state.js';
 import { SCHEMA_VERSION, validateAnalysis } from '../src/core/schema/analysis.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
@@ -144,5 +145,43 @@ describe('the package chain, towards SCHEMA_VERSION', () => {
     other.register(v1ToV2);
     expect(registeredMigrations()).toEqual([]);
     expect(needsMigration(languagesV1())).toBe(false);
+  });
+});
+
+describe('every version bump registers a step (#54)', () => {
+  it('names the versions a chain has no step from', () => {
+    const chain = createMigrationChain({ currentVersion: 4 });
+    expect(chain.missingSteps()).toEqual([1, 2, 3]);
+    chain.register(v1ToV2);
+    chain.register({ from: 3, describes: 'a no-op still counts', migrate: (d) => d });
+    expect(chain.missingSteps()).toEqual([2]);
+  });
+
+  it('the shipped document chain is complete: bumping SCHEMA_VERSION without a step fails here', () => {
+    // Vacuously empty at version 1. When the version is bumped, this test is
+    // what refuses a release whose stored version-1 documents cannot load.
+    expect(missingMigrationSteps()).toEqual([]);
+    expect(migrate(languagesV1()).document.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it('the shipped view-state chain is complete too, on its own version', () => {
+    expect(viewStateMigrations.missingSteps()).toEqual([]);
+  });
+});
+
+describe('view state migrates independently of the document (#54)', () => {
+  it('runs on its own chain and its own version', () => {
+    expect(viewStateMigrations.currentVersion).toBe(VIEW_STATE_VERSION);
+    expect(viewStateMigrations.registered()).toEqual([]);
+  });
+
+  it('a document from a future schema is refused while view state still loads, and the reverse', () => {
+    const doc = { ...languagesV1(), schemaVersion: SCHEMA_VERSION + 1 };
+    expect(() => migrate(doc)).toThrow(/this build reads up to/);
+    const vs = { schemaVersion: VIEW_STATE_VERSION };
+    expect(viewStateMigrations.migrate(vs).path).toEqual([VIEW_STATE_VERSION]);
+
+    expect(() => viewStateMigrations.migrate({ schemaVersion: VIEW_STATE_VERSION + 1 })).toThrow(/reads up to/);
+    expect(migrate(languagesV1()).path).toEqual([SCHEMA_VERSION]);
   });
 });
