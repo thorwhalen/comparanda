@@ -183,3 +183,11 @@ Clause 6 chose Vite plus `vite-plugin-singlefile`. Building it (#114) settled tw
 
 The CSP tag and the build-time zero-network check, the byte budget and the mail-filter warning remain clause 6's and clause 8's, each with its own issue (#115, #116, #118).
 
+
+### 2026-10-12 — clause 8's budget is enforced, and a committed dependency is charged before it lands
+
+The budget is `STANDALONE_BUDGET` in `src/build/budget.ts`: **200 kB raw, 1 kB = 1024 bytes** (the unit `comparanda build` prints), held against the page *without* the analysis, its title and its settings — the bundled shell, measured before they are spliced in. `buildStandalone` throws `BudgetExceeded` over it; `budget: false` reports without enforcing. The failure names where the bytes went, per package, largest first: the bundler's rendered length per module shares out the minified code bytes, approximate per package and exact in total. So a dependency that breaks the budget is named in the failure, ranked by size (#116); its own dependencies are named under their own packages. The shipped standalone entry is pre-bundled by tsup into one module, so tsup writes `main.packages.json` beside it from esbuild's metafile, and the budget shares that module out by it — without it every dependency would be charged to comparanda in the published CLI.
+
+ADR-0008 adopts `@atlaskit/pragmatic-drag-and-drop` and says to charge it explicitly. It is not in the bundle yet, so it is charged as a **reservation** (24 kB, an estimate): counted against the limit until the package appears in the bundle, then replaced by its measured bytes. Discovering its real size under pressure is the point of setting the budget at Phase 3.
+
+CI reports the figures for every example fixture, in the log and the job summary. At this amendment the shell is about 96 kB, 120 kB charged with the reservation.

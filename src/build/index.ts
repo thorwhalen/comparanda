@@ -13,13 +13,14 @@
  * consumer who only renders a matrix never installs them, and one who builds
  * is told exactly what to install.
  *
- * Out of scope here, each with its own issue: the CSP tag and the build-time
- * zero-network check (#115), the byte budget (#116), the mail-filter warning
- * (#118). What this does already: a disclosure projection, when given, runs
- * before anything is inlined (ADR-0021), because View Source recovers whatever
- * the file carries.
+ * The page is held to a raw-byte budget excluding the analysis (#116,
+ * `budget.ts`): over it, the build fails and names the packages the bytes went
+ * to. Out of scope here, each with its own issue: the CSP tag and the
+ * build-time zero-network check (#115), the mail-filter warning (#118). What
+ * this does already: a disclosure projection, when given, runs before anything
+ * is inlined (ADR-0021), because View Source recovers whatever the file carries.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -27,6 +28,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 import { unknownMeasure, validateAnalysis } from '../core/schema/analysis.js';
+import {
+  attribute, BudgetExceeded, chargeBudget, lengthsByPackage, PREBUNDLED_SUFFIX, STANDALONE_BUDGET,
+  type BudgetReport, type ByteBudget, type ReadPrebundled,
+} from './budget.js';
 import { projectForReader, type DisclosureDecision } from '../core/schema/disclosure.js';
 import {
   ANALYSIS_ELEMENT_ID, ROOT_ELEMENT_ID, SETTINGS_ELEMENT_ID, scriptSafeJson, type StandaloneSettings,
@@ -45,6 +50,12 @@ export interface BuildOptions {
   discloses?: DisclosureDecision;
   /** The standalone entry module. Default: the one shipped beside this module. */
   entry?: string;
+  /**
+   * The raw-byte budget the page is held to, the analysis excluded. Default:
+   * `STANDALONE_BUDGET`. Over it, the build throws `BudgetExceeded`. `false`
+   * reports against the default without enforcing it.
+   */
+  budget?: ByteBudget | false;
 }
 
 export interface BuildResult {
@@ -53,9 +64,15 @@ export interface BuildResult {
   /** Its size in bytes, raw and gzipped. */
   bytes: number;
   gzipBytes: number;
+  /** The page without the analysis, held against the budget: where its bytes went. */
+  budget: BudgetReport;
   /** Validation warnings the analysis carried (errors refuse the build). */
   warnings: string[];
 }
+
+export {
+  BudgetExceeded, STANDALONE_BUDGET, type BudgetReport, type ByteBudget, type Contribution, type Reservation,
+} from './budget.js';
 
 /** What to install when the optional peers are missing. */
 export const BUILD_PEERS = ['vite', 'vite-plugin-singlefile'] as const;
@@ -65,7 +82,7 @@ export const BUILD_PEERS = ['vite', 'vite-plugin-singlefile'] as const;
  * one). Refuses a document with validation errors, naming every one.
  */
 export async function buildStandalone(input: unknown, options: BuildOptions = {}): Promise<BuildResult> {
-  const { measure = 'score', discloses, entry = defaultEntry() } = options;
+  const { measure = 'score', discloses, entry = defaultEntry(), budget = STANDALONE_BUDGET } = options;
   // Serialised once: what is validated is exactly what is inlined, whatever
   // `toJSON` or non-JSON values the caller's object carried.
   const wire: unknown = JSON.parse(JSON.stringify(input) ?? 'null');
@@ -82,22 +99,44 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
   const title = options.title ?? checked.analysis.title ?? checked.analysis.subject.question;
   const settings: StandaloneSettings = { measure };
 
-  const shell = await bundleShell(entry);
+  const { shell, codeBytes, rendered } = await bundleShell(entry);
+  entryIsInlined(shell);
+  const shellBytes = Buffer.byteLength(shell);
+  const contributions = attribute(shellBytes, codeBytes, lengthsByPackage(rendered, readPrebundled));
+  const report = chargeBudget(shellBytes, contributions, budget || STANDALONE_BUDGET);
+  if (budget !== false && !report.within) throw new BudgetExceeded(report);
   let html = splice(shell, EMPTY_TITLE, `<title>${escapeHtml(title)}</title>`);
   html = splice(html, emptyData(ANALYSIS_ELEMENT_ID), filledData(ANALYSIS_ELEMENT_ID, inlined));
   html = splice(html, emptyData(SETTINGS_ELEMENT_ID), filledData(SETTINGS_ELEMENT_ID, settings));
-  entryIsInlined(html);
   return {
     html,
     bytes: Buffer.byteLength(html),
     gzipBytes: gzipSync(html).length,
+    budget: report,
     warnings: checked.problems.filter((p) => p.severity === 'warning').map((p) => `${p.path || '(root)'}: ${p.message}`),
   };
 }
 
-/** The page without its data: Vite and the single-file plugin over the entry. */
-async function bundleShell(entry: string): Promise<string> {
+/**
+ * The page without its data: Vite and the single-file plugin over the entry.
+ * Also what the bundle's code came to, and each module's rendered length, read
+ * before the single-file plugin inlines the chunks and drops their record.
+ */
+async function bundleShell(entry: string): Promise<{ shell: string; codeBytes: number; rendered: Map<string, number> }> {
   const [vite, singleFile] = await peers();
+  const rendered = new Map<string, number>();
+  let codeBytes = 0;
+  const measure: import('vite').Plugin = {
+    name: 'comparanda-byte-budget',
+    enforce: 'pre',
+    generateBundle(_options, bundle) {
+      for (const out of Object.values(bundle)) {
+        if (out.type !== 'chunk') continue;
+        codeBytes += Buffer.byteLength(out.code);
+        for (const [id, m] of Object.entries(out.modules)) rendered.set(id, (rendered.get(id) ?? 0) + m.renderedLength);
+      }
+    },
+  };
   const root = await mkdtemp(join(tmpdir(), 'comparanda-build-'));
   try {
     await writeFile(join(root, 'main.js'), `import ${JSON.stringify(pathToFileURL(entry).href)};\n`);
@@ -109,12 +148,12 @@ async function bundleShell(entry: string): Promise<string> {
       envFile: false,
       publicDir: false,
       logLevel: 'error',
-      plugins: [singleFile.viteSingleFile()],
+      plugins: [measure, singleFile.viteSingleFile()],
       // The matrix is TSX on Preact; this only matters when building from source.
       esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
       build: { outDir: join(root, 'out'), emptyOutDir: true, modulePreload: false, reportCompressedSize: false },
     });
-    return await readFile(join(root, 'out', 'index.html'), 'utf8');
+    return { shell: await readFile(join(root, 'out', 'index.html'), 'utf8'), codeBytes, rendered };
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -181,6 +220,24 @@ function defaultEntry(): string {
   }
   throw new Error(`no standalone entry next to ${here}; this installation of comparanda is incomplete.`);
 }
+
+/**
+ * The packages inside a pre-bundled module, from the manifest beside it (the
+ * shipped standalone entry's, which tsup writes). A missing or unreadable one
+ * means the module is attributed whole, to its own package.
+ */
+const readPrebundled: ReadPrebundled = (moduleId) => {
+  const file = moduleId.replace(/\?.*$/, '');
+  if (!file.endsWith('.js')) return undefined;
+  try {
+    const { packages } = JSON.parse(readFileSync(file.replace(/\.js$/, PREBUNDLED_SUFFIX), 'utf8')) as { packages?: unknown };
+    if (packages === null || typeof packages !== 'object') return undefined;
+    const entries = Object.entries(packages).filter((e): e is [string, number] => typeof e[1] === 'number' && e[1] >= 0);
+    return Object.fromEntries(entries);
+  } catch {
+    return undefined;
+  }
+};
 
 type Vite = typeof import('vite');
 type SingleFile = typeof import('vite-plugin-singlefile');

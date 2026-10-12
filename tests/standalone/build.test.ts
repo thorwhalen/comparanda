@@ -140,6 +140,16 @@ describe('the shipped build (dist/), when it has been built', () => {
     expect(cells).toHaveLength(relocation.alternatives.length * relocation.criteria.length);
     expect(offPage).toEqual([]);
   });
+
+  // The shipped entry is one pre-bundled module; its manifest is what lets the budget see inside it (#116).
+  const shippedEntry = join(repo, 'dist', 'standalone', 'main.js');
+  it.runIf(existsSync(shippedEntry))('the shipped entry is charged per package, not all to comparanda', async () => {
+    expect(existsSync(join(repo, 'dist', 'standalone', 'main.packages.json')), 'tsup wrote the package manifest').toBe(true);
+    const { budget } = await buildStandalone(relocationJson, { entry: shippedEntry });
+    const packages = budget.contributions.map((c) => c.package);
+    expect(packages).toEqual(expect.arrayContaining(['comparanda', 'preact', 'zod']));
+    expect(budget.contributions.find((c) => c.package === 'preact')!.bytes).toBeGreaterThan(0);
+  });
 });
 
 describe('the command', () => {
@@ -151,6 +161,8 @@ describe('the command', () => {
       { cwd: dir },
     );
     expect(stdout).toMatch(/kB raw, .* kB gzipped/);
+    // The shell, then the reservation, then what is charged, against the budget (#116).
+    expect(stdout).toMatch(/the page without the analysis: [\d.]+ kB \+ [\d.]+ kB reserved for @atlaskit\/pragmatic-drag-and-drop = [\d.]+ kB, of a 200\.0 kB budget/);
     expect(Analysis.parse(inlinedAnalysis(await readFile(out, 'utf8')))).toEqual(relocation);
   });
 });
