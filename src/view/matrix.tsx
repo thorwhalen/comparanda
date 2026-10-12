@@ -31,11 +31,11 @@ import { useId } from 'preact/hooks';
 
 import type { Affordance, Affordances } from '../core/affordances.js';
 import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
-import { cellIndex, cellKey, makeCellReader, type Analysis } from '../core/schema/analysis.js';
+import { makeCellReader, type Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import { NOT_APPLICABLE, NOT_ASSESSED, type MissingnessVocabulary } from '../core/schema/missingness.js';
 import { aliasesOf } from '../core/schema/structure.js';
-import { isWidenedByDisclosure, type Cell, type Reduced } from '../core/schema/values.js';
+import type { Reduced } from '../core/schema/values.js';
 import type { ViewState } from '../core/view-state.js';
 import { MATRIX_CSS } from './matrix-css.js';
 
@@ -65,7 +65,6 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
 
 export function Matrix({ analysis, measure, vocabulary, encoding, view, affordances }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
-  const cells = cellIndex(analysis);
   const words = aliasesOf(analysis);
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
@@ -79,7 +78,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, view, affordan
   const cell = (rowId: string, columnId: string) => {
     const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
     const { state, text } = cellContent(
-      reader.read(altId, critId), cells.get(cellKey(altId, critId, measure)),
+      reader.read(altId, critId),
       affordances.inapplicable(altId, critId), vocabulary, critId,
     );
     return <td key={columnId} data-state={state}>{text}</td>;
@@ -220,18 +219,17 @@ function RefusedEdits({ analysis, measure, affordances, rows, columns, transpose
 /** A cell as text and the state it is in. Never empty: an absence is read through the vocabulary, a refusal states its reason. */
 function cellContent(
   reduced: Reduced | undefined,
-  cell: Cell | undefined,
   inapplicable: boolean,
   vocabulary: MissingnessVocabulary,
   criterionId: string,
 ): { state: CellState; text: string } {
   const means = (code: string) => vocabulary.means(code, criterionId) ?? code;
   if (reduced?.refused !== undefined) {
-    // A reduction refused over a cell this reader sees only part of is not the
-    // raters' disagreement; it is the projection's gap (ADR-0021). Say that.
+    // A cell this reader sees only part of: the projection's gap (ADR-0021),
+    // which core reports as such (#171), not the raters' disagreement.
     return {
       state: 'refused',
-      text: cell && isWidenedByDisclosure(cell)
+      text: reduced.withheldFromReader !== undefined
         ? 'Partly withheld from you; what you can see does not settle this cell.'
         : `Not shown: ${reduced.refused}`,
     };

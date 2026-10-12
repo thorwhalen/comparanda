@@ -294,6 +294,14 @@ export interface Reduced {
    * The value is still computed: the flag qualifies it, it does not withhold it.
    */
   independence?: ReductionIndependence | undefined;
+  /**
+   * How many contributing assertions a disclosure projection withheld from
+   * this reader (ADR-0021), when any were. A withheld assertion is not a
+   * recorded absence: it takes no part in `disagreement` or `spread`, and a
+   * reduction over the rest is refused rather than shown as the cell's value,
+   * because an aggregate over part of a cell is never returned bare.
+   */
+  withheldFromReader?: number | undefined;
 }
 
 /** See `Reduced.independence`. */
@@ -386,7 +394,21 @@ export function reduce(
 ): Reduced {
   const reduced = reduceValue(cell, opts);
   const independence = independenceOf(reduced.contributing, opts.authors);
-  return independence ? { ...reduced, independence } : reduced;
+  const withheld = reduced.contributing.filter(isWithheldFromReader).length;
+  return {
+    ...reduced,
+    ...(independence ? { independence } : {}),
+    ...(withheld > 0 ? { withheldFromReader: withheld } : {}),
+  };
+}
+
+/**
+ * Projected out for this reader: flagged by the projection and carrying no
+ * value. A flagged assertion that still holds a value is visible data (and a
+ * validation problem, `disclosure-flag-is-projection-only`), not a gap.
+ */
+function isWithheldFromReader(s: Assertion): boolean {
+  return s.disclosure?.withheldFromReader === true && s.value === undefined;
 }
 
 /** `reduce` without the independence reading; the value logic, unchanged. */
@@ -424,8 +446,11 @@ function reduceValue(
   // Past this point the name resolved to a core algorithm.
   const mode = named as CoreReduction;
 
-  const valued = contributing.filter((a) => a.value !== undefined);
-  const absent = contributing.filter((a) => a.value === undefined && a.missing);
+  // What this reader can see. A withheld assertion is the projection's gap, not
+  // an author's recorded absence, so it never counts as one (#171).
+  const visible = contributing.filter((a) => !isWithheldFromReader(a));
+  const valued = visible.filter((a) => a.value !== undefined);
+  const absent = visible.filter((a) => a.value === undefined && a.missing);
   const spread = [...new Set(valued.map((a) => a.value as ScalarValue))].sort((a, b) =>
     typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b)),
   );
@@ -437,6 +462,18 @@ function reduceValue(
       return { contributing, disagreement, spread, refused: 'reduction is "consensus" but consensusAssertionId names no live assertion' };
     }
     return { value: chosen.value, missing: chosen.missing, contributing, disagreement, spread };
+  }
+
+  // Some withheld, some visible: any reduction over the visible ones would
+  // present part of the cell as all of it (ADR-0021: aggregates over partially
+  // disclosed data are labelled or suppressed, never returned bare).
+  const withheld = contributing.length - visible.length;
+  if (withheld > 0 && visible.length > 0) {
+    return {
+      contributing, disagreement, spread,
+      refused: `${withheld} of ${contributing.length} assertions in this cell ${withheld === 1 ? 'is' : 'are'} withheld from you; ` +
+        `a "${named}" over the ${visible.length} you can see would present part of the cell as all of it, so nothing is shown`,
+    };
   }
 
   if (mode === 'single' && contributing.length > 1) {
@@ -454,8 +491,10 @@ function reduceValue(
   }
 
   if (valued.length === 0) {
-    // All absent. Show the most recent absence, which is the current answer.
-    const latest = [...absent].sort((a, b) => a.at.localeCompare(b.at)).at(-1);
+    // All absent, or all withheld from this reader. Show the most recent
+    // absence, which is the current answer; when every assertion is withheld,
+    // that is the projection's `withheld`, which is what this reader can know.
+    const latest = [...(visible.length > 0 ? absent : contributing)].sort((a, b) => a.at.localeCompare(b.at)).at(-1);
     return { missing: latest?.missing, contributing, disagreement, spread };
   }
 
