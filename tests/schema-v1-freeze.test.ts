@@ -67,6 +67,24 @@ describe('the shape is closed', () => {
     expect(validateAnalysis(proto).ok).toBe(false);
   });
 
+  it('accepts __proto__ inside open maps, as the artifact does', () => {
+    const d = relocation();
+    d.scales[0].params = JSON.parse('{"__proto__": 1}');
+    expect(ajv(d)).toBe(true);
+    expect(validateAnalysis(d).problems.filter((p) => p.message.includes('__proto__'))).toEqual([]);
+  });
+
+  it('holds a proposal to the stored-assertion rules: no bare null, no off-scale value', () => {
+    const rules = (proposed: Record<string, unknown>) => {
+      const d = relocation();
+      d.suggestions[0].proposed = { ...d.suggestions[0].proposed, ...proposed };
+      return validateAnalysis(d).problems.map((p) => p.ruleId);
+    };
+    expect(rules({})).not.toContain('value-admitted');
+    expect(rules({ value: undefined })).toContain('no-bare-null');
+    expect(rules({ value: 99 })).toContain('value-admitted');
+  });
+
   it('zod and the artifact refuse the same unknown key, at the root and deep inside', () => {
     const doc = relocation();
     const cases: [string, (d: Record<string, any>) => void][] = [

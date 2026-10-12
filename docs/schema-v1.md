@@ -38,6 +38,11 @@ The rule from the schema epic (#3): **if adding a field afterwards would be a mi
 
 Two pulled-forward fields are exercised by tests rather than by the fixture, deliberately: `Assertion.perturbation` (a perturbed draw would change the fixture's pinned "3 draws of one model" reading; `tests/independence.test.ts`) and `Criterion.weights.substitution` (the fixture carries no aggregation, per ADR-0015; `tests/substitution-weight.test.ts`).
 
+## Stated limits of v1
+
+- **A suggestion proposes an assertion, and only that.** `Suggestion.proposed` is an `Assertion`, held to the same no-bare-null and admitted-value rules as a stored one. A suggestion may still be *anchored* to a criterion, a group or the analysis (to propose a score in context), but a proposed *structural* edit — relabel a criterion, move a group — has no payload in v1. ADR-0011 attaches proposals to cells; widening `proposed` to a union later is backward-compatible under the closed shape.
+- **`__proto__` is refused by `validateAnalysis`, not by `Analysis.parse`.** zod accepts an own `__proto__` key and drops it; the boundary that refuses it, as the artifact does, is `validateAnalysis` — which is the boundary every producer is told to use. Open maps (`params`, anchor `levels`, `measurements`) accept it, as the artifact does.
+
 ## Deferred from the freeze, with reasons
 
 - **#122**, the working-note correction sweep: docs only, it does not touch the schema, and its own text says to wait for rubricator's ADR renumbering.

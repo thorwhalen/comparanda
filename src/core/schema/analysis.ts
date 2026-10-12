@@ -728,6 +728,29 @@ export function validateAnalysis(
     }
   });
 
+  // A suggestion proposes an assertion "as it would be written if accepted"
+  // (#57): held to the same two rules as a stored one, so accepting it cannot
+  // write a bare null or an off-scale value.
+  a.suggestions.forEach((sg, i) => {
+    const p = sg.proposed;
+    const at = `suggestions[${i}].proposed`;
+    if ((p.value !== undefined) === (p.missing !== undefined)) {
+      err('no-bare-null', at,
+        p.value !== undefined
+          ? 'a proposed assertion carries a value and a missing reason; exactly one is required'
+          : 'a proposed assertion carries neither a value nor a missing reason. No bare nulls: every absence names why.',
+        'propose a value, or a missing code with its reason.');
+    }
+    const crit = sg.anchor.criterionId === undefined ? undefined : a.criteria.find((c) => c.id === sg.anchor.criterionId);
+    const m = crit && sg.anchor.measure !== undefined ? measurementFor(crit, sg.anchor.measure) : undefined;
+    const reason = m && p.value !== undefined ? valueRefusal(m, p.value) : undefined;
+    if (reason !== undefined) {
+      err('value-admitted', `${at}.value`,
+        `the proposed value is not one the "${sg.anchor.measure}" measurement of criterion "${sg.anchor.criterionId}" admits: ${reason}`,
+        'propose a value the measurement declares.');
+    }
+  });
+
   // Groups belong to one axis, and nest as a tree (ADR-0008, the `labels`
   // profile). A row tagged with the other axis's group, or a block naming one,
   // is silently ignored by every reader -- which is why it is refused here.
@@ -856,16 +879,22 @@ export function validateAnalysis(
     : { ok: false, problems };
 }
 
-/** The JSON path of the first own `__proto__` key in a parsed-JSON value, if any. */
-function ownProtoPath(v: unknown, at = ''): string | undefined {
-  if (!v || typeof v !== 'object') return undefined;
+/**
+ * The JSON path of the first own `__proto__` key in a parsed-JSON value, if any.
+ * Open maps (`params`, anchor `levels`, `measurements`) are skipped: there the
+ * artifact accepts any key, and refusing one would disagree with it the other way.
+ */
+function ownProtoPath(v: unknown, at = '', key = ''): string | undefined {
+  if (!v || typeof v !== 'object' || OPEN_MAPS.has(key)) return undefined;
   if (Object.prototype.hasOwnProperty.call(v, '__proto__')) return `${at}${at ? '.' : ''}__proto__`;
   for (const [k, x] of Object.entries(v)) {
-    const found = ownProtoPath(x, `${at}${at ? '.' : ''}${k}`);
+    const found = ownProtoPath(x, `${at}${at ? '.' : ''}${k}`, k);
     if (found !== undefined) return found;
   }
   return undefined;
 }
+
+const OPEN_MAPS = new Set(['params', 'levels', 'measurements']);
 
 /**
  * The identity of a cell, as one string.

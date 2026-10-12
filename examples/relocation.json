@@ -1392,7 +1392,7 @@
         {
           "id": "c3",
           "authorId": "ben",
-          "at": "2026-08-22T09:00:00Z",
+          "at": "2026-08-23T20:00:00Z",
           "body": "We are scoring different things. Astronomical daylight or usable daylight? The anchor does not say."
         }
       ]
@@ -1437,8 +1437,8 @@
         "id": "a-day-tai-cleo",
         "authorId": "cleo",
         "at": "2026-08-24T10:00:00Z",
-        "value": 3,
-        "justification": "about ten and a half hours of daylight at the winter solstice, often under cloud",
+        "value": 5,
+        "justification": "about ten and a half hours of daylight at the winter solstice, over the ten-hour anchor for 5",
         "evidence": [],
         "version": 1,
         "independence": "independent"
