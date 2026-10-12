@@ -148,7 +148,7 @@ describe('the messy fixture, both themes, both orientations', () => {
     const states = new Set(dataCells().map((td) => td.getAttribute('data-state')));
     expect(states).toContain('not-applicable');
     const na = dataCells().find((td) => td.getAttribute('data-state') === 'not-applicable')!;
-    expect(na.textContent).toBe(vocab.means('not-applicable', 'eu-residency-path') ?? 'not-applicable');
+    expect(na.querySelector('.comparanda-shown')!.textContent).toBe(vocab.means('not-applicable', 'eu-residency-path') ?? 'not-applicable');
     // A shape, not only a colour: the hatch and the dashed frame differ in kind.
     expect(getComputedStyle(na).backgroundImage).toMatch(/gradient/);
   });

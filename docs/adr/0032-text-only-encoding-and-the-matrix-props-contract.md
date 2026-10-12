@@ -113,3 +113,17 @@ Two rules keep a stale view state honest. An id the view does not order is shown
 
 The addition is optional, so no consumer changes. The view state stays the host's to keep and persist (ADR-0006); the matrix renders the one it is given and owns none of its own until the interactions that change it (reorder #92, grouping #93) arrive with their port.
 
+
+### 2026-10-12 — `onViewChange` joins `MountMatrixProps`, and the matrix keeps the reader's position
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+- **Deciders:** Thor Whalen
+
+The grid (#99, ADR-0027) is the first interaction that changes view state: the roving `tabindex` position is `session.focus`, and ADR-0027 requires it to survive a return from the detail panel and a reload. The amendment above said the matrix would own none of its view state "until the interactions that change it arrive with their port". This is that port, in its v1 form.
+
+`MountMatrixProps` gains `onViewChange?: (view: ViewState) => void`, called with the whole view state after each change the matrix makes. It is a callback rather than a `ViewStateStore` because ADR-0006's 2026-08-22 amendment builds one port in v1, and a `ViewStateStore` arrives as `DataProvider<ViewState>` when a second implementation exists; a host with one writes `onViewChange: (v) => store.update(id, v)`. It is on `MountMatrixProps`, not `MatrixProps`, because the latter is the plain data shape a consumer renders against, and a callback is not data.
+
+`mountMatrix` keeps the reader's move laid over the host's `view` until the host gives a `view` whose `session.focus` differs from the one it gave last (typically the one `onViewChange` sent). A wrapper re-passing the same view, or a host that transposes or regroups without listening, therefore keeps the reader's place; a host that never listens still gets a working grid for as long as the matrix is mounted. Re-giving the focus it gave last does not move the reader back, so a host that places the reader itself echoes `onViewChange`. A reader who was in the matrix before a render is on the roving stop after it, whether the render moved the focused cell, rolled back, or the host moved the stop. The component stays a pure function: it reports where focus went, and `mountMatrix` re-renders.
+
+The addition is optional, so no consumer changes.

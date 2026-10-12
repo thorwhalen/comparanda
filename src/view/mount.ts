@@ -12,7 +12,7 @@ import { h, render, type ComponentType } from 'preact';
 
 import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/analysis.js';
 import type { Affordances } from '../core/affordances.js';
-import { initialViewState, ViewState } from '../core/view-state.js';
+import { initialViewState, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
   DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
 } from '../store/index.js';
@@ -70,7 +70,7 @@ function withoutSource(a: Affordances): Affordances {
 
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
-  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize',
+  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize', 'onViewChange',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
 /** Elements with a live matrix. Two mounts on one element would each think they own its children. */
@@ -96,22 +96,62 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
   let analysis: Analysis = current.analysis;
   let unsubscribe: (() => void) | undefined;
   let destroyed = false;
+  /**
+   * Where the reader moved since the host last said where they are: the
+   * matrix's one piece of view state of its own, laid over the host's `view`
+   * until the host gives one whose `session.focus` differs from the last.
+   */
+  let moved: { focus: Session['focus'] } | undefined;
+  /** What the `view` the caller last gave said about focus, to tell a new focus from a re-passed one. */
+  let givenFocus = focusIn(props.view);
+  /** The view state of the last render: what `onViewChange` reports. */
+  let shown: ViewState;
+
+  const moveFocus = (focus: Session['focus']) => {
+    if (destroyed) return;
+    moved = { focus };
+    draw();
+    current.onViewChange?.(shown);
+  };
 
   const draw = () => {
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
+    // Without one, the document's own order, so a source's added alternative shows.
+    const base = view ?? initialViewState(analysis);
+    shown = moved ? setFocus(base, moved.focus) : base;
     const resolved: MatrixViewProps = {
       analysis,
       measure,
       vocabulary: vocabulary ?? vocabularyOf(analysis),
       encoding: encoding ?? view?.encoding ?? TEXT_ONLY,
-      // Without one, the document's own order, so a source's added alternative shows.
-      view: view ?? initialViewState(analysis),
+      view: shown,
+      onFocusChange: moveFocus,
       affordances: source
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
         : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
       ...(standing ? { standing } : {}),
     };
+    const was = focused();
     render(h(component, resolved), el);
+    settle(was);
+  };
+
+  /** The focused element, if it is in the matrix; read from the root it lives in, a shadow root's own. */
+  const focused = (): Element | null => {
+    const active = (el.getRootNode() as Document | ShadowRoot).activeElement ?? null;
+    return active !== null && el.contains(active) ? active : null;
+  };
+  /**
+   * A reader who was in the matrix before a render is on the roving stop after
+   * it: a render that moved the focused cell (a reorder, a transpose, a
+   * rollback) can drop focus, and a host that moved the stop leaves focus on a
+   * cell that is no longer one -- two tab stops, where ADR-0027 allows one.
+   */
+  const settle = (was: Element | null) => {
+    if (was === null) return;
+    const stop = el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]');
+    const now = focused();
+    if (stop && (now === null || (now !== stop && now.matches('[data-cell]')))) stop.focus();
   };
 
   /** Subscribe to `source`; the returned function unsubscribes. */
@@ -122,15 +162,16 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     return source.subscribe!((event: DataChangeEvent<Analysis>) => {
       if (destroyed || current.source !== source) return;
       if (event.type !== 'updated' || event.id !== analysis.id) return;
-      const shown = analysis;
+      const before = analysis;
+      const was = focused();
       analysis = event.item;
       try {
         draw();
       } catch (error) {
         // A write the view cannot render leaves the last good render, and the
         // document it rendered; the error goes to the source's subscriber handler.
-        analysis = shown;
-        redraw();
+        analysis = before;
+        redraw(was);
         throw error;
       }
     });
@@ -141,11 +182,13 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
    * the tree half-updated, and every later diff against it fails; unmounting
    * first is what makes a rollback a rollback.
    */
-  const redraw = () => {
+  /** `was`: where focus was before the render that failed, which may already have dropped it. */
+  const redraw = (was: Element | null = focused()) => {
     render(null, el);
     // If the old props fail too, unmount again: an empty element and a clean
     // tree, so the next good render fills it rather than diffing against debris.
     try { draw(); } catch { render(null, el); }
+    settle(was);
   };
 
   mounted.add(el);
@@ -193,19 +236,26 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       // re-render of unchanged props.
       if (props.measure !== current.measure || docChanged) measureOf(nextAnalysis, props.measure);
 
-      const before = { current, analysis, unsubscribe };
+      // A view that says something new about focus (typically the one
+      // `onViewChange` sent back) replaces the reader's move; any other -- the
+      // same one re-passed, or a transpose or regroup the host made -- keeps it.
+      const nextFocus = replace || 'view' in next ? focusIn(next.view) : givenFocus;
+      const before = { current, analysis, unsubscribe, moved, givenFocus };
+      const was = focused();
       const followed = swapped ? follow(props.source) : unsubscribe;
       current = props;
       analysis = nextAnalysis;
       unsubscribe = followed;
+      if (nextFocus !== givenFocus) moved = undefined;
+      givenFocus = nextFocus;
       try {
         draw();
       } catch (error) {
         // All or nothing, as at mount: the previous props, document and
         // subscription come back, and so does the previous render.
         if (swapped) followed?.();
-        ({ current, analysis, unsubscribe } = before);
-        redraw();
+        ({ current, analysis, unsubscribe, moved, givenFocus } = before);
+        redraw(was);
         throw error;
       }
       if (swapped) before.unsubscribe?.();
@@ -249,6 +299,9 @@ function checked(props: MountMatrixProps): MountMatrixProps {
     // The parsed copy, defaults filled, so the component never meets a partial one.
     props = { ...props, view: parsed.data };
   }
+  if (props.onViewChange !== undefined && typeof props.onViewChange !== 'function') {
+    throw new TypeError(`props.onViewChange must be a function (view) => void; got ${describe(props.onViewChange)}.`);
+  }
   if (source !== undefined && typeof source.subscribe !== 'function') {
     // A source the view cannot follow would offer edits against a document it
     // never refreshes -- a lock written elsewhere would never close them.
@@ -258,6 +311,12 @@ function checked(props: MountMatrixProps): MountMatrixProps {
     );
   }
   return props;
+}
+
+/** What a given `view` says about the reader's position, comparable by value and blind to key order. */
+function focusIn(view: unknown): string {
+  const focus = (view as ViewState | undefined)?.session?.focus;
+  return JSON.stringify([focus?.alternativeId ?? null, focus?.criterionId ?? null]);
 }
 
 /** Refuse a measure the analysis neither declares nor records (`unknownMeasure`). */
