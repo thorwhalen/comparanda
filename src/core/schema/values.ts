@@ -302,13 +302,15 @@ export interface ReductionIndependence {
 }
 
 /**
- * The independence reading of a multi-assertion set, for `reduce`.
+ * The independence reading of a multi-assertion set: what `reduce` attaches as
+ * `Reduced.independence`, and what `describeAssertionSet` labels by.
  *
  * Always uses `effectiveIndependence`, so two personas of one principal (or
  * two assertions under one author id, when no authors are passed) cannot pass
- * as two raters. Flagged unless every member records `independent`.
+ * as two raters. Flagged unless every member records `independent`. Pass the
+ * live set (`liveAssertions`); a superseded assertion is history, not a rater.
  */
-function independenceOf(
+export function independenceOf(
   contributing: readonly Assertion[],
   authors: readonly { id: string; principalId?: string | undefined }[] | undefined,
 ): ReductionIndependence | undefined {
@@ -334,7 +336,14 @@ function independenceOf(
   return { weakest, flagged: true, reason };
 }
 
-function live(assertions: readonly Assertion[]): Assertion[] {
+/**
+ * The assertions a cell currently holds: everything not superseded.
+ *
+ * The one definition of "the set" that the reduction, the independence reading
+ * and the honesty rule on unrecorded independence all count over, so that none
+ * of them can disagree with the others about how many assertions a cell has.
+ */
+export function liveAssertions(assertions: readonly Assertion[]): Assertion[] {
   return assertions.filter((a) => !a.supersededBy);
 }
 
@@ -380,7 +389,7 @@ function reduceValue(
   cell: Cell,
   opts: Parameters<typeof reduce>[1],
 ): Reduced {
-  const contributing = live(cell.assertions);
+  const contributing = liveAssertions(cell.assertions);
   const named = cell.reduction ?? opts.defaultReduction;
 
   const resolved = resolveReduction(named, opts.reductions ?? []);

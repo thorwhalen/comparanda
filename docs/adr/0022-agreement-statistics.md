@@ -161,6 +161,17 @@ The Decision names three codes that are counted and reported separately — `not
 
 The case that raised it (#67, mirroring a companion-repo request later closed there as settled by extension-as-data): "compared these two alternatives directly and could not tell them apart on this criterion" is declared as `insufficient-evidence-to-discriminate` with `broader: "indeterminate"`. It inherits `structural: false`, `terminal: true`, `informative: true`, counts as settled and informative in completeness, and is reported beside — never merged into a scale value with — `indeterminate`. No core code is added: the finding is real, and it is exactly what the extension mechanism is for.
 
+### 2026-10-12 — `independence` is required once a cell holds more than one live assertion
+
+- **Status:** accepted
+- **Date:** 2026-10-12
+
+The Consequences say an assertion set with no `independence` recorded "must be labelled at the most cautious reading available", and every consumer does: unknown is read as not-independent by `reduce`, by the agreement statistic and by `describeAssertionSet`. That keeps the computation honest, but it lets a producer leave the reader's first question about a multi-assertion cell — raters, or draws of one model? — unanswered. #64, mirroring the companion repo's request, closes that gap at the boundary.
+
+**A cell with two or more live (not superseded) assertions must record `independence` on every one of them.** It is the ADR-0031 honesty rule `independence-recorded`: always an error, never suppressed by dropping completeness, reported once per unrecorded assertion with the path and the rungs to choose from. An absence counts as a member of the set, because `reduce` counts it too; a single assertion is not a set and needs no rung. The JSON Schema does not change — "required when the cell has a sibling" is not a shape, which is ADR-0031 clause 6's boundary — so there is no version bump, and the rule is one more cross-field predicate the companion repo mirrors. The cautious reading of unknown stays, for documents read without validation.
+
+The view-side half is ADR-0024's: `describeAssertionSet` names the set `raters`, `draws` (one principal, so one model resampled or one person under several personas) or `correlated`, and its label is the strip's text alternative — "3 raters: 2, 2, 5." against "3 draws of one model: 2, 2, 5.".
+
 ## References
 The reasoning is in `docs/research/findings-terminology.md` §5 and its working note
 `docs/research/sections/c4-agreement.md`. The labelling rule and the interval-rendering requirement

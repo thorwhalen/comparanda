@@ -13,7 +13,8 @@ import {
   measurementFor,
 } from './structure.js';
 import {
-  Cell, Reduction, ReductionDeclaration, CORE_REDUCTIONS, reduce, isWidenedByDisclosure, type Reduced,
+  Cell, Reduction, ReductionDeclaration, CORE_REDUCTIONS, reduce, isWidenedByDisclosure, liveAssertions,
+  type Reduced,
 } from './values.js';
 import { Author, Procedure, Round } from './provenance.js';
 import { Thread, Suggestion } from './annotations.js';
@@ -199,6 +200,7 @@ export const RULE_SOURCES = Object.freeze({
   'blank-is-defined': 'ADR-0030',
   // Multi-rater cells.
   'cells-unique': 'ADR-0011',
+  'independence-recorded': 'ADR-0022',
   // Honesty and completeness.
   'score-has-a-reason': 'ADR-0031',
   'assertion-attributed': 'ADR-0012',
@@ -553,6 +555,29 @@ export function validateAnalysis(
         honesty(p.ruleId, p.path, p.message, p.fix);
       }
     });
+
+    // Several live assertions on one cell are a claim that the cell was assessed
+    // more than once, and the reader's first question about that claim -- "three
+    // raters, or three draws of one model?" -- is answered only by this field.
+    // Unrecorded is already read as not-independent everywhere downstream, so
+    // nothing would *compute* wrongly without the rule; what it stops is a
+    // producer leaving the reader to guess, which is the cell this tool exists to
+    // get right (#64). One assertion is not a set and needs no rung.
+    const set = liveAssertions(cell.assertions);
+    if (set.length > 1) {
+      for (const as of set) {
+        if (as.independence !== undefined) continue;
+        const j = cell.assertions.indexOf(as);
+        honesty(
+          'independence-recorded', `${at}.assertions[${j}].independence`,
+          `one of ${set.length} live assertions on this cell records no independence, so a reader ` +
+            `cannot tell ${set.length} raters from ${set.length} draws of one model.`,
+          'record how this assertion relates to the others in the cell: "independent" for a separate ' +
+            'assessor, "resampled" for another draw of the same model and prompt, "perturbed" for a ' +
+            'deliberately varied draw, "shared-context" if it was produced alongside them.',
+        );
+      }
+    }
   });
 
   // Groups belong to one axis, and nest as a tree (ADR-0008, the `labels`

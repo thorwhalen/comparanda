@@ -75,8 +75,13 @@ It exercises what the clean example does not:
 - criterion groups (cost / climate / logistics / EU residency) and alternative groups
   (Europe / Asia / Americas);
 - an inapplicable group pair — EU residency against both non-EU alternative groups;
-- multi-rater disagreement on three cells, including one between a contributor and her own
+- multi-rater disagreement on four cells, including one between a contributor and her own
   declared persona;
+- **three raters and three draws of one model**, side by side: Berlin's winter daylight carries
+  three independent people, and Seoul's school quality carries three `resampled` draws from one
+  agent run under its own `mode` reduction (superseding the `not-assessed` the earlier run left).
+  The two cells have the same `n` and must never read alike — `describeAssertionSet` labels them
+  "3 raters" and "3 draws of one model" (#64);
 - an `acceptability` floor with a threshold, which bites on exactly one alternative;
 - mixed levels of measurement in one document — ordinal ratings, a ratio-scaled rent, a nominal
   climate category and a boolean;
