@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  attribute, BudgetExceeded, chargeBudget, OWN_CODE, packageOf, PAGE, STANDALONE_BUDGET,
+  attribute, BudgetExceeded, chargeBudget, lengthsByPackage, OWN_CODE, packageOf, PAGE, STANDALONE_BUDGET,
 } from '../src/build/budget.js';
 
 describe('packageOf', () => {
@@ -17,6 +17,9 @@ describe('packageOf', () => {
     ['/repo/node_modules/.pnpm/@zodal+core@0.3.0/node_modules/@zodal/core/dist/index.js', '@zodal/core'],
     ['C:\\repo\\node_modules\\zod\\mini\\index.js', 'zod'],
     ['/repo/src/view/matrix.tsx', OWN_CODE],
+    ['node_modules/.pnpm/preact@10.27.0/node_modules/preact/dist/preact.module.js', 'preact'],
+    ['node_modules/zod/v4/mini/index.js', 'zod'],
+    ['src/standalone/main.ts', OWN_CODE],
     ['\0vite/modulepreload-polyfill.js', OWN_CODE],
   ])('%s is %s', (id, pkg) => {
     expect(packageOf(id)).toBe(pkg);
@@ -30,13 +33,27 @@ describe('attribute', () => {
       ['/r/node_modules/preact/b.js', 100],
       ['/r/src/x.ts', 600],
     ]);
-    const shares = attribute(1100, 1000, rendered);
+    const shares = attribute(1100, 1000, lengthsByPackage(rendered));
     expect(shares).toEqual([
       { package: OWN_CODE, bytes: 600 },
       { package: 'preact', bytes: 400 },
       { package: PAGE, bytes: 100 },
     ]);
     expect(shares.reduce((a, c) => a + c.bytes, 0)).toBe(1100);
+  });
+});
+
+describe('lengthsByPackage', () => {
+  it('shares a pre-bundled module among the packages its manifest names', () => {
+    const rendered = new Map([['/dist/standalone/main.js', 1000], ['/r/src/extra.ts', 100]]);
+    const inside = { comparanda: 600, preact: 300, '@atlaskit/pragmatic-drag-and-drop': 100 };
+    const lengths = lengthsByPackage(rendered, (id) => (id.endsWith('main.js') ? inside : undefined));
+    expect(Object.fromEntries(lengths)).toEqual({ comparanda: 700, preact: 300, '@atlaskit/pragmatic-drag-and-drop': 100 });
+  });
+
+  it('attributes a module whole when its manifest is empty', () => {
+    const lengths = lengthsByPackage(new Map([['/dist/main.js', 50]]), () => ({}));
+    expect(Object.fromEntries(lengths)).toEqual({ [OWN_CODE]: 50 });
   });
 });
 

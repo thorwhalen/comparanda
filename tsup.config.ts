@@ -1,4 +1,35 @@
-import { defineConfig } from 'tsup';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { defineConfig, type Options } from 'tsup';
+
+import { packageOf, PREBUNDLED_SUFFIX } from './src/build/budget.js';
+
+/**
+ * Beside the pre-bundled standalone entry, which packages are inside it and how
+ * many bytes each contributes (#116). Vite sees that entry as one module, so
+ * without this the byte budget would charge every dependency to comparanda and
+ * a reservation would never lapse. Read from esbuild's metafile, which tsup
+ * always asks for; written as our own file, so the core config's
+ * `metafile-esm.json` is not overwritten.
+ */
+const packageManifest: NonNullable<Options['esbuildPlugins']>[number] = {
+  name: 'comparanda-package-manifest',
+  setup(build) {
+    build.onEnd((result) => {
+      for (const [out, { inputs }] of Object.entries(result.metafile?.outputs ?? {})) {
+        if (!out.endsWith('.js')) continue;
+        const packages: Record<string, number> = {};
+        for (const [input, { bytesInOutput }] of Object.entries(inputs)) {
+          const pkg = packageOf(input);
+          packages[pkg] = (packages[pkg] ?? 0) + bytesInOutput;
+        }
+        const path = out.replace(/\.js$/, PREBUNDLED_SUFFIX);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, `${JSON.stringify({ packages }, null, 2)}\n`);
+      }
+    });
+  },
+};
 
 // Three entry points, one per subpath export (ADR-0005). They are built as
 // separate chunks so that a consumer importing only `comparanda` never pulls in
@@ -55,5 +86,6 @@ export default defineConfig([
     clean: false,
     splitting: false,
     noExternal: [/.*/],
+    esbuildPlugins: [packageManifest],
   },
 ]);

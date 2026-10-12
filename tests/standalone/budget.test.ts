@@ -39,6 +39,9 @@ async function entryWith(pkg: string, source: string): Promise<string> {
   return entry;
 }
 
+/** A dependency incompressible enough that minification cannot shrink it, and larger than the headroom. */
+const HEAVY = `export default ${JSON.stringify(Array.from({ length: 12_000 }, (_, i) => `item-${i}-${(i * 7919) % 10007}`))};\n`;
+
 const kb = (n: number) => `${(n / 1024).toFixed(1)} kB`;
 
 describe('every example fixture builds within the budget', () => {
@@ -52,7 +55,11 @@ describe('every example fixture builds within the budget', () => {
   for (const fixture of fixtures) {
     it(fixture, async () => {
       const json = JSON.parse(await readFile(join(examples, fixture), 'utf8'));
-      const { bytes, budget } = await buildStandalone(json);
+      const built = await buildStandalone(json).catch((error: unknown) => {
+        rows.push(`| ${fixture} | over budget: ${error instanceof Error ? error.message.split('\n')[0] : String(error)} | | | |`);
+        throw error;
+      });
+      const { bytes, budget } = built;
       rows.push(`| ${fixture} | ${kb(bytes)} | ${kb(budget.shellBytes)} | ${kb(budget.charged)} | ${kb(budget.limit)} |`);
       expect(budget.within).toBe(true);
       expect(budget.charged).toBeLessThanOrEqual(budget.limit);
@@ -81,9 +88,7 @@ describe('over budget, the build fails and says why', () => {
   });
 
   it('a dependency that breaks the budget is named first', async () => {
-    // Incompressible enough that minification cannot shrink it, and larger than the headroom.
-    const heavy = `export default ${JSON.stringify(Array.from({ length: 12_000 }, (_, i) => `item-${i}-${(i * 7919) % 10007}`))};\n`;
-    const entry = await entryWith('heavy-charting-lib', heavy);
+    const entry = await entryWith('heavy-charting-lib', HEAVY);
     const failure = await buildStandalone(relocationJson, { entry }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(BudgetExceeded);
     const { message, report } = failure as BudgetExceeded;
@@ -91,10 +96,12 @@ describe('over budget, the build fails and says why', () => {
     expect(message.split('\n')[2]).toMatch(/^ {2}heavy-charting-lib: [\d,]+ bytes$/);
   });
 
-  it('`budget: false` reports without enforcing', async () => {
-    const { budget } = await buildStandalone(relocationJson, { budget: false });
+  it('`budget: false` reports an overrun without enforcing it', async () => {
+    const entry = await entryWith('heavy-charting-lib', HEAVY);
+    const { budget } = await buildStandalone(relocationJson, { entry, budget: false });
     expect(budget.limit).toBe(STANDALONE_BUDGET.limit);
-    expect(budget.within).toBe(true);
+    expect(budget.within).toBe(false);
+    expect(budget.contributions[0]!.package).toBe('heavy-charting-lib');
   });
 });
 

@@ -140,6 +140,16 @@ describe('the shipped build (dist/), when it has been built', () => {
     expect(cells).toHaveLength(relocation.alternatives.length * relocation.criteria.length);
     expect(offPage).toEqual([]);
   });
+
+  // The shipped entry is one pre-bundled module; its manifest is what lets the budget see inside it (#116).
+  const shippedEntry = join(repo, 'dist', 'standalone', 'main.js');
+  it.runIf(existsSync(shippedEntry))('the shipped entry is charged per package, not all to comparanda', async () => {
+    expect(existsSync(join(repo, 'dist', 'standalone', 'main.packages.json')), 'tsup wrote the package manifest').toBe(true);
+    const { budget } = await buildStandalone(relocationJson, { entry: shippedEntry });
+    const packages = budget.contributions.map((c) => c.package);
+    expect(packages).toEqual(expect.arrayContaining(['comparanda', 'preact', 'zod']));
+    expect(budget.contributions.find((c) => c.package === 'preact')!.bytes).toBeGreaterThan(0);
+  });
 });
 
 describe('the command', () => {

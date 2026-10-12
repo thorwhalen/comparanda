@@ -20,7 +20,7 @@
  * this does already: a disclosure projection, when given, runs before anything
  * is inlined (ADR-0021), because View Source recovers whatever the file carries.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -28,7 +28,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 import { unknownMeasure, validateAnalysis } from '../core/schema/analysis.js';
-import { attribute, BudgetExceeded, chargeBudget, STANDALONE_BUDGET, type BudgetReport, type ByteBudget } from './budget.js';
+import {
+  attribute, BudgetExceeded, chargeBudget, lengthsByPackage, PREBUNDLED_SUFFIX, STANDALONE_BUDGET,
+  type BudgetReport, type ByteBudget, type ReadPrebundled,
+} from './budget.js';
 import { projectForReader, type DisclosureDecision } from '../core/schema/disclosure.js';
 import {
   ANALYSIS_ELEMENT_ID, ROOT_ELEMENT_ID, SETTINGS_ELEMENT_ID, scriptSafeJson, type StandaloneSettings,
@@ -99,7 +102,8 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
   const { shell, codeBytes, rendered } = await bundleShell(entry);
   entryIsInlined(shell);
   const shellBytes = Buffer.byteLength(shell);
-  const report = chargeBudget(shellBytes, attribute(shellBytes, codeBytes, rendered), budget || STANDALONE_BUDGET);
+  const contributions = attribute(shellBytes, codeBytes, lengthsByPackage(rendered, readPrebundled));
+  const report = chargeBudget(shellBytes, contributions, budget || STANDALONE_BUDGET);
   if (budget !== false && !report.within) throw new BudgetExceeded(report);
   let html = splice(shell, EMPTY_TITLE, `<title>${escapeHtml(title)}</title>`);
   html = splice(html, emptyData(ANALYSIS_ELEMENT_ID), filledData(ANALYSIS_ELEMENT_ID, inlined));
@@ -216,6 +220,24 @@ function defaultEntry(): string {
   }
   throw new Error(`no standalone entry next to ${here}; this installation of comparanda is incomplete.`);
 }
+
+/**
+ * The packages inside a pre-bundled module, from the manifest beside it (the
+ * shipped standalone entry's, which tsup writes). A missing or unreadable one
+ * means the module is attributed whole, to its own package.
+ */
+const readPrebundled: ReadPrebundled = (moduleId) => {
+  const file = moduleId.replace(/\?.*$/, '');
+  if (!file.endsWith('.js')) return undefined;
+  try {
+    const { packages } = JSON.parse(readFileSync(file.replace(/\.js$/, PREBUNDLED_SUFFIX), 'utf8')) as { packages?: unknown };
+    if (packages === null || typeof packages !== 'object') return undefined;
+    const entries = Object.entries(packages).filter((e): e is [string, number] => typeof e[1] === 'number' && e[1] >= 0);
+    return Object.fromEntries(entries);
+  } catch {
+    return undefined;
+  }
+};
 
 type Vite = typeof import('vite');
 type SingleFile = typeof import('vite-plugin-singlefile');

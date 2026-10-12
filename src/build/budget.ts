@@ -8,7 +8,8 @@
  *
  * The number lives here, in the repo, where it can be argued with. A build that
  * exceeds it fails, and says which packages the bytes went to, largest first --
- * so a dependency that breaks it is named by the failure, not found by bisecting.
+ * so a dependency that breaks it is named in the failure, ranked by size, not
+ * found by bisecting.
  *
  * A dependency the design has committed to but not yet added is charged now,
  * as a *reservation*: ADR-0008 adopts `@atlaskit/pragmatic-drag-and-drop` for
@@ -79,7 +80,8 @@ export const OWN_CODE = 'comparanda';
  * Vite's virtual modules (`\0...`) are bundler glue and count as our own.
  */
 export function packageOf(moduleId: string): string {
-  const path = moduleId.replace(/\\/g, '/');
+  // Leading slash: esbuild's metafile paths are relative ("node_modules/preact/...").
+  const path = `/${moduleId.replace(/\\/g, '/')}`;
   const at = path.lastIndexOf('/node_modules/');
   if (at < 0) return OWN_CODE;
   const [first = '', second = ''] = path.slice(at + '/node_modules/'.length).split('/');
@@ -88,22 +90,47 @@ export function packageOf(moduleId: string): string {
 }
 
 /**
+ * Beside a pre-bundled module `x.js`, the file `x.packages.json` says which
+ * packages are inside it: `{ packages: { [name]: bytes } }`. The shipped
+ * standalone entry has one (tsup writes it), because it carries every
+ * dependency in one module and the bundler sees only that module.
+ */
+export const PREBUNDLED_SUFFIX = '.packages.json';
+
+/** A pre-bundled module's packages, by bytes, or `undefined` when it is not one. */
+export type ReadPrebundled = (moduleId: string) => Readonly<Record<string, number>> | undefined;
+
+/**
+ * Each module's rendered length, summed by package. A pre-bundled module's
+ * length is shared among the packages inside it, in proportion to its manifest.
+ */
+export function lengthsByPackage(rendered: ReadonlyMap<string, number>, readPrebundled: ReadPrebundled = () => undefined): Map<string, number> {
+  const byPackage = new Map<string, number>();
+  const add = (pkg: string, n: number) => byPackage.set(pkg, (byPackage.get(pkg) ?? 0) + n);
+  for (const [id, length] of rendered) {
+    const inside = readPrebundled(id);
+    const total = inside ? Object.values(inside).reduce((a, b) => a + b, 0) : 0;
+    if (!inside || total <= 0) {
+      add(packageOf(id), length);
+      continue;
+    }
+    for (const [pkg, bytes] of Object.entries(inside)) add(pkg, (bytes / total) * length);
+  }
+  return byPackage;
+}
+
+/**
  * Share the bundle's minified bytes among packages in proportion to each
  * one's rendered (pre-minification) length -- what the bundler reports per
- * module -- and give the rest of the shell to the page. Approximate per
- * package, exact in total.
+ * module, by `lengthsByPackage` -- and give the rest of the shell to the page.
+ * Approximate per package, exact in total.
  */
 export function attribute(
   shellBytes: number,
   codeBytes: number,
-  rendered: ReadonlyMap<string, number>,
+  byPackage: ReadonlyMap<string, number>,
 ): Contribution[] {
-  const total = [...rendered.values()].reduce((a, b) => a + b, 0);
-  const byPackage = new Map<string, number>();
-  for (const [id, length] of rendered) {
-    const pkg = packageOf(id);
-    byPackage.set(pkg, (byPackage.get(pkg) ?? 0) + length);
-  }
+  const total = [...byPackage.values()].reduce((a, b) => a + b, 0);
   const shares: Contribution[] = total > 0
     ? [...byPackage].map(([pkg, length]) => ({ package: pkg, bytes: Math.round((length / total) * codeBytes) }))
     : [];
