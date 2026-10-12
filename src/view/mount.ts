@@ -163,6 +163,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       if (destroyed || current.source !== source) return;
       if (event.type !== 'updated' || event.id !== analysis.id) return;
       const before = analysis;
+      const was = focused();
       analysis = event.item;
       try {
         draw();
@@ -170,7 +171,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
         // A write the view cannot render leaves the last good render, and the
         // document it rendered; the error goes to the source's subscriber handler.
         analysis = before;
-        redraw();
+        redraw(was);
         throw error;
       }
     });
@@ -181,8 +182,8 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
    * the tree half-updated, and every later diff against it fails; unmounting
    * first is what makes a rollback a rollback.
    */
-  const redraw = () => {
-    const was = focused();
+  /** `was`: where focus was before the render that failed, which may already have dropped it. */
+  const redraw = (was: Element | null = focused()) => {
     render(null, el);
     // If the old props fail too, unmount again: an empty element and a clean
     // tree, so the next good render fills it rather than diffing against debris.
@@ -240,6 +241,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       // same one re-passed, or a transpose or regroup the host made -- keeps it.
       const nextFocus = replace || 'view' in next ? focusIn(next.view) : givenFocus;
       const before = { current, analysis, unsubscribe, moved, givenFocus };
+      const was = focused();
       const followed = swapped ? follow(props.source) : unsubscribe;
       current = props;
       analysis = nextAnalysis;
@@ -253,7 +255,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
         // subscription come back, and so does the previous render.
         if (swapped) followed?.();
         ({ current, analysis, unsubscribe, moved, givenFocus } = before);
-        redraw();
+        redraw(was);
         throw error;
       }
       if (swapped) before.unsubscribe?.();

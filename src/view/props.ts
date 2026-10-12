@@ -62,7 +62,8 @@ export interface MountMatrixProps extends MatrixProps {
    * the reader's position in the grid (`session.focus`, #99). The view state
    * stays the host's to keep (ADR-0006): persist this one and pass it back as
    * `view`, and a reload lands in the cell the reader left. Without it the
-   * matrix still tracks the position for as long as it is mounted.
+   * matrix still tracks the position for as long as it is mounted. Pass it
+   * back synchronously and unthrottled: a stale one moves the reader back.
    */
   onViewChange?: (view: ViewState) => void;
 }
