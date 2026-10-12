@@ -89,7 +89,7 @@ describe('moveTo (#75)', () => {
     const { report } = moveTo(v, 'alternatives', 3, 0, ANA);
     expect(orderOf(moveTo(v, 'alternatives', 3, 0, ANA).state)).toEqual(['seoul', 'lisbon', 'berlin', 'taipei', 'montreal']);
     expect(describeMove(relocation(), report)).toBe(
-      'Alternative Seoul moved to row 1 of 5, first. Lisbon is pinned to row 1 and now sits at row 2.',
+      'Option Seoul moved to row 1 of 5, first. Lisbon is pinned to row 1 and now sits at row 2.',
     );
   });
 });
@@ -150,7 +150,7 @@ describe('every route goes through the same move (#75, ADR-0027)', () => {
 
     const said = [menu, keys, drag].map((o) => describeMove(a, o.report));
     expect(new Set(said).size).toBe(1);
-    expect(said[0]).toBe('Alternative Berlin moved to row 5 of 5, after Montreal.');
+    expect(said[0]).toBe('Option Berlin moved to row 5 of 5, after Montreal.');
     // The gesture is not in the sentence, though it is in the report.
     expect([menu, keys, drag].map((o) => o.report.route)).toEqual(['menu', 'keyboard', 'pointer']);
   });
@@ -161,7 +161,7 @@ describe('every route goes through the same move (#75, ADR-0027)', () => {
     const drag = moveByPointer(v(), 'alternatives', 3, 2, ANA);
     const said = [menu, keys, drag].map((o) => describeMove(a, o.report));
     expect(new Set(said).size).toBe(1);
-    expect(said[0]).toBe('Alternative Seoul moved to row 3 of 5, after Berlin.');
+    expect(said[0]).toBe('Option Seoul moved to row 3 of 5, after Berlin.');
     expect(orderOf(menu.state)).toEqual(['lisbon', 'berlin', 'seoul', 'taipei', 'montreal']);
   });
 
@@ -187,7 +187,7 @@ describe('the routes agree on an axis that carries constraints (review finding)'
     expect(order).toEqual(['taipei', 'seoul', 'lisbon', 'berlin', 'montreal']);
     expect(order.indexOf('lisbon')).toBeLessThan(order.indexOf('montreal'));
     const said = describeMove(a, menu.report);
-    expect(said).toBe('Alternative Lisbon moved to row 3 of 5, after Seoul, with Berlin kept beside it.');
+    expect(said).toBe('Option Lisbon moved to row 3 of 5, after Seoul, with Berlin kept beside it.');
     // The same landing asked for as a drop and as a keyboard jump says the same.
     const drag = moveByPointer(locked(), 'alternatives', 0, 2, ANA);
     const keys = moveByKeyboard(moveByKeyboard(locked(), 'alternatives', 0, 'later', ANA).state, 'alternatives', 1, 'later', ANA);
@@ -212,6 +212,8 @@ describe('the routes agree on an axis that carries constraints (review finding)'
   });
 });
 
+// No document here sets `aliases`, so announcements use the default display alias:
+// alternatives read as "options" (ADR-0003 amendment, decision 2).
 describe('describeMove is the only source of the sentence, and needs no DOM (#75)', () => {
   const a = relocation();
 
@@ -219,7 +221,7 @@ describe('describeMove is the only source of the sentence, and needs no DOM (#75
     expect('document' in globalThis).toBe(false);
     expect('window' in globalThis).toBe(false);
     const { report } = moveTo(initialViewState(a), 'alternatives', 2, 0, ANA);
-    expect(describeMove(a, report)).toBe('Alternative Taipei moved to row 1 of 5, first.');
+    expect(describeMove(a, report)).toBe('Option Taipei moved to row 1 of 5, first.');
   });
 
   it('says position of total, and what it is now after', () => {
@@ -249,7 +251,7 @@ describe('describeMove is the only source of the sentence, and needs no DOM (#75
   it('names what travelled with it, and why it stopped where it did', () => {
     const v = lockRun(initialViewState(a), 'alternatives', ['berlin', 'taipei']);
     const { report } = moveTo(v, 'alternatives', 1, 3, ANA);
-    expect(describeMove(a, report)).toBe('Alternative Berlin moved to row 4 of 5, after Montreal, with Taipei kept beside it.');
+    expect(describeMove(a, report)).toBe('Option Berlin moved to row 4 of 5, after Montreal, with Taipei kept beside it.');
 
     const blocked = moveTo(lockRun(initialViewState(a), 'alternatives', ['taipei', 'seoul']), 'alternatives', 0, 2, ANA);
     expect(describeMove(a, blocked.report)).toMatch(/It stopped there: a locked run cannot be split\.$/);
@@ -257,7 +259,7 @@ describe('describeMove is the only source of the sentence, and needs no DOM (#75
 
   it('says so when nothing moved, rather than announcing a move that did not happen', () => {
     const { report } = moveTo(initialViewState(a), 'alternatives', 4, 4, ANA);
-    expect(describeMove(a, report)).toBe('Alternative Montreal is already row 5 of 5.');
+    expect(describeMove(a, report)).toBe('Option Montreal is already row 5 of 5.');
   });
 
   it('a refused move explains itself rather than reading as a reader\'s own no-op', () => {
@@ -265,7 +267,7 @@ describe('describeMove is the only source of the sentence, and needs no DOM (#75
     const { report } = moveTo(run, 'alternatives', 3, 4, ANA);
     expect(report).toMatchObject({ noOp: true, clamped: 'locked-run-block' });
     expect(describeMove(a, report)).toBe(
-      'Alternative Seoul did not move: the alternatives locked to it come with it. It is still row 4 of 5.',
+      'Option Seoul did not move: the options locked to it come with it. It is still row 4 of 5.',
     );
   });
 
@@ -273,13 +275,13 @@ describe('describeMove is the only source of the sentence, and needs no DOM (#75
     const run = lockRun(initialViewState(a), 'alternatives', ['berlin', 'taipei', 'seoul', 'montreal']);
     const { report } = moveTo(run, 'alternatives', 1, 0, ANA);
     expect(describeMove(a, report)).toBe(
-      'Alternative Berlin moved to row 1 of 5, first, with 3 more alternatives kept beside it.',
+      'Option Berlin moved to row 1 of 5, first, with 3 more options kept beside it.',
     );
   });
 
   it('falls back to the id for an entry the document no longer lists', () => {
     const { report } = moveTo(initialViewState(a), 'alternatives', 0, 1, ANA);
     const without = { ...a, alternatives: a.alternatives.filter((x) => x.id !== 'lisbon') };
-    expect(describeMove(without, report)).toContain('Alternative lisbon moved to row 2 of 5');
+    expect(describeMove(without, report)).toContain('Option lisbon moved to row 2 of 5');
   });
 });

@@ -32,7 +32,7 @@ import type { Analysis } from '../schema/analysis.js';
 import { reducedValue, makeCellReader, cellIndex, cellKey, vocabularyOf } from '../schema/analysis.js';
 import { isWidenedByDisclosure } from '../schema/values.js';
 import { makeInapplicability } from '../schema/groups.js';
-import { measurementFor } from '../schema/structure.js';
+import { aliasesOf, measurementFor } from '../schema/structure.js';
 import { admitsDominance, isOrdered, type Measurement } from '../schema/measurement.js';
 import type { AnalysisResult } from './registry.js';
 
@@ -369,13 +369,13 @@ const EXCLUSION_WORDS: Record<ExcludedCriterion['reason'], string> = {
  * 4 cells not applicable, which leave the comparison for the pairs they are in."
  */
 function describeBasis(a: Analysis, p: Prepared): string {
-  const al = a.aliases;
+  const al = aliasesOf(a);
   const noun = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  const crit = (n: number) => noun(n, al?.criterion ?? 'criterion', al?.criteria ?? 'criteria');
-  const alts = noun(p.altIds.length, al?.alternative ?? 'alternative', al?.alternatives ?? 'alternatives');
+  const crit = (n: number) => noun(n, al.criterion, al.criteria);
+  const alts = noun(p.altIds.length, al.alternative, al.alternatives);
 
   let s = p.basis.length === 0
-    ? `no ${al?.criterion ?? 'criterion'} admits a dominance comparison, across ${alts}`
+    ? `no ${al.criterion} admits a dominance comparison, across ${alts}`
     : `computed over the ${crit(p.basis.length)} that ${p.basis.length === 1 ? 'admits' : 'admit'} ` +
       `a dominance comparison, across ${alts}`;
 
