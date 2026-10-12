@@ -57,6 +57,7 @@ import {
   describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
 } from './encodings/registry.js';
 import { MATRIX_CSS } from './matrix-css.js';
+import { revealClear } from './sticky.js';
 
 /** The default encoding, and the fallback when the chosen one cannot draw (ADR-0032 clause 1). */
 export const TEXT_ONLY = textOnly.id;
@@ -215,10 +216,17 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     event.preventDefault();
     table.querySelector<HTMLElement>(`[data-cell="${to.r}:${to.c}"]`)?.focus();
   };
-  /** Wherever focus lands in the grid -- key, click or script -- that is the reader's position. */
+  /**
+   * Wherever focus lands in the grid -- key, click or script -- that is the
+   * reader's position, and it is brought clear of the sticky headers (#103).
+   * A focus scrolls only a cell outside the scrollport, so one inside it but
+   * under the sticky header column would stay covered: `revealClear` does it.
+   */
   const onFocusCapture = (event: FocusEvent) => {
     const into = (event.target as Element | null)?.closest?.('[data-cell]');
-    if (!into || !onFocusChange) return;
+    if (!into) return;
+    revealClear(into);
+    if (!onFocusChange) return;
     const [r, c] = into.getAttribute('data-cell')!.split(':').map(Number) as [number, number];
     if (r !== at.r || c !== at.c) onFocusChange(grid.focusAt(r, c));
   };

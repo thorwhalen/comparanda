@@ -20,6 +20,7 @@ import { createEncodingRegistry, type EncodingRegistry } from './encodings/regis
 import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
+import { trackStickyExtents } from './sticky.js';
 
 /** What `mountMatrix` returns. */
 export interface MatrixHandle {
@@ -106,6 +107,8 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
   let analysis: Analysis = current.analysis;
   let unsubscribe: (() => void) | undefined;
   let destroyed = false;
+  /** The sticky header's extents, as the scroll padding focus is kept clear of (#103). */
+  const sticky = trackStickyExtents(el);
   /**
    * Where the reader moved since the host last said where they are: the
    * matrix's one piece of view state of its own, laid over the host's `view`
@@ -144,6 +147,8 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     };
     const was = focused();
     render(h(component, resolved), el);
+    // Before focus moves: a focus that scrolls must already see the padding.
+    sticky.measure();
     settle(was);
   };
 
@@ -210,6 +215,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     // A mount that failed holds nothing: no subscription, no claim, no half a tree.
     destroyed = true;
     unsubscribe?.();
+    sticky.release();
     render(null, el);
     mounted.delete(el);
     throw error;
@@ -276,6 +282,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       destroyed = true;
       unsubscribe?.();
       unsubscribe = undefined;
+      sticky.release();
       render(null, el);
       mounted.delete(el);
     },

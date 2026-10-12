@@ -13,8 +13,10 @@
  *
  * Sticky headers follow ADR-0027: `border-collapse: separate` with rules drawn
  * as inset `box-shadow`, because collapsed borders do not travel with a sticky
- * cell. Focus geometry under the sticky headers (`scroll-padding-*` equal to
- * their extents, SC 2.4.11) is #103's, on top of the grid's focus model (#99).
+ * cell. The scroll container's `scroll-padding-*` equals their extents
+ * (SC 2.4.11), measured after each render by `sticky.ts` (#103), so a focused
+ * cell is never scrolled under them; the header row under a band row sticks at
+ * the band's measured height.
  * A cell's announced measures are visually hidden with the clip pattern, not
  * `display: none`, which would hide them from the screen reader too.
  *
@@ -48,6 +50,9 @@ export const MATRIX_CSS = `
 }
 .comparanda-matrix .comparanda-scroll {
   overflow: auto; max-height: var(--comparanda-max-height, 80vh);
+  /* Focus scrolls clear of the sticky chrome (SC 2.4.11): the extents are measured by mount (sticky.ts). */
+  scroll-padding-block-start: var(--cmp-sticky-block, 0px);
+  scroll-padding-inline-start: var(--cmp-sticky-inline, 0px);
 }
 .comparanda-matrix [data-cell]:focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: -2px; }
 .comparanda-matrix .comparanda-keys { margin: 0 0 0.35em; color: var(--cmp-muted); font-size: 0.9em; }
@@ -66,7 +71,7 @@ export const MATRIX_CSS = `
 .comparanda-matrix th { background: var(--cmp-header); font-weight: 600; }
 .comparanda-matrix thead th { position: sticky; top: 0; z-index: 2; }
 .comparanda-matrix thead tr.comparanda-band th { white-space: nowrap; }
-.comparanda-matrix thead tr.comparanda-band + tr th { top: 2.1em; }
+.comparanda-matrix thead tr.comparanda-band + tr th { top: var(--cmp-band-block, 2.1em); }
 .comparanda-matrix tbody th[scope="row"] { position: sticky; inset-inline-start: 0; z-index: 1; }
 .comparanda-matrix thead .comparanda-corner { inset-inline-start: 0; z-index: 3; }
 .comparanda-matrix tr.comparanda-band th { background: var(--cmp-band); }
