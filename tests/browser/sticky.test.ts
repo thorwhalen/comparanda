@@ -150,6 +150,30 @@ describe('a focused cell is never under the sticky headers (#103)', () => {
     }
   });
 
+  it('after a click, a focus the host moves is still revealed, and a key reveals the clicked cell', async () => {
+    handle = mountMatrix(el, { analysis: video, measure: 'score' });
+    const s = scroller();
+    const corner = el.querySelector('.comparanda-corner')!.getBoundingClientRect();
+    // Click a cell clear of the chrome, so the browser is in pointer mode.
+    const clicked = el.querySelector<HTMLElement>('tbody tr:nth-of-type(2) td:nth-of-type(5)')!;
+    await userEvent.click(clicked);
+    // Then a cell half under the header column, focused by the host.
+    const td = el.querySelector<HTMLElement>('tbody tr:nth-of-type(3) td:nth-of-type(3)')!;
+    s.scrollLeft += td.getBoundingClientRect().left - corner.right + td.getBoundingClientRect().width / 2;
+    expect(td.getBoundingClientRect().left).toBeLessThan(corner.right);
+    const alts = video.alternatives.map((a) => a.id);
+    const crits = video.criteria.map((c) => c.id);
+    handle.update({ view: setFocus(initialViewState(video), { alternativeId: alts[2]!, criterionId: crits[2]! }) });
+    expect(document.activeElement).toBe(td);
+    expect(obscured().inline).toBeLessThanOrEqual(1);
+    // A clicked, half-covered cell is uncovered by the first key the reader presses there.
+    s.scrollLeft += td.getBoundingClientRect().left - corner.right + td.getBoundingClientRect().width / 2;
+    await userEvent.click(td, { position: { x: td.getBoundingClientRect().width - 4, y: 4 } });
+    expect(obscured().inline).toBeGreaterThan(1);
+    await userEvent.keyboard('{Shift}');
+    expect(obscured().inline).toBeLessThanOrEqual(1);
+  });
+
   it('a click does not scroll the cell out from under the pointer', async () => {
     handle = mountMatrix(el, { analysis: video, measure: 'score' });
     const s = scroller();

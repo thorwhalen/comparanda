@@ -39,7 +39,7 @@
  * control that is present and does nothing is the failure the affordance layer
  * exists to prevent.
  */
-import { useId } from 'preact/hooks';
+import { useId, useRef } from 'preact/hooks';
 
 import type { Affordance, Affordances } from '../core/affordances.js';
 import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
@@ -124,6 +124,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const confidence = measure !== CONFIDENCE && unknownMeasure(analysis, CONFIDENCE) === undefined
     ? makeCellReader(analysis, CONFIDENCE) : undefined;
   const helpId = useId();
+  /** The cell a pointer is pressing, between its pointerdown and pointerup: the focus that lands there is the pointer's. */
+  const pressed = useRef<Element | null>(null);
   const words = aliasesOf(analysis);
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
@@ -209,6 +211,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const from = (event.target as Element | null)?.closest?.('[data-cell]');
     const table = event.currentTarget as HTMLTableElement;
     if (!from || !table.contains(from)) return;
+    // A reader who clicked a half-covered cell and now uses the keyboard sees it uncovered first.
+    revealClear(from);
     const [r, c] = from.getAttribute('data-cell')!.split(':').map(Number) as [number, number];
     const rtl = getComputedStyle(table).direction === 'rtl';
     const to = grid.step(r, c, event.key, { ctrl: event.ctrlKey, rtl });
@@ -221,15 +225,16 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
    * reader's position, and it is brought clear of the sticky headers (#103).
    * A focus scrolls only a cell outside the scrollport, so one inside it but
    * under the sticky header column would stay covered: `revealClear` does it.
-   * Not for a pointer's focus: the cell clicked is where the pointer already is,
-   * and scrolling it away from under the pointer is the jump to avoid. The
-   * measured padding it reads is `mountMatrix`'s; rendered bare, the cell is
+   * Not for the focus a pointer press gives the cell it presses: that cell is
+   * under the pointer already, and scrolling it away is the jump to avoid. Any
+   * other focus -- a key, a host, a script, even after a click -- is revealed.
+   * The measured padding it reads is `mountMatrix`'s; rendered bare, the cell is
    * only brought inside the scrollport.
    */
   const onFocusCapture = (event: FocusEvent) => {
     const into = (event.target as Element | null)?.closest?.('[data-cell]');
     if (!into) return;
-    if (into.matches(':focus-visible')) revealClear(into);
+    if (!(pressed.current && into.contains(pressed.current))) revealClear(into);
     if (!onFocusChange) return;
     const [r, c] = into.getAttribute('data-cell')!.split(':').map(Number) as [number, number];
     if (r !== at.r || c !== at.c) onFocusChange(grid.focusAt(r, c));
@@ -254,7 +259,12 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       <Legend definition={active} legend={prepared.legend} />
       {/* Not itself a tab stop: focusing a cell scrolls it, and the grid is the matrix's one stop. */}
       <div class="comparanda-scroll" role="region" aria-label={analysis.subject.question}>
-        <table role="grid" aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}>
+        <table
+          role="grid" aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}
+          onPointerDownCapture={(event: PointerEvent) => { pressed.current = event.target as Element | null; }}
+          onPointerUpCapture={() => { pressed.current = null; }}
+          onPointerCancelCapture={() => { pressed.current = null; }}
+        >
           <caption>{analysis.subject.question}</caption>
           {columns.bands && (
             <>

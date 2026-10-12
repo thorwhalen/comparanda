@@ -119,6 +119,7 @@ export function revealClear(cell: Element): void {
 /**
  * CSS pixels of `el` per screen pixel, on each axis: 1 unless a host scales the
  * matrix with a `transform` or CSS `zoom` (browser zoom scales both alike).
+ * Scale only: a rotated matrix's bounding boxes are not its axes, and is not supported.
  * `offset*` is unscaled layout, `getBoundingClientRect` is what is painted.
  */
 function cssPerScreenPixel(el: HTMLElement): { x: number; y: number } {
