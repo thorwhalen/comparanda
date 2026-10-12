@@ -295,7 +295,9 @@ describe('editAffordances: what the view reads, every write gated on getCapabili
       action: 'decide-suggestion', doing: 'accepting a suggestion', target: { kind: 'suggestion', id: 'sg-day-tai' },
       decision: 'accept', cell: { alternativeId: 'taipei', criterionId: 'winter-daylight', measure: 'score' },
     }]);
-    expect(() => editAffordances(inMemoryAnalysisSource(a), a).decideSuggestion('sg-day-tai', 'acept' as never)).toThrow(/"accept" or "decline"/);
+    for (const source of [inMemoryAnalysisSource(a), inMemoryAnalysisSource(a, { canUpdate: false })]) {
+      expect(() => editAffordances(source, a).decideSuggestion('sg-day-tai', 'acept' as never)).toThrow(/"accept" or "decline"/);
+    }
     const noMeasure = { ...a, suggestions: a.suggestions.map((sg) => ({ ...sg, anchor: { ...sg.anchor, measure: undefined } })) };
     expect(editAffordances(inMemoryAnalysisSource(noMeasure as never), noMeasure as never).decideSuggestion('sg-day-tai', 'accept').reason)
       .toMatch(/not the measure it scores/);

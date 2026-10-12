@@ -37,7 +37,7 @@ import type { DataChangeEvent, DataProvider, ProviderCapabilities } from '@zodal
 import type { Analysis } from '../core/schema/analysis.js';
 import { revisionProblems } from '../core/revision.js';
 import {
-  cellPolicy, makeAffordances, requireDoing, type Affordance, type Affordances, type Authorize, type WriteAffordance,
+  cellPolicy, makeAffordances, requireDecision, requireDoing, type Affordance, type Affordances, type Authorize, type WriteAffordance,
 } from '../core/affordances.js';
 import type { Cell } from '../core/schema/values.js';
 import type { Author } from '../core/schema/provenance.js';
@@ -185,7 +185,7 @@ export function editAffordances(
     },
     changeLock: () => gated(analysis.locked ? 'unlocking the analysis' : 'locking the analysis', () => doc.changeLock()),
     decideSuggestion: (id, decision) => gated(
-      `${decision === 'accept' ? 'accepting' : 'declining'} a suggestion`, () => doc.decideSuggestion(id, decision),
+      `${requireDecision(decision) === 'accept' ? 'accepting' : 'declining'} a suggestion`, () => doc.decideSuggestion(id, decision),
     ),
   };
   return { ...doc, ...writes };

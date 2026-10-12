@@ -139,6 +139,14 @@ export function documentPolicy(
   return ALLOWED;
 }
 
+/** A decision is one of two words; anything else is a caller's mistake, said at once rather than read as a decline. */
+export function requireDecision(decision: SuggestionDecision): SuggestionDecision {
+  if (decision !== 'accept' && decision !== 'decline') {
+    throw new TypeError(`a suggestion is decided with "accept" or "decline", not ${JSON.stringify(decision)}.`);
+  }
+  return decision;
+}
+
 /** `doing` is read by people. An empty one is a caller's mistake, and says so at once. */
 export function requireDoing(doing: string): string {
   if (typeof doing !== 'string' || doing.trim() === '') {
@@ -312,9 +320,7 @@ export function makeAffordances(
       return withHost(documentRequest('change-lock', doing, { kind: 'analysis' }), documentPolicy(a, 'change-lock'));
     },
     decideSuggestion(suggestionId, decision) {
-      if (decision !== 'accept' && decision !== 'decline') {
-        throw new TypeError(`a suggestion is decided with "accept" or "decline", not ${JSON.stringify(decision)}.`);
-      }
+      requireDecision(decision);
       const s = a.suggestions.find((x) => x.id === suggestionId);
       const own = (): Affordance => {
         if (!s) return refuse(`there is no suggestion "${suggestionId}" in this analysis.`);
