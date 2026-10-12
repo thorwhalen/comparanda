@@ -11,7 +11,9 @@ import { initialViewState, setEncoding } from '../../src/core/view-state.js';
 import {
   createEncodingRegistry, defineEncoding, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps,
 } from '../../src/view/index.js';
+import { VSUP_PALETTE } from '../../src/view/encodings/vsup-palette.js';
 import relocationJson from '../../examples/relocation.json';
+import { languagesWithConfidence } from '../fixtures/confidence.js';
 
 const relocation = Analysis.parse(relocationJson);
 /** The fixture reduces by lower-median, which refuses a nominal cell; categories need a reduction that keeps one. */
@@ -90,6 +92,66 @@ describe('switching encodings', () => {
     expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-encoding')).toBe('text-only');
     expect(painted()).toHaveLength(0);
   });
+});
+
+describe('the value-suppressing blend, painted', () => {
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
+  for (const theme of ['light', 'dark'] as const) {
+    it(`paints the tested table's fill and ink, legible and focusable, ${theme} theme`, () => {
+      el.dataset['theme'] = theme;
+      mount({ analysis: languagesWithConfidence(), measure: 'score', encoding: 'uncertainty-suppressed' });
+      expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-encoding')).toBe('uncertainty-suppressed');
+      expect(painted().length).toBeGreaterThan(0);
+      const samples = Array.from(legend().querySelectorAll<HTMLElement>('.comparanda-swatch[data-swatch]'));
+      expect(samples.length).toBeGreaterThan(0);
+      for (const node of [...painted(), ...samples]) {
+        const [fill, ink] = VSUP_PALETTE[node.dataset['swatch']!]![theme];
+        const style = getComputedStyle(node);
+        expect(style.backgroundColor, node.dataset['swatch']).toBe(rgb(fill));
+        expect(style.color, node.dataset['swatch']).toBe(rgb(ink));
+        expect(contrast(style.color, style.backgroundColor)).toBeGreaterThanOrEqual(4.5);
+      }
+      for (const td of painted()) {
+        td.focus();
+        const style = getComputedStyle(td);
+        expect(contrast(style.outlineColor, style.backgroundColor), td.dataset['swatch']).toBeGreaterThanOrEqual(3);
+      }
+    });
+  }
+
+  it('on the dark theme a low-confidence cell recedes into the surface instead of brightening', () => {
+    el.dataset['theme'] = 'dark';
+    mount({ analysis: languagesWithConfidence(), measure: 'score', encoding: 'uncertainty-suppressed' });
+    const bg = (swatch: string) => getComputedStyle(el.querySelector<HTMLElement>(`td[data-swatch="${swatch}"]`)!).backgroundColor;
+    const surface = getComputedStyle(el.querySelector('.comparanda-matrix')!).backgroundColor;
+    // A 5 at high confidence, and any score at low.
+    expect(luminance(bg('vsup-5x3-0-0'))).toBeLessThan(luminance(bg('vsup-5x3-2-4')));
+    expect(luminance(bg('vsup-5x3-0-0'))).toBeGreaterThan(luminance(surface));
+  });
+
+  it('a cell with no confidence is left plain', () => {
+    mount({ analysis: languagesWithConfidence(), measure: 'score', encoding: 'uncertainty-suppressed' });
+    const go = Array.from(el.querySelectorAll<HTMLElement>('tbody tr')).find((tr) => /Go/.test(tr.querySelector('th')!.textContent!))!;
+    expect(go.querySelectorAll('td[data-swatch]')).toHaveLength(0);
+  });
+});
+
+describe('an encoding\'s own palette', () => {
+  const withPalette = (palette: unknown) => defineEncoding({
+    id: 'own-palette', label: 'Own palette', texture: { channel: 'none', because: 'a test.' },
+    prepare: () => ({ legend: { title: 'Own', entries: [], notes: [] }, mark: () => ({}), palette: palette as never }),
+  });
+  const cases: [string, unknown][] = [
+    ['a static swatch\'s id, which would repaint it page-wide', { 'seq-5': { light: ['#ff0000', '#000000'], dark: ['#ff0000', '#000000'] } }],
+    ['a colour that is not #rrggbb', { 'mine-1': { light: ['red; } body { display: none', '#000000'], dark: ['#000000', '#ffffff'] } }],
+  ];
+  for (const [what, palette] of cases) {
+    it(`with ${what} falls back to text, and no stylesheet is written for it`, () => {
+      mount({ analysis: relocation, measure: 'score', encoding: 'own-palette' }, createEncodingRegistry([...SHIPPED_ENCODINGS, withPalette(palette)]));
+      expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-encoding')).toBe('text-only');
+      expect(el.querySelectorAll('.comparanda-matrix style')).toHaveLength(1);
+    });
+  }
 });
 
 describe('an encoding that throws', () => {

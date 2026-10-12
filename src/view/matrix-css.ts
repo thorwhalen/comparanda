@@ -24,30 +24,50 @@
  * structural `not-applicable` is hatched, a `not-assessed` gap has a dashed
  * frame, and every one of them also says what it is in words.
  */
-import { paletteRules, paletteVars } from './encodings/palette.js';
+import { paletteRules, paletteVars, PALETTE, type Swatch } from './encodings/palette.js';
+import { THEMES, type Theme } from './theme.js';
 
-const LIGHT = `
-  --cmp-surface: #ffffff; --cmp-ink: #1b1d21; --cmp-muted: #4b5058;
-  --cmp-header: #eef0f3; --cmp-band: #dfe3e8; --cmp-rule: #c4c9d0;
-  --cmp-hatch: rgba(27, 29, 33, 0.16); --cmp-focus: #1d4ed8;
-  ${paletteVars('light')}`;
-const DARK = `
-  --cmp-surface: #15171b; --cmp-ink: #e6e8eb; --cmp-muted: #b4bac3;
-  --cmp-header: #23262c; --cmp-band: #2e323a; --cmp-rule: #464c55;
-  --cmp-hatch: rgba(230, 232, 235, 0.18); --cmp-focus: #8ab4ff;
-  ${paletteVars('dark')}`;
+/** `#rrggbb` at an opacity, as `rgba()`. */
+function rgba(hex: string, alpha: number): string {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
-export const MATRIX_CSS = `
-.comparanda-matrix {${LIGHT}
-  color: var(--cmp-ink); background: var(--cmp-surface);
+function tokens(theme: Theme): string {
+  const t = THEMES[theme];
+  return `
+  --cmp-surface: ${t.surface}; --cmp-ink: ${t.ink}; --cmp-muted: ${t.muted};
+  --cmp-header: ${t.header}; --cmp-band: ${t.band}; --cmp-rule: ${t.rule};
+  --cmp-hatch: ${rgba(t.ink, t.hatchAlpha)}; --cmp-focus: ${t.focus};
+  ${paletteVars(PALETTE, theme)}`;
+}
+
+/**
+ * Declarations per theme, under the selectors that choose a theme: the light
+ * ones on the matrix, the dark ones where a dark theme is asked for. Used for
+ * the tokens below and for the swatches an encoding derives per render.
+ */
+export function themed(light: string, dark: string): string {
+  return `
+.comparanda-matrix {${light}
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) :not([data-theme="light"]) > .comparanda-matrix {${DARK}
+  :root:not([data-theme="light"]) :not([data-theme="light"]) > .comparanda-matrix {${dark}
   }
 }
 :root[data-theme="dark"] :not([data-theme="light"]) > .comparanda-matrix,
-[data-theme="dark"] > .comparanda-matrix {${DARK}
+[data-theme="dark"] > .comparanda-matrix {${dark}
+}`;
 }
+
+/** The stylesheet for swatches an encoding adds to the static palette: their variables per theme, and their rules. */
+export function derivedPaletteCss(palette: Readonly<Record<string, Swatch>>): string {
+  return `${themed(paletteVars(palette, 'light'), paletteVars(palette, 'dark'))}
+${paletteRules(palette, '.comparanda-matrix')}`;
+}
+
+export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
+.comparanda-matrix { color: var(--cmp-ink); background: var(--cmp-surface); }
 .comparanda-matrix .comparanda-scroll {
   overflow: auto; max-height: var(--comparanda-max-height, 80vh);
   /* Focus scrolls clear of the sticky chrome (SC 2.4.11): the extents are measured by mount (sticky.ts). */
@@ -95,7 +115,7 @@ export const MATRIX_CSS = `
 .comparanda-matrix td[data-absence="undeclared"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
 /* An encoding's swatch paints the cell and sets the ink measured against it. Same specificity as the
    td[data-state] rules that mute an empty cell's ink, and later: keep it after them. */
-${paletteRules('.comparanda-matrix')}
+${paletteRules(PALETTE, '.comparanda-matrix')}
 /* On a fill, the focus ring takes the ink, which clears 4.5:1 there; the focus colour does not on every step. */
 .comparanda-matrix td[data-swatch]:focus-visible { outline-color: currentColor; }
 .comparanda-matrix td[data-swatch] { font-style: normal; }

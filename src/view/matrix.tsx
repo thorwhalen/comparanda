@@ -56,7 +56,8 @@ import { textOnly } from './encodings/shipped.js';
 import {
   describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
 } from './encodings/registry.js';
-import { MATRIX_CSS } from './matrix-css.js';
+import { derivedPaletteCss, MATRIX_CSS } from './matrix-css.js';
+import { PALETTE } from './encodings/palette.js';
 import { revealClear } from './sticky.js';
 
 /** The default encoding, and the fallback when the chosen one cannot draw (ADR-0032 clause 1). */
@@ -123,6 +124,13 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   };
   const confidence = measure !== CONFIDENCE && unknownMeasure(analysis, CONFIDENCE) === undefined
     ? makeCellReader(analysis, CONFIDENCE) : undefined;
+  // Another measure's reading of the same cell, for an encoding that crosses two (value by confidence).
+  const others = new Map<string, ReturnType<typeof makeCellReader> | null>();
+  const readMeasure = (other: string, alt: string, crit: string) => {
+    if (other === measure) return read(alt, crit);
+    if (!others.has(other)) others.set(other, unknownMeasure(analysis, other) === undefined ? makeCellReader(analysis, other) : null);
+    return others.get(other)?.read(alt, crit);
+  };
   const helpId = useId();
   /**
    * What a pointer last pressed, until the focus it gives (or a key) uses it up:
@@ -142,7 +150,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
 
   const [alternatives, criteria] = transposed ? [columns.entries, rows.entries] : [rows.entries, columns.entries];
   const { active, prepared, fallback } = chooseEncoding(encodings, encoding, {
-    analysis, measure, vocabulary, read, inapplicable: affordances.inapplicable,
+    analysis, measure, vocabulary, read, readMeasure, inapplicable: affordances.inapplicable,
     alternatives: alternatives.map((e) => e.id), criteria: criteria.map((e) => e.id),
   });
 
@@ -254,6 +262,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       data-orientation={transposed ? 'transposed' : 'standard'}
     >
       <style>{MATRIX_CSS}</style>
+      {/* After MATRIX_CSS: its swatch rules tie the muted-ink rules on specificity, and win by order. */}
+      {prepared.palette && <style>{derivedPaletteCss(prepared.palette)}</style>}
       {fallback && <p class="comparanda-degraded" role="note">{fallback}</p>}
       <RefusedEdits
         analysis={analysis} measure={measure} affordances={affordances}
@@ -451,11 +461,28 @@ function chooseEncoding(
       !legend.entries.every(entryOk) || !legend.notes.every((n) => typeof n === 'string')) {
       return cannot('its legend is not a { title, entries: { label }[], notes: string[] }.');
     }
-    return { active: chosen, prepared: { legend, mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? {} } };
+    // The palette becomes a stylesheet: ids and colours are checked for shape, so nothing else reaches it.
+    const { palette } = prepared;
+    if (palette !== undefined && !paletteOk(palette)) {
+      return cannot('its palette is not a table of swatch ids to #rrggbb light and dark [fill, ink] pairs.');
+    }
+    return {
+      active: chosen,
+      prepared: { legend, ...(palette && { palette }), mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? {} },
+    };
   } catch (error) {
     const message = (error instanceof Error ? error.message : String(error)).replace(/[.\s]+$/, '');
     return cannot(`it failed (${message}).`);
   }
+}
+
+const HEX = /^#[0-9a-f]{6}$/i;
+const pairOk = (pair: unknown) => Array.isArray(pair) && pair.length === 2 && pair.every((c) => typeof c === 'string' && HEX.test(c));
+function paletteOk(palette: unknown): boolean {
+  return palette !== null && typeof palette === 'object' && Object.entries(palette).every(([id, swatch]) =>
+    // Never a static swatch's id: its stylesheet is page-wide, and would repaint a tested swatch in every matrix.
+    /^[a-z0-9-]+$/i.test(id) && !Object.prototype.hasOwnProperty.call(PALETTE, id) && swatch !== null && typeof swatch === 'object' &&
+    pairOk((swatch as { light?: unknown }).light) && pairOk((swatch as { dark?: unknown }).dark));
 }
 
 /** The active encoding's legend: samples with their meaning in words, counts, notes, and its texture. */

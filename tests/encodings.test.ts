@@ -17,6 +17,7 @@ import {
 import { relativeLuminanceWcag, TEXT_CONTRAST_MIN, wcagContrastRatio } from '../src/view/encodings/contrast.js';
 import { PALETTE, SWATCH_IDS } from '../src/view/encodings/palette.js';
 import languagesJson from '../examples/languages.json';
+import { languagesWithConfidence } from './fixtures/confidence.js';
 import relocationJson from '../examples/relocation.json';
 
 const relocation = Analysis.parse(relocationJson);
@@ -30,7 +31,9 @@ function contextOf(a: Analysis, measure = 'score'): EncodingContext {
   return {
     analysis: a, measure, vocabulary: vocabularyOf(a),
     alternatives: a.alternatives.map((x) => x.id), criteria: a.criteria.map((x) => x.id),
-    read: (alt, crit) => reader.read(alt, crit), inapplicable: affordances.inapplicable,
+    read: (alt, crit) => reader.read(alt, crit),
+    readMeasure: (other, alt, crit) => makeCellReader(a, other).read(alt, crit),
+    inapplicable: affordances.inapplicable,
   };
 }
 function prepared(e: EncodingDefinition, ctx: EncodingContext): PreparedEncoding {
@@ -243,10 +246,10 @@ describe('datum', () => {
   });
 });
 
-describe('the registered-but-not-drawn four', () => {
+describe('the registered-but-not-drawn three', () => {
   it('each says why it cannot draw rather than drawing something else', () => {
-    const ctx = contextOf(relocation);
-    for (const id of ['uncertainty-suppressed', 'consensus-suppressed', 'disagreement', 'disagreement-spread']) {
+    const ctx = contextOf(languagesWithConfidence());
+    for (const id of ['consensus-suppressed', 'disagreement', 'disagreement-spread']) {
       const p = SHIPPED_ENCODINGS.find((e) => e.id === id)!.prepare(ctx);
       expect('unavailable' in p, id).toBe(true);
     }

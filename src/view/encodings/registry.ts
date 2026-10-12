@@ -25,7 +25,8 @@
 import type { MissingCode, MissingnessVocabulary } from '../../core/schema/missingness.js';
 import type { Analysis } from '../../core/schema/analysis.js';
 import type { Reduced } from '../../core/schema/values.js';
-import type { SwatchId } from './palette.js';
+import type { Swatch, SwatchId } from './palette.js';
+import type { VsupSwatchId } from './vsup.js';
 
 /**
  * What an encoding does with the texture channel, which ADR-0028 reserves for
@@ -42,8 +43,8 @@ export type Texture =
 
 /** What a cell shows under an encoding, beyond its text. Every field optional: no mark is a mark. */
 export interface CellMark {
-  /** A palette entry; its fill and the ink that clears contrast on it are the palette's. */
-  readonly swatch?: SwatchId;
+  /** A palette entry -- the static table's, or one the preparation adds -- whose fill and ink are the palette's. */
+  readonly swatch?: SwatchId | VsupSwatchId;
   /** Hatch density, 1 (sparse) to 3 (dense), for an encoding whose texture is `hatch`. */
   readonly hatch?: 1 | 2 | 3;
   /** The core reason whose glyph the cell carries, for an encoding whose texture is `glyph`. */
@@ -56,7 +57,7 @@ export interface CellMark {
 
 /** One line of a legend: a sample, what it means, and how many shown cells carry it. */
 export interface LegendEntry {
-  readonly swatch?: SwatchId;
+  readonly swatch?: SwatchId | VsupSwatchId;
   readonly badge?: string;
   readonly label: string;
   readonly count?: number;
@@ -80,6 +81,8 @@ export interface EncodingContext {
   readonly criteria: readonly string[];
   /** The reduced cell the matrix shows. */
   readonly read: (alternativeId: string, criterionId: string) => Reduced | undefined;
+  /** The same cell's reduced value for another measure the analysis records, e.g. its confidence. */
+  readonly readMeasure: (measure: string, alternativeId: string, criterionId: string) => Reduced | undefined;
   /** Whether a declared block makes this cell structurally inapplicable. */
   readonly inapplicable: (alternativeId: string, criterionId: string) => boolean;
 }
@@ -88,6 +91,12 @@ export interface EncodingContext {
 export interface PreparedEncoding {
   readonly mark: (alternativeId: string, criterionId: string) => CellMark;
   readonly legend: Legend;
+  /**
+   * Swatches this preparation uses beyond the static palette, fills and inks
+   * precomputed and tested at build time; the matrix adds a stylesheet for
+   * them. Never computed here: the render path does no colour maths.
+   */
+  readonly palette?: Readonly<Record<string, Swatch>>;
 }
 
 /** An encoding, described. `prepare` either readies it over the shown matrix, or says why it cannot. */

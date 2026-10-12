@@ -5,11 +5,11 @@
  * `createEncodingRegistry`; `SHIPPED_ENCODINGS` is all nine, for a root that
  * wants them all.
  *
- * Five draw today: `text-only`, `value`, `categorical`, `missingness`,
- * `datum`. Four are registered with their texture and legend, and say why
- * they cannot draw yet when chosen, so the matrix falls back to text and says
- * so: `uncertainty-suppressed` and `consensus-suppressed` wait for the
- * value-suppressing palette (#91); `disagreement` for the rater dot strip
+ * Six draw today: `text-only`, `value`, `categorical`, `missingness`,
+ * `datum`, `uncertainty-suppressed`. Three are registered with their texture
+ * and legend, and say why they cannot draw yet when chosen, so the matrix
+ * falls back to text and says so: `consensus-suppressed` waits for the
+ * per-cell disagreement index; `disagreement` for the rater dot strip
  * (#110); `disagreement-spread` for the per-cell disagreement index
  * (ADR-0024's `(1 − A) / 2`). Each of those lands behind this same
  * registration rather than as a new one.
@@ -19,7 +19,9 @@ import { CORE_MISSING_CODES, NOT_APPLICABLE, NOT_ASSESSED, type MissingCode } fr
 import { isOrdered, type Measurement } from '../../core/schema/measurement.js';
 import { measurementFor } from '../../core/schema/structure.js';
 import type { ScalarValue } from '../../core/schema/values.js';
-import type { SwatchId } from './palette.js';
+import type { Swatch, SwatchId } from './palette.js';
+import { VSUP_PALETTE } from './vsup-palette.js';
+import { layerFor, mergeTree, nodeOf, vsupSwatchId, type LevelGroup, type MergeTree, type VsupSwatchId } from './vsup.js';
 import {
   defineEncoding, type CellMark, type EncodingContext, type EncodingDefinition, type LegendEntry,
 } from './registry.js';
@@ -115,7 +117,7 @@ export const categorical = /* @__PURE__ */ defineEncoding({
     };
     for (const alt of ctx.alternatives) {
       for (const crit of ctx.criteria) {
-        const swatch = mark(alt, crit).swatch;
+        const swatch = mark(alt, crit).swatch as SwatchId | undefined;
         if (swatch) counts.set(swatch, (counts.get(swatch) ?? 0) + 1);
       }
     }
@@ -246,24 +248,193 @@ export const datum = /* @__PURE__ */ defineEncoding({
   },
 });
 
-/** The value-suppressing blend (ADR-0010 clauses 2, 3, 5): registered; its palette is #91's. */
+const CONFIDENCE = 'confidence';
+/** Confidence recorded on a range rather than as levels is read in this many layers, the hatch's maximum. */
+const CONTINUOUS_CONFIDENCE_LAYERS = 3;
+const CONTINUOUS_CONFIDENCE_WORDS = ['low', 'medium', 'high'];
+/** Declared confidence levels read one layer each, up to the hatch's three densities above the leaves. */
+const MAX_CONFIDENCE_LAYERS = 4;
+
+/** One column's trees: how its values and its confidences find their node. */
+interface SuppressedColumn {
+  readonly tree: MergeTree;
+  /** A value's level, 0 the worst, or `undefined` when it is not one of the scale's. */
+  readonly level: (v: ScalarValue) => number | undefined;
+  /** A confidence's layer, 0 the least confident, or `undefined` when it cannot be placed. */
+  readonly layer: (c: ScalarValue) => number | undefined;
+  /** The scale's levels in words, worst first, and the confidence layers', least confident first. */
+  readonly levelWords: readonly string[];
+  /** Whether worst-first is the reverse of the declared order (a decreasing scale), so groups are worded in declared order. */
+  readonly reversed: boolean;
+  readonly layerWords: readonly string[];
+}
+
+/**
+ * A scale's levels, worst first, when it is ordered, has a best end, and lists
+ * them -- or, with `spanRange`, spans them as the integers of a non-ratio range.
+ */
+function rankedLevels(m: Measurement | undefined, { spanRange = true } = {}): readonly ScalarValue[] | undefined {
+  if (!m || !isOrdered(m.level)) return undefined;
+  if (m.preference !== 'increasing' && m.preference !== 'decreasing') return undefined;
+  let levels: readonly ScalarValue[] | undefined = m.levels && m.levels.length >= 2 ? m.levels : undefined;
+  const r = m.range;
+  if (!levels && spanRange && r && Number.isInteger(r.min) && Number.isInteger(r.max) && r.max > r.min && m.level !== 'ratio') {
+    levels = Array.from({ length: r.max - r.min + 1 }, (_, i) => r.min + i);
+  }
+  if (!levels) return undefined;
+  return m.preference === 'decreasing' ? [...levels].reverse() : levels;
+}
+
+function suppressedColumn(score: Measurement | undefined, confidence: Measurement | undefined): SuppressedColumn | undefined {
+  const levels = rankedLevels(score);
+  if (!levels || !confidence || !isOrdered(confidence.level)) return undefined;
+  if (confidence.preference !== 'increasing' && confidence.preference !== 'decreasing') return undefined;
+  const k = levels.length;
+  const level = (v: ScalarValue) => { const i = levels.findIndex((l) => l === v); return i < 0 ? undefined : i; };
+  // Confidence is read by its declared levels, or else as a range in three layers: a range is
+  // never cut into its integers, which would refuse 0.9 on a 0-1 scale.
+  const confLevels = rankedLevels(confidence, { spanRange: false });
+  const r = confidence.range;
+  let m: number;
+  let layer: (c: ScalarValue) => number | undefined;
+  let layerWords: string[];
+  if (confLevels && confLevels.length <= MAX_CONFIDENCE_LAYERS) {
+    m = confLevels.length;
+    layer = (c) => {
+      const i = confLevels.findIndex((l) => l === c);
+      return i < 0 ? undefined : layerFor(1 - i / (m - 1), m);
+    };
+    layerWords = confLevels.map(String);
+  } else if (confLevels) {
+    // More levels than the hatch can show: read like a range, in three layers.
+    m = CONTINUOUS_CONFIDENCE_LAYERS;
+    layer = (c) => {
+      const i = confLevels.findIndex((l) => l === c);
+      return i < 0 ? undefined : layerFor(1 - i / (confLevels.length - 1), m);
+    };
+    layerWords = CONTINUOUS_CONFIDENCE_WORDS;
+  } else if (r && r.max > r.min) {
+    m = CONTINUOUS_CONFIDENCE_LAYERS;
+    layer = (c) => {
+      if (typeof c !== 'number' || c < r.min || c > r.max) return undefined;
+      const toward = (c - r.min) / (r.max - r.min);
+      // We store confidence, not uncertainty: û = 1 − normalise(confidence).
+      return layerFor(1 - (confidence.preference === 'decreasing' ? 1 - toward : toward), m);
+    };
+    layerWords = CONTINUOUS_CONFIDENCE_WORDS;
+  } else {
+    return undefined;
+  }
+  // A tree the palette was not built for (too many levels on either side) is left uncoloured.
+  if (!Object.prototype.hasOwnProperty.call(VSUP_PALETTE, vsupSwatchId(k, m, 0, 0))) return undefined;
+  return { tree: mergeTree(k, m), level, layer, levelWords: levels.map(String), reversed: score!.preference === 'decreasing', layerWords };
+}
+
+/** A group of levels in words, in the scale's declared order: "3", "1 or 2", "1 to 3", or "any" for the whole scale. */
+function groupWords([first, last]: LevelGroup, { levelWords: words, reversed }: SuppressedColumn): string {
+  if (first === last) return words[first]!;
+  if (first === 0 && last === words.length - 1) return 'any';
+  const [a, b] = reversed ? [words[last], words[first]] : [words[first], words[last]];
+  return last === first + 1 ? `${a} or ${b}` : `${a} to ${b}`;
+}
+
+/**
+ * The value-suppressing blend (ADR-0010 clauses 2, 3, 5 and 9): a cell's colour
+ * is its value's node in an ordinal merge tree, pulled toward the theme surface
+ * as confidence falls, so a high value on thin evidence recedes. Colours come
+ * from the precomputed, tested `VSUP_PALETTE`; the hatch says the confidence
+ * layer in a second channel (drawn by #102), and the value stays as text.
+ */
 export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
   id: 'uncertainty-suppressed',
   label: 'Value, suppressed by low confidence',
   texture: { channel: 'hatch', carries: 'confidence', levels: 3 },
-  prepare: (ctx) => ({
-    unavailable: ctx.analysis.measures.some((m) => m.name === 'confidence')
-      ? 'its value-suppressing palette is not in this build yet.'
-      : 'this analysis records no confidence measure to suppress by.',
-  }),
+  prepare: (ctx) => {
+    if (ctx.measure === CONFIDENCE) return { unavailable: 'the shown measure is the confidence itself; show the measure it qualifies.' };
+    if (!ctx.analysis.measures.some((m) => m.name === CONFIDENCE)) return { unavailable: 'this analysis records no confidence measure to suppress by.' };
+    const byId = new Map(ctx.analysis.criteria.map((c) => [c.id, c]));
+    const columns = new Map(ctx.criteria.map((id) => {
+      const c = byId.get(id);
+      return [id, c ? suppressedColumn(measurementFor(c, ctx.measure), measurementFor(c, CONFIDENCE)) : undefined] as const;
+    }));
+    const marks = new Map<string, CellMark>();
+    // Keyed by the swatch *and* the column's words: two columns with one tree share a colour, but
+    // when their levels read differently (other words, the other direction) each gets its own line.
+    const used = new Map<string, { swatch: VsupSwatchId; column: SuppressedColumn; layer: number; node: number; count: number }>();
+    let unplaced = false;
+    for (const alt of ctx.alternatives) {
+      for (const crit of ctx.criteria) {
+        const column = columns.get(crit);
+        const v = ctx.read(alt, crit)?.value;
+        if (!column || v === undefined) continue;
+        const c = ctx.readMeasure(CONFIDENCE, alt, crit)?.value;
+        const level = column.level(v);
+        const layer = c === undefined ? undefined : column.layer(c);
+        if (level === undefined || layer === undefined) { unplaced = true; continue; }
+        const node = nodeOf(column.tree, level, layer);
+        const { scoreLevels: k, confidenceLevels: m } = column.tree;
+        const swatch = vsupSwatchId(k, m, layer, node);
+        // Density says how far from the most confident layer, on one scale for every column: 3 is the root.
+        const hatch = Math.round((3 * (m - 1 - layer)) / (m - 1));
+        marks.set(`${alt}\u0000${crit}`, hatch > 0 ? { swatch, hatch: hatch as 1 | 2 | 3 } : { swatch });
+        const key = [swatch, ...column.levelWords, '', ...column.layerWords].join('\u0000');
+        const seen = used.get(key);
+        if (seen) seen.count += 1; else used.set(key, { swatch, column, layer, node, count: 1 });
+      }
+    }
+    if (used.size === 0) {
+      return {
+        unavailable: [...columns.values()].some(Boolean)
+          ? `no shown cell records both a ${ctx.measure} and a confidence on their declared scales.`
+          : `no shown criterion has a ${ctx.measure} on a ranked scale of 2 to 7 levels and a ranked confidence to suppress it by.`,
+      };
+    }
+    const palette: Record<string, Swatch> = {};
+    for (const { swatch } of used.values()) palette[swatch] = VSUP_PALETTE[swatch]!;
+    // Most confident first (on one scale across columns), then worst to best: the rows of the wedge.
+    const confident = (u: { column: SuppressedColumn; layer: number }) => u.layer / (u.column.tree.confidenceLevels - 1);
+    const entries = [...used.values()].sort((a, b) => (confident(b) - confident(a)) || (a.node - b.node)).map((u) => ({
+      swatch: u.swatch,
+      label: `${capitalise(groupWords(u.column.tree.layers[u.layer]![u.node]!, u.column).replace(/^any$/, `any ${ctx.measure}`))}, ${u.column.layerWords[u.layer]} confidence`,
+      count: u.count,
+    }));
+    const aliasing = new Set<string>();
+    for (const { column } of used.values()) {
+      const least = column.layerWords[0];
+      aliasing.add(`At ${least} confidence, every ${ctx.measure} is shown as one colour.`);
+      column.tree.layers.slice(1, -1).forEach((groups, i) => {
+        if (groups.length === 1) {
+          aliasing.add(`At ${column.layerWords[i + 1]} confidence, every ${ctx.measure} is shown as one colour.`);
+          return;
+        }
+        const merged = groups.filter(([first, last]) => last > first).map((g) => groupWords(g, column));
+        if (merged.length > 0) aliasing.add(`At ${column.layerWords[i + 1]} confidence, each of these is shown as one colour: ${merged.join('; ')}.`);
+      });
+    }
+    return {
+      mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? NO_MARK,
+      palette,
+      legend: {
+        title: `${capitalise(ctx.measure)}, fading toward the background as confidence falls`,
+        entries,
+        notes: [
+          ...aliasing,
+          `The ${ctx.measure} stays as text in every cell. In the study that introduced this blend, it changed which options readers chose -- they avoided the least certain, and accepted worse expected value to do so -- not how accurately they read values.`,
+          ...(unplaced || [...columns.values()].some((c) => !c)
+            ? [`Cells with no confidence recorded, and criteria with no ranked confidence or whose ${ctx.measure} is not on a ranked scale of 2 to 7 levels, are left uncoloured.`]
+            : []),
+        ],
+      },
+    };
+  },
 });
 
-/** The blend re-parameterised by disagreement (ADR-0024): registered; its palette is #91's. */
+/** The blend re-parameterised by disagreement (ADR-0024): registered; the palette is in, the per-cell index is not. */
 export const consensusSuppressed = /* @__PURE__ */ defineEncoding({
   id: 'consensus-suppressed',
   label: 'Value, suppressed by disagreement',
   texture: { channel: 'hatch', carries: 'disagreement', levels: 3 },
-  prepare: () => ({ unavailable: 'its value-suppressing palette and the per-cell disagreement index are not in this build yet.' }),
+  prepare: () => ({ unavailable: 'the per-cell disagreement index it suppresses by is not in this build yet.' }),
 });
 
 /** The rater dot strip (ADR-0024): registered; drawn by #110. */
