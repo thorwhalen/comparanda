@@ -225,14 +225,45 @@ describe('second adversarial pass (#165)', () => {
     await expect(inMemoryAnalysisSource(dup).update('a', { cells: renamed })).resolves.toBeDefined();
   });
 
-  it('a stored empty supersededBy does not lock the document, and can be cleared', async () => {
+  it('a stored document that no longer parses accepts its repair, then everything else, and stays guarded', async () => {
     const raw = { ...analysis(), cells: [{ alternativeId: 'x', criterionId: 'c', measure: 'score', assertions: [
-      { ...score('s1', 3, { criteriaVersion: '3' }), version: 1, evidence: [], supersededBy: '' },
+      { ...score('s1', 3, { criteriaVersion: '3' }), version: 1, evidence: [], supersededBy: '', independence: 'independent' },
+      { ...score('s2', 4, { criteriaVersion: '3' }), version: 1, evidence: [], independence: 'independent' },
     ] }] } as unknown as Analysis;
+    // Still guarded: a relabel without a bump and an in-place rewrite are refused (third pass, finding 1).
+    expect(revisionProblems(raw, {
+      ...raw, criteria: raw.criteria.map((c, i) => (i === 0 ? { ...c, label: 'Other' } : c)),
+      cells: [{ ...raw.cells[0]!, assertions: [{ ...raw.cells[0]!.assertions[0]!, supersededBy: undefined }, { ...raw.cells[0]!.assertions[1]!, value: 1 }] }],
+    }).map((p) => p.message).join(' ')).toMatch(/changed its label[\s\S]*edited in place/);
     const src = inMemoryAnalysisSource(raw);
+    await expect(src.update('a', { title: 'renamed' } as Partial<Analysis>)).rejects.toThrow(/schema-shape/);
+    await src.update('a', { cells: [{ ...raw.cells[0]!, assertions: [{ ...raw.cells[0]!.assertions[0]!, supersededBy: undefined }, raw.cells[0]!.assertions[1]!] }] });
     await expect(src.update('a', { title: 'renamed' } as Partial<Analysis>)).resolves.toBeDefined();
-    await expect(src.update('a', { cells: [{ ...raw.cells[0]!, assertions: [{ ...raw.cells[0]!.assertions[0]!, supersededBy: undefined }] }] }))
-      .resolves.toBeDefined();
+  });
+
+  it('a duplicate id makes only the reported copy repairable, not its healthy twin', () => {
+    const dup = analysis({ cells: [{ alternativeId: 'x', criterionId: 'c', measure: 'score', assertions: [
+      score('s1', 3, { independence: 'independent' }), score('s1', 4, { independence: 'independent' }),
+    ] }] });
+    const rewriteOriginal = { ...dup, cells: dup.cells.map((c) => ({ ...c, assertions: [{ ...c.assertions[0]!, value: 5 }, { ...c.assertions[1]!, id: 's1b' }] })) };
+    expect(revisionProblems(dup, rewriteOriginal).map((p) => p.message).join(' ')).toMatch(/edited in place/);
+    // An unrelated write to the same document is not refused for the twin.
+    expect(revisionProblems(dup, { ...dup, title: 't' })).toEqual([]);
+  });
+
+  it('refuses re-declaring a missingness code in place without a version bump', () => {
+    const a = analysis({ missingCodes: [{ id: 'vendor-silent', broader: 'not-evidenced', means: 'no answer', params: {} }] });
+    const b = { ...a, missingCodes: [{ id: 'vendor-silent', broader: 'not-applicable', structural: true, means: 'no answer', params: {} }] };
+    expect(revisionProblems(a, b as Analysis).map((p) => p.path)).toContain('missingCodes[0]');
+    expect(revisionProblems(a, { ...b, criteriaVersion: '4' } as Analysis)).toEqual([]);
+  });
+
+  it('lets a citation be appended to a stored score, but not changed', () => {
+    const a = analysis();
+    const ev = { id: 'e1', target: 'doc:1', sourceType: 'primary', stance: 'supports', derivedFrom: [], selectors: [{ type: 'TextQuoteSelector', exact: 'q' }] };
+    const withEv = (evidence: unknown[]) => ({ ...a, cells: a.cells.map((c) => ({ ...c, assertions: [{ ...c.assertions[0]!, evidence }] })) }) as Analysis;
+    expect(scoreHistoryProblems(a, withEv([ev]))).toEqual([]);
+    expect(scoreHistoryProblems(withEv([ev]), withEv([{ ...ev, stance: 'contradicts' }]))[0]!.message).toMatch(/edited in place/);
   });
 
   it('lets a criterion go together with its only, empty, cell', () => {

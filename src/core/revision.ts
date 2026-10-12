@@ -35,7 +35,7 @@ export interface RevisionProblem {
 }
 
 /** The rules whose failures name an assertion a repair has to be allowed to change. */
-const REPAIRABLE_RULES = new Set(['supersession-resolves', 'supersession-acyclic', 'unique-ids']);
+const REPAIRABLE_RULES = new Set(['supersession-resolves', 'supersession-acyclic', 'unique-ids', 'schema-shape']);
 
 /**
  * Why the write from `before` to `after` must be refused. Empty when it may go.
@@ -51,28 +51,46 @@ export function revisionProblems(before: Analysis, after: unknown): RevisionProb
   const introduced = byDifference(before, beforeErrors, after, afterErrors);
 
   const parsed = Analysis.safeParse(after);
-  const prior = Analysis.safeParse(before);
-  if (!parsed.success || !prior.success) return introduced;
+  // A write must leave a document that parses -- shape errors carry no ids to
+  // compare by, so "already there" cannot be told from "introduced" (#165).
+  if (!parsed.success) return afterErrors;
   const a = parsed.data;
-  const b = prior.data;
+  const prior = Analysis.safeParse(before);
+  // A stored document that does not parse (written before a rule existed) is
+  // still guarded: the history checks run on it as stored. One malformed so
+  // badly they cannot read it is refused until a write repairs only its shape.
+  const b = prior.success ? prior.data : before;
 
   const repairable = new Set<string>();
   for (const p of beforeErrors) {
-    const m = /^cells\[(\d+)\]\.assertions\[(\d+)\]/.exec(p.path);
-    const cell = m ? b.cells[Number(m[1])] : undefined;
-    const s = cell?.assertions[Number(m![2])];
-    if (cell && s && REPAIRABLE_RULES.has(p.ruleId)) {
-      repairable.add(JSON.stringify([cellKey(cell.alternativeId, cell.criterionId, cell.measure), s.id]));
+    // Bracketed from the rules, dotted from a shape error.
+    const m = /^cells(?:\[(\d+)\]|\.(\d+))\.assertions(?:\[(\d+)\]|\.(\d+))/.exec(p.path);
+    if (!m || !REPAIRABLE_RULES.has(p.ruleId)) continue;
+    const cell = b.cells?.[Number(m[1] ?? m[2])];
+    const j = Number(m[3] ?? m[4]);
+    // The assertion at the reported index, and only it: a duplicate id must not
+    // make its healthy twin rewritable too.
+    if (cell?.assertions?.[j]) {
+      repairable.add(JSON.stringify([cellKey(cell.alternativeId, cell.criterionId, cell.measure), j]));
     }
   }
 
-  return [
-    ...criteriaRevisionProblems(b, a),
-    ...scoreHistoryProblems(b, a, { repairable }),
-    ...tombstonedGroupProblems(b, a),
-    ...newValuesOffScale(b, a),
-    ...introduced,
-  ];
+  try {
+    return [
+      ...criteriaRevisionProblems(b, a),
+      ...scoreHistoryProblems(b, a, { repairable }),
+      ...tombstonedGroupProblems(b, a),
+      ...newValuesOffScale(b, a),
+      ...introduced,
+    ];
+  } catch {
+    return [{
+      path: '(root)',
+      message: 'the stored document is malformed in a way the history checks cannot read, so this write cannot be ' +
+        'checked against it.',
+      fix: 'first make a write that repairs only the stored document\'s shape errors.',
+    }];
+  }
 }
 
 function errorsOf(doc: unknown): ValidationProblem[] {
@@ -103,7 +121,7 @@ function stablePath(doc: unknown, path: string): string {
   const d = (doc ?? {}) as Record<string, unknown>;
   const at = (list: unknown, i: number) => (Array.isArray(list) ? list[i] : undefined) as Record<string, unknown> | undefined;
   let cell: Record<string, unknown> | undefined;
-  return path.replace(/\b(cells|assertions|criteria|alternatives|groups)\[(\d+)\]/g, (whole, list: string, n: string) => {
+  return path.replace(/\b(cells|assertions|criteria|alternatives|groups|missingCodes|scales|reductions|threads|suggestions)\[(\d+)\]/g, (whole, list: string, n: string) => {
     const i = Number(n);
     if (list === 'cells') {
       cell = at(d.cells, i);

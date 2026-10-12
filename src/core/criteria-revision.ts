@@ -151,8 +151,9 @@ export interface CriteriaRevisionProblem {
  * has no earlier meaning to rewrite and is not compared.
  */
 export function criteriaRevisionProblems(
-  before: Pick<Analysis, 'criteria' | 'criteriaVersion'> & Partial<Pick<Analysis, 'cells' | 'threads' | 'suggestions' | 'scales'>>,
-  after: Pick<Analysis, 'criteria' | 'criteriaVersion'> & Partial<Pick<Analysis, 'scales'>>,
+  before: Pick<Analysis, 'criteria' | 'criteriaVersion'> &
+    Partial<Pick<Analysis, 'cells' | 'threads' | 'suggestions' | 'scales' | 'missingCodes'>>,
+  after: Pick<Analysis, 'criteria' | 'criteriaVersion'> & Partial<Pick<Analysis, 'scales' | 'missingCodes'>>,
 ): CriteriaRevisionProblem[] {
   const problems: CriteriaRevisionProblem[] = [];
   const old = new Map(before.criteria.map((c) => [c.id, c]));
@@ -168,6 +169,24 @@ export function criteriaRevisionProblems(
         `${after.criteriaVersion === undefined ? 'nothing (which reads as "1")' : `"${now}"`}. Assertions record the ` +
         'version they were scored against, and those scored under the later one would read as from the future.',
       fix: 'leave the version where it is, or move it forward.',
+    });
+  }
+
+  // A declared missingness code is what every stored blank using it means:
+  // flipping it to structural moves those blanks from outstanding to excused.
+  // The set version is the record that the frame changed (#165).
+  const declared = new Map((before.missingCodes ?? []).map((d) => [d.id, canonical(d)]));
+  if (!moved) {
+    (after.missingCodes ?? []).forEach((d, i) => {
+      const was = declared.get(d.id);
+      if (was !== undefined && was !== canonical(d)) {
+        problems.push({
+          path: `missingCodes[${i}]`,
+          message: `the missingness code "${d.id}" changed its declaration but the criteria-set version did not move. ` +
+            'Every stored blank using it would silently change meaning.',
+          fix: 'move criteriaVersion forward with the change, or declare a new code and use it from now on.',
+        });
+      }
     });
   }
 
@@ -244,13 +263,21 @@ function canonical(v: unknown): string {
 }
 
 /**
- * What may change on a stored assertion: the concurrency token, the disclosure
- * declaration (a view-time property, ADR-0021), a re-run citation `check`, and
- * `supersededBy`, set once. Everything else is what was asserted.
+ * What was asserted: a stored assertion without the fields that may change --
+ * the concurrency token, the disclosure declaration (a view-time property,
+ * ADR-0021), `supersededBy` (set once), and evidence (checked by `evidenceKept`).
  */
 function assertedContent(s: Assertion): string {
-  const { version: _v, disclosure: _d, supersededBy: _s, evidence, ...rest } = s;
-  return canonical({ ...rest, evidence: (evidence ?? []).map(({ check: _c, ...e }) => e) });
+  const { version: _v, disclosure: _d, supersededBy: _s, evidence: _e, ...rest } = s;
+  return canonical(rest);
+}
+
+/** Evidence without its re-runnable check. Appending a citation is allowed; changing or removing one is not. */
+function evidenceKept(s: Assertion, t: Assertion): boolean {
+  const strip = (x: Assertion) => (x.evidence ?? []).map(({ check: _c, ...e }) => canonical(e));
+  const was = strip(s);
+  const now = strip(t);
+  return was.length <= now.length && was.every((e, i) => e === now[i]);
 }
 
 /**
@@ -259,8 +286,8 @@ function assertedContent(s: Assertion): string {
  * Assertions are retained, never deleted, and a change of mind is a new
  * assertion that supersedes the old one (`Assertion.supersededBy`). So an
  * assertion stored in `before` must still be in the same cell in `after`, and
- * unchanged except for `version`, `disclosure`, its evidence's `check`, and a
- * `supersededBy` set once. Refused otherwise, because each of these rewrote
+ * unchanged except for `version`, `disclosure`, its evidence's `check`, new
+ * evidence appended after the old, and a `supersededBy` set once. Refused otherwise, because each of these rewrote
  * what an old score meant (#165):
  *
  * - cells moved onto another criterion, new or existing -- the old score now
@@ -286,23 +313,27 @@ export function scoreHistoryProblems(
   before: Pick<Analysis, 'cells'>,
   after: Pick<Analysis, 'cells'>,
   { repairable = new Set<string>() }: {
-    /** `cellKey` + assertion id pairs `before` already reports as broken, as `JSON.stringify([cellKey, id])`. */
+    /** Assertions `before` already reports as broken, as `JSON.stringify([cellKey, index in its cell])`. */
     repairable?: ReadonlySet<string>;
   } = {},
 ): CriteriaRevisionProblem[] {
   const problems: CriteriaRevisionProblem[] = [];
-  const now = new Map<string, Map<string, Assertion>>();
+  // Every assertion by id, in a list: a cell that already holds a duplicate id
+  // must not have its healthy original compared against its twin.
+  const now = new Map<string, Map<string, Assertion[]>>();
   for (const c of after.cells) {
-    now.set(cellKey(c.alternativeId, c.criterionId, c.measure), new Map((c.assertions ?? []).map((s) => [s.id, s])));
+    const byId = new Map<string, Assertion[]>();
+    for (const s of c.assertions ?? []) byId.set(s.id, [...(byId.get(s.id) ?? []), s]);
+    now.set(cellKey(c.alternativeId, c.criterionId, c.measure), byId);
   }
   before.cells.forEach((cell, i) => {
     const key = cellKey(cell.alternativeId, cell.criterionId, cell.measure);
     const there = now.get(key);
     cell.assertions.forEach((s, j) => {
-      if (repairable.has(JSON.stringify([key, s.id]))) return;
+      if (repairable.has(JSON.stringify([key, j]))) return;
       const at = `cells[${i}].assertions[${j}]`;
-      const t = there?.get(s.id);
-      if (!t) {
+      const candidates = there?.get(s.id) ?? [];
+      if (candidates.length === 0) {
         problems.push({
           path: at,
           message: `assertion "${s.id}" on ${cell.alternativeId} x ${cell.criterionId} (${cell.measure}) is gone from ` +
@@ -312,7 +343,8 @@ export function scoreHistoryProblems(
         });
         return;
       }
-      const rewritten = assertedContent(s) !== assertedContent(t);
+      const t = candidates.find((x) => assertedContent(x) === assertedContent(s) && evidenceKept(s, x)) ?? candidates[0]!;
+      const rewritten = assertedContent(s) !== assertedContent(t) || !evidenceKept(s, t);
       const repointed = s.supersededBy !== undefined && t.supersededBy !== s.supersededBy;
       if (rewritten || repointed) {
         problems.push({
