@@ -40,7 +40,8 @@ export interface MountOptions {
 
 /**
  * Without a source there is nothing to write to: every write affordance is
- * refused, with the provider's reason, by the same path a frozen source takes.
+ * refused by the same path a frozen source takes, and `withoutSource` then
+ * words the reason about the matrix rather than about a source it lacks.
  */
 const NO_SOURCE: Pick<DataProvider<unknown>, 'getCapabilities'> = {
   getCapabilities: () => ({
@@ -55,7 +56,7 @@ const NO_SOURCE: Pick<DataProvider<unknown>, 'getCapabilities'> = {
  * request (an empty `doing`, an unknown decision) throws as it would with one.
  */
 function withoutSource(a: Affordances): Affordances {
-  const refused = { enabled: false, reason: 'there is no source behind this matrix, so it does not accept updates; it is read-only.' };
+  const refused = Object.freeze({ enabled: false, reason: 'there is no source behind this matrix, so it does not accept updates; it is read-only.' });
   return {
     ...a,
     assert: () => refused,

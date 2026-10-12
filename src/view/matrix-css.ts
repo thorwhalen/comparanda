@@ -3,11 +3,11 @@
  * styled with no CSS import, in a page, a shadow root or the standalone file.
  *
  * Everything is scoped under `.comparanda-matrix`. Colours are tokens. The
- * theme is read from the mount element and nowhere else: `data-theme="dark"`
- * or `"light"` on it forces one; without either, `prefers-color-scheme`
- * decides. Not "any ancestor": with nested settings a descendant selector
- * cannot tell which is nearest, so the element the host mounted into is the
- * one place a theme is said. Every ink/surface pair clears 4.5:1, which the
+ * theme is read from the mount element, then the root: `data-theme="dark"`
+ * or `"light"` on the mount element forces one; else the same attribute on
+ * `<html>`; else `prefers-color-scheme` decides. Not "any ancestor": with
+ * nested settings a descendant selector cannot tell which is nearest, so the
+ * two places a theme is said are the ones a host actually uses. Every ink/surface pair clears 4.5:1, which the
  * browser suite measures from the rendered colours in both themes, text over
  * an inherited background included, rather than trusting this comment.
  *
@@ -34,9 +34,10 @@ export const MATRIX_CSS = `
   color: var(--cmp-ink); background: var(--cmp-surface);
 }
 @media (prefers-color-scheme: dark) {
-  :not([data-theme="light"]) > .comparanda-matrix {${DARK}
+  :root:not([data-theme="light"]) :not([data-theme="light"]) > .comparanda-matrix {${DARK}
   }
 }
+:root[data-theme="dark"] :not([data-theme="light"]) > .comparanda-matrix,
 [data-theme="dark"] > .comparanda-matrix {${DARK}
 }
 .comparanda-matrix .comparanda-scroll {
@@ -74,6 +75,7 @@ export const MATRIX_CSS = `
 }
 @media (forced-colors: active) {
   .comparanda-matrix th, .comparanda-matrix td { box-shadow: none; border: 1px solid CanvasText; }
+  .comparanda-matrix thead tr.comparanda-band + tr th { top: calc(2.1em + 2px); }
 }
 @media print {
   .comparanda-matrix .comparanda-scroll { overflow: visible; max-height: none; }

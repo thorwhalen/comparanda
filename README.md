@@ -73,7 +73,7 @@ let view = setGrouping(initialViewState(analysis), 'alternatives', ['g-europe', 
 matrix.update({ view: transpose(view) });  // criteria as rows, alternatives as columns
 ```
 
-Light and dark follow `prefers-color-scheme`; `data-theme="light"` or `"dark"` on the mount element itself forces one.
+Light and dark follow `prefers-color-scheme`; `data-theme="light"` or `"dark"` on the mount element forces one; failing that, the same attribute on `<html>`.
 
 Without a `source` the matrix is read-only and says so. Changing the source takes its document in the same call: `update({ source, analysis: await source.getOne(id) })`. No React or Vue binding ships; each is a few lines:
 

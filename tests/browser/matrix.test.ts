@@ -110,6 +110,18 @@ describe('the messy fixture, both themes, both orientations', () => {
     outer.remove();
   });
 
+  it('falls back to a theme on <html> when the mount element names none', () => {
+    document.documentElement.dataset.theme = 'dark';
+    try {
+      mount({ analysis: relocation, measure: 'score' });
+      expect(luminance(getComputedStyle(table().querySelector('td')!).backgroundColor)).toBeLessThan(0.05);
+      el.dataset.theme = 'light';
+      expect(luminance(getComputedStyle(table().querySelector('td')!).backgroundColor)).toBeGreaterThan(0.8);
+    } finally {
+      delete document.documentElement.dataset.theme;
+    }
+  });
+
   it('says so when every criterion is hidden, rather than drawing an empty table', () => {
     const v = initialViewState(relocation);
     mount({ analysis: relocation, measure: 'score', view: { ...v, filter: { hiddenAlternatives: [], hiddenCriteria: relocation.criteria.map((c) => c.id) } } });
