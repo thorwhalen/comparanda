@@ -151,6 +151,7 @@ describe('a focused cell is never under the sticky headers (#103)', () => {
   });
 
   it('after a click, a focus the host moves is still revealed, and a key reveals the clicked cell', async () => {
+    el.style.width = '300px'; // room to scroll a cell half under the header column whatever the fonts
     handle = mountMatrix(el, { analysis: video, measure: 'score' });
     const s = scroller();
     const corner = el.querySelector('.comparanda-corner')!.getBoundingClientRect();
@@ -170,7 +171,11 @@ describe('a focused cell is never under the sticky headers (#103)', () => {
     // Pressed by the pointer where it is (dispatched: Playwright's click scrolls its target into view first).
     s.scrollLeft += td.getBoundingClientRect().left - corner.right + td.getBoundingClientRect().width / 2;
     for (const type of ['pointerdown', 'pointerup']) td.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'mouse' }));
-    expect(obscured().inline).toBeGreaterThan(1);
+    const geometry = () => JSON.stringify({
+      scrollLeft: s.scrollLeft, max: s.scrollWidth - s.clientWidth, td: td.getBoundingClientRect().left,
+      width: td.getBoundingClientRect().width, corner: corner.right, focused: document.activeElement === td,
+    });
+    expect(obscured().inline, geometry()).toBeGreaterThan(1);
     await userEvent.keyboard('{Shift}');
     expect(obscured().inline).toBeLessThanOrEqual(1);
   });
