@@ -67,9 +67,10 @@ export async function main(argv: readonly string[]): Promise<number> {
   const { shellBytes, charged, limit, reserved } = result.budget;
   const held = reserved.map((r) => ` + ${kb(r.bytes)} reserved for ${r.package}`).join('');
   console.log(`  the page without the analysis: ${kb(shellBytes)}${held}${held ? ` = ${kb(charged)}` : ''}, of a ${kb(limit)} budget`);
-  const { by, encodings } = result.checked;
+  const { by, encodings, couldNotDraw } = result.checked;
+  const unable = couldNotDraw.length > 0 ? `; ${couldNotDraw.join(', ')} could not draw this analysis` : '';
   console.log(by === 'browser'
-    ? `  zero network: refused by the page's CSP, and none asked for when opened in Chromium under ${encodings.length} encodings`
+    ? `  zero network: refused by the page's CSP, and none asked for when opened in Chromium and driven under ${encodings.join(', ')}${unable}`
     : '  zero network: refused by the page\'s CSP, and nothing found in its code; not opened in a browser (--check static)');
   return 0;
 }

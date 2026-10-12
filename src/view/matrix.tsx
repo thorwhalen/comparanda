@@ -279,6 +279,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     <div
       class="comparanda-matrix"
       data-encoding={active.id}
+      // Every encoding this view was composed with, so a host -- or the build's zero-network check -- can
+      // know what the page can draw without importing its registry.
+      data-encodings={encodings.ids.join(' ')}
       data-orientation={transposed ? 'transposed' : 'standard'}
     >
       <style>{MATRIX_CSS}</style>

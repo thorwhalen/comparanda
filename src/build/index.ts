@@ -35,7 +35,6 @@ import {
   type BudgetReport, type ByteBudget, type ReadPrebundled,
 } from './budget.js';
 import { projectForReader, type DisclosureDecision } from '../core/schema/disclosure.js';
-import { SHIPPED_ENCODINGS } from '../view/encodings/shipped.js';
 import { CSP_META, exerciseInBrowser, NetworkReached, staticNetworkFindings } from './network.js';
 import {
   ANALYSIS_ELEMENT_ID, ROOT_ELEMENT_ID, SETTINGS_ELEMENT_ID, scriptSafeJson, type StandaloneSettings,
@@ -63,12 +62,17 @@ export interface BuildOptions {
   /**
    * The zero-network check (ADR-0013). `'browser'`, the default: the static
    * pre-filter, then the page opened from `file://` in Chromium and exercised
-   * under every encoding in `checkEncodings`; any console error, uncaught
-   * error or request fails the build. `'static'`: the pre-filter alone, for a
-   * machine with no Chromium. The CSP is in the page either way.
+   * under each encoding in `checkEncodings`; any console error, uncaught
+   * error, request, navigation or new window fails the build. `'static'`: the
+   * pre-filter alone, for a machine with no Chromium. The CSP is in the page
+   * either way.
    */
   check?: 'browser' | 'static';
-  /** The encodings the browser check switches through. Default: every shipped one. */
+  /**
+   * The encodings the browser check exercises. Default: every one the page
+   * registers. One it does not register fails the build. Only with
+   * `check: 'browser'`.
+   */
   checkEncodings?: readonly string[];
 }
 
@@ -82,8 +86,12 @@ export interface BuildResult {
   budget: BudgetReport;
   /** Validation warnings the analysis carried (errors refuse the build). */
   warnings: string[];
-  /** How the page was checked to ask the network for nothing, and under which encodings it was exercised. */
-  checked: { by: 'browser' | 'static'; encodings: readonly string[] };
+  /**
+   * How the page was checked to ask the network for nothing: the encodings
+   * whose renderers ran over every cell, and those registered that could not
+   * draw this analysis (prepared, then fallen back to text).
+   */
+  checked: { by: 'browser' | 'static'; encodings: readonly string[]; couldNotDraw: readonly string[] };
 }
 
 export {
@@ -100,9 +108,12 @@ export const BUILD_PEERS = ['vite', 'vite-plugin-singlefile'] as const;
 export async function buildStandalone(input: unknown, options: BuildOptions = {}): Promise<BuildResult> {
   const {
     measure = 'score', discloses, entry = defaultEntry(), budget = STANDALONE_BUDGET,
-    check = 'browser', checkEncodings = SHIPPED_ENCODINGS.map((e) => e.id),
+    check = 'browser', checkEncodings,
   } = options;
   if (check !== 'browser' && check !== 'static') throw new Error(`no page was built: the check is "browser" or "static", not ${JSON.stringify(check)}.`);
+  if (check === 'static' && checkEncodings !== undefined) {
+    throw new Error('no page was built: checkEncodings names encodings for the browser check, and the check is "static".');
+  }
   // Serialised once: what is validated is exactly what is inlined, whatever
   // `toJSON` or non-JSON values the caller's object carried.
   const wire: unknown = JSON.parse(JSON.stringify(input) ?? 'null');
@@ -134,14 +145,15 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
   html = splice(html, emptyData(ANALYSIS_ELEMENT_ID), filledData(ANALYSIS_ELEMENT_ID, inlined));
   const withSettings = (s: StandaloneSettings) => splice(html, emptyData(SETTINGS_ELEMENT_ID), filledData(SETTINGS_ELEMENT_ID, s));
   const page = withSettings(settings);
+  let exercised: BuildResult['checked'] = { by: 'static', encodings: [], couldNotDraw: [] };
   if (check === 'browser') {
-    const problems = await exerciseInBrowser({
-      passes: [
-        { name: 'as built', html: page },
-        ...checkEncodings.map((encoding) => ({ name: `encoding "${encoding}"`, html: withSettings({ ...settings, encoding }) })),
-      ],
+    const { problems, drawn, couldNotDraw } = await exerciseInBrowser({
+      page,
+      withEncoding: (encoding) => withSettings({ ...settings, encoding }),
+      ...(checkEncodings !== undefined ? { encodings: checkEncodings } : {}),
     });
     if (problems.length > 0) throw new NetworkReached('opened from file:// and exercised in Chromium, it failed', problems);
+    exercised = { by: 'browser', encodings: drawn, couldNotDraw };
   }
   html = page;
   return {
@@ -150,7 +162,7 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
     gzipBytes: gzipSync(html).length,
     budget: report,
     warnings: checked.problems.filter((p) => p.severity === 'warning').map((p) => `${p.path || '(root)'}: ${p.message}`),
-    checked: { by: check, encodings: check === 'browser' ? [...checkEncodings] : [] },
+    checked: exercised,
   };
 }
 

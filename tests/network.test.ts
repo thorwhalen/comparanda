@@ -35,6 +35,10 @@ describe('the static pre-filter', () => {
     ['new WebSocket(u)', 'WebSocket'],
     ['n.sendBeacon(u, d)', 'sendBeacon'],
     ['new Worker(u)', 'a worker'],
+    ['fetch.call(globalThis, u)', 'a fetch() call'],
+    ['globalThis.fetch(u)', 'a fetch() call'],
+    ['new RTCPeerConnection(c)', 'a WebRTC connection, which no CSP governs'],
+    ['window.open(u)', 'window.open, which no CSP governs'],
     ['import("./chunk.js")', 'a dynamic import'],
     ['const css = "@import \'x.css\';"', 'a CSS @import'],
     ['const css = "td { background: url(https://example.invalid/x.png) }"', 'a CSS url() naming a remote resource'],
@@ -48,6 +52,7 @@ describe('the static pre-filter', () => {
   it('flags an attribute naming a URL in the markup', () => {
     expect(hits(page('', '<link rel="stylesheet" href="x.css">'))).toContain('an attribute naming a URL');
     expect(hits(page('', '<img src=https://example.invalid/p.png>'))).toContain('an attribute naming a URL');
+    expect(hits(page('', '<div style="background: url(https://example.invalid/p.png)"></div>'))).toContain('a CSS url() naming a remote resource');
   });
 
   it('passes what is not a request: data: and fragment URLs, the SVG namespace, words in prose', () => {
@@ -55,6 +60,7 @@ describe('the static pre-filter', () => {
       'const ns = "http://www.w3.org/2000/svg";',
       'const css = "td { background: url(data:image/png;base64,AAAA); mask: url(#m) }";',
       'const prefetch = 1; refetch(); const fetcher = 2;',
+      'cache.fetch(key); if (typeof WebSocket === "undefined") {} x.open("GET", u);',
     ].join('\n');
     expect(hits(page(code, '<link rel="icon" href="data:,">'))).toEqual([]);
   });

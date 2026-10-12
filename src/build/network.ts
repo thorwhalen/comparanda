@@ -12,10 +12,13 @@
  *   failure names the offending string rather than a request that did not
  *   happen;
  * - **a browser check that exercises the view**: the file is opened from
- *   `file://` in Chromium once per encoding, every cell is focused, and any
- *   console error, uncaught error or request for anything but the page fails
- *   the build. Loading the page alone would miss the bug ADR-0013 names: a
- *   `fetch()` inside a cell renderer fires only when that renderer runs.
+ *   `file://` in Chromium as built and once per encoding the page registers;
+ *   every cell is focused, pressed and clicked, the keyboard is used, and a
+ *   simulated minute is run on. Any console error, uncaught error, policy
+ *   violation, request, navigation, new window or WebRTC connection fails the
+ *   build -- the last two because no CSP governs them. Loading the page
+ *   alone would miss the bug ADR-0013 names: a `fetch()` inside a cell
+ *   renderer fires only when that renderer runs.
  *
  * A check that ran only in CI would not protect the person who builds locally
  * and mails the result, who is the whole reason the build command exists.
@@ -60,10 +63,14 @@ export const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${C
  * flagged: Preact carries the SVG namespace URI, which is a name, not a request.
  */
 export const NETWORK_PATTERNS: readonly { readonly what: string; readonly in: 'code' | 'markup'; readonly pattern: RegExp }[] = Object.freeze([
-  { what: 'a fetch() call', in: 'code', pattern: /\bfetch\s*\(/ },
-  { what: 'XMLHttpRequest', in: 'code', pattern: /\bXMLHttpRequest\b/ },
-  { what: 'EventSource', in: 'code', pattern: /\bEventSource\b/ },
-  { what: 'WebSocket', in: 'code', pattern: /\bWebSocket\b/ },
+  // The global, called or borrowed; not a method of the same name (\`cache.fetch(k)\`).
+  { what: 'a fetch() call', in: 'code', pattern: /(?<![\w$.])(?:(?:window|self|globalThis)\.)?fetch\s*(?:\(|\.(?:call|apply|bind)\b)/ },
+  // Constructed, not merely named: \`typeof WebSocket\` is feature detection, not a request.
+  { what: 'XMLHttpRequest', in: 'code', pattern: /\bnew\s+XMLHttpRequest\b/ },
+  { what: 'EventSource', in: 'code', pattern: /\bnew\s+EventSource\b/ },
+  { what: 'WebSocket', in: 'code', pattern: /\bnew\s+WebSocket\b/ },
+  { what: 'a WebRTC connection, which no CSP governs', in: 'code', pattern: /\b(?:webkit)?RTCPeerConnection\b/ },
+  { what: 'window.open, which no CSP governs', in: 'code', pattern: /\bwindow\.open\s*\(/ },
   { what: 'sendBeacon', in: 'code', pattern: /\bsendBeacon\b/ },
   { what: 'importScripts', in: 'code', pattern: /\bimportScripts\b/ },
   { what: 'a worker', in: 'code', pattern: /\bnew\s+(?:Shared)?Worker\s*\(/ },
@@ -71,7 +78,8 @@ export const NETWORK_PATTERNS: readonly { readonly what: string; readonly in: 'c
   { what: 'a dynamic import', in: 'code', pattern: /\bimport\s*\(\s*[^)\s]/ },
   { what: 'a CSS @import', in: 'code', pattern: /@import\b/ },
   { what: 'a CSS url() naming a remote resource', in: 'code', pattern: /\burl\(\s*["']?(?!data:)(?:[a-z][a-z0-9+.-]*:|\/\/)/i },
-  { what: 'an attribute naming a URL', in: 'markup', pattern: /\s(?:src|href|action|formaction|poster|srcset|ping|background|manifest)\s*=\s*(?!["']?(?:data:|#))/i },
+  { what: 'an attribute naming a URL', in: 'markup', pattern: /\s(?:src|href|xlink:href|action|formaction|poster|srcset|ping|background|manifest)\s*=\s*(?!["']?(?:data:|#))/i },
+  { what: 'a CSS url() naming a remote resource', in: 'markup', pattern: /\burl\(\s*["']?(?!data:)(?:[a-z][a-z0-9+.-]*:|\/\/)/i },
 ]);
 
 /** One hit of the pre-filter: what it is and where. */
@@ -117,24 +125,66 @@ export class NetworkReached extends Error {
   }
 }
 
-/** What the browser check is given: the page to open once per setting, and the cells to visit. */
+/** What the browser check is given: the page, and how to open it with a given encoding. */
 export interface BrowserCheckOptions {
-  /** One page per pass: the same file with that pass's settings spliced in, and a name for the pass. */
-  readonly passes: readonly { readonly name: string; readonly html: string }[];
-  /** How long a pass may take to render before it counts as failed. */
+  /** The page as built. */
+  readonly page: string;
+  /** The same page, opening with `encoding`. */
+  readonly withEncoding: (encoding: string) => string;
+  /**
+   * The encodings to exercise. Default: every one the page itself registers,
+   * read from its matrix. One the page does not register is a failure: its
+   * renderer would never run, and a pass that ran nothing is not a check.
+   */
+  readonly encodings?: readonly string[];
+  /** How long a page may take to render the matrix. */
   readonly renderTimeoutMs?: number;
+  /**
+   * How much time the page is run on for after it has been driven, on a
+   * simulated clock, so a request a renderer puts off with a timer is made
+   * inside the check. Simulated: it costs milliseconds, not this long.
+   */
+  readonly settleMs?: number;
+}
+
+/** What the browser check found, and which encodings it saw drawn. */
+export interface BrowserCheckResult {
+  readonly problems: readonly string[];
+  /** The encodings that drew the matrix, each one's renderer having run over every cell. */
+  readonly drawn: readonly string[];
+  /** Registered encodings that could not draw this analysis: prepared, and fallen back to text. */
+  readonly couldNotDraw: readonly string[];
 }
 
 /** How long a page gets to render the matrix, by default. */
 export const RENDER_TIMEOUT_MS = 15_000;
 
+/** Simulated time a page is run on for after it is driven, by default: a minute. */
+export const SETTLE_MS = 60_000;
+
 /**
- * Open each pass from `file://` in Chromium, focus every cell and header, and
- * collect whatever goes wrong: console errors (how a CSP violation surfaces),
- * uncaught errors, and requests for anything but the page. Returns the
- * problems, each prefixed with its pass; empty means clean.
+ * Installed before the page's own scripts. Reports, rather than allows, the
+ * reaches a Content-Security-Policy does not govern -- a new window, a WebRTC
+ * connection -- and records every policy violation as it happens.
  */
-export async function exerciseInBrowser({ passes, renderTimeoutMs = RENDER_TIMEOUT_MS }: BrowserCheckOptions): Promise<string[]> {
+const WATCH = `(() => {
+  const seen = (window.__comparandaCheck = []);
+  document.addEventListener('securitypolicyviolation', (e) => seen.push('policy violation: ' + e.violatedDirective + ' ' + e.blockedURI), true);
+  window.open = (url) => { seen.push('window.open(' + url + ')'); return null; };
+  for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection']) {
+    if (name in window) Object.defineProperty(window, name, { configurable: true, value: function () { seen.push(name + ' constructed'); throw new TypeError(name + ' is refused by the comparanda zero-network check'); } });
+  }
+})();`;
+
+/**
+ * Open the page from `file://` in Chromium, as built and then once per
+ * encoding; in each, focus, press and click every cell and header, use the
+ * keyboard, and run the clock on. Any console error (how a CSP violation
+ * surfaces), uncaught error, policy violation, request, navigation, new
+ * window or WebRTC connection is a problem, prefixed with its pass.
+ */
+export async function exerciseInBrowser(options: BrowserCheckOptions): Promise<BrowserCheckResult> {
+  const { page: built, withEncoding, renderTimeoutMs = RENDER_TIMEOUT_MS, settleMs = SETTLE_MS } = options;
   const { chromium } = await playwright();
   const dir = await mkdtemp(join(tmpdir(), 'comparanda-check-'));
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
@@ -145,36 +195,68 @@ export async function exerciseInBrowser({ passes, renderTimeoutMs = RENDER_TIMEO
       throw new Error(`comparanda build could not start Chromium for the zero-network check: ${firstLine(error)}. ${INSTALL_HINT}`);
     }
     const problems: string[] = [];
-    for (const [i, pass] of passes.entries()) {
-      const file = join(dir, `pass-${i}.html`);
-      await writeFile(file, pass.html);
+    let passes = 0;
+    /** One pass: the page drawn, driven and run on. Returns what its matrix says it drew and could draw. */
+    const pass = async (name: string, html: string) => {
+      const file = join(dir, `pass-${passes++}.html`);
+      await writeFile(file, html);
       const url = pathToFileURL(file).href;
-      const page = await browser.newPage();
-      const said = (what: string) => problems.push(`${pass.name}: ${what}`);
-      page.on('console', (m) => { if (m.type() === 'error') said(`console error: ${m.text()}`); });
-      page.on('pageerror', (e) => said(`uncaught error: ${e.message}`));
-      page.on('request', (r) => { if (r.url() !== url) said(`request for ${r.url()}`); });
+      const said = (what: string) => problems.push(`${name}: ${what}`);
+      const context = await browser!.newContext();
       try {
+        await context.addInitScript(WATCH);
+        await context.clock.install();
+        context.on('request', (r) => { if (r.url() !== url && !/^(?:data|blob):/.test(r.url())) said(`request for ${r.url()}`); });
+        context.on('console', (m) => { if (m.type() === 'error') said(`console error: ${m.text()}`); });
+        const page = await context.newPage();
+        // On the context, not the page: any other page in it is a window this one opened.
+        context.on('page', (p) => { if (p !== page) said(`opened a window${p.url() && p.url() !== 'about:blank' ? ` at ${p.url()}` : ''}`); });
+        page.on('pageerror', (e) => said(`uncaught error: ${e.message}`));
+        page.on('framenavigated', (f) => { if (f === page.mainFrame() && f.url() !== url) said(`navigated to ${f.url()}`); });
         await page.goto(url);
-        await page.waitForSelector('table[role="grid"], [role="alert"]', { timeout: renderTimeoutMs });
+        await page.waitForSelector('.comparanda-matrix, [role="alert"]', { timeout: renderTimeoutMs });
         const alert = await page.locator('[role="alert"]').allTextContents();
         if (alert.length > 0) said(`the page could not show the comparison: ${alert.join(' ')}`);
-        // Every cell and header gets focus: each one's handlers run, and the
-        // whole grid has been drawn by then (no virtualisation, ADR-0027).
-        await page.evaluate(async () => {
-          for (const cell of Array.from(document.querySelectorAll<HTMLElement>('[data-cell]'))) cell.focus();
-          // One turn for a rejected promise or a violation to be reported.
-          await new Promise((settle) => setTimeout(settle, 0));
+        // Every cell and header is focused, pressed and clicked: each one's handlers run.
+        await page.evaluate(() => {
+          for (const cell of Array.from(document.querySelectorAll<HTMLElement>('[data-cell]'))) {
+            cell.focus();
+            for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+              cell.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, { bubbles: true, cancelable: true }));
+            }
+          }
         });
-        await page.keyboard.press('Control+End');
-        await page.keyboard.press('Control+Home');
+        for (const key of ['Control+Home', 'ArrowRight', 'ArrowDown', 'End', 'Home', 'Control+End']) await page.keyboard.press(key);
+        await page.clock.runFor(settleMs);
+        const seen = await page.evaluate(() => (window as unknown as { __comparandaCheck?: string[] }).__comparandaCheck ?? []);
+        for (const what of seen) said(what);
+        // Awaited here, inside the try: the context closes in the finally.
+        return await page.evaluate(() => {
+          const root = document.querySelector('.comparanda-matrix');
+          return { drew: root?.getAttribute('data-encoding') ?? undefined, registered: (root?.getAttribute('data-encodings') ?? '').split(' ').filter(Boolean) };
+        });
       } catch (error) {
         said(`the check could not drive the page: ${firstLine(error)}`);
+        return { drew: undefined, registered: [] as string[] };
       } finally {
-        await page.close();
+        await context.close();
       }
+    };
+
+    const asBuilt = await pass('as built', built);
+    const registered = new Set(asBuilt.registered);
+    const wanted = options.encodings ?? asBuilt.registered;
+    const drawn: string[] = [];
+    const couldNotDraw: string[] = [];
+    for (const encoding of wanted) {
+      if (!registered.has(encoding)) {
+        problems.push(`encoding "${encoding}": the page does not register it, so its renderer cannot be exercised (it registers ${asBuilt.registered.map((e) => `"${e}"`).join(', ') || 'none'})`);
+        continue;
+      }
+      const { drew } = await pass(`encoding "${encoding}"`, withEncoding(encoding));
+      (drew === encoding ? drawn : couldNotDraw).push(encoding);
     }
-    return problems;
+    return { problems, drawn, couldNotDraw };
   } finally {
     await browser?.close();
     await rm(dir, { recursive: true, force: true });
