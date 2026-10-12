@@ -228,9 +228,9 @@ describe('uncertainty-suppressed', () => {
     const p = ready(languagesWithConfidence());
     // rust: performance 5 at high confidence; python: ecosystem 5 at low.
     expect(p.mark('rust', 'performance')).toEqual({ swatch: 'vsup-5x3-2-4' });
-    expect(p.mark('python', 'ecosystem')).toEqual({ swatch: 'vsup-5x3-0-0', hatch: 2 });
+    expect(p.mark('python', 'ecosystem')).toEqual({ swatch: 'vsup-5x3-0-0', hatch: 3 });
     // rust: learning-curve 1 at medium joins 2 in one colour.
-    expect(p.mark('rust', 'learning-curve')).toEqual({ swatch: 'vsup-5x3-1-0', hatch: 1 });
+    expect(p.mark('rust', 'learning-curve')).toEqual({ swatch: 'vsup-5x3-1-0', hatch: 2 });
   });
 
   it('carries only the swatches it uses, straight from the tested table', () => {
@@ -261,7 +261,50 @@ describe('uncertainty-suppressed', () => {
   it('a decreasing confidence scale is read the right way round', () => {
     const p = ready(languagesWithConfidence({ measurement: { level: 'ordinal', preference: 'decreasing', levels: ['high', 'medium', 'low'] } }));
     expect(p.mark('rust', 'performance')).toEqual({ swatch: 'vsup-5x3-2-4' });
-    expect(p.mark('python', 'ecosystem')).toEqual({ swatch: 'vsup-5x3-0-0', hatch: 2 });
+    expect(p.mark('python', 'ecosystem')).toEqual({ swatch: 'vsup-5x3-0-0', hatch: 3 });
+  });
+
+  it('two columns sharing a tree but reading their levels differently get a legend line each', () => {
+    const a = languagesWithConfidence();
+    const flipped = {
+      ...a,
+      criteria: a.criteria.map((c) => c.id !== 'learning-curve' ? c : {
+        ...c, defaultMeasurement: { ...c.defaultMeasurement!, preference: 'decreasing' as const, levels: [1, 2, 3, 4, 5], anchors: undefined },
+      }),
+    } as Analysis;
+    const { legend, mark } = ready(flipped);
+    // rust's learning-curve 1 at medium is, on a decreasing scale, one of its two best levels.
+    expect(mark('rust', 'learning-curve')).toEqual({ swatch: 'vsup-5x3-1-2', hatch: 2 });
+    const medium = legend.entries.filter((e) => e.swatch === 'vsup-5x3-1-2').map((e) => e.label).sort();
+    expect(medium).toEqual(['1 or 2, medium confidence', '4 or 5, medium confidence']);
+    // Every entry's count is of cells that read as its label.
+    const total = legend.entries.reduce((n, e) => n + (e.count ?? 0), 0);
+    expect(total).toBe(15);
+  });
+
+  it('a confidence declared as a range is read in three layers, whatever its level', () => {
+    for (const level of ['interval', 'ordinal', 'ratio'] as const) {
+      const a = languagesWithConfidence({ measurement: { level, preference: 'increasing', range: { min: 0, max: 1 } } });
+      // Replace the words with numbers on the range: high 0.9, medium 0.5, low 0.1.
+      const at = { high: 0.9, medium: 0.5, low: 0.1 } as Record<string, number>;
+      const numeric = { ...a, cells: a.cells.map((c) => c.measure !== 'confidence' ? c : {
+        ...c, assertions: c.assertions.map((x) => ({ ...x, value: at[String(x.value)]! })),
+      }) } as Analysis;
+      const p = ready(numeric);
+      expect(p.mark('rust', 'performance'), level).toEqual({ swatch: 'vsup-5x3-2-4' });
+      expect(p.mark('python', 'ecosystem'), level).toEqual({ swatch: 'vsup-5x3-0-0', hatch: 3 });
+      expect(p.legend.entries.map((e) => e.label), level).toContain('Any score, low confidence');
+    }
+  });
+
+  it('hatch density is on one scale across confidence arities: the root is always the densest', () => {
+    for (const levels of [['low', 'high'], ['low', 'medium', 'high'], ['none', 'low', 'medium', 'high']]) {
+      const p = ready(languagesWithConfidence({ measurement: { level: 'ordinal', preference: 'increasing', levels } }));
+      // python's ecosystem is held at 'low' -- the least confident level only when it is the first.
+      const first = levels[0] === 'low';
+      if (first) expect(p.mark('python', 'ecosystem').hatch, levels.join()).toBe(3);
+      expect(p.mark('rust', 'performance').hatch, levels.join()).toBeUndefined();
+    }
   });
 
   it('cannot draw without a confidence measure, or over the confidence itself, and says why', () => {

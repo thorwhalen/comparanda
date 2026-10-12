@@ -262,16 +262,21 @@ interface SuppressedColumn {
   readonly layer: (c: ScalarValue) => number | undefined;
   /** The scale's levels in words, worst first, and the confidence layers', least confident first. */
   readonly levelWords: readonly string[];
+  /** Whether worst-first is the reverse of the declared order (a decreasing scale), so groups are worded in declared order. */
+  readonly reversed: boolean;
   readonly layerWords: readonly string[];
 }
 
-/** A scale's levels, worst first, when it is ordered, has a best end, and lists (or spans) a few. */
-function rankedLevels(m: Measurement | undefined): readonly ScalarValue[] | undefined {
+/**
+ * A scale's levels, worst first, when it is ordered, has a best end, and lists
+ * them -- or, with `spanRange`, spans them as the integers of a non-ratio range.
+ */
+function rankedLevels(m: Measurement | undefined, { spanRange = true } = {}): readonly ScalarValue[] | undefined {
   if (!m || !isOrdered(m.level)) return undefined;
   if (m.preference !== 'increasing' && m.preference !== 'decreasing') return undefined;
   let levels: readonly ScalarValue[] | undefined = m.levels && m.levels.length >= 2 ? m.levels : undefined;
   const r = m.range;
-  if (!levels && r && Number.isInteger(r.min) && Number.isInteger(r.max) && r.max > r.min && m.level !== 'ratio') {
+  if (!levels && spanRange && r && Number.isInteger(r.min) && Number.isInteger(r.max) && r.max > r.min && m.level !== 'ratio') {
     levels = Array.from({ length: r.max - r.min + 1 }, (_, i) => r.min + i);
   }
   if (!levels) return undefined;
@@ -284,7 +289,9 @@ function suppressedColumn(score: Measurement | undefined, confidence: Measuremen
   if (confidence.preference !== 'increasing' && confidence.preference !== 'decreasing') return undefined;
   const k = levels.length;
   const level = (v: ScalarValue) => { const i = levels.findIndex((l) => l === v); return i < 0 ? undefined : i; };
-  const confLevels = rankedLevels(confidence);
+  // Confidence is read by its declared levels, or else as a range in three layers: a range is
+  // never cut into its integers, which would refuse 0.9 on a 0-1 scale.
+  const confLevels = rankedLevels(confidence, { spanRange: false });
   const r = confidence.range;
   let m: number;
   let layer: (c: ScalarValue) => number | undefined;
@@ -310,14 +317,15 @@ function suppressedColumn(score: Measurement | undefined, confidence: Measuremen
   }
   // A tree the palette was not built for (too many levels on either side) is left uncoloured.
   if (!Object.prototype.hasOwnProperty.call(VSUP_PALETTE, vsupSwatchId(k, m, 0, 0))) return undefined;
-  return { tree: mergeTree(k, m), level, layer, levelWords: levels.map(String), layerWords };
+  return { tree: mergeTree(k, m), level, layer, levelWords: levels.map(String), reversed: score!.preference === 'decreasing', layerWords };
 }
 
-/** A group of levels in words: "3", "1 or 2", "1 to 3", or "any" for the whole scale. */
-function groupWords([first, last]: LevelGroup, words: readonly string[]): string {
+/** A group of levels in words, in the scale's declared order: "3", "1 or 2", "1 to 3", or "any" for the whole scale. */
+function groupWords([first, last]: LevelGroup, { levelWords: words, reversed }: SuppressedColumn): string {
   if (first === last) return words[first]!;
   if (first === 0 && last === words.length - 1) return 'any';
-  return last === first + 1 ? `${words[first]} or ${words[last]}` : `${words[first]} to ${words[last]}`;
+  const [a, b] = reversed ? [words[last], words[first]] : [words[first], words[last]];
+  return last === first + 1 ? `${a} or ${b}` : `${a} to ${b}`;
 }
 
 /**
@@ -340,7 +348,9 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
       return [id, c ? suppressedColumn(measurementFor(c, ctx.measure), measurementFor(c, CONFIDENCE)) : undefined] as const;
     }));
     const marks = new Map<string, CellMark>();
-    const used = new Map<VsupSwatchId, { column: SuppressedColumn; layer: number; node: number; count: number }>();
+    // Keyed by the swatch *and* the column's words: two columns with one tree share a colour, but
+    // when their levels read differently (other words, the other direction) each gets its own line.
+    const used = new Map<string, { swatch: VsupSwatchId; column: SuppressedColumn; layer: number; node: number; count: number }>();
     let unplaced = false;
     for (const alt of ctx.alternatives) {
       for (const crit of ctx.criteria) {
@@ -354,25 +364,28 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
         const node = nodeOf(column.tree, level, layer);
         const { scoreLevels: k, confidenceLevels: m } = column.tree;
         const swatch = vsupSwatchId(k, m, layer, node);
-        const hatch = m - 1 - layer;
+        // Density says how far from the most confident layer, on one scale for every column: 3 is the root.
+        const hatch = Math.round((3 * (m - 1 - layer)) / (m - 1));
         marks.set(`${alt}\u0000${crit}`, hatch > 0 ? { swatch, hatch: hatch as 1 | 2 | 3 } : { swatch });
-        const seen = used.get(swatch);
-        if (seen) seen.count += 1; else used.set(swatch, { column, layer, node, count: 1 });
+        const key = [swatch, ...column.levelWords, '', ...column.layerWords].join('\u0000');
+        const seen = used.get(key);
+        if (seen) seen.count += 1; else used.set(key, { swatch, column, layer, node, count: 1 });
       }
     }
     if (used.size === 0) {
       return {
         unavailable: [...columns.values()].some(Boolean)
           ? `no shown cell records both a ${ctx.measure} and a confidence on their declared scales.`
-          : `no shown criterion has a ${ctx.measure} on a ranked scale of 2 to 7 levels and a ranked confidence to suppress it by.`,
+          : `no shown criterion has a ${ctx.measure} on a ranked scale of 2 to 7 levels and a ranked confidence of 2 to 4 levels, or a range, to suppress it by.`,
       };
     }
     const palette: Record<string, Swatch> = {};
-    for (const id of used.keys()) palette[id] = VSUP_PALETTE[id]!;
-    // Most confident first, then worst to best: the order the eye reads the rows of the wedge.
-    const entries = [...used].sort(([, a], [, b]) => (b.layer - a.layer) || (a.node - b.node)).map(([swatch, u]) => ({
-      swatch,
-      label: `${capitalise(groupWords(u.column.tree.layers[u.layer]![u.node]!, u.column.levelWords).replace(/^any$/, `any ${ctx.measure}`))}, ${u.column.layerWords[u.layer]} confidence`,
+    for (const { swatch } of used.values()) palette[swatch] = VSUP_PALETTE[swatch]!;
+    // Most confident first (on one scale across columns), then worst to best: the rows of the wedge.
+    const confident = (u: { column: SuppressedColumn; layer: number }) => u.layer / (u.column.tree.confidenceLevels - 1);
+    const entries = [...used.values()].sort((a, b) => (confident(b) - confident(a)) || (a.node - b.node)).map((u) => ({
+      swatch: u.swatch,
+      label: `${capitalise(groupWords(u.column.tree.layers[u.layer]![u.node]!, u.column).replace(/^any$/, `any ${ctx.measure}`))}, ${u.column.layerWords[u.layer]} confidence`,
       count: u.count,
     }));
     const aliasing = new Set<string>();
@@ -380,7 +393,11 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
       const least = column.layerWords[0];
       aliasing.add(`At ${least} confidence, every ${ctx.measure} is shown as one colour.`);
       column.tree.layers.slice(1, -1).forEach((groups, i) => {
-        const merged = groups.filter(([first, last]) => last > first).map((g) => groupWords(g, column.levelWords));
+        if (groups.length === 1) {
+          aliasing.add(`At ${column.layerWords[i + 1]} confidence, every ${ctx.measure} is shown as one colour.`);
+          return;
+        }
+        const merged = groups.filter(([first, last]) => last > first).map((g) => groupWords(g, column));
         if (merged.length > 0) aliasing.add(`At ${column.layerWords[i + 1]} confidence, each of these is shown as one colour: ${merged.join('; ')}.`);
       });
     }
