@@ -178,7 +178,7 @@ describe('following a source', () => {
     const a = counted(inMemoryAnalysisSource(relocation));
     const b = counted(inMemoryAnalysisSource(relocation));
     const handle = mount(el, { analysis: relocation, measure: 'score', source: a.source });
-    handle.update({ source: b.source, analysis: relocation });
+    handle.update({ source: b.source, analysis: structuredClone(relocation) });
     expect([a.live(), b.live()]).toEqual([0, 1]);
     await retitle(a.source, 'From the old source');
     expect(el.querySelector('caption')?.textContent).toBe(relocation.subject.question);
@@ -216,7 +216,7 @@ describe('edits come only from editAffordances over the source', () => {
     const s = spy();
     const handle = mount(el, { analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation) }, { component: s.component });
     expect(assertHere(s.last()).enabled).toBe(true);
-    handle.update({ source: inMemoryAnalysisSource(relocation, { canUpdate: false }), analysis: relocation });
+    handle.update({ source: inMemoryAnalysisSource(relocation, { canUpdate: false }), analysis: structuredClone(relocation) });
     expect(assertHere(s.last())).toMatchObject({ enabled: false, reason: expect.stringMatching(/does not accept updates/) });
   });
 
@@ -327,17 +327,16 @@ describe('the adversarial review of #88', () => {
   });
 
   it('an update whose render throws changes nothing: props, document and subscription come back', async () => {
-    let fail = false;
+    // Fails on the props it is given, as a real render does, so the rollback's render succeeds.
     const component = (p: MatrixViewProps) => {
-      if (fail) throw new Error('render failed');
+      if (p.encoding === 'boom') throw new Error('render failed');
       return h('p', null, p.analysis.subject.question);
     };
     const a = counted(inMemoryAnalysisSource(relocation));
     const b = counted(inMemoryAnalysisSource(relocation));
     const handle = mount(el, { analysis: relocation, measure: 'score', source: a.source }, { component });
-    fail = true;
-    expect(() => handle.update({ source: b.source, analysis: relocation })).toThrow('render failed');
-    fail = false;
+    expect(() => handle.update({ source: b.source, analysis: structuredClone(relocation), encoding: 'boom' }))
+      .toThrow('render failed');
     expect([a.live(), b.live()]).toEqual([1, 0]);
     expect(el.textContent).toBe(relocation.subject.question);
     await retitle(a.source, 'Still following a');
@@ -351,6 +350,7 @@ describe('the adversarial review of #88', () => {
     const handle = mount(el, { analysis: relocation, measure: 'score', source: a });
     await retitle(a, 'Only in source a');
     expect(() => handle.update({ source: b })).toThrow(/in the same update/);
+    expect(() => handle.update({ source: b, analysis: relocation })).toThrow(/in the same update/);
     handle.update({ source: b, analysis: await b.getOne(relocation.id) });
     expect(el.querySelector('caption')?.textContent).toBe(relocation.subject.question);
   });
@@ -385,5 +385,34 @@ describe('the adversarial review of #88', () => {
     mount(el, { analysis: withheld, measure: cell.measure });
     expect(el.textContent).not.toMatch(/assertions disagree about whether a value exists/);
     expect(el.textContent).toMatch(/Partly withheld from you/);
+  });
+});
+
+describe('the second review pass', () => {
+  it('checks the measure against the document shown, which the source may have moved on to', async () => {
+    const s = spy();
+    const source = inMemoryAnalysisSource(relocation);
+    const props = { analysis: relocation, measure: 'score', source };
+    const handle = mount(el, props, { component: s.component });
+    await source.update(relocation.id, { measures: [...relocation.measures, { name: 'confidence', label: 'Confidence' }] });
+    handle.update({ ...props, measure: 'confidence' }, { replace: true });
+    expect(s.last().measure).toBe('confidence');
+  });
+
+  it('a render that throws part-way through child components does not poison later renders', async () => {
+    const Row = ({ i, encoding }: { i: number; encoding: string }) => {
+      if (i === 2 && encoding === 'value') throw new Error('row failed');
+      return h('li', null, String(i));
+    };
+    const component = (p: MatrixViewProps) =>
+      h('ul', null, [0, 1, 2, 3].map((i) => h(Row, { i, encoding: p.encoding, key: `${p.encoding}-${i}` })));
+    const source = inMemoryAnalysisSource(relocation);
+    const handle = mount(el, { analysis: relocation, measure: 'score', source }, { component });
+    expect(() => handle.update({ encoding: 'value' })).toThrow('row failed');
+    expect(el.querySelectorAll('li')).toHaveLength(4);
+    handle.update({ encoding: 'later' });
+    expect(el.querySelectorAll('li')).toHaveLength(4);
+    await source.update(relocation.id, { subject: { ...relocation.subject, question: 'Still renders?' } });
+    expect(el.querySelectorAll('li')).toHaveLength(4);
   });
 });

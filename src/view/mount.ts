@@ -70,6 +70,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     throw new Error('this element already holds a matrix: call update() on its handle, or destroy() it first.');
   }
   let current: MountMatrixProps = checked(props);
+  measureOf(current.analysis, current.measure);
   /** The document shown: the props' until the source writes, then the source's. */
   let analysis: Analysis = current.analysis;
   let unsubscribe: (() => void) | undefined;
@@ -96,9 +97,28 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     return source.subscribe!((event: DataChangeEvent<Analysis>) => {
       if (destroyed || current.source !== source) return;
       if (event.type !== 'updated' || event.id !== analysis.id) return;
+      const shown = analysis;
       analysis = event.item;
-      draw();
+      try {
+        draw();
+      } catch (error) {
+        // A write the view cannot render leaves the last good render, and the
+        // document it rendered; the error goes to the source's subscriber handler.
+        analysis = shown;
+        redraw();
+        throw error;
+      }
     });
+  };
+
+  /**
+   * Render from scratch. A render that threw part-way leaves Preact's record of
+   * the tree half-updated, and every later diff against it fails; unmounting
+   * first is what makes a rollback a rollback.
+   */
+  const redraw = () => {
+    render(null, el);
+    try { draw(); } catch { /* the element is empty; the next good render fills it */ }
   };
 
   mounted.add(el);
@@ -125,9 +145,12 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       }
       const props = checked(merged as unknown as MountMatrixProps);
       const swapped = props.source !== current.source;
-      if (swapped && props.source && next.analysis === undefined) {
+      // The new source's document, as a new object: re-passing the document
+      // already given (a wrapper in replace mode) would show the old source's
+      // document gated on the new source's capabilities.
+      if (swapped && props.source && (next.analysis === undefined || next.analysis === current.analysis)) {
         throw new TypeError(
-          'a new source needs its document in the same update: update({ source, analysis: await source.getOne(id) }). ' +
+          'a new source needs its own document in the same update: update({ source, analysis: await source.getOne(id) }). ' +
             'Without it the matrix would show the old source\'s document gated on the new source\'s capabilities.',
         );
       }
@@ -136,6 +159,8 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       // on every render) must not undo writes the source has delivered since.
       const docChanged = props.analysis !== current.analysis || (swapped && props.source !== undefined);
       const nextAnalysis = docChanged ? props.analysis : analysis;
+      // Against the document that will be shown, which a source may have moved on from the props'.
+      measureOf(nextAnalysis, props.measure);
 
       const before = { current, analysis, unsubscribe };
       const followed = swapped ? follow(props.source) : unsubscribe;
@@ -149,7 +174,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
         // subscription come back, and so does the previous render.
         if (swapped) followed?.();
         ({ current, analysis, unsubscribe } = before);
-        try { draw(); } catch { /* the previous render stands as it was */ }
+        redraw();
         throw error;
       }
       if (swapped) before.unsubscribe?.();
@@ -181,12 +206,6 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   if (typeof measure !== 'string' || measure.trim() === '') {
     throw new TypeError(`props.measure must name a measure ("score", "confidence", or a declared one); got ${describe(measure)}.`);
   }
-  // A measure nothing declares and no cell records would render every cell as
-  // "nobody has looked yet" -- a claim about the work, when the fault is a name.
-  const declared = (analysis.measures ?? []).map((m) => m.name);
-  if (declared.length > 0 && !declared.includes(measure) && !(analysis.cells ?? []).some((c) => c.measure === measure)) {
-    throw new TypeError(`props.measure "${measure}" is not a measure of this analysis; it declares ${declared.map((m) => `"${m}"`).join(', ')}.`);
-  }
   if (source !== undefined && typeof source.subscribe !== 'function') {
     // A source the view cannot follow would offer edits against a document it
     // never refreshes -- a lock written elsewhere would never close them.
@@ -196,6 +215,18 @@ function checked(props: MountMatrixProps): MountMatrixProps {
     );
   }
   return props;
+}
+
+/**
+ * Refuse a measure the analysis neither declares nor records: it would render
+ * every cell as "nobody has looked yet" -- a claim about the work, when the
+ * fault is a name.
+ */
+function measureOf(analysis: Analysis, measure: string): void {
+  const declared = (analysis.measures ?? []).map((m) => m.name);
+  if (declared.length > 0 && !declared.includes(measure) && !(analysis.cells ?? []).some((c) => c.measure === measure)) {
+    throw new TypeError(`props.measure "${measure}" is not a measure of this analysis; it declares ${declared.map((m) => `"${m}"`).join(', ')}.`);
+  }
 }
 
 function unknownKeys(props: object): void {

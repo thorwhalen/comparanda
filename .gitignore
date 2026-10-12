@@ -19,3 +19,6 @@ coverage/
 
 # probe script, deleted once the schema stabilises
 scripts/probe-zod.mjs
+
+# vitest browser failure screenshots
+tests/browser/__screenshots__/
