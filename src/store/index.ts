@@ -33,6 +33,7 @@ import type { DataProvider, ProviderCapabilities } from '@zodal/store';
 
 import type { Analysis } from '../core/schema/analysis.js';
 import { criteriaRevisionProblems } from '../core/criteria-revision.js';
+import { cellPolicy, type Affordance } from '../core/affordances.js';
 import type { Cell } from '../core/schema/values.js';
 import type { Author } from '../core/schema/provenance.js';
 import {
@@ -93,12 +94,8 @@ export interface IdentityProvider {
   known?(): Promise<Author[]>;
 }
 
-/** Whether an action is offered, and -- when it is not -- why not, in words. */
-export interface Affordance {
-  enabled: boolean;
-  /** Always present when `enabled` is false; a control that does nothing must say so. */
-  reason?: string;
-}
+/** Whether an action is offered, and why not. One type, defined by the core's affordance layer. */
+export type { Affordance };
 
 /** Capability discovery with the documented default for providers that do not implement it. */
 export function capabilitiesOf(provider: Pick<DataProvider<unknown>, 'getCapabilities'>): ProviderCapabilities {
@@ -148,13 +145,7 @@ export function cellAffordanceOf(
 ): Affordance {
   const fromProvider = affordanceOf(provider, 'update', { what: 'this cell' });
   if (!fromProvider.enabled) return fromProvider;
-  if (analysis.locked) {
-    return { enabled: false, reason: 'this analysis is locked; propose a suggestion instead of editing it.' };
-  }
-  if (cell?.readOnly) {
-    return { enabled: false, reason: 'this cell is declared read-only in the analysis.' };
-  }
-  return { enabled: true };
+  return cellPolicy(analysis, cell);
 }
 
 /**
