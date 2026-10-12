@@ -16,6 +16,8 @@ import { initialViewState, setFocus, ViewState, type Session } from '../core/vie
 import {
   DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
 } from '../store/index.js';
+import { createEncodingRegistry, type EncodingRegistry } from './encodings/registry.js';
+import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
 
@@ -36,6 +38,13 @@ export interface MatrixHandle {
 export interface MountOptions {
   /** What renders the resolved props. Default: `Matrix`. The seam #89 grows behind, and tests observe through. */
   component?: ComponentType<MatrixViewProps>;
+  /**
+   * The encodings this matrix can draw, assembled by the caller (ADR-0010
+   * clause 8): `createEncodingRegistry([textOnly, value, missingness])`, or
+   * `createEncodingRegistry(SHIPPED_ENCODINGS)` for all nine. Default:
+   * `text-only` alone (ADR-0032), so a consumer ships only the encodings it names.
+   */
+  encodings?: EncodingRegistry;
 }
 
 /**
@@ -83,7 +92,8 @@ const mounted = new WeakSet<object>();
  * this analysis; `analysis` is the document as of mount (`await source.getOne(id)`).
  * Without one, it shows `analysis` read-only until `update` says otherwise.
  */
-export function mountMatrix(el: Element, props: MountMatrixProps, { component = Matrix }: MountOptions = {}): MatrixHandle {
+export function mountMatrix(el: Element, props: MountMatrixProps, { component = Matrix, encodings }: MountOptions = {}): MatrixHandle {
+  const registry = encodings ?? createEncodingRegistry([textOnly]);
   if (el === null || typeof el !== 'object' || typeof (el as { appendChild?: unknown }).appendChild !== 'function') {
     throw new TypeError(`mountMatrix needs a DOM element to render into; got ${describe(el)}.`);
   }
@@ -126,6 +136,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       encoding: encoding ?? view?.encoding ?? TEXT_ONLY,
       view: shown,
       onFocusChange: moveFocus,
+      encodings: registry,
       affordances: source
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
         : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
