@@ -37,7 +37,7 @@ import type { DataChangeEvent, DataProvider, ProviderCapabilities } from '@zodal
 import type { Analysis } from '../core/schema/analysis.js';
 import { revisionProblems } from '../core/revision.js';
 import {
-  cellPolicy, makeAffordances, type Affordance, type Affordances, type Authorize, type WriteAffordance,
+  cellPolicy, makeAffordances, requireDoing, type Affordance, type Affordances, type Authorize, type WriteAffordance,
 } from '../core/affordances.js';
 import type { Cell } from '../core/schema/values.js';
 import type { Author } from '../core/schema/provenance.js';
@@ -128,7 +128,7 @@ export function affordanceOf(
   { what = 'this', doing }: {
     /** What would be changed: "this cell cannot be updated here". */
     what?: string;
-    /** The edit, as a gerund, when that reads better: "commenting is not possible here". */
+    /** The edit, as a gerund phrase, when that reads better: "commenting is not possible here". Blank falls back to `what`. */
     doing?: string;
   } = {},
 ): Affordance {
@@ -137,7 +137,7 @@ export function affordanceOf(
   const refused = `this source does not accept ${action === 'create' ? 'new items' : `${action}s`}`;
   return {
     enabled: false,
-    reason: doing === undefined
+    reason: doing === undefined || doing.trim() === ''
       ? `${refused}, so ${what} cannot be ${action === 'create' ? 'added' : `${action}d`} here.`
       : `${refused}, so ${doing} is not possible here.`,
   };
@@ -159,6 +159,11 @@ export function affordanceOf(
  * When the other ports arrive (saved views, annotations, assertions in their
  * own providers), the edit that moves gates on *its* provider here, and no view
  * changes.
+ *
+ * **The document half is a snapshot.** The capability is live; the analysis is
+ * the one passed in. After a write -- a lock toggled, an alternative added --
+ * build a new one from the item `subscribe` delivers, or the answers describe
+ * the document as it was.
  */
 export function editAffordances(
   source: Pick<DataProvider<unknown>, 'getCapabilities'>,
@@ -173,8 +178,13 @@ export function editAffordances(
   const writes: Pick<Affordances, WriteAffordance> = {
     assert: (alt, crit, measure) => gated('writing to this cell', () => doc.assert(alt, crit, measure)),
     suggest: (alt, crit, measure) => gated('proposing a suggestion', () => doc.suggest(alt, crit, measure)),
-    comment: () => gated('commenting', () => doc.comment()),
-    revise: (doing) => gated(doing, () => doc.revise(doing)),
+    comment: (target) => gated('commenting', () => doc.comment(target)),
+    revise: (doing, target) => {
+      const phrase = requireDoing(doing);
+      return gated(phrase, () => doc.revise(phrase, target));
+    },
+    changeLock: () => gated(analysis.locked ? 'unlocking the analysis' : 'locking the analysis', () => doc.changeLock()),
+    decideSuggestion: (id) => gated('deciding a suggestion', () => doc.decideSuggestion(id)),
   };
   return { ...doc, ...writes };
 }
@@ -213,10 +223,18 @@ const rethrowLater = (error: unknown): void => queueMicrotask(() => { throw erro
  * `subscribe` hears every write made through it -- ADR-0013's "load /
  * subscribe". `create`/`delete` are refused rather than pretended.
  *
- * A subscriber that throws does not undo or fail the write that notified it,
- * nor keep the next subscriber from hearing it: the write has happened, and
- * the caller is told so. The error goes to `onSubscriberError`, which by
- * default rethrows it on a microtask so it is loud rather than swallowed.
+ * Subscribers hear writes in the order they happened, even when one of them
+ * writes while being notified (events queue, and drain in order); each gets
+ * its own copy of the item, so a subscriber cannot reach into the store; and
+ * one unsubscribed mid-notification hears nothing more. A subscriber that
+ * throws does not undo or fail the write that notified it, nor keep the next
+ * subscriber from hearing it: the write has happened, and the caller is told
+ * so. The error goes to `onSubscriberError`, which by default rethrows it on a
+ * microtask so it is loud rather than swallowed; if that handler throws too,
+ * the default takes over.
+ *
+ * `update` may not change the item's `id`: a one-item provider holds one
+ * document, and renaming it would orphan every reference to the old id.
  */
 export function oneItemProvider<T extends { id: string }>(
   initial: T,
@@ -224,9 +242,25 @@ export function oneItemProvider<T extends { id: string }>(
 ): DataProvider<T> {
   let current = initial;
   const listeners = new Set<(event: DataChangeEvent<T>) => void>();
-  const notify = (event: DataChangeEvent<T>) => {
-    for (const listener of [...listeners]) {
-      try { listener(event); } catch (error) { onSubscriberError(error); }
+  const pending: T[] = [];
+  let draining = false;
+  const report = (error: unknown) => {
+    try { onSubscriberError(error); } catch (secondary) { rethrowLater(error); rethrowLater(secondary); }
+  };
+  const notify = (item: T) => {
+    pending.push(structuredClone(item));
+    if (draining) return; // a subscriber wrote: its event follows this one, in order
+    draining = true;
+    try {
+      while (pending.length > 0) {
+        const next = pending.shift()!;
+        for (const listener of [...listeners]) {
+          if (!listeners.has(listener)) continue; // unsubscribed by an earlier subscriber
+          try { listener({ type: 'updated', id: next.id, item: structuredClone(next) }); } catch (error) { report(error); }
+        }
+      }
+    } finally {
+      draining = false;
     }
   };
   const refuse = (what: string) => async (): Promise<never> => {
@@ -242,8 +276,11 @@ export function oneItemProvider<T extends { id: string }>(
     update: async (id: string, data: Partial<T>) => {
       if (!canUpdate) throw new Error('this source is read-only.');
       if (id !== current.id) throw new Error(`no item with id "${id}"; this provider holds "${current.id}".`);
+      if ('id' in data && data.id !== current.id) {
+        throw new Error(`a one-item provider cannot change its document's id ("${current.id}" to "${String(data.id)}").`);
+      }
       current = { ...current, ...data };
-      notify({ type: 'updated', id: current.id, item: current });
+      notify(current);
       return current;
     },
     subscribe: (listener) => {
@@ -256,6 +293,8 @@ export function oneItemProvider<T extends { id: string }>(
     getCapabilities: () => ({
       ...DEFAULT_CAPABILITIES, canCreate: false, canUpdate, canDelete: false,
       canBulkUpdate: false, canBulkDelete: false, canUpsert: false,
+      // `subscribe` delivers every write made through this provider.
+      realtime: true,
     }),
   };
 }

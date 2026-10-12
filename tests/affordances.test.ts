@@ -182,7 +182,7 @@ describe('nothing about rendering or storage is expressible', () => {
 
   it('exposes only policy queries', () => {
     expect(Object.keys(makeAffordances(relocation())).sort()).toEqual(
-      ['assert', 'comment', 'inapplicable', 'missingCode', 'missingCodes', 'revise', 'screens', 'suggest', 'value'],
+      ['assert', 'changeLock', 'comment', 'decideSuggestion', 'inapplicable', 'missingCode', 'missingCodes', 'revise', 'screens', 'suggest', 'value'],
     );
   });
 

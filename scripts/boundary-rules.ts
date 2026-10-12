@@ -61,15 +61,16 @@ export function isClassicZod(specifier: string): boolean {
 }
 
 /**
- * The core functions that answer "may this be written?" without asking the
- * provider. Correct in core and store; in the view, each is a second source of
- * truth for editability.
+ * The functions that answer "may this be written?" with less than the whole
+ * answer: core's policy functions do not ask the provider, and the store's
+ * `cellAffordanceOf` skips the structural checks and the host. Correct in core
+ * and store; in the view, each is a second source of truth for editability.
  */
-export const PROVIDER_BLIND = ['makeAffordances', 'cellPolicy', 'documentPolicy'] as const;
+export const PROVIDER_BLIND = ['makeAffordances', 'cellPolicy', 'documentPolicy', 'cellAffordanceOf'] as const;
 
 const PROVIDER_BLIND_WHY =
   'read editability through editAffordances (comparanda/store) instead: this one ignores the ' +
-  'provider\'s capability, so a frozen source would still show the control (ADR-0006 clause 3).';
+  'provider\'s capability or the host, so a control would show where a write is refused (ADR-0006 clause 3).';
 
 /** Strip comments and string literals so a mention in prose is not a violation. */
 export function strip(src: string): string {
@@ -192,12 +193,14 @@ export function sourceViolations(file: string, text: string): Violation[] {
     });
   }
   if (inView) {
-    strip(text).split('\n').forEach((line, i) => {
-      for (const name of PROVIDER_BLIND) {
-        if (new RegExp(`(?<![\\w$])${name}(?![\\w$])`).test(line)) {
-          add(i, `view-edits-through-store (${name})`, `${name} in view code: ${PROVIDER_BLIND_WHY}`);
-        }
+    // From the parse tree, not stripped text: a call inside a template literal,
+    // or after a regex literal holding a quote, is invisible to a text scan.
+    const blind = new Set<string>(PROVIDER_BLIND);
+    sf.forEachChild(function walk(n) {
+      if (ts.isIdentifier(n) && blind.has(n.text)) {
+        add(lineOf(n), `view-edits-through-store (${n.text})`, `${n.text} in view code: ${PROVIDER_BLIND_WHY}`);
       }
+      n.forEachChild(walk);
     });
   }
   if (inCore || inView) {

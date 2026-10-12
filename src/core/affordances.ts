@@ -23,6 +23,7 @@
 import type { Analysis } from './schema/analysis.js';
 import { vocabularyOf } from './schema/analysis.js';
 import { makeInapplicability } from './schema/groups.js';
+import type { AnchorScope } from './schema/annotations.js';
 import { CORE_MISSING_CODES } from './schema/missingness.js';
 import { valueRefusal, type Measurement, type Preference } from './schema/measurement.js';
 import { measurementFor } from './schema/structure.js';
@@ -49,16 +50,32 @@ export interface CellEditRequest {
 }
 
 /**
+ * What a document edit is about, for a host that authorises by object rather
+ * than by wording. The anchor scopes of ADR-0011, plus a suggestion; `id` is
+ * absent for the analysis as a whole.
+ */
+export interface EditTarget {
+  kind: AnchorScope | 'suggestion';
+  id?: string;
+}
+
+/**
  * A write to the analysis outside any one cell.
  *
- * `comment` starts or answers a thread; `revise` is every other change to what
- * the analysis says -- its alternatives, criteria, groups, definitions and
- * declarations. `doing` names the edit in words ("renaming a criterion"), for
- * the host and for the refusal.
+ * - `comment` starts, answers or resolves a thread.
+ * - `revise` is every other change to what the analysis says -- its
+ *   alternatives, criteria, groups, definitions and declarations.
+ * - `change-lock` locks or unlocks the analysis.
+ * - `decide-suggestion` accepts or declines a suggestion.
+ *
+ * `doing` names the edit as a gerund phrase ("renaming a criterion"), for the
+ * host and for the refusal; `target` says what it is about, when the caller
+ * knows, so a host never has to parse the words.
  */
 export interface DocumentEditRequest {
-  action: 'comment' | 'revise';
+  action: 'comment' | 'revise' | 'change-lock' | 'decide-suggestion';
   doing: string;
+  target?: EditTarget;
 }
 
 /** What a host is asked to authorise. */
@@ -85,14 +102,23 @@ export function cellPolicy(
 }
 
 /**
- * The document's own policy on an edit outside a cell.
+ * The document's own policy on an edit outside a cell (ADR-0011, amendment of
+ * 2026-10-12).
  *
  * `Analysis.locked` means the analysis "accepts direct edits, or only
- * suggestions", so a lock refuses every `revise`. It does not refuse a
- * `comment`: a thread changes nothing the analysis asserts, and ADR-0011
- * clause 5 exists so that a reviewer can take part in a locked analysis
- * without mutating it -- a reviewer who could propose but not say why would
- * be half a reviewer.
+ * suggestions", so a lock refuses every `revise`. It refuses nothing else:
+ *
+ * - a `comment` changes nothing the analysis asserts, and ADR-0011 clause 5
+ *   exists so that a reviewer can take part in a locked analysis without
+ *   mutating it -- a reviewer who could propose but not say why would be half
+ *   a reviewer;
+ * - `change-lock` is how a lock ends, and a lock that refused its own removal
+ *   would be permanent;
+ * - `decide-suggestion` is the owner's half of suggestion mode -- "an owner
+ *   accepts or declines" -- and a lock that refused it would make every
+ *   suggestion on a locked analysis undecidable.
+ *
+ * Who may do the last two is the host's question (ADR-0012), not the lock's.
  */
 export function documentPolicy(
   analysis: Pick<Analysis, 'locked'>,
@@ -100,6 +126,14 @@ export function documentPolicy(
 ): Affordance {
   if (action === 'revise' && analysis.locked) return refuse(LOCKED);
   return ALLOWED;
+}
+
+/** `doing` is read by people. An empty one is a caller's mistake, and says so at once. */
+export function requireDoing(doing: string): string {
+  if (typeof doing !== 'string' || doing.trim() === '') {
+    throw new TypeError('name the edit as a gerund phrase, e.g. revise("renaming a criterion"); it is what the host and the refusal read.');
+  }
+  return doing.trim();
 }
 
 /** A legal blank on a criterion, with what it means. */
@@ -135,14 +169,18 @@ export interface Affordances {
   inapplicable(alternativeId: string, criterionId: string): boolean;
   /** Every acceptability screen `screen()` applies for this measure. */
   screens(measure: string): Screen[];
-  /** Whether a comment thread may be started or answered. A lock does not refuse it (`documentPolicy`). */
-  comment(): Affordance;
+  /** Whether a thread may be started, answered or resolved here. A lock does not refuse it (`documentPolicy`). */
+  comment(target?: EditTarget): Affordance;
   /**
    * Whether the analysis may be revised outside its cells: alternatives,
-   * criteria, groups, definitions, declarations. `doing` names the edit in
-   * words, and is what the host is asked about.
+   * criteria, groups, definitions, declarations. `doing` names the edit as a
+   * gerund phrase ("renaming a criterion"); an empty one throws.
    */
-  revise(doing: string): Affordance;
+  revise(doing: string, target?: EditTarget): Affordance;
+  /** Whether the analysis may be locked or unlocked. A lock never refuses its own removal. */
+  changeLock(): Affordance;
+  /** Whether this suggestion may be accepted or declined: it must exist and still be open. */
+  decideSuggestion(suggestionId: string): Affordance;
 }
 
 /**
@@ -151,7 +189,9 @@ export interface Affordances {
  * capability can change. The store's `editAffordances` gates exactly these on
  * the provider, and a test holds this list to the interface.
  */
-export const WRITE_AFFORDANCES = ['assert', 'suggest', 'comment', 'revise'] as const satisfies readonly (keyof Affordances)[];
+export const WRITE_AFFORDANCES = [
+  'assert', 'suggest', 'comment', 'revise', 'changeLock', 'decideSuggestion',
+] as const satisfies readonly (keyof Affordances)[];
 export type WriteAffordance = typeof WRITE_AFFORDANCES[number];
 
 /**
@@ -192,6 +232,10 @@ export function makeAffordances(
     if (host === false) return refuse('you are not authorised to do this here.');
     return host.enabled ? ALLOWED : refuse(host.reason ?? 'you are not authorised to do this here.');
   };
+
+  const documentRequest = (
+    action: DocumentEditRequest['action'], doing: string, target: EditTarget | undefined,
+  ): DocumentEditRequest => (target === undefined ? { action, doing } : { action, doing, target });
 
   const cellAt = (altId: string, critId: string, measure: string) => cells.get(JSON.stringify([altId, critId, measure]));
 
@@ -241,11 +285,22 @@ export function makeAffordances(
         }];
       });
     },
-    comment() {
-      return withHost({ action: 'comment', doing: 'commenting' }, documentPolicy(a, 'comment'));
+    comment(target) {
+      return withHost(documentRequest('comment', 'commenting', target), documentPolicy(a, 'comment'));
     },
-    revise(doing) {
-      return withHost({ action: 'revise', doing }, documentPolicy(a, 'revise'));
+    revise(doing, target) {
+      return withHost(documentRequest('revise', requireDoing(doing), target), documentPolicy(a, 'revise'));
+    },
+    changeLock() {
+      const doing = a.locked ? 'unlocking the analysis' : 'locking the analysis';
+      return withHost(documentRequest('change-lock', doing, { kind: 'analysis' }), documentPolicy(a, 'change-lock'));
+    },
+    decideSuggestion(suggestionId) {
+      const s = a.suggestions.find((x) => x.id === suggestionId);
+      const own = !s ? refuse(`there is no suggestion "${suggestionId}" in this analysis.`)
+        : s.status !== 'open' ? refuse(`this suggestion has already been ${s.status}; it cannot be decided again.`)
+          : documentPolicy(a, 'decide-suggestion');
+      return withHost(documentRequest('decide-suggestion', 'deciding a suggestion', { kind: 'suggestion', id: suggestionId }), own);
     },
   };
 }

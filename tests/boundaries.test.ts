@@ -117,6 +117,12 @@ describe('each rule catches its deliberately violating fixture', () => {
       "import { cellPolicy as policy } from '../index.js';",
       "import * as core from '../index.js'; const ok = core.documentPolicy(a, 'revise');",
       "const aff = makeAffordances(analysis);",
+      // Inside a template literal, and after a regex literal holding a quote:
+      // both invisible to a scan of stripped text.
+      "const label = `${makeAffordances(a).assert(x, y, m).enabled}`;",
+      "const q = /'/; const ok = makeAffordances(a);",
+      // Provider-aware, but skips the host and the structural checks.
+      "import { cellAffordanceOf } from '../store/index.js';",
     ];
     for (const src of blind) {
       const hits = rulesHit('src/view/matrix.ts', src);

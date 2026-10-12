@@ -142,7 +142,7 @@ describe('every editable affordance is derived from getCapabilities', () => {
     const allowed = new Set([
       'src/core/schema/values.ts',   // Cell.readOnly -- a declaration in the document
       'src/core/schema/analysis.ts', // Analysis.locked -- the same
-      'src/core/affordances.ts',     // cellPolicy, the one reader of those declarations (#52)
+      'src/core/affordances.ts',     // cellPolicy and documentPolicy, the readers of those declarations (#52, #72)
       'src/store/index.ts',          // cellAffordanceOf, where that policy meets capabilities
     ]);
     const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
@@ -171,7 +171,9 @@ describe('editAffordances: what the view reads, every write gated on getCapabili
     assert: (aff) => aff.assert('lisbon', 'rent', 'score'),
     suggest: (aff) => aff.suggest('lisbon', 'rent', 'score'),
     comment: (aff) => aff.comment(),
-    revise: (aff) => aff.revise('renaming a criterion'),
+    revise: (aff) => aff.revise('renaming a criterion', { kind: 'criterion', id: 'rent' }),
+    changeLock: (aff) => aff.changeLock(),
+    decideSuggestion: (aff) => aff.decideSuggestion('sg-day-tai'),
   };
 
   it('flipping canUpdate disables every write the view can offer, each with a stated reason', () => {
@@ -226,10 +228,13 @@ describe('editAffordances: what the view reads, every write gated on getCapabili
     expect(open.assert('lisbon', 'rent', 'score').reason).toMatch(/locked; propose a suggestion/);
     expect(open.revise('adding a criterion').reason).toMatch(/locked/);
     expect(asked).toEqual([]);
-    // A lock leaves suggestions and comments to the host.
+    // A lock leaves suggestions, comments, its own removal and the owner's
+    // decision on a suggestion to the host.
     expect(open.suggest('lisbon', 'rent', 'score').enabled).toBe(true);
     expect(open.comment()).toEqual({ enabled: false, reason: 'you are not authorised to do this here.' });
-    expect(asked).toEqual(['suggest', 'comment']);
+    expect(open.changeLock().enabled).toBe(true);
+    expect(open.decideSuggestion('sg-day-tai').enabled).toBe(true);
+    expect(asked).toEqual(['suggest', 'comment', 'change-lock', 'decide-suggestion']);
     // A frozen source answers before either, with its own reason.
     asked.length = 0;
     const frozen = editAffordances(inMemoryAnalysisSource(a, { canUpdate: false }), a, { authorize });
@@ -238,13 +243,32 @@ describe('editAffordances: what the view reads, every write gated on getCapabili
     expect(asked).toEqual([]);
   });
 
-  it('the host is asked about document edits by name, and may refuse them with its own reason', () => {
+  it('the host is asked about document edits by name and by target, and may refuse them with its own reason', () => {
     const a = relocation();
     const aff = editAffordances(inMemoryAnalysisSource(a), a, {
-      authorize: (r) => (r.action === 'revise' ? { enabled: false, reason: `only the owner may be ${r.doing}.` } : true),
+      authorize: (r) => (r.action === 'revise' && 'target' in r && r.target?.id === 'rent'
+        ? { enabled: false, reason: `only the owner of rent may be ${r.doing}.` } : true),
     });
-    expect(aff.revise('renaming a criterion')).toEqual({ enabled: false, reason: 'only the owner may be renaming a criterion.' });
+    expect(aff.revise('renaming a criterion', { kind: 'criterion', id: 'rent' }))
+      .toEqual({ enabled: false, reason: 'only the owner of rent may be renaming a criterion.' });
+    expect(aff.revise('renaming a criterion', { kind: 'criterion', id: 'income-tax' })).toEqual({ enabled: true });
     expect(aff.comment()).toEqual({ enabled: true });
+  });
+
+  it('refuses an empty description of an edit at once, whatever the provider says', () => {
+    const a = relocation();
+    for (const source of [inMemoryAnalysisSource(a), inMemoryAnalysisSource(a, { canUpdate: false })]) {
+      expect(() => editAffordances(source, a).revise('  ')).toThrow(/gerund phrase/);
+    }
+    expect(affordanceOf({ getCapabilities: () => ({ ...DEFAULT_CAPABILITIES, canUpdate: false }) }, 'update', { doing: '' }).reason)
+      .toBe('this source does not accept updates, so this cannot be updated here.');
+  });
+
+  it('decides only a suggestion that exists and is still open', () => {
+    const a = relocation();
+    const decided = { ...a, suggestions: a.suggestions.map((s) => ({ ...s, status: 'accepted' as const })) };
+    expect(editAffordances(inMemoryAnalysisSource(a), a).decideSuggestion('nope').reason).toMatch(/no suggestion "nope"/);
+    expect(editAffordances(inMemoryAnalysisSource(decided), decided).decideSuggestion('sg-day-tai').reason).toMatch(/already been accepted/);
   });
 });
 
@@ -273,6 +297,67 @@ describe('subscribe: the analysis source is load-and-subscribe (ADR-0013, ADR-00
     // A schema version the write path refuses (revisionProblems).
     await expect(guarded.update(a.id, { schemaVersion: 2 } as never)).rejects.toThrow(/refused/);
     expect(heard).toEqual([]);
+  });
+
+  it('reports that it delivers writes, through the one source of truth', () => {
+    expect(capabilitiesOf(inMemoryAnalysisSource(relocation())).realtime).toBe(true);
+  });
+
+  it('delivers in the order writes happened, even when a subscriber writes while being told', async () => {
+    const p = oneItemProvider({ id: 'doc', n: 0 });
+    const heard: number[] = [];
+    p.subscribe!((e) => { if (e.type === 'updated' && e.item.n === 1) void p.update('doc', { n: 2 }); });
+    p.subscribe!((e) => { if (e.type === 'updated') heard.push(e.item.n); });
+    await p.update('doc', { n: 1 });
+    expect(heard).toEqual([1, 2]);
+    expect((await p.getOne('doc')).n).toBe(2);
+  });
+
+  it('gives each subscriber its own copy: nothing a subscriber does reaches the store', async () => {
+    const p = oneItemProvider({ id: 'doc', n: 0 });
+    let seenBySecond = -1;
+    p.subscribe!((e) => { if (e.type === 'updated') (e.item as { n: number }).n = 999; });
+    p.subscribe!((e) => { if (e.type === 'updated') seenBySecond = e.item.n; });
+    const returned = await p.update('doc', { n: 1 });
+    expect(seenBySecond).toBe(1);
+    expect(returned.n).toBe(1);
+    expect((await p.getOne('doc')).n).toBe(1);
+  });
+
+  it('an unsubscribed subscriber hears nothing more, even mid-notification', async () => {
+    const p = oneItemProvider({ id: 'doc', n: 0 });
+    const heard: string[] = [];
+    let stopB = () => {};
+    p.subscribe!(() => { heard.push('A'); stopB(); });
+    stopB = p.subscribe!(() => heard.push('B'));
+    await p.update('doc', { n: 1 });
+    expect(heard).toEqual(['A']);
+  });
+
+  it('refuses to change the document\'s id', async () => {
+    const p = oneItemProvider({ id: 'doc', n: 0 });
+    const heard: unknown[] = [];
+    p.subscribe!((e) => heard.push(e));
+    await expect(p.update('doc', { id: 'other' })).rejects.toThrow(/cannot change its document's id/);
+    expect((await p.getOne('doc')).id).toBe('doc');
+    expect(heard).toEqual([]);
+  });
+
+  it('a throwing error handler neither fails the write nor silences anyone; the default takes over', async () => {
+    const later: unknown[] = [];
+    const original = globalThis.queueMicrotask;
+    globalThis.queueMicrotask = (cb: () => void) => { try { cb(); } catch (e) { later.push(e); } };
+    try {
+      const p = oneItemProvider({ id: 'doc', n: 0 }, { onSubscriberError: () => { throw new Error('handler broke'); } });
+      const heard: number[] = [];
+      p.subscribe!(() => { throw new Error('subscriber broke'); });
+      p.subscribe!((e) => { if (e.type === 'updated') heard.push(e.item.n); });
+      expect((await p.update('doc', { n: 1 })).n).toBe(1);
+      expect(heard).toEqual([1]);
+      expect(later.map(String)).toEqual(['Error: subscriber broke', 'Error: handler broke']);
+    } finally {
+      globalThis.queueMicrotask = original;
+    }
   });
 
   it('a subscriber that throws neither fails the write nor silences the next subscriber', async () => {
