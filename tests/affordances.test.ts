@@ -188,15 +188,17 @@ describe('nothing about rendering or storage is expressible', () => {
     expect(aff.comment(target, 'reply')).toEqual({ enabled: true });
     expect(aff.comment(target, 'resolve')).toEqual({ enabled: false, reason: 'only the owner resolves' });
     expect(aff.comment(target, 'reopen')).toEqual({ enabled: true });
+    expect(aff.comment(target, 'edit', { id: 'c1', authorId: 'dana' })).toEqual({ enabled: true });
     expect(aff.comment()).toEqual({ enabled: true });
     expect(seen).toEqual([
       { action: 'comment', doing: 'starting a thread', target, thread: 'start' },
       { action: 'comment', doing: 'answering a thread', target, thread: 'reply' },
       { action: 'comment', doing: 'resolving a thread', target, thread: 'resolve' },
       { action: 'comment', doing: 'reopening a thread', target, thread: 'reopen' },
+      { action: 'comment', doing: 'editing a comment', target, thread: 'edit', comment: { id: 'c1', authorId: 'dana' } },
       { action: 'comment', doing: 'commenting' },
     ]);
-    expect(() => aff.comment(target, 'delete' as never)).toThrow(/start.*reply.*resolve.*reopen/);
+    expect(() => aff.comment(target, 'delete' as never)).toThrow(/start.*reply.*edit.*resolve.*reopen/);
   });
 
   it('exposes only policy queries', () => {

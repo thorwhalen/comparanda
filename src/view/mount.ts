@@ -24,7 +24,7 @@ const DEFAULT_IDENTITY = anonymousIdentity();
 const DEFAULT_IDENTITY_ID = 'anonymous';
 import { createEncodingRegistry, type EncodingRegistry } from './encodings/registry.js';
 import type { Author } from '../core/schema/provenance.js';
-import { commentTarget, editComment, reopenThread, replyToThread, resolveThread, startThread } from '../core/threads.js';
+import { commentTarget, reopenThread, replyToThread, resolveThread, startThread } from '../core/threads.js';
 import type { Anchor } from '../core/schema/annotations.js';
 import type { ThreadWrites } from './threads.js';
 import { textOnly } from './encodings/shipped.js';
@@ -226,9 +226,7 @@ export function mountMatrix(
    * are queued and each is built on the source's latest document, so none
    * undoes another. The source's event re-renders the matrix; nothing here draws.
    */
-  const writeThread = (act: ThreadAct, anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis,
-    ofComment?: (a: Analysis) => { id: string; authorId: string } | undefined,
-  ): Promise<void> => {
+  const writeThread = (act: ThreadAct, anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis): Promise<void> => {
     const run = async () => {
       const { source, identity = DEFAULT_IDENTITY, authorize } = current;
       const id = analysis.id;
@@ -247,11 +245,8 @@ export function mountMatrix(
       if (!latest) throw new Error(`the source no longer holds this analysis ("${id}"); nothing was written.`);
       // Asked again of the document being written, not the one the button was drawn from: the host is never overruled (ADR-0012).
       const anchor = anchorOf(latest);
-      const of = ofComment?.(latest);
-      const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor), act, of);
+      const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor), act);
       if (may && !may.enabled) throw new Error(may.reason);
-      // With no host to decide, a comment is its author's to edit; a host that authorises is asked, with the author named, and decides (ADR-0012).
-      if (of && !authorize && of.authorId !== author.id) throw new Error('only the comment\u2019s author may edit it unless the host says otherwise.');
       await source.update(id, change(latest, author, now().toISOString()));
     };
     // One write at a time: two sent together would each build on the same document, and the second would undo the first.
@@ -261,17 +256,10 @@ export function mountMatrix(
   };
   /** A thread's anchor in a document; absent, the thread's own write says there is no such thread. */
   const anchorIn = (threadId: string) => (a: Analysis) => a.threads.find((t) => t.id === threadId)?.anchor;
-  /** A comment's id and author in a document; absent, the edit itself says there is no such comment. */
-  const commentIn = (threadId: string, commentId: string) => (a: Analysis) => {
-    const c = a.threads.find((t) => t.id === threadId)?.comments.find((x) => x.id === commentId);
-    return c && { id: c.id, authorId: c.authorId };
-  };
   const threadWrites: ThreadWrites = {
     start: (anchor, body) => writeThread('start', () => anchor, (a, author, at) =>
       startThread(a, { threadId: newId(), anchor, comment: { id: newId(), at, body, author } })),
     reply: (threadId, body) => writeThread('reply', anchorIn(threadId), (a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author })),
-    edit: (threadId, commentId, body) => writeThread('edit', anchorIn(threadId), (a, by, at) =>
-      editComment(a, threadId, commentId, { body, id: newId(), by, at }), commentIn(threadId, commentId)),
     resolve: (threadId) => writeThread('resolve', anchorIn(threadId), (a, by, at) => resolveThread(a, threadId, { by, at })),
     reopen: (threadId) => writeThread('reopen', anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at })),
   };

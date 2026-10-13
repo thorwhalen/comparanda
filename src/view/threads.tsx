@@ -1,18 +1,18 @@
 /**
  * The detail panel's discussion (#106): every thread bearing on the reader's
  * position, open ones first, resolved ones one button away and never gone, and
- * the forms that start, answer, edit, resolve and reopen a thread.
+ * the forms that start, answer, resolve and reopen a thread.
  *
  * Whether a write is offered is asked of `affordances.comment` and nowhere
  * else (ADR-0006 clause 3); a refused one is shown with its reason, never as a
  * control that does nothing. The writes themselves are `ThreadWrites`, which
  * `mountMatrix` implements over the source; this file only collects words.
  */
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 
 import type { Affordances } from '../core/affordances.js';
 import type { Analysis } from '../core/schema/analysis.js';
-import type { Anchor, Comment, Thread } from '../core/schema/annotations.js';
+import type { Anchor, Thread } from '../core/schema/annotations.js';
 import { aliasesOf } from '../core/schema/structure.js';
 import { axisGroups, groupsOf } from '../core/schema/groups.js';
 import { commentTarget, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
@@ -24,8 +24,6 @@ import { treeOf } from './dom.js';
 export interface ThreadWrites {
   start(anchor: Anchor, body: string): Promise<void>;
   reply(threadId: string, body: string): Promise<void>;
-  /** Rewrite a comment; its earlier wording stays in the thread (#195). */
-  edit(threadId: string, commentId: string, body: string): Promise<void>;
   resolve(threadId: string): Promise<void>;
   reopen(threadId: string): Promise<void>;
 }
@@ -128,7 +126,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
       {relation !== 'here' && <p class="comparanda-panel-hint">{onWhat(analysis, thread)}</p>}
       <ol class="comparanda-comments">
         {thread.comments.map((c) => (
-          <CommentItem key={c.id} thread={thread} comment={c} author={who(c.authorId)} target={target} writes={writes} affordances={affordances} idBase={idBase} />
+          <li key={c.id}><strong>{who(c.authorId)}</strong>{`, ${c.at}: `}{c.body}</li>
         ))}
       </ol>
       {thread.resolved && <p class="comparanda-panel-hint">{`Resolved by ${who(thread.resolvedBy)}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}. Kept for the record.`}</p>}
@@ -151,42 +149,11 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   );
 }
 
-/** One comment, marked as edited with when, and, where the host allows, an Edit form that rewrites it. */
-function CommentItem({ thread, comment: c, author, target, writes, affordances, idBase }: {
-  thread: Thread; comment: Comment; author: string; target: ReturnType<typeof commentTarget>; writes?: ThreadWrites | undefined; affordances: Affordances; idBase: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  // Focus follows the form: into it when it opens, back to the button when it closes, never lost with the control that was pressed.
-  const button = useRef<HTMLButtonElement>(null);
-  const opened = useRef(false);
-  useEffect(() => {
-    if (!editing && opened.current) button.current?.focus();
-    opened.current = editing;
-  }, [editing]);
-  const may = writes && !thread.resolved ? affordances.comment(target, 'edit', { id: c.id, authorId: c.authorId }) : undefined;
-  return (
-    <li>
-      <strong>{author}</strong>{`, ${c.at}: `}{c.body}
-      {c.editedAt !== undefined && <em>{` (edited ${c.editedAt})`}</em>}
-      {may && !may.enabled && <span class="comparanda-reason">{` Editing this comment is not available: ${may.reason ?? 'not allowed here.'}`}</span>}
-      {may?.enabled && !editing && <button type="button" ref={button} onClick={() => setEditing(true)}>Edit</button>}
-      {may?.enabled && editing && (
-        <Compose label="Edit comment" action="Save edit" idBase={`${idBase}-${thread.id}-${c.id}`} initial={c.body}
-          send={(body) => writes!.edit(thread.id, c.id, body)} done={() => setEditing(false)} />
-      )}
-    </li>
-  );
-}
-
 /** A labelled text box and its button. The draft survives a failed send, which says why. */
-function Compose({ label, action, idBase, send, choices, initial = '', done }: {
+function Compose({ label, action, idBase, send, choices }: {
   label: string; action: string; idBase: string; send: (body: string, choice?: number) => Promise<void>; choices?: string[] | undefined;
-  /** The text to begin from, and what to do once it is sent: an edit starts from the comment and closes. */
-  initial?: string; done?: () => void;
 }) {
-  const [draft, setDraft] = useState(initial);
-  const area = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { if (done) area.current?.focus(); }, []);
+  const [draft, setDraft] = useState('');
   const [choice, setChoice] = useState(0);
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
@@ -204,7 +171,6 @@ function Compose({ label, action, idBase, send, choices, initial = '', done }: {
     try {
       await send(draft, choice);
       setDraft('');
-      done?.();
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -223,9 +189,8 @@ function Compose({ label, action, idBase, send, choices, initial = '', done }: {
         </>
       )}
       <label for={`${idBase}-text`}>{choices && choices.length > 1 ? `Start a thread on ${choices[choice]}` : label}</label>
-      <textarea id={`${idBase}-text`} ref={area} rows={2} value={draft} onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)} />
+      <textarea id={`${idBase}-text`} rows={2} value={draft} onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)} />
       <button type="submit" aria-disabled={busy}>{action}</button>
-      {done && <button type="button" onClick={done}>Cancel</button>}
       {error && <p role="alert" key={error.attempt}>{`Not sent: ${error.text}`}</p>}
     </form>
   );

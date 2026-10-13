@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
-import { commentTarget, reopenThread, replyToThread, resolveThread, startThread, threadsAt } from '../src/core/threads.js';
+import { commentTarget, editComment, reopenThread, replyToThread, resolveThread, startThread, threadsAt } from '../src/core/threads.js';
 import type { Author } from '../src/core/schema/provenance.js';
 import relocationJson from '../examples/relocation.json';
 
@@ -146,5 +146,37 @@ describe('commentTarget: what the host is asked about, for every scope (sprint r
       .toEqual({ kind: 'cell', id: 'berlin/rent' });
     expect(commentTarget({ scope: 'group', groupId: 'eu' })).toEqual({ kind: 'group', id: 'eu' });
     expect(commentTarget({ scope: 'group-pair', groupId: 'eu', otherGroupId: 'cost' })).toEqual({ kind: 'group-pair', id: 'eu/cost' });
+  });
+});
+
+describe('editComment (#195)', () => {
+  const ana: Author = { id: 'ana', displayName: 'Ana', kind: 'human' };
+  const started = startThread(relocation, { threadId: 'te', anchor: { scope: 'analysis' }, comment: note('c1', 'rent looks high') });
+
+  it('rewrites the comment, marks it edited, and keeps the earlier wording as a comment by the editor', () => {
+    const a = editComment(started, 'te', 'c1', { body: 'rent looks too high', id: 'c2', by: ana, at: '2026-10-14T00:00:00Z' });
+    const [first, note2] = a.threads.find((t) => t.id === 'te')!.comments;
+    expect(first).toMatchObject({ id: 'c1', body: 'rent looks too high', editedAt: '2026-10-14T00:00:00Z', authorId: 'dana' });
+    expect(note2).toMatchObject({ id: 'c2', authorId: 'ana' });
+    expect(note2!.body).toContain('\u201crent looks high\u201d');
+    expect(note2!.body).toContain('Dana (human, unverified) [dana]');
+  });
+
+  it('keeps the whole chain when edited twice', () => {
+    let a = editComment(started, 'te', 'c1', { body: 'second', id: 'c2', by: dana, at: '2026-10-14T00:00:00Z' });
+    a = editComment(a, 'te', 'c1', { body: 'third', id: 'c3', by: dana, at: '2026-10-15T00:00:00Z' });
+    const bodies = a.threads.find((t) => t.id === 'te')!.comments.map((c) => c.body).join('\n');
+    expect(bodies).toContain('\u201crent looks high\u201d');
+    expect(bodies).toContain('\u201csecond\u201d');
+  });
+
+  it('refuses an unknown comment, an empty or unchanged body, a reused id, and a resolved thread', () => {
+    const edit = (a: typeof started, over: Partial<Parameters<typeof editComment>[3]> & { comment?: string } = {}) =>
+      editComment(a, 'te', over.comment ?? 'c1', { body: 'x', id: 'c9', by: dana, at: 'x', ...over });
+    expect(() => edit(started, { comment: 'nope' })).toThrow(/no comment "nope"/);
+    expect(() => edit(started, { body: '  ' })).toThrow(/empty/);
+    expect(() => edit(started, { body: 'rent looks high' })).toThrow(/same as the old/);
+    expect(() => edit(started, { id: 'c1' })).toThrow(/already used/);
+    expect(() => edit(resolveThread(started, 'te', { by: dana, at: 'x' }))).toThrow(/resolved/);
   });
 });
