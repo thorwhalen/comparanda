@@ -192,6 +192,31 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 .comparanda-matrix .comparanda-panel :is(textarea, select):focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
 .comparanda-matrix .comparanda-panel button:disabled { color: var(--cmp-muted); cursor: progress; }
 .comparanda-matrix .comparanda-panel [role="alert"] { color: var(--cmp-ink); font-weight: 600; }
+.comparanda-matrix .comparanda-handle {
+  font: inherit; color: var(--cmp-muted); background: none; border: 0; padding: 0 0.15em; margin-inline-end: 0.2em;
+  cursor: grab; touch-action: none; vertical-align: baseline;
+}
+.comparanda-matrix .comparanda-handle:hover, .comparanda-matrix .comparanda-handle[aria-expanded="true"] { color: var(--cmp-ink); }
+.comparanda-matrix .comparanda-handle[data-dragging] { cursor: grabbing; }
+/* Held in grab mode: a shape, not only a colour -- a thick dashed frame. */
+.comparanda-matrix th[data-grabbed] { outline: 3px dashed var(--cmp-focus); outline-offset: -3px; }
+/* Where a pointer drop would land: a thick rule on that side, drawn as a border so forced colors keeps it. */
+.comparanda-matrix th[data-drop="before"][scope="col"] { border-inline-start-width: 4px; border-color: var(--cmp-focus); }
+.comparanda-matrix th[data-drop="after"][scope="col"] { border-inline-end-width: 4px; border-color: var(--cmp-focus); }
+.comparanda-matrix th[data-drop="before"][scope="row"] { border-top-width: 4px; border-color: var(--cmp-focus); }
+.comparanda-matrix th[data-drop="after"][scope="row"] { border-bottom-width: 4px; border-color: var(--cmp-focus); }
+.comparanda-matrix .comparanda-menu {
+  position: absolute; z-index: 4; inset-inline-start: 0; top: 100%; margin: 0; padding: 0.2em 0; list-style: none;
+  min-width: 12em; max-height: 18em; overflow: auto; font-weight: 400; white-space: nowrap;
+  background: var(--cmp-surface); color: var(--cmp-ink); border: 1px solid var(--cmp-muted);
+}
+.comparanda-matrix .comparanda-menu [role="menuitem"] { padding: 0.15em 0.6em; cursor: pointer; }
+.comparanda-matrix .comparanda-menu [role="menuitem"]:focus { outline: 2px solid var(--cmp-focus); outline-offset: -2px; }
+.comparanda-matrix .comparanda-arrange p { margin: 0 0 0.25em; color: var(--cmp-muted); font-size: 0.9em; }
+.comparanda-matrix .comparanda-arrange button {
+  font: inherit; color: var(--cmp-ink); background: var(--cmp-header); border: 1px solid var(--cmp-rule); padding: 0.05em 0.45em;
+}
+.comparanda-matrix .comparanda-arrange button:focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
 @media (forced-colors: active) {
   /* Width and colour only: the style is each cell's terminal channel (ADR-0028 amendment). */
   .comparanda-matrix th, .comparanda-matrix td { box-shadow: none; border-width: 1px; border-color: CanvasText; }
@@ -200,6 +225,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   .comparanda-matrix .comparanda-swatch { forced-color-adjust: none; }
   .comparanda-matrix .comparanda-forced-only { display: block; }
   .comparanda-matrix .comparanda-panel, .comparanda-matrix .comparanda-bar span { border-width: 1px; border-color: CanvasText; }
+  .comparanda-matrix th[data-drop] { border-color: Highlight; }
 }
 @media print {${themed(tokens('light'), tokens('light'))}
   .comparanda-matrix .comparanda-scroll { overflow: visible; max-height: none; }
