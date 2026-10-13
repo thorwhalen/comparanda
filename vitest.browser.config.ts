@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
  * print medium (#102, ADR-0028). Chromium applies forced colors for real under
  * this emulation, so a test reads what such a reader sees, not a stylesheet.
  */
-const emulateMedia: BrowserCommand<[{ forcedColors?: 'active' | 'none'; media?: 'print' | 'screen' | null }]> = async (ctx, options) => {
+const emulateMedia: BrowserCommand<[{ forcedColors?: 'active' | 'none'; media?: 'print' | 'screen' | null; reducedMotion?: 'reduce' | 'no-preference' }]> = async (ctx, options) => {
   if (ctx.provider.name !== 'playwright') throw new Error('emulateMedia needs the playwright provider');
   await (ctx as unknown as { page: { emulateMedia(o: object): Promise<void> } }).page.emulateMedia(options);
 };

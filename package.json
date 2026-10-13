@@ -90,7 +90,8 @@
     "check": "pnpm typecheck && pnpm lint:boundaries && pnpm test",
     "prepublishOnly": "pnpm check && pnpm build && pnpm emit-schema && pnpm lint:package",
     "lint:package": "publint --strict && attw --pack . --profile node16",
-    "test:standalone": "vitest run --config vitest.standalone.config.ts"
+    "test:standalone": "vitest run --config vitest.standalone.config.ts",
+    "test:a11y": "vitest run --config vitest.a11y.config.ts"
   },
   "dependencies": {
     "@zodal/groups-core": "^0.1.0",
@@ -119,6 +120,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
+    "@axe-core/playwright": "^4.13.0",
     "@types/node": "^22.0.0",
     "@vitest/browser": "^3.2.7",
     "ajv": "^8.20.0",

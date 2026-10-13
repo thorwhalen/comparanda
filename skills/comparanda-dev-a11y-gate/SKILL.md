@@ -88,6 +88,10 @@ read-only, and *says so*, rather than presenting controls that silently do nothi
       zero network requests.
 - [ ] Nothing from the private originating analysis in any screenshot or fixture (ADR-0016).
 
+## The merge gate: tests/a11y/ (ADR-0029, #105)
+
+`pnpm test:a11y` runs A1–A20, each with a deliberately broken fixture; CI job `a11y-gate`. Adding a check: a line in `tests/a11y/spec.ts`, an implementation in the runtime's `*-checks.ts` with its `broken` fixture, and `alsoTrips` for any other check the fixture legitimately trips. Adding an encoding, a cell channel or a keyboard route means asking which A-number now needs a case. Manual checks B1–B8 are rows of `docs/release-notes-template.md`.
+
 ## Where things are
 
     docs/adr/0008-reordering-grouping-selection.md   seriation, keyboard reorder, groups vs selection
