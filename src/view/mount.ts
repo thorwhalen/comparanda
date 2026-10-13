@@ -21,7 +21,7 @@ import {
 const DEFAULT_IDENTITY = anonymousIdentity();
 import { createEncodingRegistry, type EncodingRegistry } from './encodings/registry.js';
 import type { Author } from '../core/schema/provenance.js';
-import { commentTarget, replyToThread, resolveThread, startThread } from '../core/threads.js';
+import { commentTarget, reopenThread, replyToThread, resolveThread, startThread } from '../core/threads.js';
 import type { Anchor } from '../core/schema/annotations.js';
 import type { ThreadWrites } from './threads.js';
 import { textOnly } from './encodings/shipped.js';
@@ -228,6 +228,7 @@ export function mountMatrix(
       startThread(a, { threadId: newId(), anchor, comment: { id: newId(), at, body, author } })),
     reply: (threadId, body) => writeThread(anchorIn(threadId), (a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author })),
     resolve: (threadId) => writeThread(anchorIn(threadId), (a, by, at) => resolveThread(a, threadId, { by, at })),
+    reopen: (threadId) => writeThread(anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at })),
   };
 
   const draw = () => {

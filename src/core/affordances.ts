@@ -63,7 +63,7 @@ export interface EditTarget {
 /**
  * A write to the analysis outside any one cell.
  *
- * - `comment` starts, answers or resolves a thread.
+ * - `comment` starts, answers, resolves or reopens a thread.
  * - `revise` is every other change to what the analysis says -- its
  *   alternatives, criteria, groups, definitions and declarations.
  * - `change-lock` locks or unlocks the analysis.
@@ -189,7 +189,7 @@ export interface Affordances {
   inapplicable(alternativeId: string, criterionId: string): boolean;
   /** Every acceptability screen `screen()` applies for this measure. */
   screens(measure: string): Screen[];
-  /** Whether a thread may be started, answered or resolved here. A lock does not refuse it (`documentPolicy`). */
+  /** Whether a thread may be started, answered, resolved or reopened here. A lock does not refuse it (`documentPolicy`). */
   comment(target?: EditTarget): Affordance;
   /**
    * Whether the analysis may be revised outside its cells: alternatives,
