@@ -198,7 +198,7 @@ describe('edits are offered only through editAffordances', () => {
     const reasons = {
       assert: affordances.assert('lisbon', 'rent', 'score').reason,
       suggest: affordances.suggest('lisbon', 'rent', 'score').reason,
-      comment: affordances.comment().reason,
+      comment: affordances.comment(undefined, 'start').reason,
       revise: affordances.revise('revising the analysis').reason,
       changeLock: affordances.changeLock().reason,
       decideSuggestion: affordances.decideSuggestion('sg-day-tai', 'accept').reason,

@@ -11,7 +11,7 @@
 import { h, render, type ComponentType } from 'preact';
 
 import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/analysis.js';
-import type { Affordances, ThreadAct } from '../core/affordances.js';
+import { threadDoing, type Affordances, type ThreadAct } from '../core/affordances.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
   anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
@@ -89,7 +89,7 @@ function withoutSource(a: Affordances): Affordances {
     ...a,
     assert: () => refused,
     suggest: () => refused,
-    comment: () => refused,
+    comment: (_target, act) => (threadDoing(act), refused),
     revise: (doing, target) => (a.revise(doing, target), refused),
     changeLock: () => refused,
     decideSuggestion: (id, decision) => (a.decideSuggestion(id, decision), refused),

@@ -328,10 +328,12 @@ describe('the host tells starting, answering and resolving apart (#194)', () => 
     });
     const button = Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Resolve thread')!;
     pressed = true;
+    asked.length = 0;
     await userEvent.click(button);
     await settled();
     // The refusal redraws the thread with the host's reason in place of the button.
     expect(threads().textContent).toContain('resolving closed meanwhile');
+    // Asked afresh when the write happened, not merely when the page was drawn.
     expect(asked).toContain('resolve');
     expect((await source.getOne(relocation.id))!.threads.filter((t) => t.resolved)).toHaveLength(relocation.threads.filter((t) => t.resolved).length);
   });

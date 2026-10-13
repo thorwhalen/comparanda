@@ -210,6 +210,8 @@ describe('edits come only from editAffordances over the source', () => {
     expect(a.enabled).toBe(false);
     expect(a.reason).toMatch(/does not accept updates/);
     expect(s.last().affordances.comment().enabled).toBe(false);
+    // A malformed act is a caller's mistake with or without a source.
+    expect(() => s.last().affordances.comment(undefined, 'delete' as never)).toThrow(/start/);
   });
 
   it('flips with the source capability', () => {

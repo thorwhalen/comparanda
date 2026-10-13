@@ -94,7 +94,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   // Asked about the thread's own anchor, not the reader's position: a group's thread listed at a member is the group's.
   const anchor = targetOf(thread.anchor);
   // Each act is its own question to the host (#194): a reader may answer where only the owner resolves.
-  const mayReply = affordances.comment(anchor, 'reply');
+  const mayReply = thread.resolved ? undefined : affordances.comment(anchor, 'reply');
   const mayToggle = affordances.comment(anchor, thread.resolved ? 'reopen' : 'resolve');
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
@@ -127,10 +127,10 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
         ))}
       </ol>
       {thread.resolved && <p class="comparanda-panel-hint">{`Resolved by ${who(thread.resolvedBy)}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}. Kept for the record.`}</p>}
-      {writes && !thread.resolved && !mayReply.enabled && (
+      {writes && mayReply && !mayReply.enabled && (
         <p class="comparanda-reason">{`Answering this thread is not available: ${mayReply.reason ?? 'not allowed here.'}`}</p>
       )}
-      {writes && !thread.resolved && mayReply.enabled && (
+      {writes && mayReply?.enabled && (
         <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />
       )}
       {writes && !mayToggle.enabled && (

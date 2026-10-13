@@ -93,7 +93,8 @@ export interface DocumentEditRequest {
 }
 
 /** The four things a thread write can be. */
-export type ThreadAct = 'start' | 'reply' | 'resolve' | 'reopen';
+export const THREAD_ACTS = ['start', 'reply', 'resolve', 'reopen'] as const;
+export type ThreadAct = typeof THREAD_ACTS[number];
 
 /** What each act is called to the host (`DocumentEditRequest.doing`) and in a refusal. */
 const THREAD_DOING: Readonly<Record<ThreadAct, string>> = {
