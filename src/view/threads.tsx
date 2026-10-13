@@ -15,7 +15,8 @@ import type { Analysis } from '../core/schema/analysis.js';
 import type { Anchor, Thread } from '../core/schema/annotations.js';
 import { aliasesOf } from '../core/schema/structure.js';
 import { axisGroups, groupsOf } from '../core/schema/groups.js';
-import { threadsAt, type Position, type ThreadAt } from '../core/threads.js';
+import { commentTarget as targetOf, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
+import { attributions } from '../core/identity.js';
 import { capitalise } from './words.js';
 
 /** The writes a thread takes, performed by whoever holds the source. Each settles when the source has it. */
@@ -44,7 +45,7 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   const resolved = all.filter((x) => x.thread.resolved);
   const choices = anchorChoices(analysis, position, measure, words);
   const allowed = affordances.comment(choices[0]!.target);
-  const names = new Map(analysis.authors.map((x) => [x.id, x.displayName]));
+  const names = attributions(analysis.authors);
   return (
     <section class="comparanda-threads" aria-labelledby={`${idBase}-threads`} data-detail="threads">
       <h3 id={`${idBase}-threads`}>{`Discussion (${open.length} open${resolved.length ? `, ${resolved.length} resolved` : ''})`}</h3>
@@ -239,18 +240,6 @@ function useFailure(): [{ text: string; attempt: number } | undefined, (text: st
   const set = (text: string | undefined) =>
     setFailure((was) => (text === undefined ? undefined : { text, attempt: (was?.attempt ?? 0) + 1 }));
   return [failure, set];
-}
-
-/** What a thread's anchor is, as the affordance is asked about it. */
-function targetOf(anchor: Anchor): EditTarget {
-  switch (anchor.scope) {
-    case 'cell': return { kind: 'cell', id: `${anchor.alternativeId ?? ''}/${anchor.criterionId ?? ''}` };
-    case 'alternative': return { kind: 'alternative', id: anchor.alternativeId ?? '' };
-    case 'criterion': return { kind: 'criterion', id: anchor.criterionId ?? '' };
-    case 'group': return { kind: 'group', id: anchor.groupId ?? '' };
-    case 'group-pair': return { kind: 'group-pair', id: `${anchor.groupId ?? ''}/${anchor.otherGroupId ?? ''}` };
-    case 'analysis': return { kind: 'analysis' };
-  }
 }
 
 function messageOf(e: unknown): string {

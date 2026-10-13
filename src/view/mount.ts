@@ -21,7 +21,8 @@ import {
 const DEFAULT_IDENTITY = anonymousIdentity();
 import { createEncodingRegistry, type EncodingRegistry } from './encodings/registry.js';
 import type { Author } from '../core/schema/provenance.js';
-import { replyToThread, resolveThread, startThread } from '../core/threads.js';
+import { commentTarget, replyToThread, resolveThread, startThread } from '../core/threads.js';
+import type { Anchor } from '../core/schema/annotations.js';
 import type { ThreadWrites } from './threads.js';
 import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type MatrixViewProps } from './matrix.js';
@@ -198,9 +199,9 @@ export function mountMatrix(
    * are queued and each is built on the source's latest document, so none
    * undoes another. The source's event re-renders the matrix; nothing here draws.
    */
-  const writeThread = (change: (a: Analysis, author: Author, at: string) => Analysis): Promise<void> => {
+  const writeThread = (anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis): Promise<void> => {
     const run = async () => {
-      const { source, identity = DEFAULT_IDENTITY } = current;
+      const { source, identity = DEFAULT_IDENTITY, authorize } = current;
       const id = analysis.id;
       if (destroyed || !source) throw new Error('there is no source behind this matrix to write to.');
       const author = await identity.current();
@@ -209,6 +210,10 @@ export function mountMatrix(
       }
       // The source's own latest document, not the one shown: a write in flight may not have come back as an event yet.
       const latest = (await source.getOne(id)) ?? analysis;
+      // Asked again of the document being written, not the one the button was drawn from: the host is never overruled (ADR-0012).
+      const anchor = anchorOf(latest);
+      const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor));
+      if (may && !may.enabled) throw new Error(may.reason);
       await source.update(id, change(latest, author, now().toISOString()));
     };
     // One write at a time: two sent together would each build on the same document, and the second would undo the first.
@@ -216,11 +221,13 @@ export function mountMatrix(
     writes = next.catch(() => undefined);
     return next;
   };
+  /** A thread's anchor in a document; absent, the thread's own write says there is no such thread. */
+  const anchorIn = (threadId: string) => (a: Analysis) => a.threads.find((t) => t.id === threadId)?.anchor;
   const threadWrites: ThreadWrites = {
-    start: (anchor, body) => writeThread((a, author, at) =>
+    start: (anchor, body) => writeThread(() => anchor, (a, author, at) =>
       startThread(a, { threadId: newId(), anchor, comment: { id: newId(), at, body, author } })),
-    reply: (threadId, body) => writeThread((a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author })),
-    resolve: (threadId) => writeThread((a, by, at) => resolveThread(a, threadId, { by, at })),
+    reply: (threadId, body) => writeThread(anchorIn(threadId), (a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author })),
+    resolve: (threadId) => writeThread(anchorIn(threadId), (a, by, at) => resolveThread(a, threadId, { by, at })),
   };
 
   const draw = () => {

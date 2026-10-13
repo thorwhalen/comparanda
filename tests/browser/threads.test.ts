@@ -11,7 +11,7 @@ import { Analysis } from '../../src/core/schema/analysis.js';
 import { startThread } from '../../src/core/threads.js';
 import { reviseCriterion } from '../../src/core/criteria-revision.js';
 import { applyOrder, initialViewState, setDetailPanel, setFocus, type ViewState } from '../../src/core/view-state.js';
-import { anonymousIdentity, inMemoryAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
+import { agentIdentity, anonymousIdentity, inMemoryAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
 import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
@@ -58,7 +58,8 @@ describe('threads in the panel', () => {
     const thread = doc.threads.at(-1)!;
     expect(thread).toMatchObject({ anchor: { scope: 'criterion', criterionId: 'rent' }, comments: [{ authorId: 'dana', at: '2026-10-13T12:00:00.000Z' }] });
     expect(threads().textContent).toContain('is this rent before or after utilities?');
-    expect(threads().textContent).toContain('Dana');
+    // Named as what she is: a typed name nobody vouched for (ADR-0012).
+    expect(threads().textContent).toContain('Dana (human, unverified)');
 
     // Rename the criterion in the document and reorder the view: the thread stays on it.
     await source.update(doc.id, reviseCriterion(doc, 'rent', { label: 'Monthly housing cost' }, { material: false }));
@@ -180,6 +181,31 @@ describe('review findings', () => {
     expect(item.textContent).toContain('groups are the facilitator\'s to discuss');
     // The position's own form is still offered: the alternative is not refused.
     expect(Array.from(threads().querySelectorAll('button')).some((b) => b.textContent === 'Start thread')).toBe(true);
+  });
+});
+
+describe('who writes, and who may (#74, ADR-0012)', () => {
+  it('names an agent by its typed kind and run wherever it comments', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    const scorer = agentIdentity({ name: 'scorer', model: 'm-1', runId: 'r9' });
+    mount({ analysis: relocation, measure: 'score', source, identity: scorer, view: at({ criterionId: 'rent' }) });
+    await say(/Start a thread on the criterion Rent/, 'flagging a gap', 'Start thread');
+    const doc = (await source.getOne(relocation.id))!;
+    expect(doc.authors.find((a) => a.id === 'scorer:r9')).toMatchObject({ kind: 'agent', agent: { name: 'scorer', model: 'm-1', runId: 'r9' } });
+    expect(threads().textContent).toContain('scorer (agent scorer, model m-1, run r9, unverified)');
+  });
+
+  it('asks the host again when the write happens: a refusal since the form was drawn writes nothing', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    let allowed = true;
+    mount({
+      analysis: relocation, measure: 'score', source, identity: dana, view: at({ criterionId: 'rent' }),
+      authorize: () => (allowed ? true : { enabled: false, reason: 'the review window has closed' }),
+    });
+    allowed = false;
+    await say(/Start a thread on the criterion Rent/, 'too late?', 'Start thread');
+    expect((await source.getOne(relocation.id))!.threads).toHaveLength(relocation.threads.length);
+    expect(threads().textContent).toContain('the review window has closed');
   });
 });
 

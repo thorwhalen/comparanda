@@ -20,6 +20,7 @@ import type { Anchor, Comment, Thread } from './schema/annotations.js';
 import { resolveAnchor } from './schema/anchors.js';
 import { axisGroups, groupsOf } from './schema/groups.js';
 import type { Author } from './schema/provenance.js';
+import type { EditTarget } from './affordances.js';
 
 /** Where a reader is: both ids a cell, one a header, none the analysis as a whole. */
 export interface Position {
@@ -94,6 +95,21 @@ export interface NewComment {
   at: string;
   body: string;
   author: Author;
+}
+
+/**
+ * What a thread's anchor is, as `Affordances.comment` -- and through it the
+ * host's `authorize` -- is asked about it.
+ */
+export function commentTarget(anchor: Anchor): EditTarget {
+  switch (anchor.scope) {
+    case 'cell': return { kind: 'cell', id: `${anchor.alternativeId ?? ''}/${anchor.criterionId ?? ''}` };
+    case 'alternative': return { kind: 'alternative', id: anchor.alternativeId ?? '' };
+    case 'criterion': return { kind: 'criterion', id: anchor.criterionId ?? '' };
+    case 'group': return { kind: 'group', id: anchor.groupId ?? '' };
+    case 'group-pair': return { kind: 'group-pair', id: `${anchor.groupId ?? ''}/${anchor.otherGroupId ?? ''}` };
+    case 'analysis': return { kind: 'analysis' };
+  }
 }
 
 /** Start a thread on a live anchor, with its first comment. */

@@ -423,6 +423,112 @@ export function anonymousIdentity(author: Partial<Author> = {}): IdentityProvide
   return { current: async () => current, known: async () => [current] };
 }
 
+/** The slice of the Web Storage API a local identity keeps its name in. */
+export interface IdentityStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+/** A local identity: a name typed once, kept, under a generated stable id (ADR-0012, default 2). */
+export interface LocalIdentity extends IdentityProvider {
+  /**
+   * Take a name. The id is generated on the first call and kept on every
+   * later one, so a renamed contributor stays one author. An empty name throws.
+   */
+  name(displayName: string): Promise<Author>;
+  /** Forget the name and the id; the next contributor here starts again as anonymous. */
+  forget(): Promise<void>;
+}
+
+/**
+ * ADR-0012's second default: until a name is typed it is the anonymous
+ * identity; after, a `human` author carrying the typed name and a generated
+ * id, **always attested `unverified`** -- a name somebody typed is exactly
+ * that, and nothing stored beside it can promote it.
+ *
+ * `storage` defaults to the browser's `localStorage` when there is one and to
+ * memory when there is not (or when the browser refuses it); what it holds is
+ * read as untrusted, and anything malformed reads as no name at all.
+ */
+export function localIdentity({
+  storage = browserStorage(),
+  key = 'comparanda.identity',
+  // `getRandomValues`, not `randomUUID`: the latter is missing outside secure contexts.
+  newId = () => `local-${Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')}`,
+}: { storage?: IdentityStorage; key?: string; newId?: () => string } = {}): LocalIdentity {
+  const anonymous = anonymousIdentity();
+  const stored = (): { id: string; displayName: string } | undefined => {
+    try {
+      const v = JSON.parse(storage.getItem(key) ?? 'null') as unknown;
+      const { id, displayName } = (v ?? {}) as Record<string, unknown>;
+      return typeof id === 'string' && id && typeof displayName === 'string' && displayName.trim()
+        ? { id, displayName }
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const authorOf = ({ id, displayName }: { id: string; displayName: string }): Author => ({
+    id, displayName, kind: 'human', principalId: id, attestation: { method: 'unverified' },
+  });
+  const current = async () => {
+    const s = stored();
+    return s ? authorOf(s) : anonymous.current();
+  };
+  return {
+    current,
+    known: async () => [await current()],
+    async name(displayName) {
+      if (typeof displayName !== 'string' || !displayName.trim()) {
+        throw new TypeError('a local identity needs a name to show; got an empty one.');
+      }
+      const record = { id: stored()?.id ?? newId(), displayName: displayName.trim() };
+      storage.setItem(key, JSON.stringify(record));
+      return authorOf(record);
+    },
+    async forget() {
+      storage.removeItem(key);
+    },
+  };
+}
+
+/** `localStorage` if this environment has one and allows it; otherwise a map that lasts the session. */
+function browserStorage(): IdentityStorage {
+  try {
+    const s = (globalThis as { localStorage?: IdentityStorage }).localStorage;
+    if (s) return s;
+  } catch {
+    // Access itself throws where site data is blocked.
+  }
+  const m = new Map<string, string>();
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => void m.set(k, v),
+    removeItem: (k) => void m.delete(k),
+  };
+}
+
+/**
+ * An agent run as an identity (ADR-0012: "agents are identities too"). The
+ * author is `kind: 'agent'` -- the typed field a reader tells a model from a
+ * person by -- carrying the agent's name, model, prompt version and run id.
+ *
+ * The id defaults to the agent's name and run id, so each run is separately
+ * attributable and a whole run can be found or retracted. Attestation is
+ * `unverified` unless the host vouches for the run.
+ */
+export function agentIdentity(
+  agent: NonNullable<Author['agent']>,
+  author: Partial<Omit<Author, 'kind' | 'agent'>> = {},
+): IdentityProvider {
+  if (typeof agent?.name !== 'string' || !agent.name.trim()) {
+    throw new TypeError('an agent identity needs the agent\'s name, e.g. agentIdentity({ name: "rubricator", model, runId }).');
+  }
+  const id = author.id ?? (agent.runId ? `${agent.name}:${agent.runId}` : agent.name);
+  return anonymousIdentity({ displayName: agent.name, principalId: id, ...author, id, kind: 'agent', agent });
+}
+
 /**
  * The invariant ADR-0006's 2026-08-22 amendment (clause 3) writes into the
  * capability report: `DataProvider.update` is last-write-wins with no version

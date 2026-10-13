@@ -14,6 +14,7 @@ export * from './core/layout.js';
 export * from './core/assertion-set.js';
 export * from './core/detail.js';
 export * from './core/threads.js';
+export * from './core/identity.js';
 export * from './core/criteria-revision.js';
 export * from './core/affordances.js';
 export * from './core/revision.js';

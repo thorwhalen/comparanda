@@ -38,6 +38,7 @@ export interface Affordance {
 
 const ALLOWED: Affordance = Object.freeze({ enabled: true });
 const refuse = (reason: string): Affordance => ({ enabled: false, reason });
+const NOT_AUTHORISED = 'you are not authorised to do this here.';
 const LOCKED = 'this analysis is locked; propose a suggestion instead of editing it.';
 
 /** A write to one cell. Coordinates are opaque ids. */
@@ -251,10 +252,17 @@ export function makeAffordances(
 
   const withHost = (request: EditRequest, ownPolicy: Affordance): Affordance => {
     if (!ownPolicy.enabled || !authorize) return ownPolicy;
-    const host = authorize(request);
-    if (host === true) return ALLOWED;
-    if (host === false) return refuse('you are not authorised to do this here.');
-    return host.enabled ? ALLOWED : refuse(host.reason ?? 'you are not authorised to do this here.');
+    // The intersection fails closed: only an explicit yes from the host allows.
+    // A host that throws, or answers anything but `true` or an enabled
+    // `Affordance`, has not said yes -- and is never overruled into one.
+    let host: Affordance | boolean;
+    try {
+      host = authorize(request);
+    } catch (error) {
+      return refuse(`the host could not decide whether you may do this (${error instanceof Error ? error.message : String(error)}).`);
+    }
+    if (host === true || (typeof host === 'object' && host?.enabled === true)) return ALLOWED;
+    return refuse((typeof host === 'object' && host?.reason) || NOT_AUTHORISED);
   };
 
   const documentRequest = (
