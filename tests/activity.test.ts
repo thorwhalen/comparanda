@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { activityRecord } from '../src/core/activity.js';
+import { editComment, reopenThread } from '../src/core/threads.js';
 import { cellDetail } from '../src/core/detail.js';
 import { vocabularyOf } from '../src/core/schema/analysis.js';
 import { BLIND_SECRETS, blindRound, NOW_CLOSED, NOW_OPEN } from './fixtures/blind-round.js';
@@ -76,7 +77,7 @@ describe('the activity record', () => {
   it('lists the discussion with its authors, edits as edits that keep no earlier wording, and the resolution', () => {
     const entries = activityRecord(a, { viewerId: 'cy', now: NOW_OPEN });
     expect(entries.filter((e) => e.threadId === 't1').map((e) => e.kind)).toEqual(['started-thread', 'replied', 'edited-comment', 'resolved']);
-    expect(entries.find((e) => e.kind === 'edited-comment')!.said).toMatch(/the earlier wording, if the edit kept it/);
+    expect(entries.find((e) => e.kind === 'edited-comment')!.said).toMatch(/the earlier wording and the editor are not recorded/);
     expect(entries.find((e) => e.kind === 'resolved')!.who).toMatch(/^Ana Lopez/);
   });
 
@@ -197,5 +198,20 @@ describe('what the review of #218 found', () => {
     const withAnon = with1('a-rent-scorer', { authorId: 'anonymous' });
     const d = detail(withAnon, undefined);
     expect(d.assertions.filter((x) => x.authorHidden)).toHaveLength(3);
+  });
+});
+
+describe('an edit made through editComment (#195)', () => {
+  it('is the editor\u2019s edit, once each, and not a reply; an unnoted editedAt stays as the old kind of edit', () => {
+    const base = blindRound();
+    const editor = base.authors[0]!;
+    const a = reopenThread(base, 't1', { id: 'reopen-1', by: editor, at: '2026-09-29T00:00:00Z' });
+    const first = a.threads.find((x) => x.id === 't1')!.comments[0]!;
+    const edited = editComment(a, 't1', first.id, { body: 'rephrased', id: 'edit-note-1', by: editor, at: '2026-09-30T00:00:00Z' });
+    const mine = activityRecord(edited, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'edited-comment');
+    const noted = mine.find((e) => e.at === '2026-09-30T00:00:00Z')!;
+    expect(noted.said).toMatch(/edited a comment.*quoted in the thread/);
+    expect(activityRecord(edited, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'replied').length)
+      .toBe(activityRecord(a, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'replied').length);
   });
 });

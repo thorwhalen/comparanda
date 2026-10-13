@@ -182,22 +182,28 @@ describe('nothing about rendering or storage is expressible', () => {
 
   it('tells the host which thread act it is asked about (#194), and the general question when none is named', () => {
     const seen: EditRequest[] = [];
-    const aff = makeAffordances(relocation(), { authorize: (r) => (seen.push(r), r.action === 'comment' && r.thread === 'resolve' ? { enabled: false, reason: 'only the owner resolves' } : true) });
+    const doc = relocation();
+    const th = doc.threads[0]!;
+    const aff = makeAffordances(doc, { authorize: (r) => (seen.push(r), r.action === 'comment' && r.thread === 'resolve' ? { enabled: false, reason: 'only the owner resolves' } : true) });
     const target = { kind: 'analysis' } as const;
     expect(aff.comment(target, 'start')).toEqual({ enabled: true });
     expect(aff.comment(target, 'reply')).toEqual({ enabled: true });
     expect(aff.comment(target, 'resolve')).toEqual({ enabled: false, reason: 'only the owner resolves' });
     expect(aff.comment(target, 'reopen')).toEqual({ enabled: true });
-    expect(aff.comment(target, 'edit', { id: 'c1', authorId: 'dana' })).toEqual({ enabled: true });
+    expect(aff.comment(target, 'edit', { threadId: th.id, commentId: th.comments[0]!.id })).toEqual({ enabled: true });
     expect(aff.comment()).toEqual({ enabled: true });
     expect(seen).toEqual([
       { action: 'comment', doing: 'starting a thread', target, thread: 'start' },
       { action: 'comment', doing: 'answering a thread', target, thread: 'reply' },
       { action: 'comment', doing: 'resolving a thread', target, thread: 'resolve' },
       { action: 'comment', doing: 'reopening a thread', target, thread: 'reopen' },
-      { action: 'comment', doing: 'editing a comment', target, thread: 'edit', comment: { id: 'c1', authorId: 'dana' } },
+      { action: 'comment', doing: 'editing a comment', target, thread: 'edit', comment: { threadId: th.id, id: th.comments[0]!.id, authorId: th.comments[0]!.authorId } },
       { action: 'comment', doing: 'commenting' },
     ]);
+    // The host is told the document's facts about the comment, and an edit is asked about one comment only.
+    expect(aff.comment(target, 'edit', { threadId: th.id, commentId: 'nope' })).toMatchObject({ enabled: false, reason: expect.stringMatching(/no comment "nope"/) });
+    expect(() => aff.comment(target, 'edit')).toThrow(/one comment/);
+    expect(() => aff.comment(target, 'reply', { threadId: th.id, commentId: th.comments[0]!.id })).toThrow(/one comment/);
     expect(() => aff.comment(target, 'delete' as never)).toThrow(/start.*reply.*edit.*resolve.*reopen/);
   });
 

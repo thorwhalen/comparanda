@@ -168,6 +168,9 @@ export function reopenThread(a: Analysis, threadId: string, { id, by, at }: { id
   };
 }
 
+/** How the comment that keeps an earlier wording begins; the activity record recognises an edit by it. */
+export const EDIT_NOTE = 'Edited a comment by';
+
 /**
  * Edit a comment without losing its earlier wording (#195, option (c) of #219).
  * The comment takes the new body and an `editedAt`; a comment by the editor
@@ -175,6 +178,11 @@ export function reopenThread(a: Analysis, threadId: string, { id, by, at }: { id
  * wording it had, as `reopenThread` records a reopening. The record needs no
  * field the v1 schema lacks and survives any store; a second edit quotes the
  * first's result, so the whole chain stays readable.
+ *
+ * Known limits of keeping it as a comment (#219): anyone who may reply may write
+ * a comment that looks like such a note, signed by themselves, so a note is
+ * evidence of what its signer says, not of what the comment said; and the note
+ * is itself a comment, editable. A v2 `edits` field would close both.
  */
 export function editComment(
   a: Analysis, threadId: string, commentId: string, { body, id, by, at }: { body: string; id: string; by: Author; at: string },
@@ -185,9 +193,9 @@ export function editComment(
   if (thread.comments.some((c) => c.id === id)) throw new Error(`comment id "${id}" is already used in this thread.`);
   const text = body.trim();
   if (text === '') throw new Error('a comment needs words: the body is empty.');
-  if (text === was.body) throw new Error('the new wording is the same as the old; nothing to edit.');
+  if (text === was.body.trim()) throw new Error('the new wording is the same as the old; nothing to edit.');
   const author = attributions(a.authors).get(was.authorId) ?? 'an author this analysis does not describe';
-  const note = `Edited a comment by ${author} [${was.authorId}] written ${was.at}. Its earlier wording: \u201c${was.body}\u201d`;
+  const note = `${EDIT_NOTE} ${author} [${was.authorId}], as it read since ${was.editedAt ?? was.at}. Its earlier wording: ${JSON.stringify(was.body)}`;
   return {
     ...withAuthor(a, by),
     threads: a.threads.map((t) => (t === thread

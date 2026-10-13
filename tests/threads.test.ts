@@ -158,7 +158,7 @@ describe('editComment (#195)', () => {
     const [first, note2] = a.threads.find((t) => t.id === 'te')!.comments;
     expect(first).toMatchObject({ id: 'c1', body: 'rent looks too high', editedAt: '2026-10-14T00:00:00Z', authorId: 'dana' });
     expect(note2).toMatchObject({ id: 'c2', authorId: 'ana' });
-    expect(note2!.body).toContain('\u201crent looks high\u201d');
+    expect(note2!.body).toContain('"rent looks high"');
     expect(note2!.body).toContain('Dana (human, unverified) [dana]');
   });
 
@@ -166,8 +166,10 @@ describe('editComment (#195)', () => {
     let a = editComment(started, 'te', 'c1', { body: 'second', id: 'c2', by: dana, at: '2026-10-14T00:00:00Z' });
     a = editComment(a, 'te', 'c1', { body: 'third', id: 'c3', by: dana, at: '2026-10-15T00:00:00Z' });
     const bodies = a.threads.find((t) => t.id === 'te')!.comments.map((c) => c.body).join('\n');
-    expect(bodies).toContain('\u201crent looks high\u201d');
-    expect(bodies).toContain('\u201csecond\u201d');
+    expect(bodies).toContain('"rent looks high"');
+    expect(bodies).toContain('"second"');
+    // The second note dates the wording it quotes from the edit that wrote it, not from the comment.
+    expect(bodies).toContain('as it read since 2026-10-14T00:00:00Z. Its earlier wording: "second"');
   });
 
   it('refuses an unknown comment, an empty or unchanged body, a reused id, and a resolved thread', () => {
@@ -176,6 +178,7 @@ describe('editComment (#195)', () => {
     expect(() => edit(started, { comment: 'nope' })).toThrow(/no comment "nope"/);
     expect(() => edit(started, { body: '  ' })).toThrow(/empty/);
     expect(() => edit(started, { body: 'rent looks high' })).toThrow(/same as the old/);
+    expect(() => edit(editComment(started, 'te', 'c1', { body: 'padded  ', id: 'c8', by: dana, at: 'y' }), { body: 'padded' })).toThrow(/same as the old/);
     expect(() => edit(started, { id: 'c1' })).toThrow(/already used/);
     expect(() => edit(resolveThread(started, 'te', { by: dana, at: 'x' }))).toThrow(/resolved/);
   });

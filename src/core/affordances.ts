@@ -82,8 +82,8 @@ export interface DocumentEditRequest {
   target?: EditTarget;
   /** On `comment` only: which of the five it is. */
   thread?: ThreadAct;
-  /** On editing a comment only: the comment, and who wrote it, so a host can let only its author edit it (ADR-0012). */
-  comment?: { id: string; authorId: string };
+  /** On editing a comment only: which comment, and who wrote it, read from the document and not from the caller, so a host can let only its author edit it (ADR-0012). */
+  comment?: { threadId: string; id: string; authorId: string };
   /** On `decide-suggestion` only: which way. */
   decision?: SuggestionDecision;
   /**
@@ -220,7 +220,7 @@ export interface Affordances {
    * is asked with the act named (#194). A lock does not refuse any of them
    * (`documentPolicy`).
    */
-  comment(target?: EditTarget, act?: ThreadAct, ofComment?: { id: string; authorId: string }): Affordance;
+  comment(target?: EditTarget, act?: ThreadAct, ofComment?: { threadId: string; commentId: string }): Affordance;
   /**
    * Whether the analysis may be revised outside its cells: alternatives,
    * criteria, groups, definitions, declarations. `doing` names the edit as a
@@ -297,7 +297,7 @@ export function makeAffordances(
   };
 
   const documentRequest = (
-    action: DocumentEditRequest['action'], doing: string, target: EditTarget | undefined, thread?: ThreadAct, comment?: { id: string; authorId: string },
+    action: DocumentEditRequest['action'], doing: string, target: EditTarget | undefined, thread?: ThreadAct, comment?: DocumentEditRequest['comment'],
   ): DocumentEditRequest => ({
     action, doing, ...(target === undefined ? {} : { target }), ...(thread === undefined ? {} : { thread }), ...(comment === undefined ? {} : { comment }),
   });
@@ -351,7 +351,14 @@ export function makeAffordances(
       });
     },
     comment(target, act, ofComment) {
-      return withHost(documentRequest('comment', threadDoing(act), target, act, ofComment), documentPolicy(a, 'comment'));
+      const doing = threadDoing(act);
+      if ((act === 'edit') !== (ofComment !== undefined)) {
+        throw new TypeError('an edit is asked about one comment, and only an edit: pass the thread and comment with "edit", and nothing with the other acts.');
+      }
+      if (ofComment === undefined) return withHost(documentRequest('comment', doing, target, act), documentPolicy(a, 'comment'));
+      const was = a.threads.find((t) => t.id === ofComment.threadId)?.comments.find((c) => c.id === ofComment.commentId);
+      if (!was) return refuse(`there is no comment "${ofComment.commentId}" in the thread "${ofComment.threadId}" in this analysis.`);
+      return withHost(documentRequest('comment', doing, target, act, { threadId: ofComment.threadId, id: was.id, authorId: was.authorId }), documentPolicy(a, 'comment'));
     },
     revise(doing, target) {
       return withHost(documentRequest('revise', requireDoing(doing), target), documentPolicy(a, 'revise'));
