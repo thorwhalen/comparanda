@@ -168,8 +168,20 @@ export function reopenThread(a: Analysis, threadId: string, { id, by, at }: { id
   };
 }
 
-/** How the comment that keeps an earlier wording begins; the activity record recognises an edit by it. */
-export const EDIT_NOTE = 'Edited a comment by';
+/**
+ * The comment an edit leaves has the shape `Edited comment "<id>" by ...`: it
+ * names the comment it is about, so notes are told apart and paired with their
+ * comments by id, not by date. The id the note names, or none when this is not
+ * such a note.
+ */
+export function editNoteOf(body: string): string | undefined {
+  const named = /^Edited comment ("(?:[^"\\]|\\.)*") by /.exec(body);
+  try {
+    return named ? (JSON.parse(named[1]!) as string) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Edit a comment without losing its earlier wording (#195, option (c) of #219).
@@ -195,7 +207,7 @@ export function editComment(
   if (text === '') throw new Error('a comment needs words: the body is empty.');
   if (text === was.body.trim()) throw new Error('the new wording is the same as the old; nothing to edit.');
   const author = attributions(a.authors).get(was.authorId) ?? 'an author this analysis does not describe';
-  const note = `${EDIT_NOTE} ${author} [${was.authorId}], as it read since ${was.editedAt ?? was.at}. Its earlier wording: ${JSON.stringify(was.body)}`;
+  const note = `Edited comment ${JSON.stringify(was.id)} by ${author} [${was.authorId}], as it read since ${was.editedAt ?? was.at}. Its earlier wording: ${JSON.stringify(was.body)}`;
   return {
     ...withAuthor(a, by),
     threads: a.threads.map((t) => (t === thread

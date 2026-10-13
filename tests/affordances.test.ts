@@ -14,6 +14,7 @@ import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
 import { screen } from '../src/core/analyses/screening.js';
 import { tombstone } from '../src/core/schema/anchors.js';
 import { makeAffordances, cellPolicy, valueAffordance, type EditRequest } from '../src/core/affordances.js';
+import { commentTarget } from '../src/core/threads.js';
 import { makeAffordances as fromRoot } from '../src/index.js';
 import { cellAffordanceOf, inMemoryAnalysisSource } from '../src/store/index.js';
 
@@ -183,7 +184,7 @@ describe('nothing about rendering or storage is expressible', () => {
   it('tells the host which thread act it is asked about (#194), and the general question when none is named', () => {
     const seen: EditRequest[] = [];
     const doc = relocation();
-    const th = doc.threads[0]!;
+    const th = doc.threads.find((t) => !t.resolved)!;
     const aff = makeAffordances(doc, { authorize: (r) => (seen.push(r), r.action === 'comment' && r.thread === 'resolve' ? { enabled: false, reason: 'only the owner resolves' } : true) });
     const target = { kind: 'analysis' } as const;
     expect(aff.comment(target, 'start')).toEqual({ enabled: true });
@@ -197,12 +198,18 @@ describe('nothing about rendering or storage is expressible', () => {
       { action: 'comment', doing: 'answering a thread', target, thread: 'reply' },
       { action: 'comment', doing: 'resolving a thread', target, thread: 'resolve' },
       { action: 'comment', doing: 'reopening a thread', target, thread: 'reopen' },
-      { action: 'comment', doing: 'editing a comment', target, thread: 'edit', comment: { threadId: th.id, id: th.comments[0]!.id, authorId: th.comments[0]!.authorId } },
+      { action: 'comment', doing: 'editing a comment', target: commentTarget(th.anchor), thread: 'edit', comment: { threadId: th.id, id: th.comments[0]!.id, authorId: th.comments[0]!.authorId } },
       { action: 'comment', doing: 'commenting' },
     ]);
     // The host is told the document's facts about the comment, and an edit is asked about one comment only.
     expect(aff.comment(target, 'edit', { threadId: th.id, commentId: 'nope' })).toMatchObject({ enabled: false, reason: expect.stringMatching(/no comment "nope"/) });
     expect(() => aff.comment(target, 'edit')).toThrow(/one comment/);
+    // The target the host is told is the thread's own anchor, whatever the caller passed; a resolved thread refuses.
+    seen.length = 0;
+    aff.comment({ kind: 'cell', id: 'x/y' }, 'edit', { threadId: th.id, commentId: th.comments[0]!.id });
+    expect(seen[0]!.action === 'comment' && seen[0]!.target).toEqual(commentTarget(th.anchor));
+    const closed = doc.threads.find((t) => t.resolved)!;
+    expect(makeAffordances(doc).comment(target, 'edit', { threadId: closed.id, commentId: closed.comments[0]!.id })).toMatchObject({ enabled: false, reason: expect.stringMatching(/resolved/) });
     expect(() => aff.comment(target, 'reply', { threadId: th.id, commentId: th.comments[0]!.id })).toThrow(/one comment/);
     expect(() => aff.comment(target, 'delete' as never)).toThrow(/start.*reply.*edit.*resolve.*reopen/);
   });

@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { activityRecord } from '../src/core/activity.js';
-import { editComment, reopenThread } from '../src/core/threads.js';
+import { editComment, reopenThread, replyToThread } from '../src/core/threads.js';
 import { cellDetail } from '../src/core/detail.js';
 import { vocabularyOf } from '../src/core/schema/analysis.js';
 import { BLIND_SECRETS, blindRound, NOW_CLOSED, NOW_OPEN } from './fixtures/blind-round.js';
@@ -211,6 +211,13 @@ describe('an edit made through editComment (#195)', () => {
     const mine = activityRecord(edited, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'edited-comment');
     const noted = mine.find((e) => e.at === '2026-09-30T00:00:00Z')!;
     expect(noted.said).toMatch(/edited a comment.*quoted in the thread/);
+    // A reply that only sounds like a note, or names a comment the thread lacks, is a reply.
+    const sounds = replyToThread(a, 't1', { id: 'r2', at: '2026-09-30T00:00:00Z', body: 'Edited comment by mistake, sorry', author: editor });
+    const forged = replyToThread(a, 't1', { id: 'r3', at: '2026-09-30T00:00:00Z', body: 'Edited comment "nope" by Dana', author: editor });
+    for (const d of [sounds, forged]) {
+      const kinds = activityRecord(d, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.at === '2026-09-30T00:00:00Z').map((e) => e.kind);
+      expect(kinds).toEqual(['replied']);
+    }
     expect(activityRecord(edited, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'replied').length)
       .toBe(activityRecord(a, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'replied').length);
   });

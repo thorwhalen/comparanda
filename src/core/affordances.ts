@@ -24,6 +24,7 @@ import type { Analysis } from './schema/analysis.js';
 import { vocabularyOf } from './schema/analysis.js';
 import { makeInapplicability } from './schema/groups.js';
 import type { AnchorScope } from './schema/annotations.js';
+import { commentTarget } from './threads.js';
 import { CORE_MISSING_CODES } from './schema/missingness.js';
 import { valueRefusal, type Measurement, type Preference } from './schema/measurement.js';
 import { measurementFor } from './schema/structure.js';
@@ -97,6 +98,13 @@ export interface DocumentEditRequest {
 /** The five things a thread write can be. */
 export const THREAD_ACTS = ['start', 'reply', 'edit', 'resolve', 'reopen'] as const;
 export type ThreadAct = typeof THREAD_ACTS[number];
+
+/** An edit is asked about one comment, and only an edit is: anything else is a mistake in the caller, not a refusal. */
+export function requireCommentFor(act: ThreadAct | undefined, ofComment: unknown): void {
+  if ((act === 'edit') !== (ofComment !== undefined)) {
+    throw new TypeError('an edit is asked about one comment, and only an edit: pass the thread and comment with "edit", and nothing with the other acts.');
+  }
+}
 
 /** What each act is called to the host (`DocumentEditRequest.doing`) and in a refusal. */
 const THREAD_DOING: Readonly<Record<ThreadAct, string>> = {
@@ -352,13 +360,15 @@ export function makeAffordances(
     },
     comment(target, act, ofComment) {
       const doing = threadDoing(act);
-      if ((act === 'edit') !== (ofComment !== undefined)) {
-        throw new TypeError('an edit is asked about one comment, and only an edit: pass the thread and comment with "edit", and nothing with the other acts.');
-      }
+      requireCommentFor(act, ofComment);
       if (ofComment === undefined) return withHost(documentRequest('comment', doing, target, act), documentPolicy(a, 'comment'));
-      const was = a.threads.find((t) => t.id === ofComment.threadId)?.comments.find((c) => c.id === ofComment.commentId);
-      if (!was) return refuse(`there is no comment "${ofComment.commentId}" in the thread "${ofComment.threadId}" in this analysis.`);
-      return withHost(documentRequest('comment', doing, target, act, { threadId: ofComment.threadId, id: was.id, authorId: was.authorId }), documentPolicy(a, 'comment'));
+      // Everything the host is told is read from the document: the target is the thread's own anchor, whatever the caller passed.
+      const thread = a.threads.find((t) => t.id === ofComment.threadId);
+      const was = thread?.comments.find((c) => c.id === ofComment.commentId);
+      if (!thread || !was) return refuse(`there is no comment "${ofComment.commentId}" in the thread "${ofComment.threadId}" in this analysis.`);
+      if (thread.resolved) return refuse(`the thread "${thread.id}" is resolved; its comments are kept as they were unless it is reopened.`);
+      const own = commentTarget(thread.anchor);
+      return withHost(documentRequest('comment', doing, own, act, { threadId: thread.id, id: was.id, authorId: was.authorId }), documentPolicy(a, 'comment'));
     },
     revise(doing, target) {
       return withHost(documentRequest('revise', requireDoing(doing), target), documentPolicy(a, 'revise'));

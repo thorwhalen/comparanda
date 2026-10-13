@@ -22,7 +22,7 @@
  * this record cannot invent (#195).
  */
 import { attributions } from './identity.js';
-import { EDIT_NOTE } from './threads.js';
+import { editNoteOf } from './threads.js';
 import type { Analysis } from './schema/analysis.js';
 import { assertionVisibility, redactForViewer, type AssertionVisibility, type ViewerContext } from './schema/redaction.js';
 import type { ScalarValue } from './schema/values.js';
@@ -119,17 +119,20 @@ export function activityRecord(a: Analysis, viewer: ViewerContext, { since }: Ac
   }
 
   for (const thread of a.threads) {
+    // A note counts when it names a comment this thread has; a reply that merely sounds like one is a reply.
+    const ids = new Set(thread.comments.map((c) => c.id));
+    const noteFor = (body: string) => { const id = editNoteOf(body); return id !== undefined && ids.has(id) ? id : undefined; };
+    const noted = new Set(thread.comments.flatMap((n, j) => (j > 0 ? [noteFor(n.body)] : [])).filter((x): x is string => x !== undefined));
     thread.comments.forEach((c, i) => {
       const who = names.get(c.authorId) ?? c.authorId;
       const base = { threadId: thread.id, whoHidden: false, who, because: 'discussion' as const };
       // The comment `editComment` leaves is the editor's edit, not a reply; the edited comment's own `editedAt` is then already said.
-      if (i > 0 && c.body.startsWith(EDIT_NOTE)) {
+      if (i > 0 && noteFor(c.body)) {
         entries.push({ ...base, at: c.at, kind: 'edited-comment', said: `${who} edited a comment, ${c.at}; its earlier wording is quoted in the thread.` });
         return;
       }
       entries.push({ ...base, at: c.at, kind: i === 0 ? 'started-thread' : 'replied', said: `${who} ${i === 0 ? 'started a thread' : 'replied in a thread'}, ${c.at}.` });
-      const noted = thread.comments.some((n, j) => j > 0 && n.body.startsWith(EDIT_NOTE) && n.at === c.editedAt);
-      if (c.editedAt !== undefined && !noted) {
+      if (c.editedAt !== undefined && !noted.has(c.id)) {
         entries.push({ ...base, at: c.editedAt, kind: 'edited-comment', said: `A comment by ${who} was edited, ${c.editedAt}; the earlier wording and the editor are not recorded.` });
       }
     });

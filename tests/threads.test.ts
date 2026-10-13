@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
-import { commentTarget, editComment, reopenThread, replyToThread, resolveThread, startThread, threadsAt } from '../src/core/threads.js';
+import { commentTarget, editComment, editNoteOf, reopenThread, replyToThread, resolveThread, startThread, threadsAt } from '../src/core/threads.js';
 import type { Author } from '../src/core/schema/provenance.js';
 import relocationJson from '../examples/relocation.json';
 
@@ -160,6 +160,9 @@ describe('editComment (#195)', () => {
     expect(note2).toMatchObject({ id: 'c2', authorId: 'ana' });
     expect(note2!.body).toContain('"rent looks high"');
     expect(note2!.body).toContain('Dana (human, unverified) [dana]');
+    expect(editNoteOf(note2!.body)).toBe('c1');
+    expect(editNoteOf('Edited comment by mistake')).toBeUndefined();
+    expect(editNoteOf('A reply that says Edited comment "c1" by')).toBeUndefined();
   });
 
   it('keeps the whole chain when edited twice', () => {
