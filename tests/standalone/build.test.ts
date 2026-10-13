@@ -102,6 +102,13 @@ describe('what goes into the file', () => {
     expect(html).toContain('<title>Plans %MODE% &amp; %BASE_URL% &lt;b&gt;</title>');
   });
 
+  it('has one <h1>, the title, in a banner, escaped the same way (#211)', async () => {
+    const { html } = await buildStandalone(relocationJson, { title: 'Plans %MODE% & <b>' });
+    expect(html.match(/<h1\b/g)).toHaveLength(1);
+    expect(html).toContain('<header><h1 style="font-size:1.25em;margin:.5em">Plans %MODE% &amp; &lt;b&gt;</h1></header>');
+    expect(built.html).toContain(`>${relocation.title ?? relocation.subject.question}</h1>`.replace(/&/g, '&amp;'));
+  });
+
   it('refuses a measure the analysis does not have, rather than building a page that cannot show it', async () => {
     await expect(buildStandalone(relocationJson, { measure: 'nosuchmeasure' })).rejects.toThrow(/"nosuchmeasure" is not a measure/);
     await expect(buildStandalone(relocationJson, { measure: ' ' })).rejects.toThrow(/measure name is empty/);

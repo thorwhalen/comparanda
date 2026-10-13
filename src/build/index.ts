@@ -142,6 +142,7 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
   const report = chargeBudget(shellBytes, contributions, budget || STANDALONE_BUDGET);
   if (budget !== false && !report.within) throw new BudgetExceeded(report);
   let html = splice(shell, EMPTY_TITLE, `<title>${escapeHtml(title)}</title>`);
+  html = splice(html, EMPTY_HEADING, filledHeading(escapeHtml(title)));
   html = splice(html, emptyData(ANALYSIS_ELEMENT_ID), filledData(ANALYSIS_ELEMENT_ID, inlined));
   const withSettings = (s: StandaloneSettings) => splice(html, emptyData(SETTINGS_ELEMENT_ID), filledData(SETTINGS_ELEMENT_ID, s));
   const page = withSettings(settings);
@@ -214,6 +215,16 @@ async function bundleShell(entry: string): Promise<{ shell: string; codeBytes: n
  * Vite HTML transform (its `%MODE%`-style substitution) ever sees it.
  */
 const EMPTY_TITLE = '<title></title>';
+/**
+ * The page's own heading: the title the tab shows, as the one `<h1>` a page of
+ * its own needs (axe `page-has-heading-one`, #211). The matrix is a component
+ * and owns no page-level heading; the shell is the host. Spliced like the
+ * title, so it is not charged to the byte budget as code.
+ */
+const HEADING_OPEN = '<header><h1 style="font-size:1.25em;margin:.5em">';
+const HEADING_CLOSE = '</h1></header>';
+const EMPTY_HEADING = HEADING_OPEN + HEADING_CLOSE;
+const filledHeading = (escaped: string) => HEADING_OPEN + escaped + HEADING_CLOSE;
 const emptyData = (id: string) => `<script type="application/json" id="${id}"></script>`;
 const filledData = (id: string, value: unknown) =>
   `<script type="application/json" id="${id}">${scriptSafeJson(value)}</script>`;
@@ -227,6 +238,7 @@ const TEMPLATE = [
   EMPTY_TITLE,
   '</head>',
   '<body>',
+  EMPTY_HEADING,
   `<main id="${ROOT_ELEMENT_ID}"></main>`,
   emptyData(ANALYSIS_ELEMENT_ID),
   emptyData(SETTINGS_ELEMENT_ID),
