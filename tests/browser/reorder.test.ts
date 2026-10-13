@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
-import { initialViewState, type ViewState } from '../../src/core/view-state.js';
+import { initialViewState, lockRun, setFilter, setGrouping, type ViewState } from '../../src/core/view-state.js';
 import { arrangeToRevealStructure } from '../../src/core/reorder.js';
 import { anonymousIdentity } from '../../src/store/index.js';
 import { mountMatrix, type MatrixHandle } from '../../src/view/index.js';
@@ -36,6 +36,12 @@ afterEach(() => {
   el.remove();
 });
 
+const mountWith = (analysis: Analysis, view: ViewState) => {
+  views = [];
+  const h = mountMatrix(el, { analysis, measure: 'score', view, onViewChange: (v) => views.push(v) });
+  handles.push(h);
+  return h;
+};
 const header = (id: string) => el.querySelector<HTMLElement>(`th[data-entry="${id}"]`)!;
 const said = () => el.querySelector('[data-announce]')!.textContent!.replace(/ $/, '');
 const order = () => views.at(-1)!.criterionOrder.order;
@@ -168,5 +174,83 @@ describe('seriation as an action', () => {
     expect(said()).toMatch(/arranged to reveal structure/);
     expect(el.querySelector('[data-announce]')!.getAttribute('aria-live')).toBe('polite');
     expect(document.activeElement).toBe(el.querySelector('[data-order="alternatives"] button'));
+  });
+});
+
+describe('review findings', () => {
+  const grabAnd = async (id: string, ...keys: string[]) => {
+    header(id).focus();
+    await userEvent.keyboard(' ');
+    for (const k of keys) await userEvent.keyboard(k);
+  };
+
+  it('a locked run steps as one, and an entry steps past a whole run', async () => {
+    const locked = lockRun(initialViewState(languages), 'criteria', [crits[1]!, crits[2]!]);
+    mountWith(languages, locked);
+    await grabAnd(crits[1]!, '{ArrowRight}');
+    expect(order().slice(0, 4)).toEqual([crits[0], crits[3], crits[1], crits[2]]);
+    expect(said()).not.toMatch(/not moved|cannot/i);
+    handles.pop()!.destroy();
+    mountWith(languages, locked);
+    await grabAnd(crits[0]!, '{ArrowRight}');
+    expect(order().slice(0, 3)).toEqual([crits[1], crits[2], crits[0]]);
+  });
+
+  it('counts only what is shown: a hidden entry is never named or counted', async () => {
+    const hidden = crits.at(-1)!;
+    mountWith(languages, setFilter(initialViewState(languages), { hiddenCriteria: [hidden] }));
+    await grabAnd(crits[0]!, '{End}');
+    expect(said()).toMatch(new RegExp(`column ${crits.length - 1} of ${crits.length - 1}`));
+    expect(said()).not.toContain(languages.criteria.at(-1)!.label);
+  });
+
+  it('on a banded axis a step stays in its band, and saying "moved" means it moved', async () => {
+    const relocation = Analysis.parse((await import('../../examples/relocation.json')).default);
+    const groups = relocation.groups.filter((g) => g.axis === 'alternatives').map((g) => g.id);
+    mountWith(relocation, setGrouping(initialViewState(relocation), 'alternatives', groups));
+    const firstOfSecondBand = el.querySelectorAll<HTMLElement>('tbody')[1]!.querySelector<HTMLElement>('th[data-entry]')!;
+    const id = firstOfSecondBand.getAttribute('data-entry')!;
+    await grabAnd(id, '{ArrowUp}');
+    expect(said()).toMatch(/is already row 1 of/);
+    expect(views.filter((v) => v.alternativeOrder.provenance.kind === 'manual')).toHaveLength(0);
+  });
+
+  it('Escape restores only the held axis, keeping a host change to the other', async () => {
+    const base = initialViewState(languages);
+    const h = mountWith(languages, base);
+    await grabAnd(crits[0]!, '{ArrowRight}');
+    const reversed = [...base.alternativeOrder.order].reverse();
+    h.update({ view: { ...views.at(-1)!, alternativeOrder: { ...base.alternativeOrder, order: reversed } } });
+    header(crits[0]!).focus();
+    await userEvent.keyboard('{Escape}');
+    expect(views.at(-1)!.alternativeOrder.order).toEqual(reversed);
+  });
+
+  it('focus leaving the grid puts a held header down', async () => {
+    mountWith(languages, initialViewState(languages));
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    await grabAnd(crits[0]!);
+    outside.focus();
+    await tick();
+    await tick();
+    expect(header(crits[0]!).hasAttribute('data-grabbed')).toBe(false);
+    outside.remove();
+  });
+
+  it('the menu lets focus go where the reader sent it, and its own handle closes it', async () => {
+    mountWith(languages, initialViewState(languages));
+    const input = document.createElement('input');
+    document.body.append(input);
+    const handle = header(crits[0]!).querySelector<HTMLElement>('.comparanda-handle')!;
+    await userEvent.click(handle);
+    await userEvent.click(input);
+    expect(el.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(input);
+    await userEvent.click(handle);
+    expect(el.querySelector('[role="menu"]')).not.toBeNull();
+    await userEvent.click(handle);
+    expect(el.querySelector('[role="menu"]')).toBeNull();
+    input.remove();
   });
 });

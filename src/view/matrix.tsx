@@ -169,6 +169,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const [grab, setGrab] = useState<{ axis: Axis; id: string; original: ViewState } | undefined>(undefined);
   /** Whose move menu is open, as `axis:id`. */
   const [menu, setMenu] = useState<string | undefined>(undefined);
+  /** The menu focus-out just closed, so the click on its own handle that caused it does not reopen it. */
+  const closedBy = useRef<string | undefined>(undefined);
   const words = aliasesOf(analysis);
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
@@ -212,10 +214,18 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   });
   const rowLabel = new Map(rows.entries.map((e) => [e.id, e.label]));
   const columnLabel = new Map(columns.entries.map((e) => [e.id, e.label]));
-  const unique = (entries: LayoutEntry[]) => [...new Set(entries.map((e) => e.id))];
-  const reorder: ReorderContext | undefined = onReorder && {
-    analysis, view, actor, onReorder,
-    shown: { [rows.axis]: unique(rows.entries), [columns.axis]: unique(columns.entries) } as Record<Axis, string[]>,
+  const reorder: ReorderContext | undefined = onReorder && { analysis, view, actor, onReorder };
+  // The drop of a drag started before a host update must act on the view as it is now, not as it was.
+  const latest = useRef(reorder);
+  latest.current = reorder;
+  /**
+   * What a header moves among: its axis as shown, or on a banded axis its own
+   * band, since a move across bands changes nothing a reader can see there.
+   */
+  const scopeOf = (axis: Axis, id: string): string[] => {
+    const layout = rows.axis === axis ? rows : columns;
+    const band = layout.bands?.find((b) => b.entries.some((e) => e.id === id));
+    return [...new Set((band ? band.entries : layout.entries).map((e) => e.id))];
   };
   const labelOf = (axis: Axis) => (id: string) =>
     (axis === 'alternatives' ? analysis.alternatives : analysis.criteria).find((x) => x.id === id)?.label ?? id;
@@ -270,12 +280,20 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           // Named "Move <label>" from words already on the page: no text of its own in the header.
           aria-labelledby={`${helpId}-move ${helpId}-l-${r}-${c}`}
           aria-expanded={menu === menuKey ? 'true' : 'false'}
-          onClick={(event: MouseEvent) => { event.stopPropagation(); setMenu(menu === menuKey ? undefined : menuKey); }}
+          onClick={(event: MouseEvent) => {
+            event.stopPropagation();
+            // A press on the handle of an open menu closed it already (focus left it); do not reopen it.
+            if (closedBy.current === menuKey) { closedBy.current = undefined; return; }
+            setMenu(menu === menuKey ? undefined : menuKey);
+          }}
           onPointerDown={(event: PointerEvent) => startPointerDrag(event, {
             scroller: root.current!.querySelector<HTMLElement>('.comparanda-scroll')!, axis, id: e.id,
             direction: scope === 'row' ? 'vertical' : 'horizontal',
             onDrop: ({ targetId, edge }) => {
-              if (targetId !== e.id) commitMove(reorder, axis, e.id, { kind: edge, id: targetId }, 'pointer');
+              const scope = scopeOf(axis, e.id);
+              if (targetId !== e.id && latest.current && scope.includes(targetId)) {
+                commitMove(latest.current, axis, e.id, { kind: edge, id: targetId }, 'pointer', scope);
+              }
             },
           })}
         >
@@ -291,10 +309,15 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       <ThreadMark count={openHere.get(`${axis === 'alternatives' ? 'a' : 'c'}:${e.id}`)} />
       {reorder && menu === menuKey && (
         <MoveMenu
-          ctx={reorder} axis={axis} id={e.id} label={labelOf(axis)} labelledBy={`${helpId}-move ${helpId}-l-${r}-${c}`}
-          onClose={() => {
+          ctx={reorder} axis={axis} id={e.id} scope={scopeOf(axis, e.id)} label={labelOf(axis)}
+          labelledBy={`${helpId}-move ${helpId}-l-${r}-${c}`}
+          onClose={(refocus) => {
             setMenu(undefined);
-            root.current?.querySelector<HTMLElement>(`[data-cell="${r}:${c}"]`)?.focus();
+            if (refocus) root.current?.querySelector<HTMLElement>(`[data-cell="${r}:${c}"]`)?.focus();
+            else {
+              closedBy.current = menuKey;
+              setTimeout(() => { if (closedBy.current === menuKey) closedBy.current = undefined; }, 0);
+            }
           }}
         />
       )}
@@ -338,7 +361,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             : event.key === 'Home' ? 'to-start' : event.key === 'End' ? 'to-end' : undefined;
       if (step) {
         event.preventDefault();
-        commitMove(reorder, axis, id, step, 'keyboard');
+        commitMove(reorder, axis, id, step, 'keyboard', scopeOf(axis, id));
         return;
       }
       if (held && (event.key === ' ' || event.key === 'Enter')) {
@@ -350,7 +373,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       if (held && event.key === 'Escape') {
         event.preventDefault();
         setGrab(undefined);
-        const back = { ...view, alternativeOrder: grab.original.alternativeOrder, criterionOrder: grab.original.criterionOrder };
+        // Only the axis that was held: anything else that changed meanwhile was not this move.
+        const key = axis === 'alternatives' ? 'alternativeOrder' : 'criterionOrder';
+        const back = { ...view, [key]: grab.original[key] };
         onReorder!(back, `Move cancelled: ${describePlace(analysis, back, axis, id)}, where it was.`);
         return;
       }
@@ -478,6 +503,13 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           // A mouse focuses on press, before this; a touch focuses after it, so keeps the press.
           onPointerUpCapture={(event: PointerEvent) => { if (event.pointerType !== 'touch') pressed.current = null; }}
           onPointerCancelCapture={() => { pressed.current = null; }}
+          // Focus leaving the grid puts a held header down where it is: it is never left in the air.
+          // Checked a tick later: moving a header moves its node, which blurs it until the stop is refocused.
+          onFocusOut={(event: FocusEvent) => {
+            if (!grab) return;
+            const table = event.currentTarget as HTMLElement;
+            setTimeout(() => { if (!table.contains(table.ownerDocument.activeElement)) setGrab(undefined); }, 0);
+          }}
           // A click opens the details (the reference behaviour) and leaves focus where it landed.
           onClick={(event: MouseEvent) => {
             const on = event.target as Element | null;

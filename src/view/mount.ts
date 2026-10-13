@@ -176,6 +176,9 @@ export function mountMatrix(
     said += 1;
     // The same sentence twice is still news: a trailing no-break space alternates so the region changes.
     announcement = said % 2 === 0 ? `${sentence}\u00a0` : sentence;
+    const same = JSON.stringify([state.alternativeOrder, state.criterionOrder]) === JSON.stringify([shown.alternativeOrder, shown.criterionOrder]);
+    // Said, but nothing moved (a pick-up, a put-down, a refusal): no new arrangement to lay over the host's or report.
+    if (same) return moveSession({});
     moveSession({ orders: { alternativeOrder: state.alternativeOrder, criterionOrder: state.criterionOrder } });
     current.onViewChange?.(shown);
   };

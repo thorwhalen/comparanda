@@ -420,7 +420,7 @@ export function describeOrder(a: Analysis, v: ViewState, axis: Axis): string {
     case 'authored':
       return `${noun} are in the order the analysis gives them.`;
     case 'manual':
-      return `${noun} were arranged by hand, by ${p.by}${when}.`;
+      return `${noun} were arranged by hand, by ${a.authors.find((x) => x.id === p.by)?.displayName ?? p.by}${when}.`;
     case 'sorted': {
       const crit = a.criteria.find((c) => c.id === p.criterionId)?.label ?? p.criterionId;
       return `${noun} are sorted by ${crit}, ${p.direction === 'best-first' ? 'best' : 'worst'} first${when}.`;
@@ -448,4 +448,31 @@ export function describePlace(a: Analysis, v: ViewState, axis: Axis, id: string)
   const at = order.indexOf(id);
   const label = labelsOf(a, axis).get(id) ?? id;
   return `${singularNoun(a, axis)} ${label}, ${geometryWord(axis, v.transposed)} ${at < 0 ? order.length + 1 : at + 1} of ${Math.max(order.length, at + 1)}`;
+}
+
+/**
+ * The entries that move with `id` on this axis: its locked run when the run is
+ * contiguous and in order, else `id` alone. What a route steps around, so that
+ * "later" from a run's member moves the run past its neighbour, and "later"
+ * into a run jumps the whole run rather than stopping at its edge.
+ */
+export function movingBlock(v: ViewState, axis: Axis, id: string): string[] {
+  const order = v[orderKeyOf(axis)].order;
+  const from = order.indexOf(id);
+  return from < 0 ? [id] : blockAt(order, from, v[orderKeyOf(axis)].constraints.lockedRuns).ids;
+}
+
+/**
+ * A move's report restated over the entries a reader can see: positions,
+ * total and the entry before it, counted among `shown` (in the new order).
+ * The stored order also holds hidden entries, and "column 5 of 5, after
+ * Tooling" is wrong to a reader who sees four columns and no Tooling.
+ */
+export function reportOverShown(report: MoveReport, v: ViewState, shown: readonly string[]): MoveReport {
+  const visible = new Set(shown);
+  const order = v[orderKeyOf(report.axis)].order.filter((id) => visible.has(id));
+  for (const id of shown) if (!order.includes(id)) order.push(id);
+  const to = order.indexOf(report.id);
+  const { before: _hidden, ...rest } = report;
+  return { ...rest, to, total: order.length, ...(to > 0 ? { before: order[to - 1]! } : {}) };
 }
