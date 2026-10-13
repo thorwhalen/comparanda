@@ -145,6 +145,40 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   font: inherit; color: var(--cmp-muted); background: var(--cmp-header);
   border: 1px dashed var(--cmp-rule); padding: 0.1em 0.5em; cursor: not-allowed;
 }
+.comparanda-matrix .comparanda-body { display: flex; flex-wrap: wrap; gap: 0.75em; align-items: flex-start; }
+.comparanda-matrix .comparanda-body > .comparanda-scroll { flex: 1 1 28em; min-width: 0; }
+/* The detail panel (#94): beside the matrix when there is room, under it when not; never over it. */
+.comparanda-matrix .comparanda-panel {
+  flex: 0 1 24em; min-width: min(100%, 16em); max-height: var(--comparanda-max-height, 80vh); overflow: auto;
+  padding: 0.5em 0.75em; box-shadow: inset 0 0 0 1px var(--cmp-rule); border: 0 solid transparent;
+}
+.comparanda-matrix .comparanda-panel-head { display: flex; gap: 0.5em; align-items: baseline; justify-content: space-between; }
+.comparanda-matrix .comparanda-panel h2 { font-size: 1.05em; margin: 0; }
+.comparanda-matrix .comparanda-panel h3 { font-size: 1em; margin: 0.75em 0 0.25em; }
+.comparanda-matrix .comparanda-panel h2:focus-visible { outline: 2px solid var(--cmp-focus); }
+.comparanda-matrix .comparanda-panel-kind, .comparanda-matrix .comparanda-panel-hint,
+.comparanda-matrix .comparanda-provenance, .comparanda-matrix .comparanda-check { color: var(--cmp-muted); font-weight: 400; }
+.comparanda-matrix .comparanda-panel-hint { font-size: 0.9em; margin: 0.25em 0; }
+.comparanda-matrix .comparanda-panel button {
+  font: inherit; color: var(--cmp-ink); background: var(--cmp-header); border: 1px solid var(--cmp-rule); padding: 0.1em 0.5em;
+}
+.comparanda-matrix .comparanda-panel :is(button, a):focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
+.comparanda-matrix .comparanda-panel a { color: var(--cmp-ink); text-decoration: underline; }
+.comparanda-matrix .comparanda-panel-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.2em 0.75em; margin: 0.5em 0; }
+.comparanda-matrix .comparanda-panel-facts dt { font-weight: 600; grid-column: 1; }
+.comparanda-matrix .comparanda-panel-facts dd { margin: 0; grid-column: 2; }
+.comparanda-matrix .comparanda-panel p { margin: 0.25em 0; }
+.comparanda-matrix .comparanda-assertions { padding-inline-start: 1.25em; margin: 0; }
+.comparanda-matrix .comparanda-assertions > li { margin: 0 0 0.6em; }
+.comparanda-matrix .comparanda-assertions > li[data-superseded] { color: var(--cmp-muted); }
+.comparanda-matrix .comparanda-evidence { padding-inline-start: 1em; margin: 0.25em 0; }
+.comparanda-matrix .comparanda-panel blockquote { margin: 0.2em 0 0.2em 0.5em; padding-inline-start: 0.5em; border-inline-start: 2px solid var(--cmp-rule); }
+.comparanda-matrix .comparanda-distribution { margin: 0.5em 0; }
+.comparanda-matrix .comparanda-bar { display: flex; max-width: 18em; }
+.comparanda-matrix .comparanda-bar span {
+  flex-basis: 0; min-width: 0; overflow: hidden; white-space: nowrap; text-align: center; background: var(--cmp-header); color: var(--cmp-ink);
+  box-shadow: inset 0 0 0 1px var(--cmp-rule); padding: 0.1em 0; border: 0 solid transparent;
+}
 @media (forced-colors: active) {
   /* Width and colour only: the style is each cell's terminal channel (ADR-0028 amendment). */
   .comparanda-matrix th, .comparanda-matrix td { box-shadow: none; border-width: 1px; border-color: CanvasText; }
@@ -152,6 +186,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   /* The one exemption: the legend's samples, whose only job is to show the palette. */
   .comparanda-matrix .comparanda-swatch { forced-color-adjust: none; }
   .comparanda-matrix .comparanda-forced-only { display: block; }
+  .comparanda-matrix .comparanda-panel, .comparanda-matrix .comparanda-bar span { border-width: 1px; border-color: CanvasText; }
 }
 @media print {${themed(tokens('light'), tokens('light'))}
   .comparanda-matrix .comparanda-scroll { overflow: visible; max-height: none; }

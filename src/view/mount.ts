@@ -12,7 +12,7 @@ import { h, render, type ComponentType } from 'preact';
 
 import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/analysis.js';
 import type { Affordances } from '../core/affordances.js';
-import { initialViewState, setFocus, ViewState, type Session } from '../core/view-state.js';
+import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
   DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
 } from '../store/index.js';
@@ -110,20 +110,40 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
   /** The sticky header's extents, as the scroll padding focus is kept clear of (#103). */
   const sticky = trackStickyExtents(el);
   /**
-   * Where the reader moved since the host last said where they are: the
-   * matrix's one piece of view state of its own, laid over the host's `view`
-   * until the host gives one whose `session.focus` differs from the last.
+   * Where the reader moved, and whether they opened the detail panel, since the
+   * host last said: the matrix's own session state, laid over the host's
+   * `view`, each part until the host gives a `view` that says something new
+   * about that part: a host that keeps only focus does not close the panel.
    */
-  let moved: { focus: Session['focus'] } | undefined;
-  /** What the `view` the caller last gave said about focus, to tell a new focus from a re-passed one. */
-  let givenFocus = focusIn(props.view);
+  let moved: { focus?: Session['focus']; panel?: boolean } | undefined;
+  /** What the `view` the caller last gave said about the session, to tell a new one from a re-passed one. */
+  let givenFocus = sessionIn(props.view);
   /** The view state of the last render: what `onViewChange` reports. */
   let shown: ViewState;
 
+  /** Lay a session change over the host's view and render it; a render that throws changes nothing. */
+  const moveSession = (change: NonNullable<typeof moved>) => {
+    const before = moved;
+    const was = focused();
+    moved = { ...moved, ...change };
+    try {
+      draw();
+    } catch (error) {
+      moved = before;
+      redraw(was);
+      throw error;
+    }
+  };
   const moveFocus = (focus: Session['focus']) => {
     if (destroyed) return;
-    moved = { focus };
-    draw();
+    moveSession({ focus });
+    current.onViewChange?.(shown);
+  };
+  /** Open or close the detail panel; `into` moves focus to its heading once it is drawn. */
+  const changePanel = (open: boolean, { into = false }: { into?: boolean } = {}) => {
+    if (destroyed) return;
+    moveSession({ panel: open });
+    if (open && into) el.querySelector<HTMLElement>('[data-panel-heading]')?.focus();
     current.onViewChange?.(shown);
   };
 
@@ -131,7 +151,8 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
     // Without one, the document's own order, so a source's added alternative shows.
     const base = view ?? initialViewState(analysis);
-    shown = moved ? setFocus(base, moved.focus) : base;
+    shown = moved && 'focus' in moved ? setFocus(base, moved.focus) : base;
+    if (moved?.panel !== undefined) shown = setDetailPanel(shown, moved.panel);
     const resolved: MatrixViewProps = {
       analysis,
       measure,
@@ -139,6 +160,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       encoding: encoding ?? view?.encoding ?? TEXT_ONLY,
       view: shown,
       onFocusChange: moveFocus,
+      onPanelChange: changePanel,
       encodings: registry,
       affordances: source
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
@@ -256,14 +278,20 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       // A view that says something new about focus (typically the one
       // `onViewChange` sent back) replaces the reader's move; any other -- the
       // same one re-passed, or a transpose or regroup the host made -- keeps it.
-      const nextFocus = replace || 'view' in next ? focusIn(next.view) : givenFocus;
+      const nextFocus = replace || 'view' in next ? sessionIn(next.view) : givenFocus;
       const before = { current, analysis, unsubscribe, moved, givenFocus };
       const was = focused();
       const followed = swapped ? follow(props.source) : unsubscribe;
       current = props;
       analysis = nextAnalysis;
       unsubscribe = followed;
-      if (nextFocus !== givenFocus) moved = undefined;
+      // Each part of the reader's session yields only to a host that says something new about that part.
+      if (moved) {
+        const kept = { ...moved };
+        if (nextFocus.focus !== givenFocus.focus) delete kept.focus;
+        if (nextFocus.panel !== givenFocus.panel) delete kept.panel;
+        moved = kept;
+      }
       givenFocus = nextFocus;
       try {
         draw();
@@ -331,10 +359,11 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   return props;
 }
 
-/** What a given `view` says about the reader's position, comparable by value and blind to key order. */
-function focusIn(view: unknown): string {
-  const focus = (view as ViewState | undefined)?.session?.focus;
-  return JSON.stringify([focus?.alternativeId ?? null, focus?.criterionId ?? null]);
+/** What a given `view` says about the reader's position (comparable by value, blind to key order) and the panel. */
+function sessionIn(view: unknown): { focus: string; panel: boolean } {
+  const session = (view as ViewState | undefined)?.session;
+  const focus = session?.focus;
+  return { focus: JSON.stringify([focus?.alternativeId ?? null, focus?.criterionId ?? null]), panel: session?.detailPanelOpen === true };
 }
 
 /** Refuse a measure the analysis neither declares nor records (`unknownMeasure`). */

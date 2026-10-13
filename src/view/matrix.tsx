@@ -60,6 +60,8 @@ import { Glyph, GLYPH_KEYS, glyphName, Hatch, isHatchLevel, type GlyphKey, type 
 import { derivedPaletteCss, MATRIX_CSS } from './matrix-css.js';
 import { PALETTE } from './encodings/palette.js';
 import { revealClear } from './sticky.js';
+import { capitalise, outOf, STANDING_SAID } from './words.js';
+import { DetailPanel } from './detail-panel.js';
 
 /** The default encoding, and the fallback when the chosen one cannot draw (ADR-0032 clause 1). */
 export const TEXT_ONLY = textOnly.id;
@@ -84,6 +86,12 @@ export interface MatrixViewProps {
    * moves it there; without this, focus moves and the tab stop stays put.
    */
   onFocusChange?: (focus: Session['focus']) => void;
+  /**
+   * The detail panel opened or closed (`session.detailPanelOpen`, #94). `into`:
+   * the reader asked by keyboard, so focus goes into the panel once it renders.
+   * The panel is drawn only with this, since without it nothing could close it.
+   */
+  onPanelChange?: (open: boolean, options?: { into?: boolean }) => void;
 }
 
 /** The measure a cell's announcement adds beside the shown one, when the analysis has it. */
@@ -106,16 +114,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-/** The words for each standing, after the code's own meaning. */
-const STANDING_SAID: Readonly<Record<CellAbsence, string>> = {
-  structural: 'Nothing to record here.',
-  outstanding: 'Still to be done.',
-  answered: 'Settled: not work outstanding.',
-  // As completeness counts it: the safe direction is to treat it as work remaining.
-  undeclared: 'Counted as still to be done.',
-};
-
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, affordances, onFocusChange }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, affordances, onFocusChange, onPanelChange }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -139,6 +138,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
    * focus comes after its pointerup, and a drag can end outside the grid.
    */
   const pressed = useRef<Element | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const panelOpen = view.session.detailPanelOpen === true;
   const words = aliasesOf(analysis);
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
@@ -247,6 +248,18 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     // A reader who clicked a half-covered cell and now uses the keyboard sees it uncovered first.
     revealClear(from);
     const [r, c] = from.getAttribute('data-cell')!.split(':').map(Number) as [number, number];
+    // Enter opens the details of this position and goes into them; Escape closes them (#94).
+    // On the grid position itself only: a control inside it (a reorder handle) keeps its own Enter.
+    if (event.key === 'Enter' && event.target === from && !event.ctrlKey && !event.shiftKey && onPanelChange) {
+      event.preventDefault();
+      onPanelChange(true, { into: true });
+      return;
+    }
+    if (event.key === 'Escape' && panelOpen && onPanelChange) {
+      event.preventDefault();
+      onPanelChange(false);
+      return;
+    }
     const rtl = getComputedStyle(table).direction === 'rtl';
     const to = grid.step(r, c, event.key, { ctrl: event.ctrlKey, rtl });
     if (!to) return;
@@ -277,7 +290,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
 
   return (
     <div
-      class="comparanda-matrix"
+      class="comparanda-matrix" ref={root}
       data-encoding={active.id}
       // Every encoding this view was composed with, so a host -- or the build's zero-network check -- can
       // know what the page can draw without importing its registry.
@@ -295,8 +308,10 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       {empty && <p class="comparanda-empty" role="note">{empty}</p>}
       <p class="comparanda-keys" id={helpId}>
         Arrow keys move between cells; Home and End go to the start and end of a row; Ctrl+Home to the top-left corner and Ctrl+End to the last cell.
+        {onPanelChange && ' Enter opens the details of where you are, and Escape closes them.'}
       </p>
       <Legend definition={active} legend={prepared.legend} glyphs={shownGlyphs} hatches={shownHatches} />
+      <div class="comparanda-body">
       {/* Not itself a tab stop: focusing a cell scrolls it, and the grid is the matrix's one stop. */}
       <div class="comparanda-scroll" role="region" aria-label={analysis.subject.question}>
         <table
@@ -305,6 +320,10 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           // A mouse focuses on press, before this; a touch focuses after it, so keeps the press.
           onPointerUpCapture={(event: PointerEvent) => { if (event.pointerType !== 'touch') pressed.current = null; }}
           onPointerCancelCapture={() => { pressed.current = null; }}
+          // A click opens the details (the reference behaviour) and leaves focus where it landed.
+          onClick={(event: MouseEvent) => {
+            if (!panelOpen && onPanelChange && (event.target as Element | null)?.closest?.('[data-cell]')) onPanelChange(true);
+          }}
         >
           <caption>{analysis.subject.question}</caption>
           {columns.bands && (
@@ -338,6 +357,17 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             ))
             : <tbody>{rows.entries.map(row)}</tbody>}
         </table>
+      </div>
+      {panelOpen && onPanelChange && (
+        <DetailPanel
+          analysis={analysis} measure={measure} vocabulary={vocabulary} standing={standing}
+          // Where the grid's stop actually is: a hidden or removed id has fallen back to its header.
+          focus={grid.focusAt(at.r, at.c)}
+          headingId={`${helpId}-panel`}
+          onClose={() => onPanelChange(false)}
+          onReturn={() => root.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus()}
+        />
+      )}
       </div>
     </div>
   );
@@ -619,17 +649,6 @@ function gridOf(rows: LayoutEntry[], columns: LayoutEntry[], transposed: boolean
   return { focusAt, positionOf, step };
 }
 
-/**
- * What a number is out of, for the ear: a rating says its top ("5 of 5"), a
- * quantity its unit ("1900 USD/month"). A ratio's `max` is the range's bound,
- * not a ceiling the value is scored against, so it is never read as "of".
- */
-function outOf(value: unknown, m: Measurement | undefined): string {
-  if (typeof value !== 'number' || !m?.range) return '';
-  if (m.level === 'ordinal') return ` of ${m.range.max}`;
-  return m.range.unit ? ` ${m.range.unit}` : '';
-}
-
 function bandKey(b: Band): string {
   return b.groupId ?? '';
 }
@@ -645,8 +664,4 @@ function bandLabel(b: Band, axis: AxisLayout): string {
 function asSentence(phrase: string): string {
   const bare = phrase.replace(/^[\s,;.]+/, '').replace(/[\s,;.]+$/, '');
   return bare ? `${capitalise(bare)}.` : '';
-}
-
-function capitalise(word: string): string {
-  return word.charAt(0).toUpperCase() + word.slice(1);
 }
