@@ -1,7 +1,7 @@
 /**
  * Annotation threads at every scope (#106, ADR-0011 clauses 1-2): which threads
- * bear on a position in the matrix, and the three writes a thread takes --
- * start, reply, resolve.
+ * bear on a position in the matrix, and the four writes a thread takes --
+ * start, reply, resolve, reopen.
  *
  * A thread is anchored by ids only (`anchors.ts`), so renaming a criterion or
  * reordering the matrix never moves it; this module only ever compares ids.
@@ -21,7 +21,7 @@ import { resolveAnchor } from './schema/anchors.js';
 import { axisGroups, groupsOf } from './schema/groups.js';
 import type { Author } from './schema/provenance.js';
 import type { EditTarget } from './affordances.js';
-import { attribution } from './identity.js';
+import { attribution, attributions } from './identity.js';
 
 /** Where a reader is: both ids a cell, one a header, none the analysis as a whole. */
 export interface Position {
@@ -158,7 +158,9 @@ export function reopenThread(a: Analysis, threadId: string, { id, by, at }: { id
   if (!thread) throw new Error(`there is no thread "${threadId}" to reopen in this analysis.`);
   if (!thread.resolved) throw new Error(`the thread "${threadId}" is open; only a resolved thread can be reopened.`);
   if (thread.comments.some((c) => c.id === id)) throw new Error(`comment id "${id}" is already used in this thread.`);
-  const resolver = thread.resolvedBy && (a.authors.find((x) => x.id === thread.resolvedBy)?.displayName ?? thread.resolvedBy);
+  // The resolver as the panel names them, kind and all, plus the id: a display name alone loses who it was.
+  const was = thread.resolvedBy;
+  const resolver = was && `${attributions(a.authors).get(was) ?? 'an author this analysis does not describe'} [${was}]`;
   const body = `Reopened. It had been resolved${resolver ? ` by ${resolver}` : ''}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}.`;
   return {
     ...withAuthor(a, by),
@@ -169,7 +171,7 @@ export function reopenThread(a: Analysis, threadId: string, { id, by, at }: { id
 function openThread(a: Analysis, threadId: string, doing: string): Thread {
   const thread = a.threads.find((t) => t.id === threadId);
   if (!thread) throw new Error(`there is no thread "${threadId}" to ${doing} in this analysis.`);
-  if (thread.resolved) throw new Error(`the thread "${threadId}" is resolved; it is kept as it was resolved, and takes no further ${doing === 'answer' ? 'reply' : 'resolution'}.`);
+  if (thread.resolved) throw new Error(`the thread "${threadId}" is resolved; it is kept as it was resolved, and takes no further ${doing === 'answer' ? 'reply' : 'resolution'} unless it is reopened.`);
   return thread;
 }
 

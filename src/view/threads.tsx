@@ -1,7 +1,7 @@
 /**
  * The detail panel's discussion (#106): every thread bearing on the reader's
  * position, open ones first, resolved ones one button away and never gone, and
- * the forms that start, answer and resolve a thread.
+ * the forms that start, answer, resolve and reopen a thread.
  *
  * Whether a write is offered is asked of `affordances.comment` and nowhere
  * else (ADR-0006 clause 3); a refused one is shown with its reason, never as a

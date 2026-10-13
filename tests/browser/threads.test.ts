@@ -93,7 +93,7 @@ describe('threads in the panel', () => {
     await userEvent.click(Array.from(resolvedItem.querySelectorAll('button')).find((b) => b.textContent === 'Reopen thread')!);
     await settled();
     const back = threads().querySelector(`ol:not([data-resolved]) > [data-thread="${reopenedId}"]`)!;
-    expect(back.textContent).toMatch(/Reopened\. It had been resolved by Dana, 2026-10-13T12:00:00\.000Z\./);
+    expect(back.textContent).toMatch(/Reopened\. It had been resolved by Dana \(human, unverified\) \[dana\], 2026-10-13T12:00:00\.000Z\./);
     expect(document.activeElement?.id).toBe(panel().querySelector('[data-panel-heading]')!.id);
   });
 
