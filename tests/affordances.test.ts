@@ -14,7 +14,7 @@ import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
 import { screen } from '../src/core/analyses/screening.js';
 import { tombstone } from '../src/core/schema/anchors.js';
 import { makeAffordances, cellPolicy, valueAffordance, type EditRequest } from '../src/core/affordances.js';
-import { commentTarget } from '../src/core/threads.js';
+import { commentTarget, editComment } from '../src/core/threads.js';
 import { makeAffordances as fromRoot } from '../src/index.js';
 import { cellAffordanceOf, inMemoryAnalysisSource } from '../src/store/index.js';
 
@@ -208,6 +208,8 @@ describe('nothing about rendering or storage is expressible', () => {
     seen.length = 0;
     aff.comment({ kind: 'cell', id: 'x/y' }, 'edit', { threadId: th.id, commentId: th.comments[0]!.id });
     expect(seen[0]!.action === 'comment' && seen[0]!.target).toEqual(commentTarget(th.anchor));
+    const edited = editComment(doc, th.id, th.comments[0]!.id, { body: 'edited wording', id: 'note-x', by: { id: 'ana', displayName: 'Ana', kind: 'human' }, at: 'z' });
+    expect(makeAffordances(edited).comment(target, 'edit', { threadId: th.id, commentId: 'note-x' })).toMatchObject({ enabled: false, reason: expect.stringMatching(/earlier edit/) });
     const closed = doc.threads.find((t) => t.resolved)!;
     expect(makeAffordances(doc).comment(target, 'edit', { threadId: closed.id, commentId: closed.comments[0]!.id })).toMatchObject({ enabled: false, reason: expect.stringMatching(/resolved/) });
     expect(() => aff.comment(target, 'reply', { threadId: th.id, commentId: th.comments[0]!.id })).toThrow(/one comment/);

@@ -120,14 +120,17 @@ export function activityRecord(a: Analysis, viewer: ViewerContext, { since }: Ac
 
   for (const thread of a.threads) {
     // A note counts when it names a comment this thread has; a reply that merely sounds like one is a reply.
-    const ids = new Set(thread.comments.map((c) => c.id));
-    const noteFor = (body: string) => { const id = editNoteOf(body); return id !== undefined && ids.has(id) ? id : undefined; };
-    const noted = new Set(thread.comments.flatMap((n, j) => (j > 0 ? [noteFor(n.body)] : [])).filter((x): x is string => x !== undefined));
+    // It must also name a comment that was edited, no later than that edit, and not itself.
+    const noteFor = (n: (typeof thread.comments)[number]) => {
+      const named = thread.comments.find((c) => c.id === editNoteOf(n.body));
+      return named !== undefined && named !== n && named.editedAt !== undefined && n.at <= named.editedAt ? named.id : undefined;
+    };
+    const noted = new Set(thread.comments.flatMap((n, j) => (j > 0 ? [noteFor(n)] : [])).filter((x): x is string => x !== undefined));
     thread.comments.forEach((c, i) => {
       const who = names.get(c.authorId) ?? c.authorId;
       const base = { threadId: thread.id, whoHidden: false, who, because: 'discussion' as const };
       // The comment `editComment` leaves is the editor's edit, not a reply; the edited comment's own `editedAt` is then already said.
-      if (i > 0 && noteFor(c.body)) {
+      if (i > 0 && noteFor(c) !== undefined) {
         entries.push({ ...base, at: c.at, kind: 'edited-comment', said: `${who} edited a comment, ${c.at}; its earlier wording is quoted in the thread.` });
         return;
       }

@@ -214,10 +214,17 @@ describe('an edit made through editComment (#195)', () => {
     // A reply that only sounds like a note, or names a comment the thread lacks, is a reply.
     const sounds = replyToThread(a, 't1', { id: 'r2', at: '2026-09-30T00:00:00Z', body: 'Edited comment by mistake, sorry', author: editor });
     const forged = replyToThread(a, 't1', { id: 'r3', at: '2026-09-30T00:00:00Z', body: 'Edited comment "nope" by Dana', author: editor });
-    for (const d of [sounds, forged]) {
+    // Nor does a note count where nothing was edited, or one that names itself, or one for an empty id.
+    const unedited = replyToThread(a, 't1', { id: 'r4', at: '2026-09-30T00:00:00Z', body: `Edited comment ${JSON.stringify(first.id)} by Dana`, author: editor });
+    const selfish = replyToThread(a, 't1', { id: 'r5', at: '2026-09-30T00:00:00Z', body: 'Edited comment "r5" by Dana', author: editor });
+    for (const d of [sounds, forged, unedited, selfish]) {
       const kinds = activityRecord(d, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.at === '2026-09-30T00:00:00Z').map((e) => e.kind);
       expect(kinds).toEqual(['replied']);
     }
+    // An id of "" works like any other.
+    const blank = { ...a, threads: a.threads.map((t) => (t.id === 't1' ? { ...t, comments: t.comments.map((c, k) => (k === 0 ? { ...c, id: '' } : c)) } : t)) };
+    const blanked = editComment(blank, 't1', '', { body: 'rephrased', id: 'edit-note-2', by: editor, at: '2026-09-30T00:00:00Z' });
+    expect(activityRecord(blanked, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.at === '2026-09-30T00:00:00Z').map((e) => e.kind)).toEqual(['edited-comment']);
     expect(activityRecord(edited, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'replied').length)
       .toBe(activityRecord(a, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'replied').length);
   });

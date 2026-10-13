@@ -24,7 +24,7 @@ import type { Analysis } from './schema/analysis.js';
 import { vocabularyOf } from './schema/analysis.js';
 import { makeInapplicability } from './schema/groups.js';
 import type { AnchorScope } from './schema/annotations.js';
-import { commentTarget } from './threads.js';
+import { commentTarget, isEditNote } from './threads.js';
 import { CORE_MISSING_CODES } from './schema/missingness.js';
 import { valueRefusal, type Measurement, type Preference } from './schema/measurement.js';
 import { measurementFor } from './schema/structure.js';
@@ -367,6 +367,7 @@ export function makeAffordances(
       const was = thread?.comments.find((c) => c.id === ofComment.commentId);
       if (!thread || !was) return refuse(`there is no comment "${ofComment.commentId}" in the thread "${ofComment.threadId}" in this analysis.`);
       if (thread.resolved) return refuse(`the thread "${thread.id}" is resolved; its comments are kept as they were unless it is reopened.`);
+      if (isEditNote(thread, was)) return refuse('this comment is the record of an earlier edit; it is kept as it was written.');
       const own = commentTarget(thread.anchor);
       return withHost(documentRequest('comment', doing, own, act, { threadId: thread.id, id: was.id, authorId: was.authorId }), documentPolicy(a, 'comment'));
     },

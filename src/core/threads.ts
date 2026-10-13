@@ -183,6 +183,12 @@ export function editNoteOf(body: string): string | undefined {
   }
 }
 
+/** Whether this comment is the note an edit left for another comment of the thread. */
+export function isEditNote(thread: Thread, c: Comment): boolean {
+  const named = editNoteOf(c.body);
+  return named !== undefined && named !== c.id && thread.comments.some((x) => x.id === named);
+}
+
 /**
  * Edit a comment without losing its earlier wording (#195, option (c) of #219).
  * The comment takes the new body and an `editedAt`; a comment by the editor
@@ -203,6 +209,7 @@ export function editComment(
   const was = thread.comments.find((c) => c.id === commentId);
   if (!was) throw new Error(`there is no comment "${commentId}" in the thread "${threadId}" to edit.`);
   if (thread.comments.some((c) => c.id === id)) throw new Error(`comment id "${id}" is already used in this thread.`);
+  if (isEditNote(thread, was)) throw new Error('this comment is the record of an earlier edit; it is kept as it was written.');
   const text = body.trim();
   if (text === '') throw new Error('a comment needs words: the body is empty.');
   if (text === was.body.trim()) throw new Error('the new wording is the same as the old; nothing to edit.');

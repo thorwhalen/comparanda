@@ -183,6 +183,8 @@ describe('editComment (#195)', () => {
     expect(() => edit(started, { body: 'rent looks high' })).toThrow(/same as the old/);
     expect(() => edit(editComment(started, 'te', 'c1', { body: 'padded  ', id: 'c8', by: dana, at: 'y' }), { body: 'padded' })).toThrow(/same as the old/);
     expect(() => edit(started, { id: 'c1' })).toThrow(/already used/);
+    const edited = editComment(started, 'te', 'c1', { body: 'again', id: 'c7', by: dana, at: 'x' });
+    expect(() => edit(edited, { comment: 'c7' })).toThrow(/record of an earlier edit/);
     expect(() => edit(resolveThread(started, 'te', { by: dana, at: 'x' }))).toThrow(/resolved/);
   });
 });
