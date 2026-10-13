@@ -130,7 +130,7 @@ describe('review findings', () => {
 
   it('never a bare check verdict, even with no standing given', () => {
     mount({ analysis: relocation, measure: 'score', view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true) });
-    for (const check of panel()!.querySelectorAll('.comparanda-check')) {
+    for (const check of Array.from(panel()!.querySelectorAll('.comparanda-check'))) {
       if (/Quote check:/.test(check.textContent!)) expect(check.textContent).toMatch(/not assessed|checker/);
     }
   });
