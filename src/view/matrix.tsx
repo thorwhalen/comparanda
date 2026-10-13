@@ -39,7 +39,7 @@
  * control that is present and does nothing is the failure the affordance layer
  * exists to prevent.
  */
-import { useId, useRef } from 'preact/hooks';
+import { useId, useRef, useState } from 'preact/hooks';
 
 import type { Affordance, Affordances } from '../core/affordances.js';
 import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
@@ -63,7 +63,13 @@ import { revealClear } from './sticky.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
 import { DetailPanel } from './detail-panel.js';
 import type { ThreadWrites } from './threads.js';
+import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
+import { startPointerDrag } from './pointer-reorder.js';
+import { describeOrder, describePlace } from '../core/reorder.js';
+import type { Axis } from '../core/schema/groups.js';
 import { resolveAnchor } from '../core/schema/anchors.js';
+
+const anonymous = () => 'anonymous';
 
 /** The default encoding, and the fallback when the chosen one cannot draw (ADR-0032 clause 1). */
 export const TEXT_ONLY = textOnly.id;
@@ -96,6 +102,21 @@ export interface MatrixViewProps {
   onPanelChange?: (open: boolean, options?: { into?: boolean }) => void;
   /** Start, answer and resolve threads (#106); absent, the panel offers none. `mountMatrix` writes them through the source. */
   threadWrites?: ThreadWrites;
+  /**
+   * The reader rearranged an axis (#92): the new view state, and the sentence
+   * to announce. Without it the matrix offers no reordering.
+   */
+  onReorder?: (state: ViewState, said: string) => void;
+  /** The latest sentence for the polite live region: a move, a seriation, a refusal. */
+  announcement?: string;
+  /** Who is moving things, recorded in the order's provenance, read when a move is made. Default: `anonymous`. */
+  actor?: () => string;
+  /**
+   * Seriation as an action ("arrange to reveal structure", ADR-0025), when the
+   * composition root registered it: core's `arrangeToRevealStructure`, or a
+   * host's own. Absent, each axis still says how its order came about.
+   */
+  arrange?: (analysis: Analysis, view: ViewState, axis: Axis, measure: string) => { state: ViewState; said: string };
 }
 
 /** The measure a cell's announcement adds beside the shown one, when the analysis has it. */
@@ -118,7 +139,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, affordances, onFocusChange, onPanelChange, threadWrites }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, affordances, onFocusChange, onPanelChange, threadWrites, onReorder, announcement, actor = anonymous, arrange }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -144,6 +165,10 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const pressed = useRef<Element | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const panelOpen = view.session.detailPanelOpen === true;
+  /** Keyboard grab mode (ADR-0027): what is held, and the view it was picked up from, for Escape. */
+  const [grab, setGrab] = useState<{ axis: Axis; id: string; original: ViewState } | undefined>(undefined);
+  /** Whose move menu is open, as `axis:id`. */
+  const [menu, setMenu] = useState<string | undefined>(undefined);
   const words = aliasesOf(analysis);
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
@@ -187,6 +212,13 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   });
   const rowLabel = new Map(rows.entries.map((e) => [e.id, e.label]));
   const columnLabel = new Map(columns.entries.map((e) => [e.id, e.label]));
+  const unique = (entries: LayoutEntry[]) => [...new Set(entries.map((e) => e.id))];
+  const reorder: ReorderContext | undefined = onReorder && {
+    analysis, view, actor, onReorder,
+    shown: { [rows.axis]: unique(rows.entries), [columns.axis]: unique(columns.entries) } as Record<Axis, string[]>,
+  };
+  const labelOf = (axis: Axis) => (id: string) =>
+    (axis === 'alternatives' ? analysis.alternatives : analysis.criteria).find((x) => x.id === id)?.label ?? id;
 
   const cell = (rowId: string, columnId: string, r: number, c: number) => {
     const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
@@ -224,15 +256,51 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       </td>
     );
   };
-  const header = (e: LayoutEntry, scope: 'row' | 'col', r: number, c: number) => (
-    <th scope={scope} key={e.id} {...stop(r, c)}>
-      {e.label}
+  const header = (e: LayoutEntry, scope: 'row' | 'col', r: number, c: number) => {
+    const axis = (scope === 'row' ? rows : columns).axis;
+    const menuKey = `${axis}:${e.id}`;
+    return (
+    <th
+      scope={scope} key={e.id} {...stop(r, c)} data-axis={axis} data-entry={e.id}
+      data-grabbed={grab?.axis === axis && grab.id === e.id ? 'true' : undefined}
+    >
+      {reorder && (
+        <button
+          type="button" tabIndex={-1} class="comparanda-handle" aria-haspopup="menu"
+          // Named "Move <label>" from words already on the page: no text of its own in the header.
+          aria-labelledby={`${helpId}-move ${helpId}-l-${r}-${c}`}
+          aria-expanded={menu === menuKey ? 'true' : 'false'}
+          onClick={(event: MouseEvent) => { event.stopPropagation(); setMenu(menu === menuKey ? undefined : menuKey); }}
+          onPointerDown={(event: PointerEvent) => startPointerDrag(event, {
+            scroller: root.current!.querySelector<HTMLElement>('.comparanda-scroll')!, axis, id: e.id,
+            direction: scope === 'row' ? 'vertical' : 'horizontal',
+            onDrop: ({ targetId, edge }) => {
+              if (targetId !== e.id) commitMove(reorder, axis, e.id, { kind: edge, id: targetId }, 'pointer');
+            },
+          })}
+        >
+          <svg viewBox="0 0 12 12" aria-hidden="true" class="comparanda-thread-icon" fill="currentColor" stroke="none">
+            <circle cx="4" cy="3" r="1" /><circle cx="8" cy="3" r="1" /><circle cx="4" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="4" cy="9" r="1" /><circle cx="8" cy="9" r="1" />
+          </svg>
+        </button>
+      )}
+      {reorder ? <span id={`${helpId}-l-${r}-${c}`}>{e.label}</span> : e.label}
       {e.alsoIn.length > 0 && (
         <span class="comparanda-also">{` (also in ${e.alsoIn.map((g) => groupLabel.get(g) ?? g).join(', ')})`}</span>
       )}
-      <ThreadMark count={openHere.get(`${(scope === 'row' ? rows : columns).axis === 'alternatives' ? 'a' : 'c'}:${e.id}`)} />
+      <ThreadMark count={openHere.get(`${axis === 'alternatives' ? 'a' : 'c'}:${e.id}`)} />
+      {reorder && menu === menuKey && (
+        <MoveMenu
+          ctx={reorder} axis={axis} id={e.id} label={labelOf(axis)} labelledBy={`${helpId}-move ${helpId}-l-${r}-${c}`}
+          onClose={() => {
+            setMenu(undefined);
+            root.current?.querySelector<HTMLElement>(`[data-cell="${r}:${c}"]`)?.focus();
+          }}
+        />
+      )}
     </th>
-  );
+    );
+  };
   const rowIndex = new Map(rows.entries.map((e, i) => [e.id, i + 1]));
   const row = (e: LayoutEntry) => {
     const r = rowIndex.get(e.id)!;
@@ -255,6 +323,55 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     // A reader who clicked a half-covered cell and now uses the keyboard sees it uncovered first.
     revealClear(from);
     const [r, c] = from.getAttribute('data-cell')!.split(':').map(Number) as [number, number];
+    // A header is a move handle (ADR-0027): Space or Enter picks it up; held, the keys move it.
+    const onHeader = event.target === from && (r === 0) !== (c === 0) && reorder !== undefined;
+    if (onHeader && reorder) {
+      const axis = from.getAttribute('data-axis') as Axis;
+      const id = from.getAttribute('data-entry')!;
+      const along = r === 0
+        ? (getComputedStyle(table).direction === 'rtl' ? ['ArrowRight', 'ArrowLeft'] : ['ArrowLeft', 'ArrowRight'])
+        : ['ArrowUp', 'ArrowDown'];
+      const held = grab?.axis === axis && grab.id === id;
+      const step: Step | undefined = !held ? undefined
+        : event.key === along[0] || (event.key === 'Tab' && event.shiftKey) ? 'earlier'
+          : event.key === along[1] || (event.key === 'Tab' && !event.shiftKey) ? 'later'
+            : event.key === 'Home' ? 'to-start' : event.key === 'End' ? 'to-end' : undefined;
+      if (step) {
+        event.preventDefault();
+        commitMove(reorder, axis, id, step, 'keyboard');
+        return;
+      }
+      if (held && (event.key === ' ' || event.key === 'Enter')) {
+        event.preventDefault();
+        setGrab(undefined);
+        onReorder!(view, `Put down: ${describePlace(analysis, view, axis, id)}.`);
+        return;
+      }
+      if (held && event.key === 'Escape') {
+        event.preventDefault();
+        setGrab(undefined);
+        const back = { ...view, alternativeOrder: grab.original.alternativeOrder, criterionOrder: grab.original.criterionOrder };
+        onReorder!(back, `Move cancelled: ${describePlace(analysis, back, axis, id)}, where it was.`);
+        return;
+      }
+      // Held, the grid does not move: the other arrows would leave the item in the air.
+      if (held && event.key.startsWith('Arrow')) {
+        event.preventDefault();
+        return;
+      }
+      if (!held && (event.key === ' ' || event.key === 'Enter') && !event.ctrlKey && !event.shiftKey) {
+        event.preventDefault();
+        setGrab({ axis, id, original: view });
+        const keys = r === 0 ? 'Left and Right arrows' : 'Up and Down arrows';
+        onReorder!(view, `Picked up ${describePlace(analysis, view, axis, id)}. ${keys} or Tab move it, Home and End to the ends; Space or Enter puts it down; Escape puts it back.`);
+        return;
+      }
+      if (!held && (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) {
+        event.preventDefault();
+        setMenu(`${axis}:${id}`);
+        return;
+      }
+    }
     // Enter opens the details of this position and goes into them; Escape closes them (#94).
     // On the grid position itself only: a control inside it (a reorder handle) keeps its own Enter.
     if (event.key === 'Enter' && event.target === from && !event.ctrlKey && !event.shiftKey && onPanelChange) {
@@ -288,6 +405,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const into = (event.target as Element | null)?.closest?.('[data-cell]');
     if (!into) return;
     const byPointer = pressed.current !== null && into.contains(pressed.current);
+    // Leaving a held header puts it down where it is.
+    if (grab && !(into.getAttribute('data-axis') === grab.axis && into.getAttribute('data-entry') === grab.id)) setGrab(undefined);
     pressed.current = null;
     if (!byPointer) revealClear(into);
     if (!onFocusChange) return;
@@ -315,8 +434,37 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       {empty && <p class="comparanda-empty" role="note">{empty}</p>}
       <p class="comparanda-keys" id={helpId}>
         Arrow keys move between cells; Home and End go to the start and end of a row; Ctrl+Home to the top-left corner and Ctrl+End to the last cell.
-        {onPanelChange && ' Enter opens the details of where you are, and Escape closes them.'}
+        {onPanelChange && ' Enter on a cell opens its details, which follow you onto the headers; Escape closes them.'}
+        {onReorder && ' On a header, Space or Enter picks it up to move it with the arrows or Tab, and Shift+F10 opens a move menu.'}
       </p>
+      {reorder && (
+        <div class="comparanda-arrange">
+          {(['alternatives', 'criteria'] as const).map((axis) => (
+            <p key={axis} data-order={axis}>
+              {describeOrder(analysis, view, axis)}
+              {arrange && ' '}
+              {arrange && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const { state, said } = arrange(analysis, view, axis, measure);
+                    reorder.onReorder(state, said);
+                  } catch (error) {
+                    reorder.onReorder(view, `Not arranged: ${error instanceof Error ? error.message : String(error)}`);
+                  }
+                }}
+              >
+                {`Arrange ${axis === 'alternatives' ? words.alternatives : words.criteria} to reveal structure`}
+              </button>
+              )}
+            </p>
+          ))}
+        </div>
+      )}
+      {onReorder && <span id={`${helpId}-move`} hidden>Move</span>}
+      {/* Polite, and present before anything is said into it, so the first sentence is heard. */}
+      {onReorder && <p class="comparanda-sr" role="status" aria-live="polite" data-announce="">{announcement ?? ''}</p>}
       <Legend definition={active} legend={prepared.legend} glyphs={shownGlyphs} hatches={shownHatches} />
       {openHere.size > 0 && (
         <p class="comparanda-legend-note"><ThreadMark count={1} quiet />{' A speech bubble and a number: open discussion threads anchored on that cell or header, or at the corner on the analysis. Threads on groups and blocks are listed in the details of their members.'}</p>
@@ -332,7 +480,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           onPointerCancelCapture={() => { pressed.current = null; }}
           // A click opens the details (the reference behaviour) and leaves focus where it landed.
           onClick={(event: MouseEvent) => {
-            if (!panelOpen && onPanelChange && (event.target as Element | null)?.closest?.('[data-cell]')) onPanelChange(true);
+            const on = event.target as Element | null;
+            if (on?.closest?.('.comparanda-handle, [role="menu"]')) return;
+            if (!panelOpen && onPanelChange && on?.closest?.('[data-cell]')) onPanelChange(true);
           }}
         >
           <caption>{analysis.subject.question}</caption>

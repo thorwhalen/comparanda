@@ -63,6 +63,8 @@ auto-scroll: the matrix is a scroll container in both axes with sticky headers, 
 alternative from position 40 to position 2 requires it. Charge it against the byte budget explicitly
 and re-examine the pointer path if it exceeds it.
 
+**Amendment (2026-10-13, #92, #190): the pointer path re-examined, as this clause asks.** Measured, `@atlaskit/pragmatic-drag-and-drop@1.8.1` with its auto-scroll package is 32.0 kB minified, against the 24 kB reserved for it. With the standalone page already at 89% of its budget (#188), the pointer path is built on pointer events with its own edge-zone auto-scroll in both axes instead (`src/view/pointer-reorder.ts`, about 2–3 kB). It commits through the same core move and `describeMove` as the menu and grab mode. It is still one module and one call site, and deleting it leaves both keyboard routes working; a test holds that as a fact about the source. The 24 kB reservation stays in the budget until #190 settles whether the library returns. Swapping it in is confined to that module.
+
 **We withdraw the `dnd-kit` recommendation.** Its stable line has been unreleased since
 2024-12-05 and its successor has sat pre-1.0 for two years [1], and it is React-only, so on
 ADR-0017's Preact view it costs the `preact/compat` escape hatch for a dependency we should not be

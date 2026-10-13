@@ -44,7 +44,8 @@
 import type { Analysis } from './schema/analysis.js';
 import type { Axis } from './schema/groups.js';
 import { aliasesOf } from './schema/structure.js';
-import type { ViewState } from './view-state.js';
+import { applyOrder, type ViewState } from './view-state.js';
+import { seriate } from './analyses/seriation.js';
 
 /** Which gesture asked for a move. Carried for logging; never part of the sentence. */
 export type MoveRoute = 'keyboard' | 'menu' | 'pointer';
@@ -269,6 +270,9 @@ export function moveByKeyboard(
  * `k` entries leave, and a fixed +/-1 lands the handle on the wrong side of the
  * anchor -- saying "after Montreal" while putting it before, which is precisely
  * the drift a single `describeMove` exists to prevent.
+ *
+ * The route defaults to `menu`; grab mode and pointer drag pass their own when
+ * they step to a named neighbour, so all three resolve a position one way.
  */
 export function moveByMenu(
   v: ViewState, axis: Axis, from: number, target: MenuMove, who: MoveAttribution,
@@ -277,7 +281,7 @@ export function moveByMenu(
   const order = v[key].order;
   if (!Number.isInteger(from) || from < 0 || from >= order.length) {
     // Let `moveTo` own the message for a position that does not exist.
-    return moveTo(v, axis, from, from, { ...who, route: 'menu' });
+    return moveTo(v, axis, from, from, { route: 'menu', ...who });
   }
   const to = (): number => {
     if (target.kind === 'to-start') return 0;
@@ -300,7 +304,7 @@ export function moveByMenu(
     // (after); the handle lands `offset` further along, whatever k is.
     return (target.kind === 'before' ? anchor : anchor + 1) + offset;
   };
-  return moveTo(v, axis, from, to(), { ...who, route: 'menu' });
+  return moveTo(v, axis, from, to(), { route: 'menu', ...who });
 }
 
 /** Pointer drag: a drop index, and nothing else. Deletable without touching the keyboard path. */
@@ -379,4 +383,69 @@ export function describeMove(a: Analysis, report: MoveReport): string {
   const stopped = refusal === undefined ? '' : ` It stopped there: ${refusal}.`;
 
   return `${noun} ${label(report.id)} moved to ${at}${place}${carried}.${stopped}${pinNote}`;
+}
+
+/**
+ * Seriation as an action (ADR-0025): "arrange to reveal structure" on one
+ * axis, with the view's pins and locked runs as inputs, recorded with its full
+ * provenance so the order can be explained and re-derived (ADR-0007). Parked
+ * entries are placed after the arrangement, never dropped. The sentence says
+ * what happened in the analysis's own words; ADR-0027 has it announced
+ * politely, with focus left where it was.
+ */
+export function arrangeToRevealStructure(
+  a: Analysis, v: ViewState, axis: Axis, measure: string, { at }: { at?: string } = {},
+): { state: ViewState; said: string } {
+  const key = orderKeyOf(axis);
+  const { pins, lockedRuns } = v[key].constraints;
+  const result = seriate(a, { measure, axis, constraints: { pins, lockedRuns }, ...(at === undefined ? {} : { at }) });
+  // Entries the run did not look at (unknown to the document, say) keep their place after it.
+  const looked = new Set(result.order);
+  const order = [...result.order, ...v[key].order.filter((id) => !looked.has(id))];
+  const state = applyOrder(v, axis, order, result.provenance);
+  return { state, said: `${capitalised(pluralNoun(a, axis))} arranged to reveal structure. ${describeOrder(a, state, axis)}` };
+}
+
+/**
+ * How an axis's order came about, in one sentence: the authored order, a hand
+ * arrangement and by whom, a sort, or a seriation run with what it rested on.
+ * The provenance ADR-0025 requires shown, not only stored.
+ */
+export function describeOrder(a: Analysis, v: ViewState, axis: Axis): string {
+  const p = v[orderKeyOf(axis)].provenance;
+  const labels = labelsOf(a, axis);
+  const noun = capitalised(pluralNoun(a, axis));
+  const when = 'at' in p && p.at ? `, ${p.at}` : '';
+  switch (p.kind) {
+    case 'authored':
+      return `${noun} are in the order the analysis gives them.`;
+    case 'manual':
+      return `${noun} were arranged by hand, by ${p.by}${when}.`;
+    case 'sorted': {
+      const crit = a.criteria.find((c) => c.id === p.criterionId)?.label ?? p.criterionId;
+      return `${noun} are sorted by ${crit}, ${p.direction === 'best-first' ? 'best' : 'worst'} first${when}.`;
+    }
+    case 'seriated': {
+      const parked = p.parked.length === 0 ? ''
+        : ` ${p.parked.length} placed last, with too little in common to place: ${p.parked.map((id) => labels.get(id) ?? id).join(', ')}.`;
+      return `${noun} were arranged to put similar ones next to each other (${p.method}, ${p.linkage} linkage, ` +
+        `${p.distance} distance on ${p.measure}, path length ${Math.round(p.pathLength * 1000) / 1000})${when}.${parked}`;
+    }
+  }
+}
+
+function capitalised(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/**
+ * Where one entry sits, in the words `describeMove` uses -- *"Criterion Rent,
+ * column 2 of 8"* -- for the announcements around a move: picked up, put down,
+ * put back.
+ */
+export function describePlace(a: Analysis, v: ViewState, axis: Axis, id: string): string {
+  const order = v[orderKeyOf(axis)].order;
+  const at = order.indexOf(id);
+  const label = labelsOf(a, axis).get(id) ?? id;
+  return `${singularNoun(a, axis)} ${label}, ${geometryWord(axis, v.transposed)} ${at < 0 ? order.length + 1 : at + 1} of ${Math.max(order.length, at + 1)}`;
 }

@@ -39,8 +39,11 @@ async function entryWith(pkg: string, source: string): Promise<string> {
   return entry;
 }
 
-/** A dependency incompressible enough that minification cannot shrink it, and larger than the headroom. */
-const HEAVY = `export default ${JSON.stringify(Array.from({ length: 12_000 }, (_, i) => `item-${i}-${(i * 7919) % 10007}`))};\n`;
+/**
+ * A dependency incompressible enough that minification cannot shrink it, larger than the headroom, and
+ * larger than comparanda's own code as the budget attributes it (by rendered length), so it is named first.
+ */
+const HEAVY = `export default ${JSON.stringify(Array.from({ length: 24_000 }, (_, i) => `item-${i}-${(i * 7919) % 10007}`))};\n`;
 
 const kb = (n: number) => `${(n / 1024).toFixed(1)} kB`;
 

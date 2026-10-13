@@ -56,6 +56,13 @@ export interface MountOptions {
   now?: () => Date;
   /** Mints thread and comment ids. Default: `crypto.randomUUID()`. */
   newId?: () => string;
+  /**
+   * Seriation as an action, registered like an encoding (ADR-0017 clause 4):
+   * pass core's `arrangeToRevealStructure` to offer "arrange to reveal
+   * structure" on each axis. Not by default: the seriation analysis is a large
+   * share of the standalone page's byte budget, so a build ships it by naming it.
+   */
+  arrange?: MatrixViewProps['arrange'];
 }
 
 /**
@@ -105,7 +112,7 @@ const mounted = new WeakSet<object>();
  */
 export function mountMatrix(
   el: Element, props: MountMatrixProps,
-  { component = Matrix, encodings, now = () => new Date(), newId = () => globalThis.crypto.randomUUID() }: MountOptions = {},
+  { component = Matrix, encodings, now = () => new Date(), newId = () => globalThis.crypto.randomUUID(), arrange }: MountOptions = {},
 ): MatrixHandle {
   const registry = encodings ?? createEncodingRegistry([textOnly]);
   if (el === null || typeof el !== 'object' || typeof (el as { appendChild?: unknown }).appendChild !== 'function') {
@@ -128,7 +135,15 @@ export function mountMatrix(
    * `view`, each part until the host gives a `view` that says something new
    * about that part: a host that keeps only focus does not close the panel.
    */
-  let moved: { focus?: Session['focus']; panel?: boolean } | undefined;
+  let moved: { focus?: Session['focus']; panel?: boolean; orders?: Pick<ViewState, 'alternativeOrder' | 'criterionOrder'> } | undefined;
+  /** The last sentence for the live region, and how many have been said, so a repeat is heard again. */
+  let announcement: string | undefined;
+  let said = 0;
+  /** Who moves things, for the order's provenance: the identity's id once known (ADR-0012). */
+  let actor = 'anonymous';
+  const learnActor = (identity = current.identity ?? DEFAULT_IDENTITY) => {
+    identity.current().then((a) => { if (current.identity === undefined || current.identity === identity) actor = a.id; }, () => undefined);
+  };
   /** What the `view` the caller last gave said about the session, to tell a new one from a re-passed one. */
   let givenFocus = sessionIn(props.view);
   /** The view state of the last render: what `onViewChange` reports. */
@@ -150,6 +165,18 @@ export function mountMatrix(
   const moveFocus = (focus: Session['focus']) => {
     if (destroyed) return;
     moveSession({ focus });
+    current.onViewChange?.(shown);
+  };
+  /**
+   * The reader rearranged an axis: laid over the host's order until the host
+   * gives a view with a different one, announced, and reported.
+   */
+  const reorder = (state: ViewState, sentence: string) => {
+    if (destroyed) return;
+    said += 1;
+    // The same sentence twice is still news: a trailing no-break space alternates so the region changes.
+    announcement = said % 2 === 0 ? `${sentence}\u00a0` : sentence;
+    moveSession({ orders: { alternativeOrder: state.alternativeOrder, criterionOrder: state.criterionOrder } });
     current.onViewChange?.(shown);
   };
   /** Open or close the detail panel; `into` moves focus to its heading once it is drawn. */
@@ -199,6 +226,7 @@ export function mountMatrix(
     const base = view ?? initialViewState(analysis);
     shown = moved && 'focus' in moved ? setFocus(base, moved.focus) : base;
     if (moved?.panel !== undefined) shown = setDetailPanel(shown, moved.panel);
+    if (moved?.orders) shown = { ...shown, ...moved.orders };
     const resolved: MatrixViewProps = {
       analysis,
       measure,
@@ -207,6 +235,10 @@ export function mountMatrix(
       view: shown,
       onFocusChange: moveFocus,
       onPanelChange: changePanel,
+      onReorder: reorder,
+      actor: () => actor,
+      ...(arrange ? { arrange } : {}),
+      ...(announcement !== undefined ? { announcement } : {}),
       ...(source ? { threadWrites } : {}),
       encodings: registry,
       affordances: source
@@ -279,6 +311,7 @@ export function mountMatrix(
   mounted.add(el);
   try {
     unsubscribe = follow(current.source);
+    learnActor();
     draw();
   } catch (error) {
     // A mount that failed holds nothing: no subscription, no claim, no half a tree.
@@ -337,6 +370,7 @@ export function mountMatrix(
         const kept = { ...moved };
         if (nextFocus.focus !== givenFocus.focus) delete kept.focus;
         if (nextFocus.panel !== givenFocus.panel) delete kept.panel;
+        if (nextFocus.orders !== givenFocus.orders) delete kept.orders;
         moved = kept;
       }
       givenFocus = nextFocus;
@@ -351,6 +385,7 @@ export function mountMatrix(
         throw error;
       }
       if (swapped) before.unsubscribe?.();
+      if (props.identity !== before.current.identity) learnActor();
     },
     destroy() {
       if (destroyed) return;
@@ -410,10 +445,15 @@ function checked(props: MountMatrixProps): MountMatrixProps {
 }
 
 /** What a given `view` says about the reader's position (comparable by value, blind to key order) and the panel. */
-function sessionIn(view: unknown): { focus: string; panel: boolean } {
-  const session = (view as ViewState | undefined)?.session;
-  const focus = session?.focus;
-  return { focus: JSON.stringify([focus?.alternativeId ?? null, focus?.criterionId ?? null]), panel: session?.detailPanelOpen === true };
+function sessionIn(view: unknown): { focus: string; panel: boolean; orders: string } {
+  const v = view as ViewState | undefined;
+  const focus = v?.session?.focus;
+  return {
+    focus: JSON.stringify([focus?.alternativeId ?? null, focus?.criterionId ?? null]),
+    panel: v?.session?.detailPanelOpen === true,
+    // The host's arrangement, by value: a re-passed view keeps the reader's moves, a new order replaces them.
+    orders: JSON.stringify([v?.alternativeOrder ?? null, v?.criterionOrder ?? null]),
+  };
 }
 
 /** Refuse a measure the analysis neither declares nor records (`unknownMeasure`). */
