@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle } from '../../src/view/index.js';
 import { nodeFill, VSUP_SPEC, vsupTrees } from '../../src/view/encodings/vsup-derive.js';
-import { nodeOf, vsupSwatchId } from '../../src/view/encodings/vsup.js';
+import { nodeOf, SCORE_LEVELS, vsupSwatchId } from '../../src/view/encodings/vsup.js';
 import { THEMES, type Theme } from '../../src/view/theme.js';
 import { CVD_MIN_DELTA_E, DEFICIENCIES, distance, parseHex, simulate, type Rgb8 } from '../support/cvd.js';
 import { gridAlternative, vsupGrid } from '../fixtures/vsup-grid.js';
@@ -107,4 +107,13 @@ describe.each(THEME_NAMES)('colour-vision deficiency, %s theme', (theme) => {
       expect(failures, `at least ΔE ${CVD_MIN_DELTA_E} is required`).toEqual([]);
     },
   );
+});
+
+describe('the supported arities', () => {
+  it('a column of more score levels than the palette is built for is left uncoloured, and the legend says so', () => {
+    el.dataset['theme'] = 'light';
+    handle = mountMatrix(el, { analysis: vsupGrid(SCORE_LEVELS[1] + 1, 3), measure: 'score', encoding: 'uncertainty-suppressed' }, { encodings: registry });
+    expect(el.querySelectorAll('td[data-swatch]')).toHaveLength(0);
+    expect(el.textContent).toContain(`ranked scale of ${SCORE_LEVELS[0]} to ${SCORE_LEVELS[1]} levels`);
+  });
 });

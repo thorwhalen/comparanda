@@ -34,10 +34,13 @@ describe('simulate', () => {
     const blue: Rgb8 = [40, 90, 200];
     const teal: Rgb8 = [40, 150, 150];
     expect(distance(simulate('tritan', blue), simulate('tritan', teal))).toBeLessThan(distance(blue, teal));
-    // A colour on each side of the separation plane (normal · linear rgb), so neither branch goes unexercised.
-    const sides = [[255, 255, 0], [0, 0, 255]].map(([r, g, b]) => 0.03901 * r! - 0.02788 * g! - 0.01113 * b!);
-    expect(Math.sign(sides[0]!)).not.toBe(Math.sign(sides[1]!));
-    for (const c of [[255, 255, 0], [0, 0, 255]] as const) simulate('tritan', c);
+    // Pinned on each side of the separation plane (normal · linear rgb): yellow on the positive
+    // side, blue on the negative, computed by hand from the matrices. Swapping the two matrices,
+    // or using only one, moves these.
+    expect(simulate('tritan', [255, 255, 0])).toEqual([255, 238, 241]);
+    expect(simulate('tritan', [200, 160, 40])).toEqual([208, 149, 155]);
+    expect(simulate('tritan', [0, 0, 255])).toEqual([0, 98, 136]);
+    expect(simulate('tritan', blue)).toEqual([0, 110, 137]);
   });
 });
 
@@ -48,7 +51,7 @@ describe('distance', () => {
     expect(distance(parseHex('#336699'), parseHex('#336699'))).toBe(0);
   });
 
-  it('puts the separability floor at about two just-noticeable differences', () => {
-    expect(CVD_MIN_DELTA_E / 2.3).toBeCloseTo(2, 0);
+  it('puts the separability floor at 4.5: twice a just-noticeable difference of about 2.3, rounded down', () => {
+    expect(CVD_MIN_DELTA_E).toBe(4.5);
   });
 });
