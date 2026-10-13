@@ -142,3 +142,7 @@ And the ladder is a **disclosure mechanism, never a control**: `persona-independ
 representable lie and cannot catch a fabricated principal. The system is as honest as the
 contributor — which is what the Consequences above already say about local identity, arriving
 through a second door.
+
+## Amendment, 2026-10-13: the host is told which thread act it is asked about
+
+A thread write is four different acts, and a host's rule may separate them ("reviewers may comment, only the owner resolves"). The request for a `comment` therefore carries `thread: 'start' | 'reply' | 'resolve' | 'reopen'`, and `doing` names it ("resolving a thread"). `affordances.comment(target)` with no act keeps its meaning, the general question whether discussion is open to this reader at all, with `doing: 'commenting'`. The panel gates the Reply form and the Resolve or Reopen button separately, each with its own refusal reason, and the write-time re-check in `mountMatrix` asks again with the act named. `doing` is words for people and the refusal, never for a host to parse: a host that keys on `action` and `target` and ignores `thread` behaves as before. The matrix's "Comment" menu entry is offered when any of the four acts is. (#194)

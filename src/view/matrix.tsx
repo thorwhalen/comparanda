@@ -41,7 +41,7 @@
  */
 import { useId, useRef, useState } from 'preact/hooks';
 
-import type { Affordance, Affordances } from '../core/affordances.js';
+import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
 import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
 import { makeCellReader, unknownMeasure, type Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
@@ -602,7 +602,7 @@ function RefusedEdits({ analysis, measure, affordances, rows, columns, transpose
   const controls: { key: string; label: string; refused: string | undefined | null }[] = [
     { key: 'assert', label: 'Record a value', refused: overCells((a, c) => affordances.assert(a, c, measure)) },
     { key: 'suggest', label: 'Suggest a value', refused: overCells((a, c) => affordances.suggest(a, c, measure)) },
-    { key: 'comment', label: 'Comment', refused: overAll([affordances.comment()]) },
+    { key: 'comment', label: 'Comment', refused: overAll(THREAD_ACTS.map((act) => affordances.comment(undefined, act))) },
     { key: 'revise', label: 'Revise the analysis', refused: overAll([affordances.revise('revising the analysis')]) },
     { key: 'change-lock', label: 'Lock or unlock the analysis', refused: overAll([affordances.changeLock()]) },
     {

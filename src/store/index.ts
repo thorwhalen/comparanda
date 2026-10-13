@@ -37,7 +37,7 @@ import type { DataChangeEvent, DataProvider, ProviderCapabilities } from '@zodal
 import type { Analysis } from '../core/schema/analysis.js';
 import { revisionProblems } from '../core/revision.js';
 import {
-  cellPolicy, makeAffordances, requireDecision, requireDoing, type Affordance, type Affordances, type Authorize, type WriteAffordance,
+  cellPolicy, makeAffordances, requireDecision, requireDoing, threadDoing, type Affordance, type Affordances, type Authorize, type WriteAffordance,
 } from '../core/affordances.js';
 import type { Cell } from '../core/schema/values.js';
 import type { Author } from '../core/schema/provenance.js';
@@ -178,7 +178,7 @@ export function editAffordances(
   const writes: Pick<Affordances, WriteAffordance> = {
     assert: (alt, crit, measure) => gated('writing to this cell', () => doc.assert(alt, crit, measure)),
     suggest: (alt, crit, measure) => gated('proposing a suggestion', () => doc.suggest(alt, crit, measure)),
-    comment: (target) => gated('commenting', () => doc.comment(target)),
+    comment: (target, act) => gated(threadDoing(act), () => doc.comment(target, act)),
     revise: (doing, target) => {
       const phrase = requireDoing(doing);
       return gated(phrase, () => doc.revise(phrase, target));

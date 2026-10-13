@@ -180,6 +180,25 @@ describe('nothing about rendering or storage is expressible', () => {
     expect(locked.comment()).toEqual({ enabled: true });
   });
 
+  it('tells the host which thread act it is asked about (#194), and the general question when none is named', () => {
+    const seen: EditRequest[] = [];
+    const aff = makeAffordances(relocation(), { authorize: (r) => (seen.push(r), r.action === 'comment' && r.thread === 'resolve' ? { enabled: false, reason: 'only the owner resolves' } : true) });
+    const target = { kind: 'analysis' } as const;
+    expect(aff.comment(target, 'start')).toEqual({ enabled: true });
+    expect(aff.comment(target, 'reply')).toEqual({ enabled: true });
+    expect(aff.comment(target, 'resolve')).toEqual({ enabled: false, reason: 'only the owner resolves' });
+    expect(aff.comment(target, 'reopen')).toEqual({ enabled: true });
+    expect(aff.comment()).toEqual({ enabled: true });
+    expect(seen).toEqual([
+      { action: 'comment', doing: 'starting a thread', target, thread: 'start' },
+      { action: 'comment', doing: 'answering a thread', target, thread: 'reply' },
+      { action: 'comment', doing: 'resolving a thread', target, thread: 'resolve' },
+      { action: 'comment', doing: 'reopening a thread', target, thread: 'reopen' },
+      { action: 'comment', doing: 'commenting' },
+    ]);
+    expect(() => aff.comment(target, 'delete' as never)).toThrow(/start.*reply.*resolve.*reopen/);
+  });
+
   it('exposes only policy queries', () => {
     expect(Object.keys(makeAffordances(relocation())).sort()).toEqual(
       ['assert', 'changeLock', 'comment', 'decideSuggestion', 'inapplicable', 'missingCode', 'missingCodes', 'revise', 'screens', 'suggest', 'value'],
