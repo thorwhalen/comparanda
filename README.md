@@ -86,6 +86,8 @@ mountMatrix(el, {
 });
 ```
 
+Enter (or a click) opens the detail panel beside the matrix: a non-modal `<aside role="complementary">` for wherever the reader is. On a cell it lists every assertion with its author, justification, evidence links and provenance, the absence's reason and note, and how several values fall across the levels; on an alternative's header, its strongest and weakest criteria relative to the other alternatives; on a criterion's header, its definition and scale. It follows the grid position while open; Escape returns to the grid, and Escape again closes it. Whether it is open is view state too (`session.detailPanelOpen`), so a reload restores it. The same content is available headless as `cellDetail` and `alternativeStanding`.
+
 Encodings are registered by you, not by the package (ADR-0010): without `encodings`, the matrix shows values as text. Name the ones you ship, and switch with the `encoding` prop or the view state's; the legend follows:
 
 ```ts

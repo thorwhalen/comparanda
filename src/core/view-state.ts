@@ -373,6 +373,14 @@ export function setFocus(v: ViewState, focus: Session['focus']): ViewState {
   return { ...v, session };
 }
 
+/** Open or close the detail panel (#94). Session state, like focus: it never marks a view modified. */
+export function setDetailPanel(v: ViewState, open: boolean): ViewState {
+  const session: Session = { ...v.session };
+  if (open) session.detailPanelOpen = true;
+  else delete session.detailPanelOpen;
+  return { ...v, session };
+}
+
 // --- creation, persistence and migration ---
 
 /**
