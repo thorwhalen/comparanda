@@ -37,8 +37,6 @@ export interface Check<E> {
   readonly broken: BrokenFixture<E>;
   /** Other checks the broken fixture is allowed to trip, and why. Default: none. It must trip each of them. */
   readonly alsoTrips?: Partial<Record<CheckId, string>>;
-  /** Checks the fixture trips in some engines and not in others (forced colors recolours differently in each): allowed, not required. */
-  readonly mayAlsoTrip?: Partial<Record<CheckId, string>>;
 }
 
 /** A fresh environment, sabotaged or not, and how to tear it down. */
@@ -82,7 +80,7 @@ export function gateTests<E>(
         }
       });
 
-      it.skipIf(partial)('and its broken fixture trips no other check', { timeout: timeout * 4 }, async () => {
+      if (!partial) it('and its broken fixture trips no other check', { timeout: timeout * 4 }, async () => {
         const tripped: string[] = [];
         for (const other of checks) {
           if (other.id === check.id) continue;
@@ -90,7 +88,7 @@ export function gateTests<E>(
           if (found.length > 0) tripped.push(other.id);
         }
         const required = Object.keys(check.alsoTrips ?? {});
-        const allowed = [...required, ...Object.keys(check.mayAlsoTrip ?? {})];
+        const allowed = required;
         const stale = required.filter((id) => !tripped.includes(id));
         expect(stale, `the fixture for ${check.id} no longer trips ${stale.join(', ')}: remove the allowance from alsoTrips`).toEqual([]);
         const surprising = tripped.filter((id) => !allowed.includes(id));

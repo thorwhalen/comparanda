@@ -7,10 +7,21 @@
  * the view's, run once in Chromium. WebKit is not here: it needs system
  * libraries the CI image does not carry, and B6 is the real-device pass.
  */
+import { describe, expect, it } from 'vitest';
+
 import { BROWSER_CHECKS } from './browser-checks.js';
 import { withBrowserEnv } from './browser-env.js';
 import { gateTests } from './gate.js';
 
 const ENGINE_DEPENDENT = ['A13', 'A15', 'A16', 'A18', 'A20'];
 
-gateTests('browser', BROWSER_CHECKS.filter((c) => ENGINE_DEPENDENT.includes(c.id)), withBrowserEnv, { partial: true });
+const checks = BROWSER_CHECKS.filter((c) => ENGINE_DEPENDENT.includes(c.id));
+
+// A partial run must not shrink without anyone noticing: a renumbered or misspelt id would drop a check from Firefox in silence.
+describe('the Firefox half runs exactly the engine-dependent checks', () => {
+  it('each is implemented once', () => {
+    expect(checks.map((c) => c.id)).toEqual(ENGINE_DEPENDENT);
+  });
+});
+
+gateTests('browser', checks, withBrowserEnv, { partial: true });

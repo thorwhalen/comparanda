@@ -94,6 +94,24 @@ function opacityOf(node: Element): number {
   return alpha;
 }
 
+/**
+ * Paint this arithmetic does not follow -- a filter, a backdrop filter, a blend
+ * mode, or a pseudo-element laid over the content -- named, so that it is a
+ * finding rather than a pass. `undefined` when the element has none.
+ */
+function unmeasurablePaint(node: Element): string | undefined {
+  const style = getComputedStyle(node);
+  if (style.filter !== 'none') return `has a filter (${style.filter})`;
+  if (style.backdropFilter && style.backdropFilter !== 'none') return `has a backdrop filter (${style.backdropFilter})`;
+  if (style.mixBlendMode !== 'normal') return `blends with ${style.mixBlendMode}`;
+  for (const pseudo of ['::before', '::after'] as const) {
+    const p = getComputedStyle(node, pseudo);
+    if (p.content === 'none' || p.content === 'normal') continue;
+    if (parseColour(p.backgroundColor)[3] > 0 || p.backgroundImage !== 'none' || p.filter !== 'none' || (p.backdropFilter && p.backdropFilter !== 'none')) return `has a painted ${pseudo} overlay`;
+  }
+  return undefined;
+}
+
 const TEXT_CONTRAST_WHAT = (text: string, r: number, min: number) => `"${text.slice(0, 24)}" is ${r.toFixed(2)}:1 against what is behind it, under ${min}:1`;
 
 /**
@@ -107,9 +125,8 @@ function contrastFaults(cell: Element, where: string, { paper }: { paper?: Rgba 
   for (const node of [cell, ...Array.from(cell.querySelectorAll('*'))]) {
     if (visuallyHidden(node)) continue;
     const text = Array.from(node.childNodes).filter((c) => c.nodeType === Node.TEXT_NODE).map((c) => c.textContent!.trim()).join('');
-    // A filter changes what is painted in ways this arithmetic does not follow: say so rather than pass it unmeasured.
-    const { filter, backdropFilter } = getComputedStyle(node);
-    if (filter !== 'none' || (backdropFilter && backdropFilter !== 'none')) found.push(`${where}: <${node.tagName.toLowerCase()}> has a filter (${filter !== 'none' ? filter : backdropFilter}), which the gate cannot measure`);
+    const unmeasured = unmeasurablePaint(node);
+    if (unmeasured) found.push(`${where}: <${node.tagName.toLowerCase()}> ${unmeasured}, which the gate cannot measure`);
     if (text !== '') {
       const on = behind(node);
       const ink = parseColour(getComputedStyle(node).color);
@@ -126,6 +143,12 @@ function contrastFaults(cell: Element, where: string, { paper }: { paper?: Rgba 
         if (r < GRAPHIC_CONTRAST_MIN) found.push(`${where}: a ${node.getAttribute('class')} ${what} is ${r.toFixed(2)}:1 against what is behind it, under ${GRAPHIC_CONTRAST_MIN}:1`);
       }
     }
+  }
+  // What is laid over the cell from outside it: its row, the scroller, the matrix.
+  for (let n = cell.parentElement; n; n = n.parentElement) {
+    const unmeasured = unmeasurablePaint(n);
+    if (unmeasured) found.push(`${where}: an ancestor <${n.tagName.toLowerCase()}> ${unmeasured}, which the gate cannot measure`);
+    if (n.matches('.comparanda-matrix')) break;
   }
   return found;
 }
@@ -237,19 +260,24 @@ const a4: Check<BrowserEnv> = {
 /** The longest a tooltip may be made to wait before it shows, which a check allows for after each hover. */
 const TOOLTIP_DELAY_MAX_MS = 350;
 
+/** How long a tooltip must stay once shown, without the reader doing anything (WCAG 1.4.13: persistent). */
+const TOOLTIP_PERSIST_MS = 1500;
+
 /**
  * Hover, and focus, a few cells and both kinds of header, and return every
  * tooltip the page showed -- including one that showed and went again -- each
- * given time to appear after a delay.
+ * given time to appear after a delay, and when the first one appeared.
  */
-async function tooltipsAfterHover(el: HTMLElement): Promise<HTMLElement[]> {
+async function tooltipsAfterHover(el: HTMLElement): Promise<{ tips: HTMLElement[]; appearedAt: number | undefined }> {
   const seen = new Set<HTMLElement>();
-  const collect = () => document.querySelectorAll<HTMLElement>('[role="tooltip"]').forEach((t) => seen.add(t));
+  let appearedAt: number | undefined;
+  const note = (t: HTMLElement) => { appearedAt ??= performance.now(); seen.add(t); };
+  const collect = () => document.querySelectorAll<HTMLElement>('[role="tooltip"]').forEach(note);
   const watch = new MutationObserver((records) => {
     for (const r of records) r.addedNodes.forEach((n) => {
       if (!(n instanceof HTMLElement)) return;
-      if (n.matches('[role="tooltip"]')) seen.add(n);
-      n.querySelectorAll<HTMLElement>('[role="tooltip"]').forEach((t) => seen.add(t));
+      if (n.matches('[role="tooltip"]')) note(n);
+      n.querySelectorAll<HTMLElement>('[role="tooltip"]').forEach(note);
     });
   });
   watch.observe(document.body, { childList: true, subtree: true });
@@ -270,26 +298,29 @@ async function tooltipsAfterHover(el: HTMLElement): Promise<HTMLElement[]> {
   } finally {
     watch.disconnect();
   }
-  return Array.from(seen);
+  return { tips: Array.from(seen), appearedAt };
 }
 
-/** Timers of at least this long, started while something is open, are a way to close it on the reader. */
+/** Timers of at least this long, still pending once something is open, are a way to close it on the reader. */
 const AUTO_DISMISS_MIN_MS = 100;
 
-/** A frame loop: this many `requestAnimationFrame` requests within a check's window is a clock, not a layout. */
-const FRAME_LOOP_MIN = 60;
+/** A timer that was due by the moment something opened (its own show delay) is not a closer; allow for scheduling this much. */
+const SHOW_DELAY_SLACK_MS = 100;
 
-/** What `timersDuring` saw: the delay of each timer started, and how many animation frames were asked for. */
-export interface TimersSeen { delays: number[]; frames: number }
+/** A frame loop: this many `requestAnimationFrame` requests after something opened is a clock, not a layout. */
+const FRAME_LOOP_MIN = 30;
 
-/**
- * Record the timers started while `during` runs, and while `when` holds at the
- * moment of the call: `setTimeout` and `setInterval`, `AbortSignal.timeout`,
- * `scheduler.postTask` with a delay, and `requestAnimationFrame` (counted, since
- * a loop of frames is a clock too).
- */
-export async function timersDuring(during: () => Promise<void>, when: () => boolean = () => true): Promise<TimersSeen> {
-  const seen: TimersSeen = { delays: [], frames: 0 };
+/** One timer or delayed task the page started: how long, and when. */
+export interface TimerNote { delay: number; at: number }
+
+/** What `timersDuring` saw: each timer or delayed task started, and when each animation frame was asked for. */
+export interface TimersSeen { notes: TimerNote[]; frames: number[] }
+
+/** Every watch in progress. The page's functions are patched once, for the first, and put back when the last ends. */
+const watching = new Set<TimersSeen>();
+let unpatch: (() => void) | undefined;
+
+function patchTimers(): () => void {
   const undo: (() => void)[] = [];
   const wrap = <T extends object, K extends keyof T>(owner: T | undefined, name: K, make: (real: T[K]) => T[K]) => {
     if (!owner || typeof owner[name] !== 'function') return;
@@ -297,37 +328,77 @@ export async function timersDuring(during: () => Promise<void>, when: () => bool
     owner[name] = make(real);
     undo.push(() => { owner[name] = real; });
   };
+  const start = (delay: number | undefined) => { const note = { delay: delay ?? 0, at: performance.now() }; for (const w of watching) w.notes.push(note); };
   type AnyFn = (...args: any[]) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
-  wrap(window, 'setTimeout', (real) => ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { if (when()) seen.delays.push(ms ?? 0); return (real as AnyFn)(fn, ms, ...rest); }) as typeof window.setTimeout);
-  wrap(window, 'setInterval', (real) => ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { if (when()) seen.delays.push(ms ?? 0); return (real as AnyFn)(fn, ms, ...rest); }) as typeof window.setInterval);
-  wrap(window, 'requestAnimationFrame', (real) => ((cb: FrameRequestCallback) => { if (when()) seen.frames += 1; return (real as AnyFn)(cb); }) as typeof window.requestAnimationFrame);
-  wrap(AbortSignal as unknown as { timeout: AnyFn }, 'timeout', (real) => ((ms: number) => { if (when()) seen.delays.push(ms); return real(ms); }));
+  wrap(window, 'setTimeout', (real) => ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { start(ms); return (real as AnyFn)(fn, ms, ...rest); }) as typeof window.setTimeout);
+  wrap(window, 'setInterval', (real) => ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { start(ms); return (real as AnyFn)(fn, ms, ...rest); }) as typeof window.setInterval);
+  wrap(window, 'requestAnimationFrame', (real) => ((cb: FrameRequestCallback) => { const t = performance.now(); for (const w of watching) w.frames.push(t); return (real as AnyFn)(cb); }) as typeof window.requestAnimationFrame);
+  wrap(AbortSignal as unknown as { timeout: AnyFn }, 'timeout', (real) => ((ms: number) => { start(ms); return real(ms); }));
   const scheduler = (window as unknown as { scheduler?: { postTask: AnyFn } }).scheduler;
-  wrap(scheduler, 'postTask', (real) => ((task: AnyFn, options?: { delay?: number }) => { if (when()) seen.delays.push(options?.delay ?? 0); return real.call(scheduler, task, options); }));
-  try { await during(); } finally { for (const u of undo.reverse()) u(); }
+  wrap(scheduler, 'postTask', (real) => ((task: AnyFn, options?: { delay?: number }) => { start(options?.delay); return real.call(scheduler, task, options); }));
+  return () => { for (const u of undo.reverse()) u(); };
+}
+
+/**
+ * Record, while `during` runs, every timer the page starts -- `setTimeout` and
+ * `setInterval`, `AbortSignal.timeout`, `scheduler.postTask` with a delay --
+ * and when each `requestAnimationFrame` is asked for (a loop of frames is a
+ * clock too). Watches may overlap (a check that timed out is still unwinding
+ * when the next begins); the page's functions are put back when the last ends.
+ */
+export async function timersDuring(during: () => Promise<void>): Promise<TimersSeen> {
+  const seen: TimersSeen = { notes: [], frames: [] };
+  if (watching.size === 0) unpatch = patchTimers();
+  watching.add(seen);
+  try { await during(); } finally {
+    watching.delete(seen);
+    if (watching.size === 0) { unpatch?.(); unpatch = undefined; }
+  }
   return seen;
 }
 
-/** The longest timer in `seen` that could be closing something on the reader, or a frame loop standing in for one; `undefined` when none. */
-export function autoDismissIn(seen: TimersSeen): string | undefined {
-  const long = seen.delays.find((ms) => ms >= AUTO_DISMISS_MIN_MS);
-  if (long !== undefined) return `a timer of ${long} ms`;
-  if (seen.frames >= FRAME_LOOP_MIN) return `a loop of ${seen.frames} animation frames`;
+/**
+ * What in `seen` could be closing something on the reader that opened at
+ * `openedAt`: a timer of real length still pending after it opened (one started
+ * to show it is due by then), or a loop of animation frames since. `undefined`
+ * when none, or when nothing opened.
+ */
+export function autoDismissIn(seen: TimersSeen, openedAt: number | undefined): string | undefined {
+  if (openedAt === undefined) return undefined;
+  const pending = seen.notes.find((n) => n.delay >= AUTO_DISMISS_MIN_MS && n.at + n.delay > openedAt + SHOW_DELAY_SLACK_MS);
+  if (pending) return `a timer of ${pending.delay} ms, still pending after it opened`;
+  const frames = seen.frames.filter((t) => t >= openedAt).length;
+  if (frames >= FRAME_LOOP_MIN) return `a loop of ${frames} animation frames`;
   return undefined;
 }
 
-/** A tooltip that follows the pointer onto a cell, after `delayMs`: a fixture for A11 and A12. Returns how to take it away. */
-function plantTooltip(el: HTMLElement, { dismissOnEscape, withLink, delayMs }: { dismissOnEscape: boolean; withLink: boolean; delayMs: number }): () => void {
+/** How a planted tooltip takes itself away, for the fixtures that prove A11 sees each way. */
+export type AutoClose = { how: 'timeout' | 'abort' | 'animation'; ms: number };
+
+/**
+ * A tooltip that follows the pointer onto a cell, after `delayMs`: a fixture for
+ * A11 and A12. `autoClose` makes it leave by itself, the timer started with the
+ * hover (before the tooltip is in the page). Returns how to take it away.
+ */
+export function plantTooltip(
+  el: HTMLElement, { dismissOnEscape, withLink, delayMs, autoClose }: { dismissOnEscape: boolean; withLink: boolean; delayMs: number; autoClose?: AutoClose },
+): () => void {
   const off = new AbortController();
   el.addEventListener('mouseover', (e) => {
     const td = (e.target as Element).closest('td');
     if (!td || document.querySelector('[role="tooltip"]')) return;
+    let tip: HTMLElement | undefined;
+    // Started with the hover, as a handler that opens and schedules the close in one go does.
+    if (autoClose?.how === 'timeout') setTimeout(() => tip?.remove(), autoClose.ms);
+    if (autoClose?.how === 'abort') AbortSignal.timeout(autoClose.ms).addEventListener('abort', () => tip?.remove());
     setTimeout(() => {
-      const tip = document.createElement('div');
+      tip = document.createElement('div');
       tip.setAttribute('role', 'tooltip');
       tip.innerHTML = withLink ? 'Evidence: <a href="#evidence">read more</a>' : 'Evidence';
       td.append(tip);
-      if (dismissOnEscape) document.addEventListener('keydown', (k) => { if (k.key === 'Escape') tip.remove(); }, { once: true, signal: off.signal });
+      const shown = tip;
+      if (autoClose?.how === 'animation') void shown.animate([{ opacity: 1 }, { opacity: 0 }], { duration: autoClose.ms }).finished.then(() => shown.remove(), () => {});
+      if (dismissOnEscape) document.addEventListener('keydown', (k) => { if (k.key === 'Escape') shown.remove(); }, { once: true, signal: off.signal });
     }, delayMs);
   }, { signal: off.signal });
   return () => off.abort();
@@ -338,7 +409,7 @@ const a12: Check<BrowserEnv> = {
   async run(env) {
     const { el } = env.mount({ analysis: relocation, measure: 'score' });
     const found: string[] = [];
-    for (const tip of await tooltipsAfterHover(el)) {
+    for (const tip of (await tooltipsAfterHover(el)).tips) {
       const inside = tip.querySelectorAll(FOCUSABLE);
       if (inside.length > 0) found.push(`a tooltip holds ${inside.length} focusable element(s): ${inside[0]!.outerHTML}`);
     }
@@ -356,14 +427,26 @@ const a11: Check<BrowserEnv> = {
     const { el } = env.mount({ analysis: relocation, measure: 'score' });
     const found: string[] = [];
     const cell = el.querySelector<HTMLElement>('tbody td')!;
-    // 1. Any tooltip the cell shows: Escape closes it, focus stays on the cell, no timer closes it.
+    // 1. Any tooltip the cell shows: nothing closes it on the reader, Escape closes it, focus stays on the cell.
     cell.focus();
-    let tips: HTMLElement[] = [];
-    // A timer started while a tooltip is up is a way to close it on the reader; one started to show it is not.
-    const seen = await timersDuring(async () => { tips = await tooltipsAfterHover(el); }, () => document.querySelector('[role="tooltip"]') !== null);
-    const closer = autoDismissIn(seen);
-    if (closer) found.push(`${closer} ran while a tooltip was showing`);
-    const shown = tips.filter((t) => t.isConnected);
+    let shown: HTMLElement[] = [];
+    let appearedAt: number | undefined;
+    let persisted = true;
+    const seen = await timersDuring(async () => {
+      ({ tips: shown, appearedAt } = await tooltipsAfterHover(el));
+      // Persistent: left alone on the first cell, a tooltip that appeared is still there a while later, whatever closed it.
+      await userEvent.hover(cell);
+      await sleep(TOOLTIP_DELAY_MAX_MS);
+      const tip = document.querySelector<HTMLElement>('[role="tooltip"]');
+      if (tip) {
+        await sleep(TOOLTIP_PERSIST_MS);
+        persisted = tip.isConnected && getComputedStyle(tip).display !== 'none' && getComputedStyle(tip).visibility !== 'hidden';
+      }
+    });
+    const closer = autoDismissIn(seen, appearedAt);
+    if (closer) found.push(`${closer} while a tooltip was showing`);
+    if (!persisted) found.push(`a tooltip went away by itself within ${TOOLTIP_PERSIST_MS} ms`);
+    shown = shown.filter((t) => t.isConnected);
     if (shown.length > 0) {
       cell.focus();
       await userEvent.keyboard('{Escape}');
@@ -373,13 +456,14 @@ const a11: Check<BrowserEnv> = {
     }
     // 2. The panel that stands in for a tooltip (ADR-0027) is not dismissed by anything but the reader.
     cell.focus();
+    const openedAt = performance.now();
     const opened = await timersDuring(async () => {
       await userEvent.keyboard('{Enter}');
       await sleep(AUTO_DISMISS_MIN_MS * 4);
     });
     if (!el.querySelector('[role="complementary"]')) found.push('the panel the cell opens did not stay open without the reader');
-    const closing = autoDismissIn(opened);
-    if (closing) found.push(`${closing} ran while the panel opened`);
+    const closing = autoDismissIn(opened, openedAt);
+    if (closing) found.push(`${closing} after the panel opened`);
     return found;
   },
   broken: {
@@ -577,7 +661,6 @@ const a13: Check<BrowserEnv> = {
     sabotage: (env) => env.afterMount((el) => { el.querySelector<HTMLElement>('tbody td[data-state="value"]')!.style.color = 'transparent'; }),
   },
   alsoTrips: { A18: 'ink that is invisible on screen is invisible on paper too' },
-  mayAlsoTrip: { A15: 'under forced colors an engine may or may not let an author\'s transparent ink through' },
 };
 
 // ---- A14 ---------------------------------------------------------------------------------
@@ -707,13 +790,26 @@ async function* everyMount(env: BrowserEnv): AsyncGenerator<{ el: HTMLElement; w
       for (const encoding of ENCODING_IDS) yield { ...env.mount({ analysis, measure: 'score', encoding }, { theme }), where: `${name} / ${encoding} / ${theme}` };
     }
   }
-  // Where a drag attribute would be written: a header held, and the panel open.
+  // Where a drag attribute would be written: a header held, carried a step, the move menu open, a pointer drag under way, and the panel open.
   const held = mountReorderable(env);
   await tick();
   header(held.el, crits[1]!).focus();
   await userEvent.keyboard('{Enter}');
   yield { el: held.el, where: 'a header held in grab mode' };
+  await userEvent.keyboard('{ArrowRight}');
+  yield { el: held.el, where: 'a held header carried one step' };
   await userEvent.keyboard('{Escape}');
+  header(held.el, crits[1]!).focus();
+  await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+  yield { el: held.el, where: 'the move menu open' };
+  await userEvent.keyboard('{Escape}');
+  const handle = header(held.el, crits[1]!).querySelector<HTMLElement>('.comparanda-handle')!;
+  const from = handle.getBoundingClientRect();
+  const at = (x: number, y: number) => ({ clientX: x, clientY: y, bubbles: true, button: 0, pointerId: 1, isPrimary: true });
+  handle.dispatchEvent(new PointerEvent('pointerdown', at(from.left + 2, from.top + 2)));
+  window.dispatchEvent(new PointerEvent('pointermove', at(from.left + 40, from.top + 2)));
+  yield { el: held.el, where: 'a pointer drag under way' };
+  window.dispatchEvent(new PointerEvent('pointerup', at(from.left + 40, from.top + 2)));
   const { el } = env.mount({ analysis: relocation, measure: 'score' });
   el.querySelector<HTMLElement>('tbody td')!.focus();
   await userEvent.keyboard('{Enter}');
@@ -724,10 +820,38 @@ const a16twin: Check<BrowserEnv> = {
   id: 'A16',
   async run(env) {
     const found: string[] = [];
+    const interacted = new Set<string>();
     for await (const { el, where } of everyMount(env)) {
-      for (const node of Array.from(el.querySelectorAll('*'))) {
-        const image = getComputedStyle(node).backgroundImage;
-        if (image !== 'none') found.push(`${where}: <${node.tagName.toLowerCase()} class="${node.getAttribute('class') ?? ''}"> paints ${image.slice(0, 40)}`);
+      /** Every element's own background image; and the `::before`/`::after` of every cell and header, where an overlay would be. */
+      const scan = (when: string, elements: Iterable<Element>, pseudos: readonly (string | undefined)[]) => {
+        for (const node of elements) {
+          for (const pseudo of pseudos) {
+            const image = getComputedStyle(node, pseudo).backgroundImage;
+            if (image !== 'none') found.push(`${where}${when}: <${node.tagName.toLowerCase()} class="${node.getAttribute('class') ?? ''}">${pseudo ?? ''} paints ${image.slice(0, 40)}`);
+          }
+        }
+      };
+      // Pseudo-element styles are slow to resolve: one cell of each kind (state, absence, swatch, hatch) stands for the rest.
+      const cells = () => {
+        const kinds = new Map<string, Element>();
+        for (const c of Array.from(el.querySelectorAll<HTMLElement>('td, th'))) {
+          const kind = [c.tagName, c.dataset['state'], c.dataset['absence'], c.dataset['swatch'], c.dataset['hatch']].join('|');
+          if (!kinds.has(kind)) kinds.set(kind, c);
+        }
+        return kinds.values();
+      };
+      scan('', Array.from(el.querySelectorAll('*')), [undefined]);
+      scan('', cells(), ['::before', '::after']);
+      // A hatch that only shows on focus or on hover is still a hatch that carries meaning. A real hover waits for the pointer to
+      // settle (seconds), and a rule on :hover does not depend on the fixture or the encoding, so it is looked for once per theme.
+      const first = el.querySelector<HTMLElement>('tbody td');
+      const key = where.split(' / ')[2]!;
+      if (first && !interacted.has(key)) {
+        interacted.add(key);
+        first.focus();
+        scan(' (focused)', cells(), [undefined, '::before', '::after']);
+        await userEvent.hover(first);
+        scan(' (hovered)', cells(), [undefined, '::before', '::after']);
       }
     }
     return cap(found);
@@ -738,7 +862,6 @@ const a16twin: Check<BrowserEnv> = {
   },
   // The channels' own checks measure the same thing in their media.
   alsoTrips: { A14: 'a gradient over a swatched cell is the colour its screenshot reads', A18: 'a gradient on a cell is a background image in print too' },
-  mayAlsoTrip: { A15: 'under forced colors an engine may drop a background image of its own accord' },
 };
 
 const a17twin: Check<BrowserEnv> = {
