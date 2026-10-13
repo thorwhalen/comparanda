@@ -54,7 +54,7 @@ import {
 import { aliasesOf } from '../core/schema/structure.js';
 import type { Reduced } from '../core/schema/values.js';
 import type { Session, ViewState } from '../core/view-state.js';
-import { textOnly } from './encodings/shipped.js';
+import { CONFIDENCE, textOnly } from './encodings/shipped.js';
 import {
   describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
 } from './encodings/registry.js';
@@ -122,8 +122,6 @@ export interface MatrixViewProps {
   arrange?: (analysis: Analysis, view: ViewState, axis: Axis, measure: string) => { state: ViewState; said: string };
 }
 
-/** The measure a cell's announcement adds beside the shown one, when the analysis has it. */
-const CONFIDENCE = 'confidence';
 
 /**
  * What a cell is saying, as a word a stylesheet and a test can select on.

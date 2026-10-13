@@ -70,15 +70,14 @@ export function commitMove(ctx: ReorderContext, axis: Axis, id: string, step: St
 
 /** The menu's entries, in words, each with the step it asks for. */
 function entriesOf(scope: readonly string[], id: string, label: (id: string) => string): { text: string; step: Step }[] {
-  const shown = scope;
-  const at = shown.indexOf(id);
+  const at = scope.indexOf(id);
   return [
     { text: 'Move to start', step: 'to-start' },
     { text: 'Move earlier', step: 'earlier' },
     { text: 'Move later', step: 'later' },
     { text: 'Move to end', step: 'to-end' },
     // "Before X" for every other shown entry but the one it already precedes.
-    ...shown.filter((x, i) => x !== id && i !== at + 1).map((x) => ({ text: `Move before ${label(x)}`, step: { kind: 'before', id: x } as Step })),
+    ...scope.filter((x, i) => x !== id && i !== at + 1).map((x) => ({ text: `Move before ${label(x)}`, step: { kind: 'before', id: x } as Step })),
   ];
 }
 

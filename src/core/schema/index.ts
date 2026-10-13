@@ -1,3 +1,11 @@
+/**
+ * The schema, as one import: every module under `core/schema/` re-exported.
+ *
+ * `analysis.ts` is the entry point -- the `Analysis` document, `validateAnalysis`
+ * and the rule registry; the others are the parts it is built from (measurement,
+ * missingness, provenance, evidence, structure, values, annotations, groups,
+ * anchors, redaction, disclosure). Nothing here adds behaviour of its own.
+ */
 export * from './declarations.js';
 export * from './measurement.js';
 export * from './missingness.js';
