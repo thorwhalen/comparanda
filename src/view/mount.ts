@@ -28,6 +28,7 @@ import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
 import { trackStickyExtents } from './sticky.js';
+import { activeElementOf } from './dom.js';
 
 /** What `mountMatrix` returns. */
 export interface MatrixHandle {
@@ -266,7 +267,7 @@ export function mountMatrix(
 
   /** The focused element, if it is in the matrix; read from the root it lives in, a shadow root's own. */
   const focused = (): Element | null => {
-    const active = (el.getRootNode() as Document | ShadowRoot).activeElement ?? null;
+    const active = activeElementOf(el);
     return active !== null && el.contains(active) ? active : null;
   };
   /**

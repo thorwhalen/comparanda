@@ -254,3 +254,54 @@ describe('review findings', () => {
     input.remove();
   });
 });
+
+describe('inside a shadow root (sprint review)', () => {
+  let host: HTMLElement;
+  beforeEach(() => {
+    // `el` moves into a shadow tree; the outer afterEach still destroys and removes it.
+    host = document.createElement('div');
+    document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    el.remove();
+    root.append(el);
+  });
+  afterEach(() => host.remove());
+
+  it('grab mode keeps hold across moves', async () => {
+    mount();
+    await tick();
+    header(crits[0]!).focus();
+    await userEvent.keyboard(' ');
+    await userEvent.keyboard('{ArrowRight}');
+    await tick();
+    await userEvent.keyboard('{ArrowRight}');
+    await tick();
+    expect(order().slice(0, 3)).toEqual([crits[1], crits[2], crits[0]]);
+    expect(header(crits[0]!).getAttribute('data-grabbed')).toBe('true');
+  });
+
+  it('a pointer drag finds its drop target', async () => {
+    mount();
+    await tick();
+    await routes['pointer drag']!();
+    await tick();
+    expect(order().slice(0, 3)).toEqual([crits[0], crits[2], crits[1]]);
+  });
+
+  it('the move menu focuses its first item on opening and keeps a later one focused', async () => {
+    mount();
+    await tick();
+    header(crits[1]!).focus();
+    await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+    const items = () => Array.from(el.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const root = el.getRootNode() as ShadowRoot;
+    expect(root.activeElement).toBe(items()[0]);
+    await userEvent.keyboard('{ArrowDown}');
+    const second = root.activeElement;
+    expect(second).not.toBe(items()[0]);
+    // Another render must not pull focus back to the first item.
+    handles[0]!.update({ measure: 'score' });
+    await tick();
+    expect(root.activeElement).toBe(second);
+  });
+});

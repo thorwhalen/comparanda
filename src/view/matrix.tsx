@@ -65,6 +65,7 @@ import { DetailPanel } from './detail-panel.js';
 import type { ThreadWrites } from './threads.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
 import { startPointerDrag } from './pointer-reorder.js';
+import { activeElementOf } from './dom.js';
 import { describeOrder, describePlace } from '../core/reorder.js';
 import type { Axis } from '../core/schema/groups.js';
 import { resolveAnchor } from '../core/schema/anchors.js';
@@ -508,7 +509,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           onFocusOut={(event: FocusEvent) => {
             if (!grab) return;
             const table = event.currentTarget as HTMLElement;
-            setTimeout(() => { if (!table.contains(table.ownerDocument.activeElement)) setGrab(undefined); }, 0);
+            setTimeout(() => { if (!table.contains(activeElementOf(table))) setGrab(undefined); }, 0);
           }}
           // A click opens the details (the reference behaviour) and leaves focus where it landed.
           onClick={(event: MouseEvent) => {

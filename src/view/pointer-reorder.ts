@@ -12,6 +12,7 @@
  * between press and release: every listener it adds is removed when it ends,
  * however it ends, so nothing outlives it.
  */
+import { elementAt } from './dom.js';
 
 /** Pixels a press must travel before it is a drag rather than a click on the handle. */
 const DRAG_THRESHOLD = 4;
@@ -58,7 +59,7 @@ export function startPointerDrag(event: PointerEvent, opts: PointerDragOptions):
   const rtl = view.getComputedStyle(opts.scroller).direction === 'rtl';
 
   const target = (): { th: HTMLElement; drop: PointerDrop } | undefined => {
-    const th = doc.elementFromPoint(x, y)?.closest<HTMLElement>(`th[data-entry][data-axis="${opts.axis}"]`);
+    const th = elementAt(handle, x, y)?.closest<HTMLElement>(`th[data-entry][data-axis="${opts.axis}"]`);
     if (!th || !opts.scroller.contains(th)) return undefined;
     const r = th.getBoundingClientRect();
     const first = opts.direction === 'vertical' ? y < r.top + r.height / 2 : (x < r.left + r.width / 2) !== rtl;

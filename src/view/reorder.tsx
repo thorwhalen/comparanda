@@ -13,6 +13,7 @@ import type { Axis } from '../core/schema/groups.js';
 import type { Analysis } from '../core/schema/analysis.js';
 import { describeMove, moveByMenu, movingBlock, moveTo, reportOverShown, type MenuMove, type MoveRoute } from '../core/reorder.js';
 import { applyOrder, type ViewState } from '../core/view-state.js';
+import { activeElementOf } from './dom.js';
 
 /** A step any route can ask for. `earlier` and `later` are by the entries shown. */
 export type Step = 'earlier' | 'later' | 'to-start' | 'to-end' | { kind: 'before' | 'after'; id: string };
@@ -83,7 +84,7 @@ function entriesOf(scope: readonly string[], id: string, label: (id: string) => 
 
 /** Focus the first item when the menu appears: a ref, so the component keeps no effect. */
 const focusFirst = (menu: HTMLElement | null) => {
-  if (menu && !menu.contains(menu.ownerDocument.activeElement)) menu.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  if (menu && !menu.contains(activeElementOf(menu))) menu.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
 };
 
 /**
