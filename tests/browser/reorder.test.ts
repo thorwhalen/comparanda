@@ -324,3 +324,26 @@ describe('who a move is signed by (sprint review)', () => {
     expect((views.at(-1)!.criterionOrder.provenance as { by?: string }).by).toBe('anonymous');
   });
 });
+
+describe('a drag across a host update (sprint review)', () => {
+  it('drops onto a header that appeared after the drag began', async () => {
+    views = [];
+    const handle = mountMatrix(el, { analysis: languages, measure: 'score', onViewChange: (v) => views.push(v) });
+    handles.push(handle);
+    const last = crits.at(-1)!;
+    const handleOf = (id: string) => header(id).querySelector<HTMLElement>('.comparanda-handle')!;
+    header(last).scrollIntoView({ block: 'center', inline: 'center' });
+    const from = handleOf(crits[0]!).getBoundingClientRect();
+    const pt = (x: number, y: number) => ({ clientX: x, clientY: y, bubbles: true, button: 0, pointerId: 1, isPrimary: true });
+    handleOf(crits[0]!).dispatchEvent(new PointerEvent('pointerdown', pt(from.left + 2, from.top + 2)));
+    window.dispatchEvent(new PointerEvent('pointermove', pt(from.left + 40, from.top + 2)));
+    const added = { ...languages.criteria.at(-1)!, id: 'added-mid-drag', label: 'Added' };
+    handle.update({ analysis: { ...languages, criteria: [...languages.criteria, added] } });
+    header('added-mid-drag').scrollIntoView({ block: 'center', inline: 'center' });
+    const target = header('added-mid-drag').getBoundingClientRect();
+    window.dispatchEvent(new PointerEvent('pointermove', pt(target.right - 3, target.top + target.height / 2)));
+    window.dispatchEvent(new PointerEvent('pointerup', pt(target.right - 3, target.top + target.height / 2)));
+    await tick();
+    expect(views.at(-1)?.criterionOrder.order.at(-1)).toBe(crits[0]);
+  });
+});

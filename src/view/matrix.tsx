@@ -228,6 +228,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const band = layout.bands?.find((b) => b.entries.some((e) => e.id === id));
     return [...new Set((band ? band.entries : layout.entries).map((e) => e.id))];
   };
+  // Likewise its scope: a header added, removed or re-banded mid-drag is read as it is at the drop.
+  const latestScope = useRef(scopeOf);
+  latestScope.current = scopeOf;
   const labelOf = (axis: Axis) => (id: string) =>
     (axis === 'alternatives' ? analysis.alternatives : analysis.criteria).find((x) => x.id === id)?.label ?? id;
 
@@ -291,7 +294,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             scroller: root.current!.querySelector<HTMLElement>('.comparanda-scroll')!, axis, id: e.id,
             direction: scope === 'row' ? 'vertical' : 'horizontal',
             onDrop: ({ targetId, edge }) => {
-              const scope = scopeOf(axis, e.id);
+              const scope = latestScope.current(axis, e.id);
               if (targetId !== e.id && latest.current && scope.includes(targetId)) {
                 commitMove(latest.current, axis, e.id, { kind: edge, id: targetId }, 'pointer', scope);
               }
