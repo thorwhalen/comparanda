@@ -171,21 +171,33 @@ export function cellDetail(
   });
   const live = new Set(cell ? liveAssertions(cell.assertions) : []);
   // Which authors the round hides from this viewer, decided once, here: every field that could name one is taken from the anonymised copy.
+  // The stand-in ids are in a namespace of their own, and skip any id the document already uses.
+  const taken = new Set((cell?.assertions ?? []).map((s) => s.id));
   const hiddenIds = new Map<string, string>();
   for (const s of cell?.assertions ?? []) {
-    if (viewer && !assertionVisibility(a, s, viewer).author) hiddenIds.set(s.id, `hidden-${hiddenIds.size + 1}`);
+    if (!viewer || assertionVisibility(a, s, viewer).author) continue;
+    let n = hiddenIds.size + 1;
+    while (taken.has(`hidden-author:${n}`)) n += 1;
+    taken.add(`hidden-author:${n}`);
+    hiddenIds.set(s.id, `hidden-author:${n}`);
   }
   const detailOf = (s: Assertion): AssertionDetail => {
     const authorHidden = hiddenIds.has(s.id);
     const shownAssertion = authorHidden ? withoutAuthor(s, hiddenIds.get(s.id)!) : s;
+    // A replacement links two assertions; a link between one the viewer may attribute and one they may not would say they are the
+    // same hand (people mostly revise their own), so it is shown only between two of the same kind.
+    const linked = s.supersededBy !== undefined && hiddenIds.has(s.supersededBy) === authorHidden;
     const successor = s.supersededBy === undefined ? undefined : hiddenIds.get(s.supersededBy);
     const author = authorHidden ? undefined : authors.get(s.authorId);
     const principal = author?.principalId && author.principalId !== author.id ? authors.get(author.principalId) : undefined;
     const round = s.roundId === undefined ? undefined : rounds.get(s.roundId);
     const procedure = s.procedureId === undefined || authorHidden ? undefined : procedures.get(s.procedureId);
     const hidden = isWithheldFromReader(s);
+    const { supersededBy: _unlinked, ...unlinkedAssertion } = shownAssertion;
     return {
-      assertion: successor === undefined ? shownAssertion : { ...shownAssertion, supersededBy: successor },
+      assertion: s.supersededBy === undefined ? shownAssertion
+        : !linked ? (unlinkedAssertion as Assertion)
+          : successor === undefined ? shownAssertion : { ...shownAssertion, supersededBy: successor },
       authorHidden,
       ...(author ? { author } : {}),
       ...(authorHidden ? {} : principal ? { principal: principal.displayName } : author?.principalId && author.principalId !== author.id ? { principal: author.principalId } : {}),
@@ -193,7 +205,7 @@ export function cellDetail(
       ...(s.missing && !hidden ? { absence: absenceOf(s.missing.code, s.missing.note) } : {}),
       withheldFromReader: hidden,
       superseded: !live.has(s),
-      evidence: s.evidence.map(evidenceOf),
+      evidence: shownAssertion.evidence.map(evidenceOf),
       ...(s.roundId !== undefined ? { round: round?.label ?? `round ${round?.index ?? s.roundId}` } : {}),
       ...(s.procedureId !== undefined && !authorHidden ? { procedure: procedure?.describedAs ?? s.procedureId } : {}),
     };
@@ -208,6 +220,15 @@ export function cellDetail(
       ? absenceOf(inapplicable ? NOT_APPLICABLE : NOT_ASSESSED)
       : undefined;
   const visible = cell ? { assertions: cell.assertions.filter((s) => !isWithheldFromReader(s)) } : { assertions: [] };
+  // The set's description counts people and reads their kind from the authors: for a hidden author that is the author. Each hidden
+  // assertion stands as an unknown hand of its own, with no independence claimed: the count is still of assertions, never of raters.
+  const inSet = (c: { assertions: Assertion[] }) => (hiddenIds.size === 0 ? c : {
+    assertions: c.assertions.map((s) => {
+      if (!hiddenIds.has(s.id)) return s;
+      const { independence: _independence, ...rest } = withoutAuthor(s, hiddenIds.get(s.id)!);
+      return { ...rest, authorId: hiddenIds.get(s.id)! };
+    }),
+  });
 
   return {
     alternativeId, criterionId, measure,
@@ -218,7 +239,7 @@ export function cellDetail(
     inapplicable,
     ...(measurement ? { measurement } : {}),
     assertions,
-    set: describeAssertionSet(visible, { authors: a.authors, levels: measurement?.levels }),
+    set: describeAssertionSet(inSet(visible), { authors: a.authors, levels: measurement?.levels }),
     ...distributionOf(liveAssertions(visible.assertions), measurement),
   };
 }

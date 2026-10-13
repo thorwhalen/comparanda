@@ -134,3 +134,68 @@ describe('cellDetail for a viewer', () => {
     expect(d.assertions.some((x) => x.authorHidden)).toBe(false);
   });
 });
+
+describe('what the review of #218 found', () => {
+  const a = blindRound();
+  const detail = (analysis = a, viewerId: string | undefined = 'cy') =>
+    cellDetail(analysis, 'x', 'rent', 'score', { vocabulary: vocabularyOf(analysis), viewer: { viewerId, now: NOW_OPEN } });
+  /** `a` with one assertion of cell x/rent changed. */
+  const with1 = (id: string, change: Record<string, unknown>) => ({
+    ...a, cells: a.cells.map((c) => (c.alternativeId === 'x' ? { ...c, assertions: c.assertions.map((s) => (s.id === id ? { ...s, ...change } : s)) } : c)),
+  }) as typeof a;
+
+  it('does not link a hand the viewer may name to one they may not, in the panel or in the record', () => {
+    // Ana (named, closed round) is replaced by the hidden scorer: shown as a replacement of nothing in particular.
+    const analysis = with1('a-rent-ana', { supersededBy: 'a-rent-scorer' });
+    const row = detail(analysis).assertions.find((x) => x.superseded && !x.authorHidden)!;
+    expect(row.assertion.supersededBy).toBeUndefined();
+    const scorer = activityRecord(analysis, { viewerId: 'cy', now: NOW_OPEN }).find((e) => e.value === 5)!;
+    expect(scorer.kind).toBe('asserted');
+    expect(scorer.previous).toBeUndefined();
+    // And the other way round: a hidden assertion replaced by a named one.
+    const back = with1('a-rent-ben-2', { authorId: 'ana', roundId: 'r0' });
+    expect(detail(back).assertions.find((x) => x.superseded && x.authorHidden)!.assertion.supersededBy).toBeUndefined();
+    expect(activityRecord(back, { viewerId: 'cy', now: NOW_OPEN }).find((e) => e.value === 4)!.kind).toBe('asserted');
+  });
+
+  it('does not let the description of the set count a hidden hand as someone already named', () => {
+    const analysis = {
+      ...with1('a-rent-ben', { authorId: 'ana-persona', supersededBy: undefined }),
+      authors: [...a.authors, { id: 'ana-persona', displayName: 'Ana as buyer', kind: 'human' as const, principalId: 'ana' }],
+    } as typeof a;
+    const { set } = detail(analysis);
+    expect(set.label).not.toMatch(/one person/);
+    expect(set.principals).toBe(set.n);
+    expect(set.independence).toBe('unknown');
+    expect(leaks(set)).toEqual([]);
+  });
+
+  it('gives a hidden assertion\'s evidence stand-in ids, and drops what it hides', () => {
+    const evidence = { id: 'ev-ben-survey', target: 'https://example.com/survey', stance: 'supports', sourceType: 'primary', derivedFrom: [] };
+    const analysis = with1('a-rent-scorer', { evidence: [evidence] });
+    const d = detail(analysis);
+    const row = d.assertions.find((x) => x.assertion.id.startsWith('hidden-author:') && x.evidence.length > 0)!;
+    expect(row.evidence[0]!.ref.id).toMatch(/^hidden-author:\d+:evidence-1$/);
+    expect(gives(d)).not.toContain('ev-ben-survey');
+  });
+
+  it('keeps its stand-in ids apart from ids the document already uses', () => {
+    const analysis = with1('a-rent-ana', { id: 'hidden-author:1' });
+    const ids = detail(analysis).assertions.map((x) => x.assertion.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('reads a round\'s closing time with no zone as UTC, so it closes for every reader at once', () => {
+    const analysis = { ...a, rounds: a.rounds.map((r) => (r.id === 'r1' ? { ...r, closedAt: '2026-09-20T00:00:00' } : r)) } as typeof a;
+    const entries = (now: string) => activityRecord(analysis, { viewerId: 'cy', now }).filter((e) => e.round === 'Round one');
+    expect(entries('2026-09-19T23:59:59Z').every((e) => e.whoHidden)).toBe(true);
+    expect(entries('2026-09-20T00:00:00Z').every((e) => !e.whoHidden)).toBe(true);
+  });
+
+  it('does not take the anonymous reader for an author who is called anonymous', () => {
+    // The view passes no viewer id for the anonymous identity; core, given none, hides every author of an open round.
+    const withAnon = with1('a-rent-scorer', { authorId: 'anonymous' });
+    const d = detail(withAnon, undefined);
+    expect(d.assertions.filter((x) => x.authorHidden)).toHaveLength(3);
+  });
+});

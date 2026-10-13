@@ -67,9 +67,18 @@ export interface ViewerContext {
 const EVERYTHING = (because: AssertionVisibility['because']): AssertionVisibility =>
   ({ author: true, value: 'shown', justification: true, because });
 
+/**
+ * A moment as milliseconds. A date-time with no zone is read as UTC, not as the
+ * reader's local time: the same round must be closed, or open, for every reader
+ * (the schema's times are bare strings; `Date.parse` would take the host's zone).
+ */
+function instant(iso: string): number {
+  return Date.parse(/T\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(iso) ? `${iso}Z` : iso);
+}
+
 /** Whether a round has closed by `now`. Unclosed rounds are open. */
 export function roundClosed(round: Round, now: string): boolean {
-  return round.closedAt !== undefined && Date.parse(round.closedAt) <= Date.parse(now);
+  return round.closedAt !== undefined && instant(round.closedAt) <= instant(now);
 }
 
 /**
@@ -124,8 +133,10 @@ export function visibilityFor(a: Analysis, viewer: ViewerContext): Map<string, A
  * show an author the round hides without bypassing core.
  */
 export function withoutAuthor(s: Assertion, shownId: string): Assertion {
-  const { procedureId: _procedure, ...rest } = s;
-  return { ...rest, id: shownId, authorId: '' };
+  // The procedure names the agent; a perturbation's seed and detail are free text from the same run.
+  const { procedureId: _procedure, perturbation: _perturbation, ...rest } = s;
+  // Evidence ids are minted by the same producers, so they stand in too.
+  return { ...rest, id: shownId, authorId: '', evidence: s.evidence.map((e, i) => ({ ...e, id: `${shownId}:evidence-${i + 1}` })) };
 }
 
 /**

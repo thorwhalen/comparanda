@@ -83,3 +83,45 @@ describe('mountMatrix says who is looking when the host does not', () => {
     expect(html).not.toContain('Ben Rivera');
   });
 });
+
+describe('who is looking changes while the panel is open (review of #218)', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  /** An identity that answers when told to: the host's sign-in finishing after the page is up. */
+  function laterIdentity(id: string) {
+    let resolve!: () => void;
+    const answer = new Promise<void>((r) => { resolve = r; });
+    const me = anonymousIdentity({ id, displayName: 'Ben Rivera' });
+    return { identity: { ...me, current: async () => { await answer; return me.current(); } }, signIn: resolve };
+  }
+
+  it('shows the reader their own authorship when their identity arrives after the panel is up, and not before', async () => {
+    const { identity, signIn } = laterIdentity('ben');
+    const before = await openCell({ analysis, measure: 'score', identity });
+    expect(before).not.toContain('Ben Rivera');
+    signIn();
+    await tick();
+    await tick();
+    expect(el.innerHTML).toContain('Ben Rivera');
+  });
+
+  it('takes their own authorship away again when the identity is swapped for another reader\'s', async () => {
+    const own = await openCell({ analysis, measure: 'score', identity: anonymousIdentity({ id: 'ben', displayName: 'Ben Rivera' }) });
+    expect(own).toContain('Ben Rivera');
+    handle!.update({ identity: anonymousIdentity({ id: 'cy' }) });
+    await tick();
+    expect(el.innerHTML).not.toContain('Ben Rivera');
+    // And to nobody known (the identity cleared), the same.
+    handle!.update({ identity: anonymousIdentity({ id: 'ben', displayName: 'Ben Rivera' }) });
+    await tick();
+    expect(el.innerHTML).toContain('Ben Rivera');
+    handle!.update({ identity: anonymousIdentity() });
+    await tick();
+    expect(el.innerHTML).not.toContain('Ben Rivera');
+  });
+
+  it('does not take the anonymous reader for an author who is called anonymous', async () => {
+    const odd = { ...analysis, authors: [...analysis.authors, { id: 'anonymous', displayName: 'Anon Author', kind: 'human' as const }], cells: analysis.cells.map((c) => ({ ...c, assertions: c.assertions.map((s) => (s.id === 'a-rent-scorer' ? { ...s, authorId: 'anonymous' } : s)) })) } as typeof analysis;
+    const html = await openCell({ analysis: odd, measure: 'score' });
+    expect(html).not.toContain('Anon Author');
+  });
+});

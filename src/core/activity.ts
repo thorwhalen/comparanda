@@ -86,8 +86,12 @@ export function activityRecord(a: Analysis, viewer: ViewerContext, { since }: Ac
       const visibility = assertionVisibility(a, s, viewer);
       // The redacted copy is all this loop reads from here on: nothing below can name an author the round hides.
       const shown = redactForViewer(s, visibility, 'hidden');
-      const before = predecessors.get(s.id);
-      const previous = before === undefined ? undefined : redactForViewer(before, assertionVisibility(a, before, viewer), 'hidden').value;
+      // A replacement is shown as one only between two assertions the viewer may attribute alike: linking a named hand to an
+      // unnamed one would say they are the same (people mostly revise their own).
+      const candidate = predecessors.get(s.id);
+      const beforeVisibility = candidate === undefined ? undefined : assertionVisibility(a, candidate, viewer);
+      const before = beforeVisibility?.author === visibility.author ? candidate : undefined;
+      const previous = before === undefined ? undefined : redactForViewer(before, beforeVisibility!, 'hidden').value;
       const who = visibility.author ? names.get(s.authorId) ?? s.authorId : undefined;
       const kind: ActivityKind = before === undefined ? 'asserted' : 'changed';
       const verb = before === undefined ? 'recorded' : 'changed';

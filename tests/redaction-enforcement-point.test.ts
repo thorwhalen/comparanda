@@ -17,11 +17,15 @@ const view = join(repo, 'src', 'view');
 
 /** Reads of an author's identity in the view, by file, with the reason each is not an assertion's author. */
 const ALLOWED: Readonly<Record<string, { reads: number; because: string }>> = {
-  'threads.tsx': { reads: 2, because: 'comments, not assertions: they belong to no round (ADR-0023), so their authors are always shown' },
-  'detail-panel.tsx': { reads: 2, because: 'the fallback for an author the document does not describe, reached only when `authorHidden` is false; and the successor\'s name, behind the same flag' },
+  'threads.tsx': { reads: 3, because: 'comments, not assertions: they belong to no round (ADR-0023), so their authors are always shown' },
+  'detail-panel.tsx': {
+    reads: 7,
+    because: 'the redacted detail core hands it: `author`, `principal` and the successor\'s name are absent when `authorHidden`, and the fallback for an author the document does not describe is reached only when it is not',
+  },
+  'mount.ts': { reads: 1, because: '`.author` of a visibility verdict (may this viewer be told who), compared to decide whether a new reader needs a redraw' },
 };
 
-const NAMES_AN_AUTHOR = /\bauthorId\b|\bprincipalId\b|\bdisplayName\b|\bprocedureId\b|\.authors\b/g;
+const NAMES_AN_AUTHOR = /\bauthorId\b|\bprincipalId\b|\bdisplayName\b|\bprocedureId\b|\.authors\b|\.author\b|\.principal\b|\battributions?\(/g;
 
 describe('the view names an author only where core has already decided it may', () => {
   const files = readdirSync(view, { recursive: true, withFileTypes: true }).filter((e) => e.isFile() && /\.tsx?$/.test(e.name));
@@ -38,6 +42,6 @@ describe('the view names an author only where core has already decided it may', 
   });
 
   it.each(Object.entries(ALLOWED))('%s reads an author no more often than allowed', (file, { reads: allowed }) => {
-    expect(reads.get(file)).toBeLessThanOrEqual(allowed);
+    expect(reads.get(file)).toBe(allowed);
   });
 });
