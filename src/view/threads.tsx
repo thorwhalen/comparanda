@@ -10,12 +10,12 @@
  */
 import { useRef, useState } from 'preact/hooks';
 
-import type { Affordances, EditTarget } from '../core/affordances.js';
+import type { Affordances } from '../core/affordances.js';
 import type { Analysis } from '../core/schema/analysis.js';
 import type { Anchor, Thread } from '../core/schema/annotations.js';
 import { aliasesOf } from '../core/schema/structure.js';
 import { axisGroups, groupsOf } from '../core/schema/groups.js';
-import { commentTarget as targetOf, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
+import { commentTarget, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
 import { attributions } from '../core/identity.js';
 import { capitalise } from './words.js';
 
@@ -45,7 +45,7 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   const open = all.filter((x) => !x.thread.resolved);
   const resolved = all.filter((x) => x.thread.resolved);
   const choices = anchorChoices(analysis, position, measure, words);
-  const allowed = affordances.comment(choices[0]!.target, 'start');
+  const allowed = affordances.comment(commentTarget(choices[0]!.anchor), 'start');
   const names = attributions(analysis.authors);
   return (
     <section class="comparanda-threads" aria-labelledby={`${idBase}-threads`} data-detail="threads">
@@ -76,8 +76,8 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
             label={`Start a thread on ${choices[0]!.here}`} action="Start thread" idBase={`${idBase}-new`}
             choices={choices.map((x) => x.here)}
             send={(body, i = 0) => {
-              const { anchor, target } = choices[i]!;
-              const may = affordances.comment(target, 'start');
+              const { anchor } = choices[i]!;
+              const may = affordances.comment(commentTarget(anchor), 'start');
               return may.enabled ? writes.start(anchor, body) : Promise.reject(new Error(may.reason ?? 'not allowed here'));
             }}
           />
@@ -92,10 +92,10 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
 }) {
   const { thread, relation } = at;
   // Asked about the thread's own anchor, not the reader's position: a group's thread listed at a member is the group's.
-  const anchor = targetOf(thread.anchor);
+  const target = commentTarget(thread.anchor);
   // Each act is its own question to the host (#194): a reader may answer where only the owner resolves.
-  const mayReply = thread.resolved ? undefined : affordances.comment(anchor, 'reply');
-  const mayToggle = affordances.comment(anchor, thread.resolved ? 'reopen' : 'resolve');
+  const mayReply = thread.resolved ? undefined : affordances.comment(target, 'reply');
+  const mayToggle = affordances.comment(target, thread.resolved ? 'reopen' : 'resolve');
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
   // A ref, not `busy`: two activations in one task both see the same render.
@@ -193,7 +193,8 @@ function Compose({ label, action, idBase, send, choices }: {
   );
 }
 
-interface AnchorChoice { anchor: Anchor; target: EditTarget; here: string }
+/** A place a new thread may be anchored, and its name in words. What the host is asked about is `commentTarget(anchor)`. */
+interface AnchorChoice { anchor: Anchor; here: string }
 
 /**
  * What a thread started here may be about, first the position itself: on a
@@ -205,7 +206,7 @@ function anchorChoices(analysis: Analysis, position: Position, measure: string, 
   const first = anchorOf(analysis, position, measure, words);
   const live = analysis.groups.filter((g) => !g.tombstoned);
   const group = (g: (typeof live)[number]): AnchorChoice => ({
-    anchor: { scope: 'group', groupId: g.id, repairHint: g.label }, target: { kind: 'group', id: g.id }, here: `the group ${g.label}`,
+    anchor: { scope: 'group', groupId: g.id, repairHint: g.label }, here: `the group ${g.label}`,
   });
   const alt = analysis.alternatives.find((x) => x.id === position.alternativeId);
   const crit = analysis.criteria.find((x) => x.id === position.criterionId);
@@ -215,7 +216,6 @@ function anchorChoices(analysis: Analysis, position: Position, measure: string, 
   if (alt && crit) {
     const pairs = live.filter((g) => altGroups!.includes(g.id)).flatMap((g) => live.filter((h) => critGroups!.includes(h.id)).map((h) => ({
       anchor: { scope: 'group-pair', groupId: g.id, otherGroupId: h.id, repairHint: `${g.label} \u00d7 ${h.label}` } as Anchor,
-      target: { kind: 'group-pair', id: `${g.id}/${h.id}` } as EditTarget,
       here: `the block ${g.label} \u00d7 ${h.label}`,
     })));
     return [first, ...pairs];
@@ -224,21 +224,19 @@ function anchorChoices(analysis: Analysis, position: Position, measure: string, 
   return [first, ...live.filter((g) => own === undefined || own.includes(g.id)).map(group)];
 }
 
-/** The anchor a new thread here takes, what the affordance is asked about, and its name in words. */
-function anchorOf(analysis: Analysis, { alternativeId, criterionId }: Position, measure: string, words: ReturnType<typeof aliasesOf>):
-  { anchor: Anchor; target: EditTarget; here: string } {
+/** The anchor a new thread here takes, and its name in words. */
+function anchorOf(analysis: Analysis, { alternativeId, criterionId }: Position, measure: string, words: ReturnType<typeof aliasesOf>): AnchorChoice {
   const alt = analysis.alternatives.find((x) => x.id === alternativeId);
   const crit = analysis.criteria.find((x) => x.id === criterionId);
   if (alt && crit) {
     return {
       anchor: { scope: 'cell', alternativeId: alt.id, criterionId: crit.id, measure, repairHint: `${alt.label} / ${crit.label}` },
-      target: { kind: 'cell', id: `${alt.id}/${crit.id}` },
       here: `this cell (${crit.label}, ${alt.label})`,
     };
   }
-  if (alt) return { anchor: { scope: 'alternative', alternativeId: alt.id, repairHint: alt.label }, target: { kind: 'alternative', id: alt.id }, here: `the ${words.alternative} ${alt.label}` };
-  if (crit) return { anchor: { scope: 'criterion', criterionId: crit.id, repairHint: crit.label }, target: { kind: 'criterion', id: crit.id }, here: `the ${words.criterion} ${crit.label}` };
-  return { anchor: { scope: 'analysis' }, target: { kind: 'analysis' }, here: 'the analysis as a whole' };
+  if (alt) return { anchor: { scope: 'alternative', alternativeId: alt.id, repairHint: alt.label }, here: `the ${words.alternative} ${alt.label}` };
+  if (crit) return { anchor: { scope: 'criterion', criterionId: crit.id, repairHint: crit.label }, here: `the ${words.criterion} ${crit.label}` };
+  return { anchor: { scope: 'analysis' }, here: 'the analysis as a whole' };
 }
 
 /** Where a thread listed here by inheritance is anchored. */
