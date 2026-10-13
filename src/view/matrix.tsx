@@ -89,7 +89,7 @@ export interface MatrixViewProps {
   /**
    * The detail panel opened or closed (`session.detailPanelOpen`, #94). `into`:
    * the reader asked by keyboard, so focus goes into the panel once it renders.
-   * Without this, the panel stays as the view state says.
+   * The panel is drawn only with this, since without it nothing could close it.
    */
   onPanelChange?: (open: boolean, options?: { into?: boolean }) => void;
 }
@@ -249,7 +249,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     revealClear(from);
     const [r, c] = from.getAttribute('data-cell')!.split(':').map(Number) as [number, number];
     // Enter opens the details of this position and goes into them; Escape closes them (#94).
-    if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey && onPanelChange) {
+    // On the grid position itself only: a control inside it (a reorder handle) keeps its own Enter.
+    if (event.key === 'Enter' && event.target === from && !event.ctrlKey && !event.shiftKey && onPanelChange) {
       event.preventDefault();
       onPanelChange(true, { into: true });
       return;
@@ -359,7 +360,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       </div>
       {panelOpen && onPanelChange && (
         <DetailPanel
-          analysis={analysis} measure={measure} vocabulary={vocabulary} focus={view.session.focus} standing={standing}
+          analysis={analysis} measure={measure} vocabulary={vocabulary} standing={standing}
+          // Where the grid's stop actually is: a hidden or removed id has fallen back to its header.
+          focus={grid.focusAt(at.r, at.c)}
           headingId={`${helpId}-panel`}
           onClose={() => onPanelChange(false)}
           onReturn={() => root.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus()}

@@ -10,7 +10,7 @@ import { userEvent } from '@vitest/browser/context';
 
 import { Analysis, vocabularyOf } from '../../src/core/schema/analysis.js';
 import { cellDetail } from '../../src/core/detail.js';
-import { initialViewState, setDetailPanel, setFocus, type ViewState } from '../../src/core/view-state.js';
+import { initialViewState, setDetailPanel, setFilter, setFocus, type ViewState } from '../../src/core/view-state.js';
 import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
@@ -100,6 +100,68 @@ describe('opening and closing', () => {
     cellOf('berlin', 'rent').focus();
     await userEvent.keyboard('{ArrowRight}');
     expect(heading().textContent).toContain(label('berlin', relocation.criteria[1]!.id));
+  });
+});
+
+describe('review findings', () => {
+  it('a host that keeps only focus does not close the panel the reader opened', async () => {
+    const base = initialViewState(relocation);
+    const handle = mount({ analysis: relocation, measure: 'score', view: base, onViewChange: (v) => handle.update({ view: setFocus(base, v.session.focus) }) });
+    cellOf('berlin', 'rent').focus();
+    await userEvent.keyboard('{Enter}');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.keyboard('{ArrowRight}');
+    expect(panel()).not.toBeNull();
+    // A host that says something new about the panel is obeyed, as with focus.
+    handle.update({ view: setDetailPanel(base, true) });
+    expect(panel()).not.toBeNull();
+    handle.update({ view: base });
+    expect(panel()).toBeNull();
+  });
+
+  it('describes where the grid stop is, not a hidden id', () => {
+    const open = setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'rent' }), true);
+    const handle = mount({ analysis: relocation, measure: 'score', view: open });
+    handle.update({ view: setFilter(open, { hiddenAlternatives: ['berlin'] }) });
+    expect(panel()!.getAttribute('data-panel')).not.toBe('cell');
+    expect(heading().textContent).toContain('Rent');
+    expect(heading().textContent).not.toContain('Berlin');
+  });
+
+  it('never a bare check verdict, even with no standing given', () => {
+    mount({ analysis: relocation, measure: 'score', view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true) });
+    for (const check of panel()!.querySelectorAll('.comparanda-check')) {
+      if (/Quote check:/.test(check.textContent!)) expect(check.textContent).toMatch(/not assessed|checker/);
+    }
+  });
+
+  it('the bar draws counts in proportion, whatever the labels', () => {
+    mount({ analysis: relocation, measure: 'score', view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true) });
+    const [two, one] = Array.from(panel()!.querySelectorAll<HTMLElement>('.comparanda-bar span')).map((s) => s.getBoundingClientRect().width);
+    expect(two! / one!).toBeCloseTo(2, 1);
+  });
+
+  it('a render that throws on opening changes nothing, and a later fix shows the panel', async () => {
+    const handle = mount({ analysis: relocation, measure: 'score', standing: () => { throw new Error('boom'); } });
+    cellOf('berlin', 'rent').focus();
+    const errors: unknown[] = [];
+    const onError = (e: ErrorEvent) => { errors.push(e.error); e.preventDefault(); };
+    window.addEventListener('error', onError);
+    try { await userEvent.keyboard('{Enter}'); } catch (e) { errors.push(e); }
+    window.removeEventListener('error', onError);
+    expect(panel()).toBeNull();
+    expect(el.querySelector('[role="grid"]')).not.toBeNull();
+    handle.update({ standing: undefined });
+    expect(panel()).toBeNull();
+    cellOf('berlin', 'rent').focus();
+    await userEvent.keyboard('{Enter}');
+    expect(panel()).not.toBeNull();
+  });
+
+  it('a superseded assertion says so in words', () => {
+    mount({ analysis: relocation, measure: 'score', view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'seoul', criterionId: 'school-quality' }), true) });
+    const old = panel()!.querySelector('[data-superseded="true"]')!;
+    expect(old.textContent).toMatch(/^Superseded by /);
   });
 });
 

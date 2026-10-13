@@ -176,7 +176,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 .comparanda-matrix .comparanda-distribution { margin: 0.5em 0; }
 .comparanda-matrix .comparanda-bar { display: flex; max-width: 18em; }
 .comparanda-matrix .comparanda-bar span {
-  flex-basis: 0; text-align: center; background: var(--cmp-header); color: var(--cmp-ink);
+  flex-basis: 0; min-width: 0; overflow: hidden; white-space: nowrap; text-align: center; background: var(--cmp-header); color: var(--cmp-ink);
   box-shadow: inset 0 0 0 1px var(--cmp-rule); padding: 0.1em 0; border: 0 solid transparent;
 }
 @media (forced-colors: active) {

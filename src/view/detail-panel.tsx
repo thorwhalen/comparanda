@@ -134,7 +134,9 @@ function CellSection({ analysis, measure, vocabulary, standing, alternativeId, c
       {superseded.length > 0 && (
         <>
           <h3>{`Superseded (${superseded.length}), kept for the record`}</h3>
-          <ol class="comparanda-assertions">{superseded.map((x) => <AssertionItem key={x.assertion.id} detail={x} />)}</ol>
+          <ol class="comparanda-assertions">{superseded.map((x) => (
+            <AssertionItem key={x.assertion.id} detail={x} replacedBy={d.assertions.find((y) => y.assertion.id === x.assertion.supersededBy)} />
+          ))}</ol>
         </>
       )}
     </>
@@ -151,7 +153,7 @@ function Absence({ absence }: { absence: NonNullable<ReturnType<typeof cellDetai
   );
 }
 
-function AssertionItem({ detail }: { detail: AssertionDetail }) {
+function AssertionItem({ detail, replacedBy }: { detail: AssertionDetail; replacedBy?: AssertionDetail | undefined }) {
   const { assertion: s, author } = detail;
   const who = author
     ? `${author.displayName} (${author.kind}${author.role ? `, ${author.role}` : ''}${detail.principal ? `, for ${detail.principal}` : ''})`
@@ -165,6 +167,7 @@ function AssertionItem({ detail }: { detail: AssertionDetail }) {
   return (
     <li data-assertion={s.id} data-superseded={detail.superseded ? 'true' : undefined}>
       <p class="comparanda-assertion-head">
+        {detail.superseded && `Superseded${replacedBy ? ` by ${replacedBy.author?.displayName ?? replacedBy.assertion.authorId}'s ${replacedBy.assertion.value !== undefined && !replacedBy.withheldFromReader ? String(replacedBy.assertion.value) : 'assertion'}` : ''}: `}
         <strong>{detail.withheldFromReader ? 'Withheld from you' : s.value !== undefined ? String(s.value) : 'No value'}</strong>
         {` — ${who}, ${s.at}`}
       </p>
@@ -185,8 +188,14 @@ const LINKABLE = /^https?:\/\//i;
 
 function EvidenceItem({ evidence: e }: { evidence: EvidenceDetail }) {
   const { ref } = e;
-  const check = ref.check && ref.check.status !== 'unchecked'
-    ? `Quote check: ${ref.check.status}${e.check ? `, ${FRESHNESS_SAID[e.check.freshness]}${e.check.sourceChanged ? '; the source has changed since' : ''}` : ''}.`
+  // Never a bare verdict: what the stored check records, and how far it can be trusted.
+  const c = ref.check;
+  const check = c && c.status !== 'unchecked'
+    ? `Quote check: ${c.status}` +
+      `${c.checkedAt ? `, on ${c.checkedAt}` : ''}${c.checkerVersion ? ` by checker ${c.checkerVersion}` : ''}` +
+      `${e.check ? `; ${FRESHNESS_SAID[e.check.freshness]}` : '; how current it is was not assessed'}` +
+      `${c.originalDrifted || e.check?.sourceChanged ? '; the source has changed since it was read' : ''}.` +
+      `${c.detail ? ` ${c.detail}` : ''}`
     : 'Quote not checked.';
   return (
     <li data-evidence={ref.id} data-stance={ref.stance}>
