@@ -281,6 +281,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     <th
       scope={scope} key={e.id} {...stop(r, c)} data-axis={axis} data-entry={e.id}
       data-grabbed={grab?.axis === axis && grab.id === e.id ? 'true' : undefined}
+      data-menu-open={menu === menuKey ? 'true' : undefined}
     >
       {reorder && (
         <button
@@ -294,7 +295,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             if (closedBy.current === menuKey) { closedBy.current = undefined; return; }
             setMenu(menu === menuKey ? undefined : menuKey);
           }}
-          onPointerDown={(event: PointerEvent) => { endDrag.current = startPointerDrag(event, {
+          // One drag at a time: a second press (another finger) ends the first, so a destroy never orphans it.
+          onPointerDown={(event: PointerEvent) => { endDrag.current?.(); endDrag.current = startPointerDrag(event, {
             scroller: root.current!.querySelector<HTMLElement>('.comparanda-scroll')!, axis, id: e.id,
             direction: scope === 'row' ? 'vertical' : 'horizontal',
             onDrop: ({ targetId, edge }) => {

@@ -13,7 +13,7 @@
  * however it ends -- release, cancel, `Escape`, or the cancel it returns,
  * which the matrix calls when it unmounts mid-drag -- so nothing outlives it.
  */
-import { elementAt } from './dom.js';
+import { treeOf } from './dom.js';
 
 /** Pixels a press must travel before it is a drag rather than a click on the handle. */
 const DRAG_THRESHOLD = 4;
@@ -57,11 +57,13 @@ export function startPointerDrag(event: PointerEvent, opts: PointerDragOptions):
   let marked: HTMLElement | undefined;
   let frame = 0;
   const doc = handle.ownerDocument;
+  // The tree hit-tests read from, taken at the press: the handle may be re-mounted elsewhere mid-drag.
+  const tree = treeOf(handle);
   const view = doc.defaultView!;
   const rtl = view.getComputedStyle(opts.scroller).direction === 'rtl';
 
   const target = (): { th: HTMLElement; drop: PointerDrop } | undefined => {
-    const th = elementAt(handle, x, y)?.closest<HTMLElement>(`th[data-entry][data-axis="${opts.axis}"]`);
+    const th = tree.elementFromPoint(x, y)?.closest<HTMLElement>(`th[data-entry][data-axis="${opts.axis}"]`);
     if (!th || !opts.scroller.contains(th)) return undefined;
     const r = th.getBoundingClientRect();
     const first = opts.direction === 'vertical' ? y < r.top + r.height / 2 : (x < r.left + r.width / 2) !== rtl;

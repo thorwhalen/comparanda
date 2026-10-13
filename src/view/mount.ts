@@ -144,6 +144,8 @@ export function mountMatrix(
   /** Who moves things, for the order's provenance: the identity's id once known (ADR-0012). */
   let actor = 'anonymous';
   const learnActor = (identity = current.identity ?? DEFAULT_IDENTITY) => {
+    // Until the new identity answers, nobody known: the previous one must not sign moves made in the gap.
+    actor = 'anonymous';
     // Only the identity still in force: a slow one the host has since replaced, or cleared, never signs a move.
     identity.current().then((a) => { if ((current.identity ?? DEFAULT_IDENTITY) === identity) actor = a.id; }, () => undefined);
   };

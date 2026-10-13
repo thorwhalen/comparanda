@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
-import { initialViewState, lockRun, setFilter, setGrouping, type ViewState } from '../../src/core/view-state.js';
+import { initialViewState, lockRun, setFilter, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
 import { arrangeToRevealStructure } from '../../src/core/reorder.js';
 import { anonymousIdentity } from '../../src/store/index.js';
 import { mountMatrix, type MatrixHandle } from '../../src/view/index.js';
@@ -288,6 +288,7 @@ describe('inside a shadow root (sprint review)', () => {
     expect(order().slice(0, 3)).toEqual([crits[0], crits[2], crits[1]]);
   });
 
+  // A guard against regression: this one passes on the code before the shadow-root fix too.
   it('the move menu focuses its first item on opening and keeps a later one focused', async () => {
     mount();
     await tick();
@@ -386,5 +387,37 @@ describe('the move menu on a row header (sprint review)', () => {
       const hit = document.elementFromPoint(r.left + 4, r.top + r.height / 2);
       expect(item.contains(hit), item.textContent!).toBe(true);
     }
+  });
+});
+
+describe('a drag whose own header is re-mounted mid-drag (sprint review)', () => {
+  it('still hit-tests, and the drop lands', async () => {
+    views = [];
+    const view = initialViewState(languages);
+    const handle = mountMatrix(el, { analysis: languages, measure: 'score', view, onViewChange: (v) => views.push(v) });
+    handles.push(handle);
+    const grip = header(crits[0]!).querySelector<HTMLElement>('.comparanda-handle')!;
+    const from = grip.getBoundingClientRect();
+    const pt = (x: number, y: number) => ({ clientX: x, clientY: y, bubbles: true, button: 0, pointerId: 1, isPrimary: true });
+    grip.dispatchEvent(new PointerEvent('pointerdown', pt(from.left + 2, from.top + 2)));
+    window.dispatchEvent(new PointerEvent('pointermove', pt(from.left + 40, from.top + 2)));
+    // Transposed: every header is re-created under a new parent, the dragged one included.
+    handle.update({ view: transpose(view) });
+    expect(grip.isConnected).toBe(false);
+    header(crits[2]!).scrollIntoView({ block: 'center', inline: 'center' });
+    const target = header(crits[2]!).getBoundingClientRect();
+    const errors: unknown[] = [];
+    const onError = (e: ErrorEvent) => { errors.push(e.error); e.preventDefault(); };
+    window.addEventListener('error', onError);
+    try {
+      window.dispatchEvent(new PointerEvent('pointermove', pt(target.left + target.width / 2, target.bottom - 3)));
+      window.dispatchEvent(new PointerEvent('pointerup', pt(target.left + target.width / 2, target.bottom - 3)));
+      await tick();
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+    expect(errors).toEqual([]);
+    const order = views.at(-1)!.criterionOrder.order;
+    expect(order.indexOf(crits[0]!)).toBe(order.indexOf(crits[2]!) + 1);
   });
 });
