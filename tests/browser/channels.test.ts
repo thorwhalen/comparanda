@@ -23,12 +23,6 @@ import relocationJson from '../../examples/relocation.json';
 import videoJson from '../../examples/video-generation.json';
 import { languagesWithConfidence } from '../fixtures/confidence.js';
 
-declare module '@vitest/browser/context' {
-  interface BrowserCommands {
-    emulateMedia(options: { forcedColors?: 'active' | 'none'; media?: 'print' | 'screen' | null }): Promise<void>;
-  }
-}
-
 const all = createEncodingRegistry(SHIPPED_ENCODINGS);
 const relocation = Analysis.parse(relocationJson);
 const confident = languagesWithConfidence();

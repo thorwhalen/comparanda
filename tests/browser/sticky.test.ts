@@ -13,6 +13,7 @@ import { userEvent } from '@vitest/browser/context';
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, setFocus, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
 import { mountMatrix, type MatrixHandle } from '../../src/view/index.js';
+import { obscured as obscuredIn } from '../support/sticky-geometry.js';
 import videoJson from '../../examples/video-generation.json';
 
 const video = Analysis.parse(videoJson);
@@ -35,41 +36,7 @@ afterEach(() => {
 
 const scroller = () => el.querySelector<HTMLElement>('.comparanda-scroll')!;
 const active = () => document.activeElement as HTMLElement;
-
-/**
- * How far the focused element is covered by the sticky header row and column;
- * 0 when clear. Measured from the sticky `<th>`s, where they are painted -- a
- * `<thead>` or `<tr>` box scrolls away with the content while its cells stick.
- */
-function obscured(): { block: number; inline: number; cut: number } {
-  const cell = active().getBoundingClientRect();
-  const headBottom = Math.max(...Array.from(el.querySelectorAll('thead th')).map((th) => th.getBoundingClientRect().bottom));
-  const rtl = getComputedStyle(scroller()).direction === 'rtl';
-  const inHead = active().closest('thead') !== null;
-  const isRowHeader = active().matches('th[scope="row"]');
-  // A header is sticky along its own axis: only the other axis's chrome can cover it.
-  const block = inHead ? 0 : Math.max(0, headBottom - cell.top);
-  let inline = 0;
-  if (!isRowHeader && !active().matches('.comparanda-corner')) {
-    const corner = el.querySelector('.comparanda-corner')!.getBoundingClientRect();
-    inline = rtl ? Math.max(0, cell.right - corner.left) : Math.max(0, corner.right - cell.left);
-  }
-  // And a cell that fits in the clear area is wholly in it: its far edges inside the scrollport too.
-  // In screen pixels, as the boxes are: the scroller's own lengths are CSS pixels, scaled by a host.
-  const s = scroller();
-  const box = s.getBoundingClientRect();
-  const [kx, ky] = [s.offsetWidth / box.width, s.offsetHeight / box.height];
-  const clearHeight = (s.clientHeight - parseFloat(getComputedStyle(s).scrollPaddingBlockStart)) / ky;
-  const clearWidth = (s.clientWidth - parseFloat(getComputedStyle(s).scrollPaddingInlineStart)) / kx;
-  const bottom = box.top + (s.clientTop + s.clientHeight) / ky;
-  const [lo, hi] = [box.left + s.clientLeft / kx, box.left + (s.clientLeft + s.clientWidth) / kx];
-  const cut = Math.max(
-    !inHead && cell.height <= clearHeight ? cell.bottom - bottom : 0,
-    !isRowHeader && cell.width <= clearWidth ? Math.max(cell.right - hi, lo - cell.left) : 0,
-    0,
-  );
-  return { block, inline, cut };
-}
+const obscured = () => obscuredIn(el, active());
 
 /** Press `key` `times` times, checking after each press that the focused cell is clear. */
 async function walk(key: string, times: number, where: string) {

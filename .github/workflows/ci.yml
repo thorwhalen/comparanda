@@ -88,6 +88,34 @@ jobs:
         # are tested as well as the source.
         run: pnpm build && pnpm test:standalone
 
+  a11y-gate:
+    # The accessibility merge gate (ADR-0029, #105): the automated set A1-A20,
+    # each check shown to hold on the shipped view and to fail on its own
+    # deliberately broken fixture. Its own job, so that the status a branch
+    # protection rule requires is named for what it protects and a red here
+    # cannot be mistaken for a flaky unit test.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: A1-A20, and the broken fixture for each
+        run: pnpm test:a11y
+
   hygiene:
     runs-on: ubuntu-latest
     steps:
