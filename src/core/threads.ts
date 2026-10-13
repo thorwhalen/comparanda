@@ -18,6 +18,7 @@
 import type { Analysis } from './schema/analysis.js';
 import type { Anchor, Comment, Thread } from './schema/annotations.js';
 import { resolveAnchor } from './schema/anchors.js';
+import { axisGroups, groupsOf } from './schema/groups.js';
 import type { Author } from './schema/provenance.js';
 
 /** Where a reader is: both ids a cell, one a header, none the analysis as a whole. */
@@ -50,8 +51,9 @@ export function threadsAt(a: Analysis, position: Position): ThreadAt[] {
   const { alternativeId, criterionId } = position;
   const alternative = alternativeId === undefined ? undefined : a.alternatives.find((x) => x.id === alternativeId);
   const criterion = criterionId === undefined ? undefined : a.criteria.find((x) => x.id === criterionId);
-  const altGroups = new Set(alternative?.groupIds ?? []);
-  const critGroups = new Set(criterion?.groupIds ?? []);
+  // With the groups' ancestors: a thread on a parent group bears on its subgroups' members too.
+  const altGroups = new Set(alternative ? groupsOf(axisGroups(a, 'alternatives'), alternative.id) : []);
+  const critGroups = new Set(criterion ? groupsOf(axisGroups(a, 'criteria'), criterion.id) : []);
   const relationOf = (anchor: Anchor): ThreadRelation | undefined => {
     switch (anchor.scope) {
       case 'analysis':

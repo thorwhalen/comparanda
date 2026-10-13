@@ -160,20 +160,31 @@ export function mountMatrix(
     current.onViewChange?.(shown);
   };
 
+  /** The thread writes in flight, chained so each builds on the last. */
+  let writes: Promise<unknown> = Promise.resolve();
   /**
    * A thread write, through the source the matrix follows: who is acting comes
-   * from the host's identity (the anonymous one by default, ADR-0012), and the
-   * document written is the one shown when the write is made, so a write that
-   * landed meanwhile is built on rather than undone. The source's event
-   * re-renders the matrix; nothing here draws.
+   * from the host's identity (the anonymous one by default, ADR-0012). Writes
+   * are queued and each is built on the source's latest document, so none
+   * undoes another. The source's event re-renders the matrix; nothing here draws.
    */
-  const writeThread = async (change: (a: Analysis, author: Author, at: string) => Analysis) => {
-    const { source, identity = DEFAULT_IDENTITY } = current;
-    if (destroyed || !source) throw new Error('there is no source behind this matrix to write to.');
-    const author = await identity.current();
-    const at = now().toISOString();
-    if (destroyed || current.source !== source) throw new Error('the matrix changed source while the comment was being written; nothing was written.');
-    await source.update(analysis.id, change(analysis, author, at));
+  const writeThread = (change: (a: Analysis, author: Author, at: string) => Analysis): Promise<void> => {
+    const run = async () => {
+      const { source, identity = DEFAULT_IDENTITY } = current;
+      const id = analysis.id;
+      if (destroyed || !source) throw new Error('there is no source behind this matrix to write to.');
+      const author = await identity.current();
+      if (destroyed || current.source !== source || analysis.id !== id) {
+        throw new Error('the matrix changed document while the comment was being written; nothing was written.');
+      }
+      // The source's own latest document, not the one shown: a write in flight may not have come back as an event yet.
+      const latest = (await source.getOne(id)) ?? analysis;
+      await source.update(id, change(latest, author, now().toISOString()));
+    };
+    // One write at a time: two sent together would each build on the same document, and the second would undo the first.
+    const next = writes.then(run, run);
+    writes = next.catch(() => undefined);
+    return next;
   };
   const threadWrites: ThreadWrites = {
     start: (anchor, body) => writeThread((a, author, at) =>

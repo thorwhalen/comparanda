@@ -14,6 +14,7 @@ import type { Affordances, EditTarget } from '../core/affordances.js';
 import type { Analysis } from '../core/schema/analysis.js';
 import type { Anchor, Thread } from '../core/schema/annotations.js';
 import { aliasesOf } from '../core/schema/structure.js';
+import { axisGroups, groupsOf } from '../core/schema/groups.js';
 import { threadsAt, type Position, type ThreadAt } from '../core/threads.js';
 import { capitalise } from './words.js';
 
@@ -51,7 +52,7 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
       {open.length > 0 && (
         <ol class="comparanda-thread-list">
           {open.map((x) => (
-            <ThreadItem key={x.thread.id} at={x} analysis={analysis} names={names} writes={allowed.enabled ? writes : undefined} idBase={idBase} />
+            <ThreadItem key={x.thread.id} at={x} analysis={analysis} names={names} writes={writes} affordances={affordances} idBase={idBase} />
           ))}
         </ol>
       )}
@@ -62,12 +63,14 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
       )}
       {showResolved && resolved.length > 0 && (
         <ol class="comparanda-thread-list" data-resolved="true">
-          {resolved.map((x) => <ThreadItem key={x.thread.id} at={x} analysis={analysis} names={names} idBase={idBase} />)}
+          {resolved.map((x) => <ThreadItem key={x.thread.id} at={x} analysis={analysis} names={names} affordances={affordances} idBase={idBase} />)}
         </ol>
       )}
       {allowed.enabled && writes
         ? (
           <Compose
+            // A draft and its choice belong to the position they were written at: moving the panel starts afresh.
+            key={`${position.alternativeId ?? ''}\u0000${position.criterionId ?? ''}`}
             label={`Start a thread on ${choices[0]!.here}`} action="Start thread" idBase={`${idBase}-new`}
             choices={choices.map((x) => x.here)}
             send={(body, i = 0) => {
@@ -82,17 +85,27 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   );
 }
 
-function ThreadItem({ at, analysis, names, writes, idBase }: {
-  at: ThreadAt; analysis: Analysis; names: Map<string, string>; writes?: ThreadWrites | undefined; idBase: string;
+function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
+  at: ThreadAt; analysis: Analysis; names: Map<string, string>; writes?: ThreadWrites | undefined; affordances: Affordances; idBase: string;
 }) {
   const { thread, relation } = at;
-  const [error, setError] = useState<string | undefined>(undefined);
+  // Asked about the thread's own anchor, not the reader's position: a group's thread listed at a member is the group's.
+  const may = affordances.comment(targetOf(thread.anchor));
+  const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
   const who = (id: string | undefined) => (id === undefined ? 'someone' : names.get(id) ?? `an author this analysis does not describe (“${id}”)`);
   const resolve = async () => {
     setBusy(true);
     setError(undefined);
-    try { await writes!.resolve(thread.id); } catch (e) { setError(messageOf(e)); } finally { setBusy(false); }
+    try {
+      await writes!.resolve(thread.id);
+      // The thread leaves the open list, and focus with it: back to the panel's heading.
+      document.getElementById(idBase)?.focus();
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <li data-thread={thread.id} data-relation={relation}>
@@ -103,11 +116,14 @@ function ThreadItem({ at, analysis, names, writes, idBase }: {
         ))}
       </ol>
       {thread.resolved && <p class="comparanda-panel-hint">{`Resolved by ${who(thread.resolvedBy)}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}. Kept for the record.`}</p>}
-      {writes && !thread.resolved && (
+      {writes && !thread.resolved && !may.enabled && (
+        <p class="comparanda-reason">{`Answering or resolving this thread is not available: ${may.reason ?? 'not allowed here.'}`}</p>
+      )}
+      {writes && !thread.resolved && may.enabled && (
         <>
           <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />
           <button type="button" disabled={busy} onClick={resolve}>Resolve thread</button>
-          {error && <p role="alert">{`Not resolved: ${error}`}</p>}
+          {error && <p role="alert" key={error.attempt}>{`Not resolved: ${error.text}`}</p>}
         </>
       )}
     </li>
@@ -120,7 +136,7 @@ function Compose({ label, action, idBase, send, choices }: {
 }) {
   const [draft, setDraft] = useState('');
   const [choice, setChoice] = useState(0);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
   const submit = async (event: Event) => {
     event.preventDefault();
@@ -152,7 +168,7 @@ function Compose({ label, action, idBase, send, choices }: {
       <label for={`${idBase}-text`}>{choices && choices.length > 1 ? `Start a thread on ${choices[choice]}` : label}</label>
       <textarea id={`${idBase}-text`} rows={2} value={draft} onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)} />
       <button type="submit" disabled={busy}>{action}</button>
-      {error && <p role="alert">{`Not sent: ${error}`}</p>}
+      {error && <p role="alert" key={error.attempt}>{`Not sent: ${error.text}`}</p>}
     </form>
   );
 }
@@ -173,15 +189,18 @@ function anchorChoices(analysis: Analysis, position: Position, measure: string, 
   });
   const alt = analysis.alternatives.find((x) => x.id === position.alternativeId);
   const crit = analysis.criteria.find((x) => x.id === position.criterionId);
+  // Each entity's groups with their ancestors, as membership is read everywhere else.
+  const altGroups = alt ? groupsOf(axisGroups(analysis, 'alternatives'), alt.id) : undefined;
+  const critGroups = crit ? groupsOf(axisGroups(analysis, 'criteria'), crit.id) : undefined;
   if (alt && crit) {
-    const pairs = live.filter((g) => alt.groupIds.includes(g.id)).flatMap((g) => live.filter((h) => crit.groupIds.includes(h.id)).map((h) => ({
+    const pairs = live.filter((g) => altGroups!.includes(g.id)).flatMap((g) => live.filter((h) => critGroups!.includes(h.id)).map((h) => ({
       anchor: { scope: 'group-pair', groupId: g.id, otherGroupId: h.id, repairHint: `${g.label} \u00d7 ${h.label}` } as Anchor,
       target: { kind: 'group-pair', id: `${g.id}/${h.id}` } as EditTarget,
       here: `the block ${g.label} \u00d7 ${h.label}`,
     })));
     return [first, ...pairs];
   }
-  const own = alt?.groupIds ?? crit?.groupIds;
+  const own = altGroups ?? critGroups;
   return [first, ...live.filter((g) => own === undefined || own.includes(g.id)).map(group)];
 }
 
@@ -209,6 +228,29 @@ function onWhat(analysis: Analysis, thread: Thread): string {
   if (anchor.scope === 'group') return `On the group ${group(anchor.groupId)}:`;
   if (anchor.scope === 'group-pair') return `On the block ${group(anchor.groupId)} × ${group(anchor.otherGroupId)}:`;
   return `${capitalise(anchor.scope)}:`;
+}
+
+/**
+ * The last failure, re-keyed on every attempt so the alert is a new element
+ * and the same reason twice is announced twice.
+ */
+function useFailure(): [{ text: string; attempt: number } | undefined, (text: string | undefined) => void] {
+  const [failure, setFailure] = useState<{ text: string; attempt: number } | undefined>(undefined);
+  const set = (text: string | undefined) =>
+    setFailure((was) => (text === undefined ? undefined : { text, attempt: (was?.attempt ?? 0) + 1 }));
+  return [failure, set];
+}
+
+/** What a thread's anchor is, as the affordance is asked about it. */
+function targetOf(anchor: Anchor): EditTarget {
+  switch (anchor.scope) {
+    case 'cell': return { kind: 'cell', id: `${anchor.alternativeId ?? ''}/${anchor.criterionId ?? ''}` };
+    case 'alternative': return { kind: 'alternative', id: anchor.alternativeId ?? '' };
+    case 'criterion': return { kind: 'criterion', id: anchor.criterionId ?? '' };
+    case 'group': return { kind: 'group', id: anchor.groupId ?? '' };
+    case 'group-pair': return { kind: 'group-pair', id: `${anchor.groupId ?? ''}/${anchor.otherGroupId ?? ''}` };
+    case 'analysis': return { kind: 'analysis' };
+  }
 }
 
 function messageOf(e: unknown): string {

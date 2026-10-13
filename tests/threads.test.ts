@@ -51,6 +51,21 @@ describe('threadsAt', () => {
     expect(ids(threadsAt(a, {}))).toEqual(expect.arrayContaining(['tg', 'tp', 'ta']));
   });
 
+  it('a thread on a parent group bears on the members of its subgroups', () => {
+    const europe = relocation.groups.find((g) => g.id === 'g-europe')!;
+    const lisbon = relocation.alternatives.find((a) => a.id === 'lisbon')!;
+    let a: Analysis = {
+      ...relocation,
+      groups: [...relocation.groups, { ...europe, id: 'g-iberia', label: 'Iberia', parentId: europe.id } as never],
+      alternatives: relocation.alternatives.map((x) => (x.id === lisbon.id ? { ...x, groupIds: ['g-iberia'] } : x)),
+    };
+    a = Analysis.parse(a);
+    a = startThread(a, { threadId: 'tg', anchor: { scope: 'group', groupId: europe.id }, comment: note('c1') });
+    a = startThread(a, { threadId: 'tp', anchor: { scope: 'group-pair', groupId: europe.id, otherGroupId: 'g-cost' }, comment: note('c2') });
+    expect(ids(threadsAt(a, { alternativeId: lisbon.id }))).toContain('tg');
+    expect(ids(threadsAt(a, { alternativeId: lisbon.id, criterionId: 'rent' }))).toContain('tp');
+  });
+
   it('leaves an orphaned thread to the orphan tray', () => {
     const a = { ...relocation, criteria: relocation.criteria.map((c) => (c.id === 'school-quality' ? { ...c, tombstoned: true } : c)) };
     expect(threadsAt(a, { criterionId: 'school-quality' })).toEqual([]);

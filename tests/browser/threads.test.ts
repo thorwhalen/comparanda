@@ -133,6 +133,56 @@ describe('threads in the panel', () => {
   });
 });
 
+describe('review findings', () => {
+  it('two writes sent together both land: the second builds on the first', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    const slow: AnalysisSource = { ...source, update: async (id, doc) => { await new Promise((r) => setTimeout(r, 40)); return source.update(id, doc); } };
+    mount({ analysis: relocation, measure: 'score', source: slow, identity: dana, view: at({ alternativeId: 'berlin', criterionId: 'winter-daylight' }) });
+    const open = relocation.threads.find((t) => !t.resolved && t.anchor.alternativeId === 'berlin' && t.anchor.criterionId === 'winter-daylight')!;
+    const item = () => threads().querySelector(`[data-thread="${open.id}"]`)!;
+    await userEvent.click(item().querySelector('textarea')!);
+    await userEvent.keyboard('first');
+    await userEvent.click(Array.from(item().querySelectorAll('button')).find((b) => b.textContent === 'Reply')!);
+    await userEvent.click(Array.from(item().querySelectorAll('button')).find((b) => b.textContent === 'Resolve thread')!);
+    await new Promise((r) => setTimeout(r, 200));
+    const stored = (await source.getOne(relocation.id))!.threads.find((t) => t.id === open.id)!;
+    expect(stored.comments.at(-1)!.body).toBe('first');
+    expect(stored.resolved).toBe(true);
+  });
+
+  it('a draft stays where it was written: moving the panel starts afresh', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    const handle = mount({ analysis: relocation, measure: 'score', source, view: at({ alternativeId: 'berlin', criterionId: 'rent' }) });
+    const about = threads().querySelector<HTMLSelectElement>('select');
+    if (about) await userEvent.selectOptions(about, about.options[about.options.length - 1]!.value);
+    const box = Array.from(threads().querySelectorAll('textarea')).at(-1)!;
+    await userEvent.click(box);
+    await userEvent.keyboard('about berlin rent');
+    handle.update({ view: at({ criterionId: 'eu-residency-path' }) });
+    const fresh = Array.from(threads().querySelectorAll('textarea')).at(-1)!;
+    expect(fresh.value).toBe('');
+    expect(threads().textContent).not.toContain('undefined');
+  });
+
+  it('reply and resolve are asked of the thread\'s own anchor', () => {
+    const group = relocation.groups.find((g) => g.axis === 'alternatives')!;
+    const member = relocation.alternatives.find((a) => a.groupIds.includes(group.id))!;
+    const withGroup = startThread(relocation, {
+      threadId: 'tg', anchor: { scope: 'group', groupId: group.id },
+      comment: { id: 'c', at: '2026-10-13', body: 'grouping?', author: { id: 'dana', displayName: 'Dana', kind: 'human' } },
+    });
+    mount({
+      analysis: withGroup, measure: 'score', source: inMemoryAnalysisSource(withGroup), view: at({ alternativeId: member.id }),
+      authorize: (r) => ('target' in r && r.target?.kind === 'group' ? { enabled: false, reason: 'groups are the facilitator\'s to discuss' } : true),
+    });
+    const item = threads().querySelector('[data-thread="tg"]')!;
+    expect(item.querySelector('button')).toBeNull();
+    expect(item.textContent).toContain('groups are the facilitator\'s to discuss');
+    // The position's own form is still offered: the alternative is not refused.
+    expect(Array.from(threads().querySelectorAll('button')).some((b) => b.textContent === 'Start thread')).toBe(true);
+  });
+});
+
 describe('the grid says where discussion is', () => {
   it('a cell with an open thread says so in words, and the legend keys the mark', () => {
     mount({ analysis: relocation, measure: 'score' });

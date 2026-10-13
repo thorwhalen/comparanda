@@ -319,7 +319,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       </p>
       <Legend definition={active} legend={prepared.legend} glyphs={shownGlyphs} hatches={shownHatches} />
       {openHere.size > 0 && (
-        <p class="comparanda-legend-note"><ThreadMark count={1} quiet />{' A speech bubble and a number: open discussion threads on that cell, header or, at the corner, the analysis.'}</p>
+        <p class="comparanda-legend-note"><ThreadMark count={1} quiet />{' A speech bubble and a number: open discussion threads anchored on that cell or header, or at the corner on the analysis. Threads on groups and blocks are listed in the details of their members.'}</p>
       )}
       <div class="comparanda-body">
       {/* Not itself a tab stop: focusing a cell scrolls it, and the grid is the matrix's one stop. */}
