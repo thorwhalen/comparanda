@@ -8,12 +8,20 @@
  * Ask the node's own root instead.
  */
 
-/** The element that has focus in the tree `node` belongs to: its document, or its shadow root. */
+/**
+ * The document or shadow root `node` is rendered in. Take it while `node` is
+ * in the tree: a node that has since been removed is its own root.
+ */
+export function treeOf(node: Node): Document | ShadowRoot {
+  return node.getRootNode() as Document | ShadowRoot;
+}
+
+/** The element that has focus in the tree `node` belongs to. */
 export function activeElementOf(node: Node): Element | null {
-  return (node.getRootNode() as Document | ShadowRoot).activeElement ?? null;
+  return treeOf(node).activeElement ?? null;
 }
 
 /** The topmost element at a viewport point, as seen from inside the tree `node` belongs to. */
 export function elementAt(node: Node, x: number, y: number): Element | null {
-  return (node.getRootNode() as Document | ShadowRoot).elementFromPoint(x, y);
+  return treeOf(node).elementFromPoint(x, y);
 }

@@ -18,6 +18,7 @@ import { axisGroups, groupsOf } from '../core/schema/groups.js';
 import { commentTarget, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
 import { attributions } from '../core/identity.js';
 import { capitalise } from './words.js';
+import { treeOf } from './dom.js';
 
 /** The writes a thread takes, performed by whoever holds the source. Each settles when the source has it. */
 export interface ThreadWrites {
@@ -102,15 +103,17 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   const sending = useRef(false);
   const who = (id: string | undefined) => (id === undefined ? 'someone' : names.get(id) ?? `an author this analysis does not describe (“${id}”)`);
   /** Resolve an open thread, or reopen a resolved one (#186). */
-  const toggle = async () => {
+  const toggle = async (event: Event) => {
     if (sending.current) return;
+    // Taken now: by the time the write lands the button may have left the tree.
+    const tree = treeOf(event.currentTarget as Node);
     sending.current = true;
     setBusy(true);
     setError(undefined);
     try {
       await writes![thread.resolved ? 'reopen' : 'resolve'](thread.id);
       // The thread changes list, and focus leaves with it: back to the panel's heading.
-      document.getElementById(idBase)?.focus();
+      tree.getElementById(idBase)?.focus();
     } catch (e) {
       setError(messageOf(e));
     } finally {

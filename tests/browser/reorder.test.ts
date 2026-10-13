@@ -305,3 +305,22 @@ describe('inside a shadow root (sprint review)', () => {
     expect(root.activeElement).toBe(second);
   });
 });
+
+describe('who a move is signed by (sprint review)', () => {
+  it('a slow identity the host has since cleared never signs a move', async () => {
+    let resolve: ((a: Awaited<ReturnType<ReturnType<typeof anonymousIdentity>['current']>>) => void) | undefined;
+    const slow = { current: () => new Promise<never>((r) => { resolve = r as never; }) };
+    views = [];
+    const handle = mountMatrix(el, { analysis: languages, measure: 'score', identity: slow, onViewChange: (v) => views.push(v) });
+    handles.push(handle);
+    handle.update({ identity: undefined });
+    await tick();
+    resolve!({ id: 'signed-out', displayName: 'Signed out', kind: 'human', principalId: 'signed-out' });
+    await tick();
+    header(crits[1]!).focus();
+    await userEvent.keyboard(' ');
+    await userEvent.keyboard('{ArrowRight}');
+    await tick();
+    expect((views.at(-1)!.criterionOrder.provenance as { by?: string }).by).toBe('anonymous');
+  });
+});
