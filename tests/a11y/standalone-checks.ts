@@ -22,11 +22,9 @@ const SCHEMES = ['light', 'dark'] as const;
 /**
  * Axe rules the shipped page is known to fail, each with the issue that ends
  * the exception. A1 fails if one of these stops being reported, so an exception
- * cannot outlive its fix.
+ * cannot outlive its fix. None today.
  */
-const KNOWN_AXE_EXCEPTIONS: Readonly<Record<string, string>> = {
-  'page-has-heading-one': 'comparanda#211: the standalone shell has no <h1>',
-};
+const KNOWN_AXE_EXCEPTIONS: Readonly<Record<string, string>> = {};
 
 /** How long A19 watches after the matrix is up, for a request deferred to a timer. */
 const LATE_REQUEST_MS = 500;

@@ -127,7 +127,8 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
   // Verbatim when nothing is withheld: the document as given, not the parsed
   // copy with its defaults filled in. A projection is a new document.
   const inlined: unknown = discloses ? projectForReader(checked.analysis, discloses).analysis : wire;
-  const title = options.title ?? checked.analysis.title ?? checked.analysis.subject.question;
+  // The first that says something: an empty or blank title is no title (a page needs a <title> and an <h1> a reader can hear).
+  const title = [options.title, checked.analysis.title, checked.analysis.subject.question].map((t) => t?.trim()).find((t) => t) ?? checked.analysis.subject.question;
   const settings: StandaloneSettings = { measure };
 
   const { shell, codeBytes, rendered } = await bundleShell(entry);
@@ -142,6 +143,7 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
   const report = chargeBudget(shellBytes, contributions, budget || STANDALONE_BUDGET);
   if (budget !== false && !report.within) throw new BudgetExceeded(report);
   let html = splice(shell, EMPTY_TITLE, `<title>${escapeHtml(title)}</title>`);
+  html = splice(html, EMPTY_HEADING, filledHeading(escapeHtml(title)));
   html = splice(html, emptyData(ANALYSIS_ELEMENT_ID), filledData(ANALYSIS_ELEMENT_ID, inlined));
   const withSettings = (s: StandaloneSettings) => splice(html, emptyData(SETTINGS_ELEMENT_ID), filledData(SETTINGS_ELEMENT_ID, s));
   const page = withSettings(settings);
@@ -214,6 +216,19 @@ async function bundleShell(entry: string): Promise<{ shell: string; codeBytes: n
  * Vite HTML transform (its `%MODE%`-style substitution) ever sees it.
  */
 const EMPTY_TITLE = '<title></title>';
+/**
+ * The page's own heading: the title the tab shows, as the one `<h1>` a page of
+ * its own needs (axe `page-has-heading-one`, #211). The matrix is a component
+ * and owns no page-level heading; the shell is the host. The title text is
+ * spliced like the `<title>`'s, after the budget is charged; the 80-odd bytes of
+ * markup around it are in the template and are charged. `dir="auto"` gives a
+ * right-to-left title its own base direction; `overflow-wrap` keeps a title
+ * with no spaces (a URL) from forcing the page to scroll sideways (WCAG 1.4.10).
+ */
+const HEADING_OPEN = '<header><h1 dir="auto" style="font-size:1.25em;margin:.5em;overflow-wrap:anywhere">';
+const HEADING_CLOSE = '</h1></header>';
+const EMPTY_HEADING = HEADING_OPEN + HEADING_CLOSE;
+const filledHeading = (escaped: string) => HEADING_OPEN + escaped + HEADING_CLOSE;
 const emptyData = (id: string) => `<script type="application/json" id="${id}"></script>`;
 const filledData = (id: string, value: unknown) =>
   `<script type="application/json" id="${id}">${scriptSafeJson(value)}</script>`;
@@ -227,6 +242,7 @@ const TEMPLATE = [
   EMPTY_TITLE,
   '</head>',
   '<body>',
+  EMPTY_HEADING,
   `<main id="${ROOT_ELEMENT_ID}"></main>`,
   emptyData(ANALYSIS_ELEMENT_ID),
   emptyData(SETTINGS_ELEMENT_ID),

@@ -102,6 +102,22 @@ describe('what goes into the file', () => {
     expect(html).toContain('<title>Plans %MODE% &amp; %BASE_URL% &lt;b&gt;</title>');
   });
 
+  it('has one <h1>, the title, in a banner, escaped the same way (#211)', async () => {
+    const { html } = await buildStandalone(relocationJson, { title: 'Plans %MODE% & <b>' });
+    expect(html.match(/<h1\b/g)).toHaveLength(1);
+    expect(html).toMatch(/<header><h1 dir="auto" style="[^"]*">Plans %MODE% &amp; &lt;b&gt;<\/h1><\/header>/);
+    expect(built.html).toContain(`>${(relocation.title ?? relocation.subject.question).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')}</h1>`);
+  });
+
+  it('a blank title is no title: the <title> and the <h1> fall back to the analysis\'s own, never empty (#211)', async () => {
+    for (const title of ['', '   ']) {
+      const { html } = await buildStandalone(relocationJson, { title, check: 'static' });
+      const said = relocation.title ?? relocation.subject.question;
+      expect(html).toContain(`<title>${said}</title>`);
+      expect(html).toMatch(new RegExp(`<h1[^>]*>${said}</h1>`));
+    }
+  });
+
   it('refuses a measure the analysis does not have, rather than building a page that cannot show it', async () => {
     await expect(buildStandalone(relocationJson, { measure: 'nosuchmeasure' })).rejects.toThrow(/"nosuchmeasure" is not a measure/);
     await expect(buildStandalone(relocationJson, { measure: ' ' })).rejects.toThrow(/measure name is empty/);
