@@ -370,3 +370,21 @@ describe('destroying mid-drag (sprint review)', () => {
     }
   });
 });
+
+describe('the move menu on a row header (sprint review)', () => {
+  it('is drawn above the later rows\' sticky headers, so every item is where it looks', async () => {
+    mount();
+    const alt = languages.alternatives[0]!.id;
+    header(alt).focus();
+    await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+    const items = Array.from(el.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    expect(items.length).toBeGreaterThan(2);
+    for (const item of items.slice(0, 4)) {
+      item.scrollIntoView({ block: 'nearest' });
+      const r = item.getBoundingClientRect();
+      // The item's start side, which the next rows' headers cover when the menu is under them.
+      const hit = document.elementFromPoint(r.left + 4, r.top + r.height / 2);
+      expect(item.contains(hit), item.textContent!).toBe(true);
+    }
+  });
+});

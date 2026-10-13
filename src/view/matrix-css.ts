@@ -210,6 +210,11 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   min-width: 12em; max-height: 18em; overflow: auto; font-weight: 400; white-space: nowrap;
   background: var(--cmp-surface); color: var(--cmp-ink); border: 1px solid var(--cmp-muted);
 }
+/*
+ * A sticky header is its own stacking context, so the menu's z-index counts only inside it: lift the
+ * header holding an open menu above its siblings, or the next rows' headers paint over the menu.
+ */
+.comparanda-matrix thead th:has(.comparanda-menu), .comparanda-matrix tbody th:has(.comparanda-menu) { z-index: 5; }
 .comparanda-matrix .comparanda-menu [role="menuitem"] { padding: 0.15em 0.6em; cursor: pointer; }
 .comparanda-matrix .comparanda-menu [role="menuitem"]:focus { outline: 2px solid var(--cmp-focus); outline-offset: -2px; }
 .comparanda-matrix .comparanda-arrange p { margin: 0 0 0.25em; color: var(--cmp-muted); font-size: 0.9em; }
