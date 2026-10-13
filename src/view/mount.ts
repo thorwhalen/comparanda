@@ -11,6 +11,7 @@
 import { h, render, type ComponentType } from 'preact';
 
 import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/analysis.js';
+import { assertionVisibility, type ViewerContext } from '../core/schema/redaction.js';
 import { threadDoing, type Affordances, type ThreadAct } from '../core/affordances.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
@@ -102,6 +103,11 @@ const PROP_KEYS = [
   'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'source', 'authorize', 'onViewChange', 'identity',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
+/** Which assertions' authors the rounds hide from `viewer`, as a string to compare: equal strings, equal view. */
+function hiddenAuthors(a: Analysis, viewer: ViewerContext): string {
+  return a.cells.flatMap((c) => c.assertions.filter((s) => !assertionVisibility(a, s, viewer).author).map((s) => s.id)).join('\n');
+}
+
 /** Elements with a live matrix. Two mounts on one element would each think they own its children. */
 const mounted = new WeakSet<object>();
 
@@ -149,9 +155,11 @@ export function mountMatrix(
     // Only the identity still in force: a slow one the host has since replaced, or cleared, never signs a move.
     identity.current().then((a) => {
       if ((current.identity ?? DEFAULT_IDENTITY) !== identity || a.id === actor) return;
+      // Who is looking decides which authors an open round hides. Redraw only if that changes: a redraw for nothing resets what
+      // the reader is in the middle of.
+      const before = hiddenAuthors(analysis, { viewerId: actor, now: now().toISOString() });
       actor = a.id;
-      // Who is looking decides what an open round shows them.
-      if (!destroyed) draw();
+      if (!destroyed && hiddenAuthors(analysis, { viewerId: actor, now: now().toISOString() }) !== before) draw();
     }, () => undefined);
   };
   /** What the `view` the caller last gave said about the session, to tell a new one from a re-passed one. */
