@@ -22,7 +22,7 @@
 import { THEMES, type Theme } from '../theme.js';
 import { deltaE, interpolateLab, labToHex, pickInk, type Lab } from './colour.js';
 import type { Swatch } from './palette.js';
-import { groupMidpoint, layerUncertainty, mergeTree, vsupSwatchId, type MergeTree } from './vsup.js';
+import { groupMidpoint, layerUncertainty, mergeTree, SCORE_LEVELS, vsupSwatchId, type MergeTree } from './vsup.js';
 
 export interface VsupSpec {
   /** Score arities a tree is built for, inclusive. */
@@ -41,7 +41,7 @@ export interface VsupSpec {
 }
 
 export const VSUP_SPEC: VsupSpec = Object.freeze({
-  scoreLevels: [2, 7],
+  scoreLevels: SCORE_LEVELS,
   confidenceLevels: [2, 4],
   ramp: {
     // Pale yellow-green → green-teal → blue, L* 92 → 60: dark ink throughout.
