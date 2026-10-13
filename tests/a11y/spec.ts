@@ -17,6 +17,8 @@ export interface CheckSpec {
   readonly id: string;
   readonly title: string;
   readonly runtime: Runtime;
+  /** Other runtimes that implement a second half of the same check: the mounted DOM as well as the source (#213). */
+  readonly alsoIn?: readonly Runtime[];
 }
 
 /** The automated set. Titles are the research section's, shortened. */
@@ -36,8 +38,8 @@ export const AUTOMATED = [
   { id: 'A13', runtime: 'browser', title: 'Composited contrast per encoding per theme' },
   { id: 'A14', runtime: 'browser', title: 'Palette steps stay apart under protan, deutan and tritan simulation' },
   { id: 'A15', runtime: 'browser', title: 'Forced colors: numeral, glyph and border survive' },
-  { id: 'A16', runtime: 'node', title: 'No background-image carries meaning' },
-  { id: 'A17', runtime: 'node', title: 'No aria-grabbed, no aria-dropeffect, no title= on a cell' },
+  { id: 'A16', runtime: 'node', alsoIn: ['browser'], title: 'No background-image carries meaning' },
+  { id: 'A17', runtime: 'node', alsoIn: ['browser'], title: 'No aria-grabbed, no aria-dropeffect, no title= on a cell' },
   { id: 'A18', runtime: 'browser', title: 'Print: numeral and glyph present with backgrounds suppressed' },
   { id: 'A19', runtime: 'standalone', title: 'The standalone bundle makes zero network requests' },
   { id: 'A20', runtime: 'browser', title: 'prefers-reduced-motion disables animation and smooth scroll' },
@@ -46,4 +48,5 @@ export const AUTOMATED = [
 export type CheckId = (typeof AUTOMATED)[number]['id'];
 
 /** The ids a runtime must implement, in order. */
-export const idsFor = (runtime: Runtime): CheckId[] => AUTOMATED.filter((c) => c.runtime === runtime).map((c) => c.id);
+export const idsFor = (runtime: Runtime): CheckId[] =>
+  AUTOMATED.filter((c) => c.runtime === runtime || (c as CheckSpec).alsoIn?.includes(runtime)).map((c) => c.id);

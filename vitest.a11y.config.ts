@@ -14,7 +14,18 @@ export default defineConfig({
   test: {
     projects: [
       { test: { name: 'a11y-node', environment: 'node', include: ['tests/a11y/node.gate.ts', 'tests/a11y/manual-pass.gate.ts', 'tests/a11y/spec.gate.ts'] } },
-      { ...browser, test: { ...browser.test, name: 'a11y-browser', include: ['tests/a11y/browser.gate.ts'] } },
+      {
+        ...browser,
+        test: { ...browser.test, name: 'a11y-browser', include: ['tests/a11y/browser.gate.ts', 'tests/a11y/watch.gate.ts'] },
+      },
+      {
+        // The engine-dependent checks again, in Firefox (#213).
+        ...browser,
+        test: {
+          ...browser.test, name: 'a11y-firefox', include: ['tests/a11y/firefox.gate.ts'],
+          browser: { ...browser.test!.browser!, instances: [{ browser: 'firefox' as const }] },
+        },
+      },
       {
         test: {
           name: 'a11y-standalone', environment: 'node', include: ['tests/a11y/standalone.gate.ts'],
