@@ -11,6 +11,7 @@
 import { h, render, type ComponentType } from 'preact';
 
 import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/analysis.js';
+import { assertionVisibility, type ViewerContext } from '../core/schema/redaction.js';
 import { threadDoing, type Affordances, type ThreadAct } from '../core/affordances.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
@@ -19,6 +20,8 @@ import {
 
 /** Who writes when the host names no one: usable, not a stub (ADR-0012). */
 const DEFAULT_IDENTITY = anonymousIdentity();
+/** What the anonymous identity is called (`anonymousIdentity`'s default id). */
+const DEFAULT_IDENTITY_ID = 'anonymous';
 import { createEncodingRegistry, type EncodingRegistry } from './encodings/registry.js';
 import type { Author } from '../core/schema/provenance.js';
 import { commentTarget, reopenThread, replyToThread, resolveThread, startThread } from '../core/threads.js';
@@ -99,8 +102,13 @@ function withoutSource(a: Affordances): Affordances {
 
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
-  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize', 'onViewChange', 'identity',
+  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'source', 'authorize', 'onViewChange', 'identity',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
+
+/** Which assertions' authors the rounds hide from `viewer`, as a string to compare: equal strings, equal view. */
+function hiddenAuthors(a: Analysis, viewer: ViewerContext): string {
+  return a.cells.flatMap((c) => c.assertions.filter((s) => !assertionVisibility(a, s, viewer).author).map((s) => s.id)).join('\n');
+}
 
 /** Elements with a live matrix. Two mounts on one element would each think they own its children. */
 const mounted = new WeakSet<object>();
@@ -142,12 +150,27 @@ export function mountMatrix(
   let announcement: string | undefined;
   let said = 0;
   /** Who moves things, for the order's provenance: the identity's id once known (ADR-0012). */
-  let actor = 'anonymous';
+  let actor = DEFAULT_IDENTITY_ID;
+  /** Who the last render was drawn for, to tell whether a new reader changes what it shows. */
+  let drawnFor: string | undefined;
+  /** The identity's id as a viewer: the anonymous identity is nobody in particular, and must not be taken for an author who happens to be called that. */
+  const viewerIdOf = (id: string) => (id === DEFAULT_IDENTITY_ID ? undefined : id);
+  /** Redraw if, and only if, the reader now known sees different authors from the one drawn for: a redraw for nothing resets what the reader is in the middle of. */
+  const refreshViewer = () => {
+    if (destroyed || current.viewer) return;
+    const at = now().toISOString();
+    if (hiddenAuthors(analysis, { viewerId: drawnFor, now: at }) !== hiddenAuthors(analysis, { viewerId: viewerIdOf(actor), now: at })) draw();
+  };
   const learnActor = (identity = current.identity ?? DEFAULT_IDENTITY) => {
-    // Until the new identity answers, nobody known: the previous one must not sign moves made in the gap.
-    actor = 'anonymous';
+    // Until the new identity answers, nobody known: the previous one must not sign moves made in the gap, or see what only they may.
+    actor = DEFAULT_IDENTITY_ID;
+    refreshViewer();
     // Only the identity still in force: a slow one the host has since replaced, or cleared, never signs a move.
-    identity.current().then((a) => { if ((current.identity ?? DEFAULT_IDENTITY) === identity) actor = a.id; }, () => undefined);
+    identity.current().then((a) => {
+      if ((current.identity ?? DEFAULT_IDENTITY) !== identity) return;
+      actor = a.id;
+      refreshViewer();
+    }, () => undefined);
   };
   /** What the `view` the caller last gave said about the session, to tell a new one from a re-passed one. */
   let givenFocus = sessionIn(props.view);
@@ -243,6 +266,8 @@ export function mountMatrix(
 
   const draw = () => {
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
+    const viewer = current.viewer ?? { viewerId: viewerIdOf(actor), now: now().toISOString() };
+    drawnFor = viewer.viewerId;
     // Without one, the document's own order, so a source's added alternative shows.
     const base = view ?? initialViewState(analysis);
     shown = moved && 'focus' in moved ? setFocus(base, moved.focus) : base;
@@ -266,6 +291,8 @@ export function mountMatrix(
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
         : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
       ...(standing ? { standing } : {}),
+      // The caller's, else the reader the identity names at the moment drawn: an outside reader, if no one has said who they are.
+      viewer,
     };
     const was = focused();
     render(h(component, resolved), el);

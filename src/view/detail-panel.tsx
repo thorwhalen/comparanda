@@ -25,6 +25,7 @@ import type { Measurement } from '../core/schema/measurement.js';
 import type { MissingnessVocabulary } from '../core/schema/missingness.js';
 import { attribution } from '../core/identity.js';
 import type { Independence } from '../core/schema/provenance.js';
+import type { ViewerContext } from '../core/schema/redaction.js';
 import { aliasesOf, measurementFor } from '../core/schema/structure.js';
 import type { Session } from '../core/view-state.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
@@ -38,6 +39,8 @@ export interface DetailPanelProps {
   /** The grid position the panel describes. */
   focus: Session['focus'];
   standing?: ((check: CitationCheck | undefined) => CheckStanding) | undefined;
+  /** Who is looking, and when: an author an open anonymous round hides is not shown (ADR-0023). */
+  viewer?: ViewerContext | undefined;
   /** The close button's action. */
   onClose: () => void;
   /** `Escape` inside the panel: back to the grid, the panel left open. */
@@ -114,8 +117,8 @@ export function DetailPanel(props: DetailPanelProps) {
   );
 }
 
-function CellSection({ analysis, measure, vocabulary, standing, alternativeId, criterionId }: DetailPanelProps & { alternativeId: string; criterionId: string }) {
-  const d = cellDetail(analysis, alternativeId, criterionId, measure, { vocabulary, standing });
+function CellSection({ analysis, measure, vocabulary, standing, viewer, alternativeId, criterionId }: DetailPanelProps & { alternativeId: string; criterionId: string }) {
+  const d = cellDetail(analysis, alternativeId, criterionId, measure, { vocabulary, standing, viewer });
   const { reduced, absence } = d;
   const shown = reduced?.refused !== undefined
     ? reduced.refusedBecause === 'withheld-from-reader'
@@ -165,9 +168,11 @@ function Absence({ absence }: { absence: NonNullable<ReturnType<typeof cellDetai
 
 function AssertionItem({ detail, replacedBy }: { detail: AssertionDetail; replacedBy?: AssertionDetail | undefined }) {
   const { assertion: s, author } = detail;
-  const who = author
-    ? attribution(author, { principal: detail.principal })
-    : `An author this analysis does not describe (“${s.authorId}”)`;
+  const who = detail.authorHidden
+    ? 'Author hidden until the round closes'
+    : author
+      ? attribution(author, { principal: detail.principal })
+      : `An author this analysis does not describe (“${s.authorId}”)`;
   const provenance = [
     s.independence ? INDEPENDENCE_SAID[s.independence] : 'independence not recorded',
     detail.round && `in ${detail.round}`,
@@ -177,7 +182,7 @@ function AssertionItem({ detail, replacedBy }: { detail: AssertionDetail; replac
   return (
     <li data-assertion={s.id} data-superseded={detail.superseded ? 'true' : undefined}>
       <p class="comparanda-assertion-head">
-        {detail.superseded && `Superseded${replacedBy ? ` by ${(replacedBy.author ? attribution(replacedBy.author) : replacedBy.assertion.authorId)}'s ${replacedBy.assertion.value !== undefined && !replacedBy.withheldFromReader ? String(replacedBy.assertion.value) : 'assertion'}` : ''}: `}
+        {detail.superseded && `Superseded${replacedBy ? ` by ${(replacedBy.authorHidden ? 'someone' : replacedBy.author ? attribution(replacedBy.author) : replacedBy.assertion.authorId)}'s ${replacedBy.assertion.value !== undefined && !replacedBy.withheldFromReader ? String(replacedBy.assertion.value) : 'assertion'}` : ''}: `}
         <strong>{detail.withheldFromReader ? 'Withheld from you' : s.value !== undefined ? String(s.value) : 'No value'}</strong>
         {` — ${who}, ${s.at}`}
       </p>

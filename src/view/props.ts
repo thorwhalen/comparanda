@@ -20,6 +20,7 @@ import type { Authorize } from '../core/affordances.js';
 import type { Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { MissingnessVocabulary } from '../core/schema/missingness.js';
+import type { ViewerContext } from '../core/schema/redaction.js';
 import type { ViewState } from '../core/view-state.js';
 import type { AnalysisSource, IdentityProvider } from '../store/index.js';
 
@@ -45,6 +46,13 @@ export interface MatrixProps {
    * policy (ADR-0032 clause 4). Typically `(c) => checkStanding(c, { currentCheckerVersion, now })`.
    */
   standing?: (check: CitationCheck | undefined) => CheckStanding;
+  /**
+   * Who is looking, and when, injected so the view owns no clock (ADR-0032
+   * clause 4). With it, an author an open `anonymous` round hides from this
+   * viewer is not shown (ADR-0023). `mountMatrix` supplies one from its identity
+   * and clock when the caller gives none; a pure `Matrix` given none hides nothing.
+   */
+  viewer?: ViewerContext;
 }
 
 /** What `mountMatrix` takes: the props contract, plus the ports it follows and edits through. */

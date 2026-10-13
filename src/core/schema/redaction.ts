@@ -67,9 +67,18 @@ export interface ViewerContext {
 const EVERYTHING = (because: AssertionVisibility['because']): AssertionVisibility =>
   ({ author: true, value: 'shown', justification: true, because });
 
+/**
+ * A moment as milliseconds. A date-time with no zone is read as UTC, not as the
+ * reader's local time: the same round must be closed, or open, for every reader
+ * (the schema's times are bare strings; `Date.parse` would take the host's zone).
+ */
+function instant(iso: string): number {
+  return Date.parse(/T\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(iso) ? `${iso}Z` : iso);
+}
+
 /** Whether a round has closed by `now`. Unclosed rounds are open. */
 export function roundClosed(round: Round, now: string): boolean {
-  return round.closedAt !== undefined && Date.parse(round.closedAt) <= Date.parse(now);
+  return round.closedAt !== undefined && instant(round.closedAt) <= instant(now);
 }
 
 /**
@@ -108,6 +117,43 @@ export function visibilityFor(a: Analysis, viewer: ViewerContext): Map<string, A
   const out = new Map<string, AssertionVisibility>();
   for (const cell of a.cells) {
     for (const s of cell.assertions) out.set(s.id, assertionVisibility(a, s, viewer));
+  }
+  return out;
+}
+
+/**
+ * An assertion as a viewer who may not see its author may be shown it: the
+ * author, the procedure that names the agent behind it, and the id (producers
+ * mint ids from the author) are taken out, and `shownId` stands in for the id.
+ * Nothing else changes; what the viewer may see of the value and the
+ * justification is `redactForViewer`'s.
+ *
+ * The one place an assertion is made safe to name. `cellDetail` and
+ * `activityRecord` both go through here, so a surface built on either cannot
+ * show an author the round hides without bypassing core.
+ */
+export function withoutAuthor(s: Assertion, shownId: string): Assertion {
+  // The procedure names the agent; a perturbation's seed and detail are free text from the same run.
+  const { procedureId: _procedure, perturbation: _perturbation, ...rest } = s;
+  // Evidence ids are minted by the same producers, so they stand in too.
+  return { ...rest, id: shownId, authorId: '', evidence: s.evidence.map((e, i) => ({ ...e, id: `${shownId}:evidence-${i + 1}` })) };
+}
+
+/**
+ * What a round's policies let this viewer see of an assertion: `withoutAuthor`
+ * when the author is hidden, then the value and any recorded absence removed
+ * unless the value is `shown`, and the justification and the evidence that
+ * backs it removed unless the justification may be.
+ */
+export function redactForViewer(s: Assertion, v: AssertionVisibility, shownId: string): Assertion {
+  const out: Assertion = { ...(v.author ? s : withoutAuthor(s, shownId)) };
+  if (v.value !== 'shown') {
+    delete out.value;
+    delete out.missing;
+  }
+  if (!v.justification) {
+    delete out.justification;
+    out.evidence = [];
   }
   return out;
 }
