@@ -107,6 +107,9 @@ function contrastFaults(cell: Element, where: string, { paper }: { paper?: Rgba 
   for (const node of [cell, ...Array.from(cell.querySelectorAll('*'))]) {
     if (visuallyHidden(node)) continue;
     const text = Array.from(node.childNodes).filter((c) => c.nodeType === Node.TEXT_NODE).map((c) => c.textContent!.trim()).join('');
+    // A filter changes what is painted in ways this arithmetic does not follow: say so rather than pass it unmeasured.
+    const { filter, backdropFilter } = getComputedStyle(node);
+    if (filter !== 'none' || (backdropFilter && backdropFilter !== 'none')) found.push(`${where}: <${node.tagName.toLowerCase()}> has a filter (${filter !== 'none' ? filter : backdropFilter}), which the gate cannot measure`);
     if (text !== '') {
       const on = behind(node);
       const ink = parseColour(getComputedStyle(node).color);
@@ -273,14 +276,44 @@ async function tooltipsAfterHover(el: HTMLElement): Promise<HTMLElement[]> {
 /** Timers of at least this long, started while something is open, are a way to close it on the reader. */
 const AUTO_DISMISS_MIN_MS = 100;
 
-/** Record the delays of the timers started while `during` runs, and while `when` holds at the moment of the call. */
-async function timersDuring(during: () => Promise<void>, when: () => boolean = () => true): Promise<number[]> {
-  const delays: number[] = [];
-  const [realTimeout, realInterval] = [window.setTimeout, window.setInterval];
-  window.setTimeout = ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { if (when()) delays.push(ms ?? 0); return realTimeout(fn, ms, ...rest); }) as typeof window.setTimeout;
-  window.setInterval = ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { if (when()) delays.push(ms ?? 0); return realInterval(fn, ms, ...rest); }) as typeof window.setInterval;
-  try { await during(); } finally { window.setTimeout = realTimeout; window.setInterval = realInterval; }
-  return delays;
+/** A frame loop: this many `requestAnimationFrame` requests within a check's window is a clock, not a layout. */
+const FRAME_LOOP_MIN = 60;
+
+/** What `timersDuring` saw: the delay of each timer started, and how many animation frames were asked for. */
+export interface TimersSeen { delays: number[]; frames: number }
+
+/**
+ * Record the timers started while `during` runs, and while `when` holds at the
+ * moment of the call: `setTimeout` and `setInterval`, `AbortSignal.timeout`,
+ * `scheduler.postTask` with a delay, and `requestAnimationFrame` (counted, since
+ * a loop of frames is a clock too).
+ */
+export async function timersDuring(during: () => Promise<void>, when: () => boolean = () => true): Promise<TimersSeen> {
+  const seen: TimersSeen = { delays: [], frames: 0 };
+  const undo: (() => void)[] = [];
+  const wrap = <T extends object, K extends keyof T>(owner: T | undefined, name: K, make: (real: T[K]) => T[K]) => {
+    if (!owner || typeof owner[name] !== 'function') return;
+    const real = owner[name];
+    owner[name] = make(real);
+    undo.push(() => { owner[name] = real; });
+  };
+  type AnyFn = (...args: any[]) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  wrap(window, 'setTimeout', (real) => ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { if (when()) seen.delays.push(ms ?? 0); return (real as AnyFn)(fn, ms, ...rest); }) as typeof window.setTimeout);
+  wrap(window, 'setInterval', (real) => ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { if (when()) seen.delays.push(ms ?? 0); return (real as AnyFn)(fn, ms, ...rest); }) as typeof window.setInterval);
+  wrap(window, 'requestAnimationFrame', (real) => ((cb: FrameRequestCallback) => { if (when()) seen.frames += 1; return (real as AnyFn)(cb); }) as typeof window.requestAnimationFrame);
+  wrap(AbortSignal as unknown as { timeout: AnyFn }, 'timeout', (real) => ((ms: number) => { if (when()) seen.delays.push(ms); return real(ms); }));
+  const scheduler = (window as unknown as { scheduler?: { postTask: AnyFn } }).scheduler;
+  wrap(scheduler, 'postTask', (real) => ((task: AnyFn, options?: { delay?: number }) => { if (when()) seen.delays.push(options?.delay ?? 0); return real.call(scheduler, task, options); }));
+  try { await during(); } finally { for (const u of undo.reverse()) u(); }
+  return seen;
+}
+
+/** The longest timer in `seen` that could be closing something on the reader, or a frame loop standing in for one; `undefined` when none. */
+export function autoDismissIn(seen: TimersSeen): string | undefined {
+  const long = seen.delays.find((ms) => ms >= AUTO_DISMISS_MIN_MS);
+  if (long !== undefined) return `a timer of ${long} ms`;
+  if (seen.frames >= FRAME_LOOP_MIN) return `a loop of ${seen.frames} animation frames`;
+  return undefined;
 }
 
 /** A tooltip that follows the pointer onto a cell, after `delayMs`: a fixture for A11 and A12. Returns how to take it away. */
@@ -327,8 +360,9 @@ const a11: Check<BrowserEnv> = {
     cell.focus();
     let tips: HTMLElement[] = [];
     // A timer started while a tooltip is up is a way to close it on the reader; one started to show it is not.
-    const delays = await timersDuring(async () => { tips = await tooltipsAfterHover(el); }, () => document.querySelector('[role="tooltip"]') !== null);
-    if (delays.some((ms) => ms >= AUTO_DISMISS_MIN_MS)) found.push(`a timer of ${delays.find((ms) => ms >= AUTO_DISMISS_MIN_MS)} ms ran while a tooltip was showing`);
+    const seen = await timersDuring(async () => { tips = await tooltipsAfterHover(el); }, () => document.querySelector('[role="tooltip"]') !== null);
+    const closer = autoDismissIn(seen);
+    if (closer) found.push(`${closer} ran while a tooltip was showing`);
     const shown = tips.filter((t) => t.isConnected);
     if (shown.length > 0) {
       cell.focus();
@@ -344,7 +378,8 @@ const a11: Check<BrowserEnv> = {
       await sleep(AUTO_DISMISS_MIN_MS * 4);
     });
     if (!el.querySelector('[role="complementary"]')) found.push('the panel the cell opens did not stay open without the reader');
-    if (opened.some((ms) => ms >= AUTO_DISMISS_MIN_MS)) found.push(`a timer of ${opened.find((ms) => ms >= AUTO_DISMISS_MIN_MS)} ms ran while the panel opened`);
+    const closing = autoDismissIn(opened);
+    if (closing) found.push(`${closing} ran while the panel opened`);
     return found;
   },
   broken: {
@@ -542,6 +577,7 @@ const a13: Check<BrowserEnv> = {
     sabotage: (env) => env.afterMount((el) => { el.querySelector<HTMLElement>('tbody td[data-state="value"]')!.style.color = 'transparent'; }),
   },
   alsoTrips: { A18: 'ink that is invisible on screen is invisible on paper too' },
+  mayAlsoTrip: { A15: 'under forced colors an engine may or may not let an author\'s transparent ink through' },
 };
 
 // ---- A14 ---------------------------------------------------------------------------------
@@ -662,6 +698,66 @@ const a18: Check<BrowserEnv> = {
   },
 };
 
+// ---- A16, A17 (the mounted DOM: the twin of the source greps) ----------------------------------------
+
+/** Every mount the DOM twins look at: each fixture under each encoding in each theme, and the states a grab or a panel add. */
+async function* everyMount(env: BrowserEnv): AsyncGenerator<{ el: HTMLElement; where: string }> {
+  for (const theme of THEMES) {
+    for (const [name, analysis] of Object.entries(FIXTURES)) {
+      for (const encoding of ENCODING_IDS) yield { ...env.mount({ analysis, measure: 'score', encoding }, { theme }), where: `${name} / ${encoding} / ${theme}` };
+    }
+  }
+  // Where a drag attribute would be written: a header held, and the panel open.
+  const held = mountReorderable(env);
+  await tick();
+  header(held.el, crits[1]!).focus();
+  await userEvent.keyboard('{Enter}');
+  yield { el: held.el, where: 'a header held in grab mode' };
+  await userEvent.keyboard('{Escape}');
+  const { el } = env.mount({ analysis: relocation, measure: 'score' });
+  el.querySelector<HTMLElement>('tbody td')!.focus();
+  await userEvent.keyboard('{Enter}');
+  yield { el, where: 'the detail panel open' };
+}
+
+const a16twin: Check<BrowserEnv> = {
+  id: 'A16',
+  async run(env) {
+    const found: string[] = [];
+    for await (const { el, where } of everyMount(env)) {
+      for (const node of Array.from(el.querySelectorAll('*'))) {
+        const image = getComputedStyle(node).backgroundImage;
+        if (image !== 'none') found.push(`${where}: <${node.tagName.toLowerCase()} class="${node.getAttribute('class') ?? ''}"> paints ${image.slice(0, 40)}`);
+      }
+    }
+    return cap(found);
+  },
+  broken: {
+    what: 'a cell is hatched with a repeating gradient, set from script so no source grep sees it',
+    sabotage: (env) => env.afterMount((el) => el.querySelector<HTMLElement>('tbody td')!.style.setProperty('background-image', ['repeating', 'linear', 'gradient(45deg, #000 0 2px, #fff 2px 4px)'].join('-'))),
+  },
+  // The channels' own checks measure the same thing in their media.
+  alsoTrips: { A14: 'a gradient over a swatched cell is the colour its screenshot reads', A18: 'a gradient on a cell is a background image in print too' },
+  mayAlsoTrip: { A15: 'under forced colors an engine may drop a background image of its own accord' },
+};
+
+const a17twin: Check<BrowserEnv> = {
+  id: 'A17',
+  async run(env) {
+    const found: string[] = [];
+    for await (const { el, where } of everyMount(env)) {
+      for (const node of Array.from(el.querySelectorAll('[title], [aria-grabbed], [aria-dropeffect]'))) {
+        found.push(`${where}: <${node.tagName.toLowerCase()}> carries ${['title', 'aria-grabbed', 'aria-dropeffect'].filter((a) => node.hasAttribute(a)).join(', ')}`);
+      }
+    }
+    return cap(found);
+  },
+  broken: {
+    what: 'a cell is given a title attribute from script',
+    sabotage: (env) => env.afterMount((el) => el.querySelector('tbody td')!.setAttribute('title', 'rent')),
+  },
+};
+
 // ---- A20 ---------------------------------------------------------------------------------
 
 const seconds = (list: string) => list.split(',').some((d) => parseFloat(d) > 0);
@@ -726,4 +822,4 @@ const a20: Check<BrowserEnv> = {
   alsoTrips: { A14: 'a fade still running when the screenshot is taken is the colour it captures' },
 };
 
-export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [a2, a3, a4, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a18, a20];
+export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [a2, a3, a4, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16twin, a17twin, a18, a20];

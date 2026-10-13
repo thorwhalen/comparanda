@@ -95,7 +95,7 @@ The twenty checks are transcribed into `tests/a11y/`, and the suite there is now
 - **A11 and A12** apply to a tooltip, and the matrix draws none: ADR-0027 puts that content in a non-modal panel. The checks hover and focus cells and test whatever `role="tooltip"` appears (none today), and A11 also asserts that the panel is not closed by any timer. They guard the day a tooltip is added; their fixtures plant one.
 - **A13** is the composited ink against the composited backdrop, from computed styles with alpha laid over every ancestor's fill, for every fixture × shipped encoding × theme; texture strokes against 3:1. Not a canvas readback: the computed colour is the one the browser paints, and it is cheap enough to run on all of them. A14 is the one that reads pixels, from screenshots.
 - **A14** runs the hardest tree (most score levels, most confidence layers) per theme; `tests/browser/cvd.test.ts` still runs every tree.
-- **A15** is Chromium only: `forcedColors` emulation is honoured there at the pinned Playwright, which the check asserts before it measures; WebKit and Firefox are not in CI, and B6 is the real-Windows pass.
+- **A15** asserts that `forcedColors` emulation took before it measures. It is honoured in Chromium and in Firefox at the pinned Playwright; WebKit is not in CI (it needs system libraries the CI image does not carry), and B6 is the real-Windows pass.
 - **B1–B8** are rows of `docs/release-notes-template.md`, with columns for environment, result and what was done; a test asserts every row is there, in the research section's words.
 
 Where the gate is deliberately a different shape from the research table's wording, or narrower than it:
@@ -107,3 +107,10 @@ Where the gate is deliberately a different shape from the research table's wordi
 - **A20** scans every element at rest, while a header is held and while it is carried, for a transition, an animation or smooth scrolling under `prefers-reduced-motion: reduce`, and watches script's own scroll calls.
 - **A13** reads `opacity` but not `filter`.
 - **The release gate** is a procedure for a person: the template states that a row neither done nor explained blocks the release, and a `not run (why)` row is the releaser's published decision. Nothing ties the template to a release automatically.
+
+## Amendment, 2026-10-13 (later): hardening (#213)
+
+- **A16 and A17 have a mounted-DOM twin** in the browser half, beside the source greps: no element, under any fixture × encoding × theme, in grab mode or with the panel open, computes a `background-image` other than `none` or carries `title`, `aria-grabbed` or `aria-dropeffect`. A name built at runtime, or a style set from script, passes the grep and not the twin.
+- **A11's timer watch** now also sees `AbortSignal.timeout`, `scheduler.postTask` with a delay, and a loop of `requestAnimationFrame` (60 requests in the window), besides `setTimeout` and `setInterval`. `tests/a11y/watch.gate.ts` asserts each is seen and that the browser's own timers are put back. `animationend` callbacks are not watched.
+- **A13** reports any `filter` or `backdrop-filter` in a cell as something it cannot measure, rather than passing it.
+- **A13, A15, A16, A18 and A20 run again in Firefox** (`tests/a11y/firefox.gate.ts`), the checks whose answer depends on what an engine does with an emulated medium or a computed style. A fixture may trip a neighbouring check in one engine and not another (`mayAlsoTrip`), where forced colors recolours differently; the cross-fixture matrix runs in Chromium only.

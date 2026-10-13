@@ -110,8 +110,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Chromium and Firefox
+        run: pnpm exec playwright install --with-deps chromium firefox
 
       - name: A1-A20, and the broken fixture for each
         run: pnpm test:a11y

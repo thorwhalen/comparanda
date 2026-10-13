@@ -35,8 +35,10 @@ export interface Check<E> {
   /** What it found wrong, one line each; empty when the environment is sound. */
   readonly run: (env: E) => string[] | Promise<string[]>;
   readonly broken: BrokenFixture<E>;
-  /** Other checks the broken fixture is allowed to trip, and why. Default: none. */
+  /** Other checks the broken fixture is allowed to trip, and why. Default: none. It must trip each of them. */
   readonly alsoTrips?: Partial<Record<CheckId, string>>;
+  /** Checks the fixture trips in some engines and not in others (forced colors recolours differently in each): allowed, not required. */
+  readonly mayAlsoTrip?: Partial<Record<CheckId, string>>;
 }
 
 /** A fresh environment, sabotaged or not, and how to tear it down. */
@@ -44,16 +46,26 @@ export type WithEnv<E> = <T>(sabotage: BrokenFixture<E>['sabotage'] | undefined,
 
 const SECOND = 1000;
 
-/** Register the gate's tests for one runtime's checks. */
-export function gateTests<E>(runtime: Runtime, checks: readonly Check<E>[], withEnv: WithEnv<E>, { timeout = 60 * SECOND }: { timeout?: number } = {}): void {
+/**
+ * Register the gate's tests for one runtime's checks. `partial` is for a second
+ * engine that runs only the checks whose answer depends on the engine: it need
+ * not implement every number (the first engine's file asserts that), and it
+ * skips the cross-fixture matrix, which is about the checks, not the engine.
+ */
+export function gateTests<E>(
+  runtime: Runtime, checks: readonly Check<E>[], withEnv: WithEnv<E>,
+  { timeout = 60 * SECOND, partial = false }: { timeout?: number; partial?: boolean } = {},
+): void {
   const violations = (check: Check<E>, sabotage?: BrokenFixture<E>['sabotage']) =>
     withEnv(sabotage, async (env) => check.run(env));
 
-  describe(`the ${runtime} half of the accessibility gate implements exactly its checks`, () => {
-    it('no number is listed and not run, or run and not listed', () => {
-      expect(checks.map((c) => c.id)).toEqual(idsFor(runtime));
+  if (!partial) {
+    describe(`the ${runtime} half of the accessibility gate implements exactly its checks`, () => {
+      it('no number is listed and not run, or run and not listed', () => {
+        expect(checks.map((c) => c.id)).toEqual(idsFor(runtime));
+      });
     });
-  });
+  }
 
   for (const check of checks) {
     const title = AUTOMATED.find((c) => c.id === check.id)!.title;
@@ -70,15 +82,16 @@ export function gateTests<E>(runtime: Runtime, checks: readonly Check<E>[], with
         }
       });
 
-      it('and its broken fixture trips no other check', { timeout: timeout * 4 }, async () => {
+      it.skipIf(partial)('and its broken fixture trips no other check', { timeout: timeout * 4 }, async () => {
         const tripped: string[] = [];
         for (const other of checks) {
           if (other.id === check.id) continue;
           const found = await violations(other, check.broken.sabotage);
           if (found.length > 0) tripped.push(other.id);
         }
-        const allowed = Object.keys(check.alsoTrips ?? {});
-        const stale = allowed.filter((id) => !tripped.includes(id));
+        const required = Object.keys(check.alsoTrips ?? {});
+        const allowed = [...required, ...Object.keys(check.mayAlsoTrip ?? {})];
+        const stale = required.filter((id) => !tripped.includes(id));
         expect(stale, `the fixture for ${check.id} no longer trips ${stale.join(', ')}: remove the allowance from alsoTrips`).toEqual([]);
         const surprising = tripped.filter((id) => !allowed.includes(id));
         expect(surprising, `the fixture for ${check.id} (${check.broken.what}) also fails ${surprising.join(', ')}, so ${check.id} is not shown to fail on its own`).toEqual([]);
