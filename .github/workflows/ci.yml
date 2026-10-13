@@ -80,9 +80,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Playwright version
+      - name: Name the cache for the engines and the installed Playwright version
         id: playwright-version
-        run: echo "version=$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')" >> "$GITHUB_OUTPUT"
+        run: echo "key=${PW_ENGINES// /-}-$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: playwright-cache
@@ -91,7 +91,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ replace(env.PW_ENGINES, ' ', '-') }}-${{ steps.playwright-version.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.key }}
 
       - name: Install the browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
@@ -134,9 +134,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Playwright version
+      - name: Name the cache for the engines and the installed Playwright version
         id: playwright-version
-        run: echo "version=$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')" >> "$GITHUB_OUTPUT"
+        run: echo "key=${PW_ENGINES// /-}-$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: playwright-cache
@@ -145,7 +145,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ replace(env.PW_ENGINES, ' ', '-') }}-${{ steps.playwright-version.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.key }}
 
       - name: Install the browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
