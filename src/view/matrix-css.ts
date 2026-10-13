@@ -179,6 +179,19 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   flex-basis: 0; min-width: 0; overflow: hidden; white-space: nowrap; text-align: center; background: var(--cmp-header); color: var(--cmp-ink);
   box-shadow: inset 0 0 0 1px var(--cmp-rule); padding: 0.1em 0; border: 0 solid transparent;
 }
+.comparanda-matrix .comparanda-thread-mark { margin-inline-start: 0.35em; font-size: 0.85em; font-weight: 600; white-space: nowrap; }
+.comparanda-matrix .comparanda-thread-icon { display: inline-block; width: 0.9em; height: 0.9em; vertical-align: -0.1em; margin-inline-end: 0.1em; }
+.comparanda-matrix .comparanda-thread-list, .comparanda-matrix .comparanda-comments { padding-inline-start: 1.1em; margin: 0.25em 0; }
+.comparanda-matrix .comparanda-thread-list > li { margin: 0 0 0.6em; }
+.comparanda-matrix .comparanda-thread-list[data-resolved] { color: var(--cmp-muted); }
+.comparanda-matrix .comparanda-compose { display: grid; gap: 0.2em; margin: 0.35em 0; }
+.comparanda-matrix .comparanda-compose button { justify-self: start; }
+.comparanda-matrix .comparanda-panel :is(textarea, select) {
+  font: inherit; color: var(--cmp-ink); background: var(--cmp-surface); border: 1px solid var(--cmp-muted); padding: 0.2em 0.35em;
+}
+.comparanda-matrix .comparanda-panel :is(textarea, select):focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
+.comparanda-matrix .comparanda-panel button:disabled { color: var(--cmp-muted); cursor: progress; }
+.comparanda-matrix .comparanda-panel [role="alert"] { color: var(--cmp-ink); font-weight: 600; }
 @media (forced-colors: active) {
   /* Width and colour only: the style is each cell's terminal channel (ADR-0028 amendment). */
   .comparanda-matrix th, .comparanda-matrix td { box-shadow: none; border-width: 1px; border-color: CanvasText; }
