@@ -98,6 +98,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   const who = (id: string | undefined) => (id === undefined ? 'someone' : names.get(id) ?? `an author this analysis does not describe (“${id}”)`);
   /** Resolve an open thread, or reopen a resolved one (#186). */
   const toggle = async () => {
+    if (busy) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -125,7 +126,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
       {writes && may.enabled && (
         <>
           {!thread.resolved && <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />}
-          <button type="button" disabled={busy} onClick={toggle}>{thread.resolved ? 'Reopen thread' : 'Resolve thread'}</button>
+          <button type="button" aria-disabled={busy} onClick={toggle}>{thread.resolved ? 'Reopen thread' : 'Resolve thread'}</button>
           {error && <p role="alert" key={error.attempt}>{`Not ${thread.resolved ? 'reopened' : 'resolved'}: ${error.text}`}</p>}
         </>
       )}
@@ -143,6 +144,7 @@ function Compose({ label, action, idBase, send, choices }: {
   const [busy, setBusy] = useState(false);
   const submit = async (event: Event) => {
     event.preventDefault();
+    if (busy) return;
     if (draft.trim() === '') {
       setError('write something first.');
       return;
@@ -170,7 +172,7 @@ function Compose({ label, action, idBase, send, choices }: {
       )}
       <label for={`${idBase}-text`}>{choices && choices.length > 1 ? `Start a thread on ${choices[choice]}` : label}</label>
       <textarea id={`${idBase}-text`} rows={2} value={draft} onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)} />
-      <button type="submit" disabled={busy}>{action}</button>
+      <button type="submit" aria-disabled={busy}>{action}</button>
       {error && <p role="alert" key={error.attempt}>{`Not sent: ${error.text}`}</p>}
     </form>
   );
