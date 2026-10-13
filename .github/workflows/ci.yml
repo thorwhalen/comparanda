@@ -77,8 +77,23 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        # The download is the slow, repeated part (a few hundred MB per engine); the key changes with the lockfile, which is
+        # where the Playwright version lives, so a new version fetches new browsers.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install the system libraries Chromium need
+        # A cached browser still needs the operating system's libraries, which are not cached.
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
 
       - name: Browser tests
         run: pnpm test:browser
@@ -110,8 +125,23 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        # The download is the slow, repeated part (a few hundred MB per engine); the key changes with the lockfile, which is
+        # where the Playwright version lives, so a new version fetches new browsers.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-firefox-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Chromium and Firefox
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium firefox
+
+      - name: Install the system libraries Chromium and Firefox need
+        # A cached browser still needs the operating system's libraries, which are not cached.
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium firefox
 
       - name: A1-A20, and the broken fixture for each
         run: pnpm test:a11y
