@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
-import { reopenThread, replyToThread, resolveThread, startThread, threadsAt } from '../src/core/threads.js';
+import { commentTarget, reopenThread, replyToThread, resolveThread, startThread, threadsAt } from '../src/core/threads.js';
 import type { Author } from '../src/core/schema/provenance.js';
 import relocationJson from '../examples/relocation.json';
 
@@ -134,5 +134,17 @@ describe('reopening a resolved thread (#186)', () => {
     const ghost = { ...a, threads: a.threads.map((t) => (t.id === 't1' ? { ...t, resolved: true, resolvedBy: 'ghost', resolvedAt: 'T3' } : t)) };
     expect(reopenThread(ghost, 't1', { id: 'c3', by: dana, at: 'T4' }).threads.find((x) => x.id === 't1')!.comments.at(-1)!.body)
       .toBe('Reopened. It had been resolved by an author this analysis does not describe [ghost], T3.');
+  });
+});
+
+describe('commentTarget: what the host is asked about, for every scope (sprint review)', () => {
+  it('names the anchored entity by id, a cell and a block by both of theirs', () => {
+    expect(commentTarget({ scope: 'analysis' })).toEqual({ kind: 'analysis' });
+    expect(commentTarget({ scope: 'alternative', alternativeId: 'berlin' })).toEqual({ kind: 'alternative', id: 'berlin' });
+    expect(commentTarget({ scope: 'criterion', criterionId: 'rent' })).toEqual({ kind: 'criterion', id: 'rent' });
+    expect(commentTarget({ scope: 'cell', alternativeId: 'berlin', criterionId: 'rent', measure: 'score' }))
+      .toEqual({ kind: 'cell', id: 'berlin/rent' });
+    expect(commentTarget({ scope: 'group', groupId: 'eu' })).toEqual({ kind: 'group', id: 'eu' });
+    expect(commentTarget({ scope: 'group-pair', groupId: 'eu', otherGroupId: 'cost' })).toEqual({ kind: 'group-pair', id: 'eu/cost' });
   });
 });

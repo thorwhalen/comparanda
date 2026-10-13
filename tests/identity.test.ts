@@ -148,3 +148,14 @@ describe('a writer cannot sign as an author the document already describes diffe
     expect(write({ ...ana }).threads.at(-1)!.comments[0]!.authorId).toBe('ana');
   });
 });
+
+describe('every attestation method has its own words (sprint review)', () => {
+  it('names the issuer when there is one, and says so plainly when there is not', () => {
+    const ada = (attestation: object) => attribution({ displayName: 'Ada', kind: 'human', attestation } as never);
+    expect(ada({ method: 'host-session', issuer: 'intranet' })).toBe('Ada (human, signed in to intranet)');
+    expect(ada({ method: 'oauth' })).toBe('Ada (human, verified by an identity provider)');
+    expect(ada({ method: 'signature' })).toBe('Ada (human, signed)');
+    expect(ada({ method: 'signature', issuer: 'key-1' })).toBe('Ada (human, signed by key-1)');
+    expect(ada({ method: 'unverified' })).toBe('Ada (human, unverified)');
+  });
+});
