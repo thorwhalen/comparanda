@@ -143,6 +143,84 @@ describe('threads in the panel', () => {
   });
 });
 
+describe('focus while a thread write is in flight (#197)', () => {
+  const buttonNamed = (name: string) => Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === name)!;
+  /** A source whose writes wait for `release`, then fail while `failing` is set. */
+  function slowSource() {
+    const source = inMemoryAnalysisSource(relocation);
+    const control = { failing: false, calls: 0, release: undefined as (() => void) | undefined };
+    const wrapped: AnalysisSource = {
+      ...source,
+      update: async (...args: Parameters<AnalysisSource['update']>) => {
+        if (control.failing) {
+          control.calls += 1;
+          await new Promise<void>((r) => { control.release = r; });
+          throw new Error('the store is offline');
+        }
+        return source.update(...args);
+      },
+    };
+    return { source: wrapped, control };
+  }
+
+  for (const [verb, button] of [['resolve', 'Resolve thread'], ['reopen', 'Reopen thread']] as const) {
+    it(`a failed ${verb} keeps focus on its button, which stays announced as unavailable while busy`, async () => {
+      const { source, control } = slowSource();
+      mount({ analysis: relocation, measure: 'score', source, identity: dana, view: at({ alternativeId: 'berlin', criterionId: 'winter-daylight' }) });
+      if (verb === 'reopen') {
+        await userEvent.click(buttonNamed('Resolve thread'));
+        await settled();
+        await userEvent.click(Array.from(threads().querySelectorAll('button')).find((b) => /Show \d+ resolved/.test(b.textContent!))!);
+      }
+      control.failing = true;
+      control.calls = 0;
+      const target = buttonNamed(button);
+      await userEvent.click(target);
+      // In flight: still the focused element, marked unavailable, and a second click does nothing.
+      expect(document.activeElement).toBe(target);
+      expect(target.getAttribute('aria-disabled')).toBe('true');
+      expect(target.hasAttribute('disabled')).toBe(false);
+      // Busy reads as busy to the eye too (the stylesheet keys off aria-disabled), and a second activation is ignored.
+      expect(getComputedStyle(target).cursor).toBe('progress');
+      const before = control.calls;
+      target.click();
+      target.click();
+      await settled();
+      expect(control.calls).toBe(before);
+      control.release!();
+      await settled();
+      expect(threads().querySelector('[role="alert"]')!.textContent).toContain('the store is offline');
+      expect(document.activeElement).toBe(target);
+      expect(target.getAttribute('aria-disabled')).toBe('false');
+    });
+  }
+});
+
+describe('a busy compose form (#197)', () => {
+  it('keeps focus on its button, sends once however often it is activated, and says why on failure', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    let calls = 0;
+    let release!: () => void;
+    const slow: AnalysisSource = { ...source, update: async () => { calls += 1; await new Promise<void>((r) => { release = r; }); throw new Error('the store is offline'); } };
+    mount({ analysis: relocation, measure: 'score', source: slow, identity: dana, view: at(undefined) });
+    const box = threads().querySelector('textarea')!;
+    await userEvent.click(box);
+    await userEvent.keyboard('one thought');
+    const send = box.closest('form')!.querySelector('button')!;
+    await userEvent.click(send);
+    expect(document.activeElement).toBe(send);
+    send.click();
+    send.click();
+    await settled();
+    expect(calls).toBe(1);
+    release();
+    await settled();
+    expect(threads().querySelector('[role="alert"]')!.textContent).toContain('the store is offline');
+    expect(document.activeElement).toBe(send);
+    expect(box.value).toBe('one thought');
+  });
+});
+
 describe('review findings', () => {
   it('two writes sent together both land: the second builds on the first', async () => {
     const source = inMemoryAnalysisSource(relocation);

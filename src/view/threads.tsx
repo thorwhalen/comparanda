@@ -8,7 +8,7 @@
  * control that does nothing. The writes themselves are `ThreadWrites`, which
  * `mountMatrix` implements over the source; this file only collects words.
  */
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 
 import type { Affordances, EditTarget } from '../core/affordances.js';
 import type { Analysis } from '../core/schema/analysis.js';
@@ -95,9 +95,13 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   const may = affordances.comment(targetOf(thread.anchor));
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
+  // A ref, not `busy`: two activations in one task both see the same render.
+  const sending = useRef(false);
   const who = (id: string | undefined) => (id === undefined ? 'someone' : names.get(id) ?? `an author this analysis does not describe (“${id}”)`);
   /** Resolve an open thread, or reopen a resolved one (#186). */
   const toggle = async () => {
+    if (sending.current) return;
+    sending.current = true;
     setBusy(true);
     setError(undefined);
     try {
@@ -107,6 +111,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
     } catch (e) {
       setError(messageOf(e));
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   };
@@ -125,7 +130,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
       {writes && may.enabled && (
         <>
           {!thread.resolved && <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />}
-          <button type="button" disabled={busy} onClick={toggle}>{thread.resolved ? 'Reopen thread' : 'Resolve thread'}</button>
+          <button type="button" aria-disabled={busy} onClick={toggle}>{thread.resolved ? 'Reopen thread' : 'Resolve thread'}</button>
           {error && <p role="alert" key={error.attempt}>{`Not ${thread.resolved ? 'reopened' : 'resolved'}: ${error.text}`}</p>}
         </>
       )}
@@ -141,12 +146,15 @@ function Compose({ label, action, idBase, send, choices }: {
   const [choice, setChoice] = useState(0);
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
+  const sending = useRef(false);
   const submit = async (event: Event) => {
     event.preventDefault();
+    if (sending.current) return;
     if (draft.trim() === '') {
       setError('write something first.');
       return;
     }
+    sending.current = true;
     setBusy(true);
     setError(undefined);
     try {
@@ -155,6 +163,7 @@ function Compose({ label, action, idBase, send, choices }: {
     } catch (e) {
       setError(messageOf(e));
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   };
@@ -170,7 +179,7 @@ function Compose({ label, action, idBase, send, choices }: {
       )}
       <label for={`${idBase}-text`}>{choices && choices.length > 1 ? `Start a thread on ${choices[choice]}` : label}</label>
       <textarea id={`${idBase}-text`} rows={2} value={draft} onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)} />
-      <button type="submit" disabled={busy}>{action}</button>
+      <button type="submit" aria-disabled={busy}>{action}</button>
       {error && <p role="alert" key={error.attempt}>{`Not sent: ${error.text}`}</p>}
     </form>
   );

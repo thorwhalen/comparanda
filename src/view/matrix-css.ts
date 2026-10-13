@@ -190,7 +190,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   font: inherit; color: var(--cmp-ink); background: var(--cmp-surface); border: 1px solid var(--cmp-muted); padding: 0.2em 0.35em;
 }
 .comparanda-matrix .comparanda-panel :is(textarea, select):focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
-.comparanda-matrix .comparanda-panel button:disabled { color: var(--cmp-muted); cursor: progress; }
+.comparanda-matrix .comparanda-panel button[aria-disabled="true"] { color: var(--cmp-muted); cursor: progress; }
 .comparanda-matrix .comparanda-panel [role="alert"] { color: var(--cmp-ink); font-weight: 600; }
 .comparanda-matrix .comparanda-handle {
   font: inherit; color: var(--cmp-muted); background: none; border: 0; padding: 0 0.15em; margin-inline-end: 0.2em;
