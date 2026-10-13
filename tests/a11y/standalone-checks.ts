@@ -129,9 +129,11 @@ const a19: Check<StandaloneEnv> = {
     return found;
   },
   broken: {
-    what: 'the page fetches from a script, with no policy to stop it',
+    what: 'the page asks for an image from a script, with no policy to stop it',
+    // Caught by watching the requests, which is the half of A19 the static pre-filter does not do.
+    mustSay: /the page asked for/,
     sabotage: (env) => {
-      env.html = env.html.replace(CSP_META, '').replace('</body>', '<script>fetch("http://127.0.0.1:9/beacon").catch(() => {});</script></body>');
+      env.html = env.html.replace(CSP_META, '').replace('</body>', '<script>new Image().src = ["http:", "", "127.0.0.1:9", "pixel.gif"].join("/");</script></body>');
     },
   },
 };

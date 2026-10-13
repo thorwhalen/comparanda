@@ -82,11 +82,13 @@ export const withBrowserEnv: WithEnv<BrowserEnv> = async (sabotage, use) => {
     await sabotage?.(env);
     return await use(env);
   } finally {
+    // Whatever one step does, the rest still run: a leaked emulation would fail every later check for the wrong reason.
+    const quietly = (step: () => void) => { try { step(); } catch { /* the check's own result is the failure that matters */ } };
     for (const { el, handle } of mounted) {
-      handle.destroy();
+      quietly(() => handle.destroy());
       el.remove();
     }
-    for (const dispose of disposers.reverse()) dispose();
+    for (const dispose of disposers.reverse()) quietly(dispose);
     await commands.emulateMedia({ forcedColors: 'none', media: null, reducedMotion: 'no-preference' });
   }
 };

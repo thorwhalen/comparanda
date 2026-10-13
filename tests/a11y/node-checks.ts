@@ -112,7 +112,7 @@ const a5: Check<NodeEnv> = {
 // ---- A16, A17 ----------------------------------------------------------------------------------
 
 /** Anything that can paint an image behind a cell: a gradient, or a background-image that is not `none`. */
-const BACKGROUND_IMAGE = /gradient\s*\(|background-image\s*:\s*(?!none\b)|backgroundImage\s*[:=]\s*(?!['"]none['"])|background\s*:[^;]*\burl\s*\(|\bbackground-image\b.*\burl\s*\(/i;
+const BACKGROUND_IMAGE = /gradient\s*\(|background-image\s*:\s*(?!none\b|initial\b|unset\b)|['"]background-image['"]|backgroundImage\s*[:=]\s*(?!['"](?:none|initial|unset)['"])|background\s*:[^;]*\burl\s*\(|\bbackground-image\b.*\burl\s*\(/i;
 
 const a16: Check<NodeEnv> = {
   id: 'A16',
@@ -124,7 +124,7 @@ const a16: Check<NodeEnv> = {
 };
 
 /** The drag attributes ARIA 1.1 deprecated, and a native tooltip on anything: neither is announced reliably, and neither is keyboard-reachable. */
-const FORBIDDEN_ATTRIBUTES = /aria-grabbed|aria-dropeffect|ariaGrabbed|ariaDropEffect|\btitle\s*=\s*[{"'`]|setAttribute\(\s*['"]title['"]|\.title\s*=[^=]/;
+const FORBIDDEN_ATTRIBUTES = /aria-grabbed|aria-dropeffect|ariaGrabbed|ariaDropEffect|\btitle\s*=\s*[{"'`]|setAttribute\(\s*['"]title['"]|(?<!document)\.title\s*=[^=]/;
 
 const a17: Check<NodeEnv> = {
   id: 'A17',

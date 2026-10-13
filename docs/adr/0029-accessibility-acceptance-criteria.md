@@ -97,3 +97,13 @@ The twenty checks are transcribed into `tests/a11y/`, and the suite there is now
 - **A14** runs the hardest tree (most score levels, most confidence layers) per theme; `tests/browser/cvd.test.ts` still runs every tree.
 - **A15** is Chromium only: `forcedColors` emulation is honoured there at the pinned Playwright, which the check asserts before it measures; WebKit and Firefox are not in CI, and B6 is the real-Windows pass.
 - **B1–B8** are rows of `docs/release-notes-template.md`, with columns for environment, result and what was done; a test asserts every row is there, in the research section's words.
+
+Where the gate is deliberately a different shape from the research table's wording, or narrower than it:
+
+- **A11** patches `setTimeout`/`setInterval` and counts timers of 100 ms or more started while a tooltip is up, instead of searching a tooltip module's source (there is none); `requestAnimationFrame` and animation-end callbacks are not watched.
+- **A12 and A11** allow a tooltip 350 ms to appear after each hover or focus, on two cells and one header of each kind, and see one that appears and goes again.
+- **A15 and A18** assert more than presence: every text-bearing element and every glyph or hatch mark is measured as painted (alpha and `opacity`) against its backdrop, in forced colors, and against paper in print; every absent cell, of any reason, shows a glyph; no element of a cell has a background image. They run over a matrix with every reason code in force. "Snapshot diff reviewed" is replaced by those assertions; B6 is the human look.
+- **A16 and A17** are source greps, as the table says, over `src/view` and `src/standalone` with comments blanked. They are blunt: they ban every gradient (the table bans only those that carry meaning, and the view has none) and every `title=`, and they can be bypassed by building a name at runtime. The runtime backstop for background images is A15/A18 above and `tests/browser/channels.test.ts`.
+- **A20** scans every element at rest, while a header is held and while it is carried, for a transition, an animation or smooth scrolling under `prefers-reduced-motion: reduce`, and watches script's own scroll calls.
+- **A13** reads `opacity` but not `filter`.
+- **The release gate** is a procedure for a person: the template states that a row neither done nor explained blocks the release, and a `not run (why)` row is the releaser's published decision. Nothing ties the template to a release automatically.

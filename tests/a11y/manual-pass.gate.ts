@@ -39,6 +39,7 @@ describe('the manual pass (B1-B8) is in the release notes template', () => {
 
   it('says that the pass is recorded in the notes, and that a skipped row is published as skipped', () => {
     expect(template).toMatch(/recorded \*\*in the release notes\*\*/);
-    expect(template).toMatch(/`not run`/);
+    expect(template).toMatch(/`not run \(why\)`/);
+    expect(template).toMatch(/release gate/);
   });
 });

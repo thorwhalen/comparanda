@@ -9,7 +9,8 @@
  * 1. on the shipped view it finds nothing;
  * 2. on its broken fixture it finds something;
  * 3. its broken fixture trips no other check beyond those it declares in
- *    `alsoTrips` -- so a check is shown to fail on its own, and a fixture that
+ *    `alsoTrips` (and trips every one it declares, so an allowance cannot
+ *    outlive its reason) -- so a check is shown to fail on its own, and a fixture that
  *    quietly breaks three things cannot pass for proof of one.
  *
  * The environment is the runtime's (a DOM to mount into, the source tree, a
@@ -25,6 +26,8 @@ export interface BrokenFixture<E> {
   readonly what: string;
   /** Break the environment. Runs before the check, in the environment the check will read. */
   readonly sabotage: (env: E) => void | Promise<void>;
+  /** What the check must say about it: the fixture has to be caught by the mechanism it stands for, not by a neighbouring one in the same check. */
+  readonly mustSay?: RegExp;
 }
 
 export interface Check<E> {
@@ -62,6 +65,9 @@ export function gateTests<E>(runtime: Runtime, checks: readonly Check<E>[], with
       it(`fails on its broken fixture (${check.broken.what})`, { timeout }, async () => {
         const found = await violations(check, check.broken.sabotage);
         expect(found.length, `${check.id} did not notice: ${check.broken.what}`).toBeGreaterThan(0);
+        if (check.broken.mustSay) {
+          expect(found.some((f) => check.broken.mustSay!.test(f)), `${check.id} noticed, but not by ${check.broken.mustSay}: ${found.slice(0, 3).join(' | ')}`).toBe(true);
+        }
       });
 
       it('and its broken fixture trips no other check', { timeout: timeout * 4 }, async () => {
@@ -72,6 +78,8 @@ export function gateTests<E>(runtime: Runtime, checks: readonly Check<E>[], with
           if (found.length > 0) tripped.push(other.id);
         }
         const allowed = Object.keys(check.alsoTrips ?? {});
+        const stale = allowed.filter((id) => !tripped.includes(id));
+        expect(stale, `the fixture for ${check.id} no longer trips ${stale.join(', ')}: remove the allowance from alsoTrips`).toEqual([]);
         const surprising = tripped.filter((id) => !allowed.includes(id));
         expect(surprising, `the fixture for ${check.id} (${check.broken.what}) also fails ${surprising.join(', ')}, so ${check.id} is not shown to fail on its own`).toEqual([]);
       });

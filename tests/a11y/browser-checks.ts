@@ -87,6 +87,46 @@ const painted = (css: string, on: Rgba) => over(parseColour(css), on);
 /** Whether `node` is clipped away for sighted readers, as the screen-reader-only spans are. */
 const visuallyHidden = (node: Element) => node.closest('.comparanda-sr') !== null;
 
+/** How opaque `node` is as painted: its own `opacity` and every ancestor's, multiplied. (A `filter` is not read.) */
+function opacityOf(node: Element): number {
+  let alpha = 1;
+  for (let n: Element | null = node; n; n = n.parentElement) alpha *= parseFloat(getComputedStyle(n).opacity);
+  return alpha;
+}
+
+const TEXT_CONTRAST_WHAT = (text: string, r: number, min: number) => `"${text.slice(0, 24)}" is ${r.toFixed(2)}:1 against what is behind it, under ${min}:1`;
+
+/**
+ * What cannot be read in `cell`: every element that draws text of its own, and
+ * every glyph or hatch stroke or fill, measured as painted (alpha, `opacity`) against what is
+ * behind it -- the cell's backdrop, or `paper` where backgrounds are suppressed.
+ */
+function contrastFaults(cell: Element, where: string, { paper }: { paper?: Rgba } = {}): string[] {
+  const found: string[] = [];
+  const behind = (node: Element) => paper ?? backdrop(node);
+  for (const node of [cell, ...Array.from(cell.querySelectorAll('*'))]) {
+    if (visuallyHidden(node)) continue;
+    const text = Array.from(node.childNodes).filter((c) => c.nodeType === Node.TEXT_NODE).map((c) => c.textContent!.trim()).join('');
+    if (text !== '') {
+      const on = behind(node);
+      const ink = parseColour(getComputedStyle(node).color);
+      const r = ratio(painted(`rgba(${ink[0]}, ${ink[1]}, ${ink[2]}, ${ink[3] * opacityOf(node)})`, on), on);
+      if (r < TEXT_CONTRAST_MIN) found.push(`${where}: ${TEXT_CONTRAST_WHAT(text, r, TEXT_CONTRAST_MIN)}`);
+    }
+    if (node instanceof SVGElement && node.tagName.toLowerCase() === 'svg') {
+      const style = getComputedStyle(node);
+      for (const [what, css] of [['stroke', style.stroke], ['fill', style.fill]] as const) {
+        if (css === 'none') continue;
+        const on = behind(node);
+        const c = parseColour(css);
+        const r = ratio(painted(`rgba(${c[0]}, ${c[1]}, ${c[2]}, ${c[3] * opacityOf(node)})`, on), on);
+        if (r < GRAPHIC_CONTRAST_MIN) found.push(`${where}: a ${node.getAttribute('class')} ${what} is ${r.toFixed(2)}:1 against what is behind it, under ${GRAPHIC_CONTRAST_MIN}:1`);
+      }
+    }
+  }
+  return found;
+}
+
 // ---- A2 -----------------------------------------------------------------------------------
 
 const TAB_STOP_KEYS = ['{ArrowRight}', '{ArrowDown}', '{ArrowDown}', '{ArrowLeft}', '{End}', '{Home}', '{Control>}{End}{/Control}', '{Control>}{Home}{/Control}', '{ArrowDown}'];
@@ -106,6 +146,18 @@ const a2: Check<BrowserEnv> = {
       await userEvent.keyboard(key);
       count(key);
     }
+    // And in the other states the grid has: the panel up, a header held in grab mode, the move menu open.
+    await userEvent.keyboard('{Enter}');
+    count('Enter, which opens the panel');
+    const held = mountReorderable(env);
+    await tick();
+    header(held.el, crits[1]!).focus();
+    await userEvent.keyboard('{Enter}');
+    const heldCount = tabbable(held.el.querySelector('.comparanda-scroll')!).length;
+    if (heldCount !== 1) found.push(`${heldCount} tab stops in the grid while a header is held, not one`);
+    await userEvent.keyboard('{ArrowRight}');
+    if (tabbable(held.el.querySelector('.comparanda-scroll')!).length !== 1) found.push('a move in grab mode leaves more than one tab stop');
+    await userEvent.keyboard('{Escape}');
     return found;
   },
   broken: {
@@ -162,6 +214,8 @@ const a4: Check<BrowserEnv> = {
         // A blank meaning is worded from the id, an undeclared code too: never an empty cell, never a bare code on its own.
         const phrase = facts && facts.means.trim() ? facts.means : code;
         if (!said.includes(phrase)) found.push(`${encoding}: ${code} is heard as "${said}", without "${phrase}"`);
+        // ADR-0029: a code added without its glyph fails the build as surely as one added without its phrase.
+        if (!td.querySelector('svg.comparanda-glyph[data-glyph]')) found.push(`${encoding}: ${code} has a phrase but no glyph`);
       }
     }
     // The set under test is the whole set: a core code with no cell above would pass unheard.
@@ -177,17 +231,41 @@ const a4: Check<BrowserEnv> = {
 
 // ---- A12, A11 (tooltips) ---------------------------------------------------------------------
 
-/** Hover the first cells and focus a few, and return every tooltip the page showed, with how it was met. */
+/** The longest a tooltip may be made to wait before it shows, which a check allows for after each hover. */
+const TOOLTIP_DELAY_MAX_MS = 350;
+
+/**
+ * Hover, and focus, a few cells and both kinds of header, and return every
+ * tooltip the page showed -- including one that showed and went again -- each
+ * given time to appear after a delay.
+ */
 async function tooltipsAfterHover(el: HTMLElement): Promise<HTMLElement[]> {
   const seen = new Set<HTMLElement>();
   const collect = () => document.querySelectorAll<HTMLElement>('[role="tooltip"]').forEach((t) => seen.add(t));
-  for (const td of Array.from(el.querySelectorAll<HTMLElement>('tbody td')).slice(0, 4)) {
-    await userEvent.hover(td);
-    await tick();
-    collect();
-    td.focus();
-    await tick();
-    collect();
+  const watch = new MutationObserver((records) => {
+    for (const r of records) r.addedNodes.forEach((n) => {
+      if (!(n instanceof HTMLElement)) return;
+      if (n.matches('[role="tooltip"]')) seen.add(n);
+      n.querySelectorAll<HTMLElement>('[role="tooltip"]').forEach((t) => seen.add(t));
+    });
+  });
+  watch.observe(document.body, { childList: true, subtree: true });
+  try {
+    const targets = [
+      ...Array.from(el.querySelectorAll<HTMLElement>('tbody td')).slice(0, 2),
+      el.querySelector<HTMLElement>('thead th[scope="col"]:not(.comparanda-corner)'),
+      el.querySelector<HTMLElement>('tbody th[scope="row"]'),
+    ].filter((t): t is HTMLElement => t !== null);
+    for (const target of targets) {
+      await userEvent.hover(target);
+      await sleep(TOOLTIP_DELAY_MAX_MS);
+      collect();
+      target.focus();
+      await sleep(TOOLTIP_DELAY_MAX_MS);
+      collect();
+    }
+  } finally {
+    watch.disconnect();
   }
   return Array.from(seen);
 }
@@ -195,27 +273,31 @@ async function tooltipsAfterHover(el: HTMLElement): Promise<HTMLElement[]> {
 /** Timers of at least this long, started while something is open, are a way to close it on the reader. */
 const AUTO_DISMISS_MIN_MS = 100;
 
-/** Record the delays of the timers started while `during` runs. */
-async function timersDuring(during: () => Promise<void>): Promise<number[]> {
+/** Record the delays of the timers started while `during` runs, and while `when` holds at the moment of the call. */
+async function timersDuring(during: () => Promise<void>, when: () => boolean = () => true): Promise<number[]> {
   const delays: number[] = [];
   const [realTimeout, realInterval] = [window.setTimeout, window.setInterval];
-  window.setTimeout = ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { delays.push(ms ?? 0); return realTimeout(fn, ms, ...rest); }) as typeof window.setTimeout;
-  window.setInterval = ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { delays.push(ms ?? 0); return realInterval(fn, ms, ...rest); }) as typeof window.setInterval;
+  window.setTimeout = ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { if (when()) delays.push(ms ?? 0); return realTimeout(fn, ms, ...rest); }) as typeof window.setTimeout;
+  window.setInterval = ((fn: TimerHandler, ms?: number, ...rest: unknown[]) => { if (when()) delays.push(ms ?? 0); return realInterval(fn, ms, ...rest); }) as typeof window.setInterval;
   try { await during(); } finally { window.setTimeout = realTimeout; window.setInterval = realInterval; }
   return delays;
 }
 
-/** A tooltip that follows the pointer onto a cell: a fixture for A11 and A12. */
-function plantTooltip(el: HTMLElement, { dismissOnEscape, withLink }: { dismissOnEscape: boolean; withLink: boolean }) {
+/** A tooltip that follows the pointer onto a cell, after `delayMs`: a fixture for A11 and A12. Returns how to take it away. */
+function plantTooltip(el: HTMLElement, { dismissOnEscape, withLink, delayMs }: { dismissOnEscape: boolean; withLink: boolean; delayMs: number }): () => void {
+  const off = new AbortController();
   el.addEventListener('mouseover', (e) => {
     const td = (e.target as Element).closest('td');
     if (!td || document.querySelector('[role="tooltip"]')) return;
-    const tip = document.createElement('div');
-    tip.setAttribute('role', 'tooltip');
-    tip.innerHTML = withLink ? 'Evidence: <a href="#evidence">read more</a>' : 'Evidence';
-    td.append(tip);
-    if (dismissOnEscape) document.addEventListener('keydown', (k) => { if (k.key === 'Escape') tip.remove(); }, { once: true });
-  });
+    setTimeout(() => {
+      const tip = document.createElement('div');
+      tip.setAttribute('role', 'tooltip');
+      tip.innerHTML = withLink ? 'Evidence: <a href="#evidence">read more</a>' : 'Evidence';
+      td.append(tip);
+      if (dismissOnEscape) document.addEventListener('keydown', (k) => { if (k.key === 'Escape') tip.remove(); }, { once: true, signal: off.signal });
+    }, delayMs);
+  }, { signal: off.signal });
+  return () => off.abort();
 }
 
 const a12: Check<BrowserEnv> = {
@@ -230,8 +312,8 @@ const a12: Check<BrowserEnv> = {
     return found;
   },
   broken: {
-    what: 'a tooltip carries a link',
-    sabotage: (env) => env.afterMount((el) => plantTooltip(el, { dismissOnEscape: true, withLink: true })),
+    what: 'a tooltip, shown after a delay, carries a link',
+    sabotage: (env) => env.afterMount((el) => env.onDispose(plantTooltip(el, { dismissOnEscape: true, withLink: true, delayMs: 200 }))),
   },
 };
 
@@ -244,9 +326,10 @@ const a11: Check<BrowserEnv> = {
     // 1. Any tooltip the cell shows: Escape closes it, focus stays on the cell, no timer closes it.
     cell.focus();
     let tips: HTMLElement[] = [];
-    const delays = await timersDuring(async () => { tips = await tooltipsAfterHover(el); });
-    if (tips.some((t) => t.isConnected) && delays.some((ms) => ms >= AUTO_DISMISS_MIN_MS)) found.push(`a timer of ${delays.find((ms) => ms >= AUTO_DISMISS_MIN_MS)} ms ran while a tooltip was showing`);
-    const shown = (await tooltipsAfterHover(el)).filter((t) => t.isConnected);
+    // A timer started while a tooltip is up is a way to close it on the reader; one started to show it is not.
+    const delays = await timersDuring(async () => { tips = await tooltipsAfterHover(el); }, () => document.querySelector('[role="tooltip"]') !== null);
+    if (delays.some((ms) => ms >= AUTO_DISMISS_MIN_MS)) found.push(`a timer of ${delays.find((ms) => ms >= AUTO_DISMISS_MIN_MS)} ms ran while a tooltip was showing`);
+    const shown = tips.filter((t) => t.isConnected);
     if (shown.length > 0) {
       cell.focus();
       await userEvent.keyboard('{Escape}');
@@ -266,7 +349,7 @@ const a11: Check<BrowserEnv> = {
   },
   broken: {
     what: 'a tooltip ignores Escape',
-    sabotage: (env) => env.afterMount((el) => plantTooltip(el, { dismissOnEscape: false, withLink: false })),
+    sabotage: (env) => env.afterMount((el) => env.onDispose(plantTooltip(el, { dismissOnEscape: false, withLink: false, delayMs: 0 }))),
   },
 };
 
@@ -313,6 +396,7 @@ const a6: Check<BrowserEnv> = {
       if (e.key === 'Enter' && (e.target as HTMLElement).dataset['grabbed'] === 'true') setTimeout(() => (document.activeElement as HTMLElement | null)?.blur(), 0);
     }, true)),
   },
+  alsoTrips: { A7: 'the Tab route is put down with Enter too, so it loses focus the same way' },
 };
 
 const a7: Check<BrowserEnv> = {
@@ -320,7 +404,12 @@ const a7: Check<BrowserEnv> = {
   async run(env) {
     const byArrow = await reorderBy(env, '{Enter}', '{ArrowRight}', '{Enter}');
     const byTab = await reorderBy(env, '{Enter}', '{Tab}', '{Enter}');
-    return byTab.moved.join() === byArrow.moved.join() ? [] : [`Tab gave ${byTab.moved.join(', ')}; the arrow gave ${byArrow.moved.join(', ')}`];
+    const found: string[] = [];
+    if (byTab.moved.join() !== byArrow.moved.join()) found.push(`Tab gave ${byTab.moved.join(', ')}; the arrow gave ${byArrow.moved.join(', ')}`);
+    // Equal is not enough: both routes failing the same way is equal too.
+    if (byTab.moved.join() !== MOVED_TWO_LATER.join()) found.push(`the Tab route left the order ${byTab.moved.join(', ')}, not the criterion moved two later`);
+    if (!byTab.focusKept) found.push('the Tab route left focus off the moved header');
+    return found;
   },
   broken: {
     what: 'Tab never reaches the grab handler',
@@ -442,24 +531,7 @@ const a13: Check<BrowserEnv> = {
           const { el } = env.mount({ analysis, measure: 'score', encoding }, { theme });
           const cells = Array.from(el.querySelectorAll('tbody td, tbody th, thead th'));
           if (cells.length === 0) found.push(`${where}: nothing was drawn to measure`);
-          for (const cell of cells) {
-            // The ink of every element that draws text of its own, against what is painted behind it.
-            for (const node of [cell, ...Array.from(cell.querySelectorAll('*'))]) {
-              if (visuallyHidden(node)) continue;
-              const text = Array.from(node.childNodes).filter((c) => c.nodeType === Node.TEXT_NODE).map((c) => c.textContent!.trim()).join('');
-              if (text === '') continue;
-              const on = backdrop(node);
-              const r = ratio(painted(getComputedStyle(node).color, on), on);
-              if (r < TEXT_CONTRAST_MIN) found.push(`${where}: "${text.slice(0, 24)}" is ${r.toFixed(2)}:1 against what is behind it, under ${TEXT_CONTRAST_MIN}:1`);
-            }
-            for (const svg of Array.from(cell.querySelectorAll('svg'))) {
-              const stroke = getComputedStyle(svg).stroke;
-              if (stroke === 'none') continue;
-              const on = backdrop(svg);
-              const r = ratio(painted(stroke, on), on);
-              if (r < GRAPHIC_CONTRAST_MIN) found.push(`${where}: a ${svg.getAttribute('class')} stroke is ${r.toFixed(2)}:1 against the cell, under ${GRAPHIC_CONTRAST_MIN}:1`);
-            }
-          }
+          for (const cell of cells) found.push(...contrastFaults(cell, where));
         }
       }
     }
@@ -487,10 +559,13 @@ const a14: Check<BrowserEnv> = {
       );
       found.push(...await treeFailures(el, handle, HARDEST, theme));
     }
-    return cap(found);
+    // The colour-vision faults first: they are what this check is for, and a cap should not hide them behind palette mismatches.
+    return cap(found.sort((a, b) => Number(/ΔE/.test(b)) - Number(/ΔE/.test(a))));
   },
   broken: {
     what: 'every swatched cell is painted the colour of the first',
+    // Caught as a colour-vision fault (steps no longer apart), not only as a cell that is not the palette's colour.
+    mustSay: /ΔE .* apart|from the surface/,
     sabotage: (env) => env.afterMount((el) => {
       const swatched = Array.from(el.querySelectorAll<HTMLElement>('td[data-swatch]'));
       if (swatched.length === 0) return; // not the palette's grid: nothing to flatten
@@ -503,8 +578,12 @@ const a14: Check<BrowserEnv> = {
 
 // ---- A15, A18 (forced colors, print) -------------------------------------------------------------
 
-/** Both channels, in a medium: every value keeps its numeral; every absence its glyph; every cell its frame. */
-function channelsSurvive(el: HTMLElement, where: string): string[] {
+/**
+ * Both channels, in a medium: every value keeps its numeral; every absence its
+ * glyph, whichever reason it is; every cell its frame; nothing is drawn with a
+ * background image; and what survives is legible against what is behind it.
+ */
+function channelsSurvive(el: HTMLElement, where: string, { paper }: { paper?: Rgba } = {}): string[] {
   const found: string[] = [];
   const cells = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-cell]'));
   if (cells.length === 0) return [`${where}: nothing was drawn`];
@@ -513,17 +592,23 @@ function channelsSurvive(el: HTMLElement, where: string): string[] {
     if ((td.querySelector('.comparanda-shown')?.textContent ?? '').trim() === '') found.push(`${at} shows no numeral`);
     const style = getComputedStyle(td);
     if (style.borderTopStyle === 'none' || parseFloat(style.borderTopWidth) === 0) found.push(`${at} has no border`);
-    if (style.backgroundImage !== 'none') found.push(`${at} carries meaning in a background image`);
+    for (const node of [td, ...Array.from(td.querySelectorAll('*'))]) {
+      if (getComputedStyle(node).backgroundImage !== 'none') found.push(`${at} carries meaning in a background image (${node.tagName.toLowerCase()})`);
+    }
     for (const svg of Array.from(td.querySelectorAll('svg'))) {
       const box = svg.getBoundingClientRect();
       if (getComputedStyle(svg).display === 'none' || box.width === 0 || getComputedStyle(svg).stroke === 'none') found.push(`${at} lost its ${svg.getAttribute('class')} mark`);
     }
-    if (td.dataset['state'] === 'missing' && !td.querySelector('svg.comparanda-glyph')) found.push(`${at} is missing and shows no glyph`);
+    // An absence, of any reason, is a shape (ADR-0028): not only the ones recorded as `missing`.
+    if (td.dataset['absence'] !== undefined && !td.querySelector('svg.comparanda-glyph')) found.push(`${at} is absent (${td.dataset['state']}) and shows no glyph`);
+    found.push(...contrastFaults(td, at, paper ? { paper } : {}));
   }
   return found;
 }
 
-const MEDIUM_CASES = [['missingness', relocation], ['uncertainty-suppressed', confident], ['text-only', relocation]] as const;
+/** Every reason code in force on a cell of its own, so a code added without its glyph fails here (ADR-0009, ADR-0029). */
+const EVERY_CODE = everyCode().analysis;
+const MEDIUM_CASES = [['missingness', relocation], ['missingness', EVERY_CODE], ['uncertainty-suppressed', confident], ['text-only', relocation]] as const;
 
 const a15: Check<BrowserEnv> = {
   id: 'A15',
@@ -533,7 +618,7 @@ const a15: Check<BrowserEnv> = {
     if (!matchMedia('(forced-colors: active)').matches) return ['this browser does not honour forcedColors emulation, so the check cannot see what a forced-colors reader sees'];
     for (const [encoding, analysis] of MEDIUM_CASES) {
       const { el } = env.mount({ analysis, measure: 'score', encoding });
-      found.push(...channelsSurvive(el, `forced colors / ${encoding}`));
+      found.push(...channelsSurvive(el, `forced colors / ${encoding}${analysis === EVERY_CODE ? ' / every code' : ''}`));
       if (encoding !== 'text-only' && el.querySelector('td svg') === null) found.push(`forced colors / ${encoding}: no glyph or hatch was drawn at all`);
     }
     return cap(found);
@@ -556,14 +641,12 @@ const a18: Check<BrowserEnv> = {
     if (!matchMedia('print').matches) return ['the print medium was not emulated'];
     for (const theme of THEMES) {
       for (const [encoding, analysis] of MEDIUM_CASES) {
-        const where = `print / ${encoding} / ${theme} on screen`;
+        const where = `print / ${encoding}${analysis === EVERY_CODE ? ' / every code' : ''} / ${theme} on screen`;
         const { el } = env.mount({ analysis, measure: 'score', encoding }, { theme });
-        found.push(...channelsSurvive(el, where));
-        // A printer may drop backgrounds: nothing meaningful may rest on one, and the ink must hold against paper.
+        // A printer may drop backgrounds: the ink and the marks must hold against paper, wherever the cells' own fills were.
+        found.push(...channelsSurvive(el, where, { paper: PAPER }));
         for (const node of Array.from(el.querySelectorAll('th, td'))) {
           if (parseColour(getComputedStyle(node).backgroundColor)[3] !== 0) found.push(`${where}: ${node.tagName.toLowerCase()} "${node.textContent!.trim().slice(0, 20)}" still paints a background`);
-          const r = ratio(painted(getComputedStyle(node).color, PAPER), PAPER);
-          if (r < TEXT_CONTRAST_MIN) found.push(`${where}: "${node.textContent!.trim().slice(0, 20)}" is ${r.toFixed(2)}:1 on paper`);
         }
       }
     }
@@ -599,15 +682,28 @@ const a20: Check<BrowserEnv> = {
         return fn.apply(this, args);
       };
     }
-    try {
-      const { el } = env.mount({ analysis: FIXTURES['video-generation']!, measure: 'score' }, { style: { width: '480px', '--comparanda-max-height': '320px' } });
-      for (const node of [document.documentElement, ...Array.from(el.querySelectorAll('*'))]) {
+    /** Every element in `root` that moves on its own when it should not, said by name. */
+    const motion = (root: Element, when: string) => {
+      for (const node of [document.documentElement, ...Array.from(root.querySelectorAll('*'))]) {
         const style = getComputedStyle(node);
         const what = `${node.tagName.toLowerCase()}${node.className && typeof node.className === 'string' ? `.${node.className.split(' ')[0]}` : ''}`;
-        if (seconds(style.transitionDuration) && style.transitionProperty !== 'none') found.push(`${what} transitions for ${style.transitionDuration} under reduced motion`);
-        if (style.animationName !== 'none' && seconds(style.animationDuration)) found.push(`${what} animates (${style.animationName}) under reduced motion`);
-        if (style.scrollBehavior === 'smooth') found.push(`${what} scrolls smoothly under reduced motion`);
+        if (seconds(style.transitionDuration) && style.transitionProperty !== 'none') found.push(`${what} transitions for ${style.transitionDuration} ${when} under reduced motion`);
+        if (style.animationName !== 'none' && seconds(style.animationDuration)) found.push(`${what} animates (${style.animationName}) ${when} under reduced motion`);
+        if (style.scrollBehavior === 'smooth') found.push(`${what} scrolls smoothly ${when} under reduced motion`);
       }
+    };
+    try {
+      const { el } = env.mount({ analysis: FIXTURES['video-generation']!, measure: 'score' }, { style: { width: '480px', '--comparanda-max-height': '320px' } });
+      motion(el, 'at rest');
+      // The drag animation: a header picked up and carried is where a transition would be.
+      const drag = mountReorderable(env);
+      await tick();
+      header(drag.el, crits[1]!).focus();
+      await userEvent.keyboard('{Enter}');
+      motion(drag.el, 'while a header is held');
+      await userEvent.keyboard('{ArrowRight}');
+      motion(drag.el, 'while a header is carried');
+      await userEvent.keyboard('{Escape}');
       // And the keys that scroll: no smooth behaviour asked for from script.
       el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')!.focus();
       await userEvent.keyboard('{Control>}{End}{/Control}');
@@ -623,7 +719,7 @@ const a20: Check<BrowserEnv> = {
     what: 'the scroller scrolls smoothly and every cell fades, with no reduced-motion rule',
     sabotage: (env) => env.afterMount((el) => {
       const style = document.createElement('style');
-      style.textContent = '.comparanda-scroll { scroll-behavior: smooth; } .comparanda-matrix td { transition: background-color 1s; }';
+      style.textContent = '.comparanda-scroll { scroll-behavior: smooth; } .comparanda-matrix td { transition: background-color 1s; } .comparanda-matrix th[data-grabbed] { transition: outline-offset 0.3s; }';
       el.append(style);
     }),
   },

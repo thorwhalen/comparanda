@@ -95,6 +95,7 @@ jobs:
     # protection rule requires is named for what it protects and a red here
     # cannot be mistaken for a flaky unit test.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 

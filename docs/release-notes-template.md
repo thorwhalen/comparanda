@@ -2,7 +2,7 @@
 
 Copy this file into the release's notes (the GitHub release body) and fill it in. The automated accessibility set (A1–A20) is a merge gate and needs nothing here; the manual pass below is the release gate of ADR-0029, and it is recorded **in the release notes**, not in a wiki or a comment.
 
-A release with a blank row is not blocked by the blank, but the blank is published: write `not run` and why, so a reader of the notes can tell a pass that was skipped from a pass that found nothing.
+The pass is a release gate (ADR-0029): do not publish with a row that is neither done nor explained. A row marked `not run (why)` is the releaser's decision to ship without it, made in the open: the reason is published, so a reader of the notes can tell a pass that was skipped from a pass that found nothing.
 
 ## What changed
 
