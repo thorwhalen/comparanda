@@ -121,7 +121,7 @@ export function activityRecord(a: Analysis, viewer: ViewerContext, { since }: Ac
       const base = { threadId: thread.id, whoHidden: false, who, because: 'discussion' as const };
       entries.push({ ...base, at: c.at, kind: i === 0 ? 'started-thread' : 'replied', said: `${who} ${i === 0 ? 'started a thread' : 'replied in a thread'}, ${c.at}.` });
       if (c.editedAt !== undefined) {
-        entries.push({ ...base, at: c.editedAt, kind: 'edited-comment', said: `A comment by ${who} was edited, ${c.editedAt}; the earlier wording is not kept.` });
+        entries.push({ ...base, at: c.editedAt, kind: 'edited-comment', said: `A comment by ${who} was edited, ${c.editedAt}; the earlier wording, if the edit kept it, is quoted in the comment that follows.` });
       }
     });
     if (thread.resolved && thread.resolvedAt !== undefined) {

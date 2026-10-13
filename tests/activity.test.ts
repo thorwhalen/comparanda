@@ -76,7 +76,7 @@ describe('the activity record', () => {
   it('lists the discussion with its authors, edits as edits that keep no earlier wording, and the resolution', () => {
     const entries = activityRecord(a, { viewerId: 'cy', now: NOW_OPEN });
     expect(entries.filter((e) => e.threadId === 't1').map((e) => e.kind)).toEqual(['started-thread', 'replied', 'edited-comment', 'resolved']);
-    expect(entries.find((e) => e.kind === 'edited-comment')!.said).toMatch(/the earlier wording is not kept/);
+    expect(entries.find((e) => e.kind === 'edited-comment')!.said).toMatch(/the earlier wording, if the edit kept it/);
     expect(entries.find((e) => e.kind === 'resolved')!.who).toMatch(/^Ana Lopez/);
   });
 

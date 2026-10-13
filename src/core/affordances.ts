@@ -63,7 +63,7 @@ export interface EditTarget {
 /**
  * A write to the analysis outside any one cell.
  *
- * - `comment` starts, answers, resolves or reopens a thread; `thread` says
+ * - `comment` starts, answers, edits, resolves or reopens a thread; `thread` says
  *   which (#194), so a host whose rule is "reviewers comment, only the owner
  *   resolves" can tell them apart. Absent, the question is the general one:
  *   may this reader take part in discussion here at all.
@@ -80,8 +80,10 @@ export interface DocumentEditRequest {
   action: 'comment' | 'revise' | 'change-lock' | 'decide-suggestion';
   doing: string;
   target?: EditTarget;
-  /** On `comment` only: which of the four it is. */
+  /** On `comment` only: which of the five it is. */
   thread?: ThreadAct;
+  /** On editing a comment only: the comment, and who wrote it, so a host can let only its author edit it (ADR-0012). */
+  comment?: { id: string; authorId: string };
   /** On `decide-suggestion` only: which way. */
   decision?: SuggestionDecision;
   /**
@@ -92,13 +94,13 @@ export interface DocumentEditRequest {
   cell?: Omit<CellEditRequest, 'action'>;
 }
 
-/** The four things a thread write can be. */
-export const THREAD_ACTS = ['start', 'reply', 'resolve', 'reopen'] as const;
+/** The five things a thread write can be. */
+export const THREAD_ACTS = ['start', 'reply', 'edit', 'resolve', 'reopen'] as const;
 export type ThreadAct = typeof THREAD_ACTS[number];
 
 /** What each act is called to the host (`DocumentEditRequest.doing`) and in a refusal. */
 const THREAD_DOING: Readonly<Record<ThreadAct, string>> = {
-  start: 'starting a thread', reply: 'answering a thread', resolve: 'resolving a thread', reopen: 'reopening a thread',
+  start: 'starting a thread', reply: 'answering a thread', edit: 'editing a comment', resolve: 'resolving a thread', reopen: 'reopening a thread',
 };
 
 /** The gerund phrase for an act, or the general one when none is named. A word that is not an act throws. */
@@ -213,12 +215,12 @@ export interface Affordances {
   /** Every acceptability screen `screen()` applies for this measure. */
   screens(measure: string): Screen[];
   /**
-   * Whether a thread may be started, answered, resolved or reopened here, or --
+   * Whether a thread may be started, answered, edited, resolved or reopened here, or --
    * with no `act` -- whether discussion is open to this reader at all. The host
    * is asked with the act named (#194). A lock does not refuse any of them
    * (`documentPolicy`).
    */
-  comment(target?: EditTarget, act?: ThreadAct): Affordance;
+  comment(target?: EditTarget, act?: ThreadAct, ofComment?: { id: string; authorId: string }): Affordance;
   /**
    * Whether the analysis may be revised outside its cells: alternatives,
    * criteria, groups, definitions, declarations. `doing` names the edit as a
@@ -295,8 +297,10 @@ export function makeAffordances(
   };
 
   const documentRequest = (
-    action: DocumentEditRequest['action'], doing: string, target: EditTarget | undefined, thread?: ThreadAct,
-  ): DocumentEditRequest => ({ action, doing, ...(target === undefined ? {} : { target }), ...(thread === undefined ? {} : { thread }) });
+    action: DocumentEditRequest['action'], doing: string, target: EditTarget | undefined, thread?: ThreadAct, comment?: { id: string; authorId: string },
+  ): DocumentEditRequest => ({
+    action, doing, ...(target === undefined ? {} : { target }), ...(thread === undefined ? {} : { thread }), ...(comment === undefined ? {} : { comment }),
+  });
 
   const cellAt = (altId: string, critId: string, measure: string) => cells.get(JSON.stringify([altId, critId, measure]));
 
@@ -346,8 +350,8 @@ export function makeAffordances(
         }];
       });
     },
-    comment(target, act) {
-      return withHost(documentRequest('comment', threadDoing(act), target, act), documentPolicy(a, 'comment'));
+    comment(target, act, ofComment) {
+      return withHost(documentRequest('comment', threadDoing(act), target, act, ofComment), documentPolicy(a, 'comment'));
     },
     revise(doing, target) {
       return withHost(documentRequest('revise', requireDoing(doing), target), documentPolicy(a, 'revise'));
