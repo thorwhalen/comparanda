@@ -255,14 +255,15 @@ export function makeAffordances(
     // The intersection fails closed: only an explicit yes from the host allows.
     // A host that throws, or answers anything but `true` or an enabled
     // `Affordance`, has not said yes -- and is never overruled into one.
-    let host: Affordance | boolean;
     try {
-      host = authorize(request);
+      const host: unknown = authorize(request);
+      if (host instanceof Promise) return refuse('the host answered later than asked: `authorize` must answer at once, with true, false or an Affordance.');
+      if (host === true) return ALLOWED;
+      const { enabled, reason } = ((typeof host === 'object' && host) || {}) as Partial<Affordance>;
+      return enabled === true ? ALLOWED : refuse(typeof reason === 'string' && reason ? reason : NOT_AUTHORISED);
     } catch (error) {
       return refuse(`the host could not decide whether you may do this (${error instanceof Error ? error.message : String(error)}).`);
     }
-    if (host === true || (typeof host === 'object' && host?.enabled === true)) return ALLOWED;
-    return refuse((typeof host === 'object' && host?.reason) || NOT_AUTHORISED);
   };
 
   const documentRequest = (

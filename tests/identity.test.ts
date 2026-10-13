@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
 import { makeAffordances, type Authorize } from '../src/core/affordances.js';
 import { attribution, attributions } from '../src/core/identity.js';
+import { startThread } from '../src/core/threads.js';
 import { agentIdentity, localIdentity, type IdentityStorage } from '../src/store/index.js';
 import relocationJson from '../examples/relocation.json';
 
@@ -51,7 +52,7 @@ describe('attribution says what kind of author, and how well it is known', () =>
 describe('the local identity: a name typed once, under a stable id', () => {
   it('is anonymous until named, then a human with a generated id, unverified', async () => {
     const storage = memory();
-    const me = localIdentity({ storage, newId: () => 'local-1' });
+    const me = localIdentity({ storage, newId: () => '1' });
     expect((await me.current()).id).toBe('anonymous');
     const named = await me.name('  Ada ');
     expect(named).toEqual({ id: 'local-1', displayName: 'Ada', kind: 'human', principalId: 'local-1', attestation: { method: 'unverified' } });
@@ -62,7 +63,7 @@ describe('the local identity: a name typed once, under a stable id', () => {
 
   it('keeps the id across a rename, and forgets both on request', async () => {
     let n = 0;
-    const me = localIdentity({ storage: memory(), newId: () => `local-${(n += 1)}` });
+    const me = localIdentity({ storage: memory(), newId: () => `${(n += 1)}` });
     await me.name('Ada');
     expect((await me.name('Ada L.')).id).toBe('local-1');
     await me.forget();
@@ -71,11 +72,13 @@ describe('the local identity: a name typed once, under a stable id', () => {
   });
 
   it('reads storage as untrusted: nothing stored can promote it, and malformed reads as no name', async () => {
-    const forged = memory({ 'comparanda.identity': JSON.stringify({ id: 'x', displayName: 'X', kind: 'agent', attestation: { method: 'signature' } }) });
+    const forged = memory({ 'comparanda.identity': JSON.stringify({ id: 'local-x', displayName: 'X', kind: 'agent', attestation: { method: 'signature' } }) });
     expect(await localIdentity({ storage: forged }).current()).toEqual(
-      { id: 'x', displayName: 'X', kind: 'human', principalId: 'x', attestation: { method: 'unverified' } },
+      { id: 'local-x', displayName: 'X', kind: 'human', principalId: 'local-x', attestation: { method: 'unverified' } },
     );
-    for (const bad of ['{', '"ada"', '{"id":"","displayName":"A"}', '{"id":"a","displayName":"  "}', '{"id":3,"displayName":"A"}']) {
+    // An id this adapter could not have made is not taken: a stored "ana" must not sign as the document's Ana.
+    expect((await localIdentity({ storage: memory({ 'comparanda.identity': '{"id":"ana","displayName":"Mallory"}' }) }).current()).id).toBe('anonymous');
+    for (const bad of ['{', '"ada"', '{"id":"","displayName":"A"}', '{"id":"local-a","displayName":"  "}', '{"id":3,"displayName":"A"}']) {
       expect((await localIdentity({ storage: memory({ 'comparanda.identity': bad }) }).current()).id).toBe('anonymous');
     }
   });
@@ -105,6 +108,8 @@ describe('an agent identity is typed, not named', () => {
     const ruleIds = (authors: unknown[]) =>
       validateAnalysis({ ...a, authors: [...a.authors, ...authors] }).problems.map((p) => p.ruleId);
     expect(ruleIds([{ id: 'bot', displayName: 'Bot', kind: 'human', agent: { name: 'bot' } }])).toContain('agent-is-typed');
+    // An import that records the run behind it is not a disguise, and v1 documents carrying one still load.
+    expect(ruleIds([{ id: 'imp', displayName: 'Import', kind: 'imported', agent: { name: 'bot' } }])).not.toContain('agent-is-typed');
     const principal = a.authors[0]!;
     expect(ruleIds([{ id: 'p', displayName: 'P', kind: principal.kind === 'agent' ? 'human' : 'agent', principalId: principal.id }]))
       .toContain('persona-keeps-kind');
@@ -124,5 +129,22 @@ describe('the host is never overruled: authorisation fails closed', () => {
       expect(ask(() => answer as never).enabled, JSON.stringify(answer)).toBe(false);
     }
     expect(ask(() => ({ enabled: true, reason: 'ignored' }))).toEqual({ enabled: true });
+    expect(ask(() => Promise.resolve(true) as never).reason).toMatch(/must answer at once/);
+    expect(ask(() => ({ enabled: false, reason: 42 }) as never).reason).toBe('you are not authorised to do this here.');
+    expect(ask(() => ({ get enabled(): boolean { throw new Error('getter'); } })).reason).toMatch(/could not decide.*getter/);
+  });
+});
+
+describe('a writer cannot sign as an author the document already describes differently', () => {
+  it('refuses an identity whose id is a different kind, or known differently well', () => {
+    const a = relocation();
+    const ana = { id: 'ana', displayName: 'Ana', kind: 'human' as const, attestation: { method: 'oauth' as const, issuer: 'corp' } };
+    const doc = { ...a, authors: [...a.authors.filter((x) => x.id !== 'ana'), ana] };
+    const write = (author: Parameters<typeof startThread>[1]['comment']['author']) => startThread(doc, {
+      threadId: 't-new', anchor: { scope: 'analysis' }, comment: { id: 'c-new', at: '2026-10-13', body: 'hi', author },
+    });
+    expect(() => write({ id: 'ana', displayName: 'Mallory', kind: 'human', attestation: { method: 'unverified' } })).toThrow(/verified by corp/);
+    expect(() => write({ id: 'ana', displayName: 'Ana', kind: 'agent', attestation: ana.attestation })).toThrow(/cannot write as them/);
+    expect(write({ ...ana }).threads.at(-1)!.comments[0]!.authorId).toBe('ana');
   });
 });

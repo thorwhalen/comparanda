@@ -177,7 +177,7 @@ function AssertionItem({ detail, replacedBy }: { detail: AssertionDetail; replac
   return (
     <li data-assertion={s.id} data-superseded={detail.superseded ? 'true' : undefined}>
       <p class="comparanda-assertion-head">
-        {detail.superseded && `Superseded${replacedBy ? ` by ${replacedBy.author?.displayName ?? replacedBy.assertion.authorId}'s ${replacedBy.assertion.value !== undefined && !replacedBy.withheldFromReader ? String(replacedBy.assertion.value) : 'assertion'}` : ''}: `}
+        {detail.superseded && `Superseded${replacedBy ? ` by ${(replacedBy.author ? attribution(replacedBy.author) : replacedBy.assertion.authorId)}'s ${replacedBy.assertion.value !== undefined && !replacedBy.withheldFromReader ? String(replacedBy.assertion.value) : 'assertion'}` : ''}: `}
         <strong>{detail.withheldFromReader ? 'Withheld from you' : s.value !== undefined ? String(s.value) : 'No value'}</strong>
         {` — ${who}, ${s.at}`}
       </p>

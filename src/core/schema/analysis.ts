@@ -427,10 +427,11 @@ export function validateAnalysis(
   const kindOf = new Map(a.authors.map((x) => [x.id, x.kind]));
   a.authors.forEach((x, i) => {
     const at = `authors[${i}]`;
-    if (x.agent && x.kind !== 'agent') {
+    // A model dressed as a person is the lie; an import or a derivation that records the run behind it is not.
+    if (x.agent && x.kind === 'human') {
       honesty(
         'agent-is-typed', at,
-        `author "${x.id}" carries an agent run but is of kind "${x.kind}", so a model's assertions would read as a ${x.kind}'s`,
+        `author "${x.id}" carries an agent run but is of kind "human", so a model's assertions would read as a person's`,
         'set `kind` to "agent", or remove the `agent` record if a person or import really made these assertions.',
       );
     }

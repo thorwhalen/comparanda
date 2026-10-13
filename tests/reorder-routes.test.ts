@@ -19,7 +19,7 @@ describe('describeOrder', () => {
     const v = initialViewState(relocation);
     expect(describeOrder(relocation, v, 'alternatives')).toMatch(/in the order the analysis gives them/);
     const moved = moveTo(v, 'criteria', 0, 2, { by: 'dana', at: '2026-10-13' }).state;
-    expect(describeOrder(relocation, moved, 'criteria')).toMatch(/arranged by hand, by dana, 2026-10-13\./);
+    expect(describeOrder(relocation, moved, 'criteria')).toMatch(/arranged by hand, by dana \(unverified\), 2026-10-13\./);
   });
 });
 

@@ -449,20 +449,23 @@ export interface LocalIdentity extends IdentityProvider {
  *
  * `storage` defaults to the browser's `localStorage` when there is one and to
  * memory when there is not (or when the browser refuses it); what it holds is
- * read as untrusted, and anything malformed reads as no name at all.
+ * read as untrusted, and anything malformed -- or an id not of this adapter's
+ * `local-` form -- reads as no name at all. `newId` makes the part after
+ * `local-`.
  */
 export function localIdentity({
   storage = browserStorage(),
   key = 'comparanda.identity',
   // `getRandomValues`, not `randomUUID`: the latter is missing outside secure contexts.
-  newId = () => `local-${Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')}`,
+  newId = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join(''),
 }: { storage?: IdentityStorage; key?: string; newId?: () => string } = {}): LocalIdentity {
   const anonymous = anonymousIdentity();
   const stored = (): { id: string; displayName: string } | undefined => {
     try {
       const v = JSON.parse(storage.getItem(key) ?? 'null') as unknown;
       const { id, displayName } = (v ?? {}) as Record<string, unknown>;
-      return typeof id === 'string' && id && typeof displayName === 'string' && displayName.trim()
+      // Only an id this adapter could have made: a stored "ana" must not sign as the document's Ana.
+      return typeof id === 'string' && id.startsWith(LOCAL) && typeof displayName === 'string' && displayName.trim()
         ? { id, displayName }
         : undefined;
     } catch {
@@ -483,7 +486,7 @@ export function localIdentity({
       if (typeof displayName !== 'string' || !displayName.trim()) {
         throw new TypeError('a local identity needs a name to show; got an empty one.');
       }
-      const record = { id: stored()?.id ?? newId(), displayName: displayName.trim() };
+      const record = { id: stored()?.id ?? `${LOCAL}${newId()}`, displayName: displayName.trim() };
       storage.setItem(key, JSON.stringify(record));
       return authorOf(record);
     },
@@ -492,6 +495,9 @@ export function localIdentity({
     },
   };
 }
+
+/** Every local identity's id starts so: it can never be mistaken for, or made into, a host's or an agent's. */
+const LOCAL = 'local-';
 
 /** `localStorage` if this environment has one and allows it; otherwise a map that lasts the session. */
 function browserStorage(): IdentityStorage {

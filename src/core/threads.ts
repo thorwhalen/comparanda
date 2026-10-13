@@ -21,6 +21,7 @@ import { resolveAnchor } from './schema/anchors.js';
 import { axisGroups, groupsOf } from './schema/groups.js';
 import type { Author } from './schema/provenance.js';
 import type { EditTarget } from './affordances.js';
+import { attribution } from './identity.js';
 
 /** Where a reader is: both ids a cell, one a header, none the analysis as a whole. */
 export interface Position {
@@ -162,7 +163,18 @@ function requireNewId(a: Analysis, threadId: string): void {
   if (a.threads.some((t) => t.id === threadId)) throw new Error(`thread id "${threadId}" is already used in this analysis.`);
 }
 
-/** The analysis with this author described, added when it is not; an existing record is never overwritten. */
+/**
+ * The analysis with this author described, added when it is not; an existing
+ * record is never overwritten. A writer whose id the document already gives to
+ * a different kind of author, or one known differently well, is refused: the
+ * reader sees the document's record, so writing under it would sign as them.
+ */
 function withAuthor(a: Analysis, author: Author): Analysis {
-  return a.authors.some((x) => x.id === author.id) ? a : { ...a, authors: [...a.authors, author] };
+  const known = a.authors.find((x) => x.id === author.id);
+  if (!known) return { ...a, authors: [...a.authors, author] };
+  const vouch = (x: Author) => `${x.kind} ${x.attestation?.method ?? 'unverified'} ${x.attestation?.issuer ?? ''}`;
+  if (vouch(known) !== vouch(author)) {
+    throw new Error(`"${author.id}" is ${attribution(known)} in this analysis; a ${author.kind} identity known differently cannot write as them.`);
+  }
+  return a;
 }
