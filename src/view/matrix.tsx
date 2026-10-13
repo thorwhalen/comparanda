@@ -1,10 +1,12 @@
 /**
- * The matrix component: a pure function of resolved props, with no
- * subscriptions, effects or timers of its own.
+ * The matrix component: a function of resolved props, with no subscriptions
+ * of its own.
  *
  * Everything that lives over time -- following a source, re-rendering, tearing
- * down -- is `mountMatrix`'s, so that this stays a function a test can call and
- * a destroy has nothing in here to forget.
+ * down -- is `mountMatrix`'s, so that this stays a function a test can call. It
+ * keeps only interaction state (grab mode, an open menu, a drag in progress),
+ * and a drag in progress is ended when the matrix unmounts, so a destroy leaves
+ * no listener on the window.
  *
  * The structure (#89): a real `<table>` inside a scroll container, sticky
  * column and row headers, group bands on either axis (one `<tbody>` per row
@@ -39,7 +41,7 @@
  * control that is present and does nothing is the failure the affordance layer
  * exists to prevent.
  */
-import { useId, useRef, useState } from 'preact/hooks';
+import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
 import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
@@ -52,7 +54,7 @@ import {
 import { aliasesOf } from '../core/schema/structure.js';
 import type { Reduced } from '../core/schema/values.js';
 import type { Session, ViewState } from '../core/view-state.js';
-import { textOnly } from './encodings/shipped.js';
+import { CONFIDENCE, textOnly } from './encodings/shipped.js';
 import {
   describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
 } from './encodings/registry.js';
@@ -65,6 +67,7 @@ import { DetailPanel } from './detail-panel.js';
 import type { ThreadWrites } from './threads.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
 import { startPointerDrag } from './pointer-reorder.js';
+import { activeElementOf } from './dom.js';
 import { describeOrder, describePlace } from '../core/reorder.js';
 import type { Axis } from '../core/schema/groups.js';
 import { resolveAnchor } from '../core/schema/anchors.js';
@@ -119,8 +122,6 @@ export interface MatrixViewProps {
   arrange?: (analysis: Analysis, view: ViewState, axis: Axis, measure: string) => { state: ViewState; said: string };
 }
 
-/** The measure a cell's announcement adds beside the shown one, when the analysis has it. */
-const CONFIDENCE = 'confidence';
 
 /**
  * What a cell is saying, as a word a stylesheet and a test can select on.
@@ -227,6 +228,13 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const band = layout.bands?.find((b) => b.entries.some((e) => e.id === id));
     return [...new Set((band ? band.entries : layout.entries).map((e) => e.id))];
   };
+  // Likewise its scope: a header added, removed or re-banded mid-drag is read as it is at the drop.
+  const latestScope = useRef(scopeOf);
+  latestScope.current = scopeOf;
+  /** Ends the drag in progress, if any: called on unmount, so a destroy mid-drag leaves nothing on the window. */
+  const endDrag = useRef<(() => void) | undefined>(undefined);
+  // A layout effect, so it is registered before any destroy can come, however soon after mount.
+  useLayoutEffect(() => () => endDrag.current?.(), []);
   const labelOf = (axis: Axis) => (id: string) =>
     (axis === 'alternatives' ? analysis.alternatives : analysis.criteria).find((x) => x.id === id)?.label ?? id;
 
@@ -273,6 +281,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     <th
       scope={scope} key={e.id} {...stop(r, c)} data-axis={axis} data-entry={e.id}
       data-grabbed={grab?.axis === axis && grab.id === e.id ? 'true' : undefined}
+      data-menu-open={menu === menuKey ? 'true' : undefined}
     >
       {reorder && (
         <button
@@ -286,16 +295,17 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             if (closedBy.current === menuKey) { closedBy.current = undefined; return; }
             setMenu(menu === menuKey ? undefined : menuKey);
           }}
-          onPointerDown={(event: PointerEvent) => startPointerDrag(event, {
+          // One drag at a time: a second press (another finger) ends the first, so a destroy never orphans it.
+          onPointerDown={(event: PointerEvent) => { endDrag.current?.(); endDrag.current = startPointerDrag(event, {
             scroller: root.current!.querySelector<HTMLElement>('.comparanda-scroll')!, axis, id: e.id,
             direction: scope === 'row' ? 'vertical' : 'horizontal',
             onDrop: ({ targetId, edge }) => {
-              const scope = scopeOf(axis, e.id);
+              const scope = latestScope.current(axis, e.id);
               if (targetId !== e.id && latest.current && scope.includes(targetId)) {
                 commitMove(latest.current, axis, e.id, { kind: edge, id: targetId }, 'pointer', scope);
               }
             },
-          })}
+          }); }}
         >
           <svg viewBox="0 0 12 12" aria-hidden="true" class="comparanda-thread-icon" fill="currentColor" stroke="none">
             <circle cx="4" cy="3" r="1" /><circle cx="8" cy="3" r="1" /><circle cx="4" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="4" cy="9" r="1" /><circle cx="8" cy="9" r="1" />
@@ -508,7 +518,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           onFocusOut={(event: FocusEvent) => {
             if (!grab) return;
             const table = event.currentTarget as HTMLElement;
-            setTimeout(() => { if (!table.contains(table.ownerDocument.activeElement)) setGrab(undefined); }, 0);
+            setTimeout(() => { if (!table.contains(activeElementOf(table))) setGrab(undefined); }, 0);
           }}
           // A click opens the details (the reference behaviour) and leaves focus where it landed.
           onClick={(event: MouseEvent) => {

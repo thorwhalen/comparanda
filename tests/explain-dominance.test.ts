@@ -95,7 +95,11 @@ function expectAgreement(a: Analysis, usePracticalTolerance: boolean) {
   return d;
 }
 
+/** Time for the generated-matrix property below: generous, because it runs beside the whole suite. */
+const SLOW_PROPERTY_MS = 30_000;
+
 describe('explainDominance agrees with dominance()', () => {
+  // Seeded, so not flaky by input: about 1.6 s alone, but over vitest's 5 s default on a loaded machine (#199).
   it('on every pair of generated matrices, with and without the practical tolerance', () => {
     const rand = rng(20260922);
     let edgesSeen = 0;
@@ -106,7 +110,7 @@ describe('explainDominance agrees with dominance()', () => {
     }
     // Not vacuous: the generator produces real dominance edges to agree about.
     expect(edgesSeen).toBeGreaterThan(20);
-  });
+  }, SLOW_PROPERTY_MS);
 
   it('on every pair of the messy fixture', () => {
     const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');

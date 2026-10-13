@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
-import { initialViewState, lockRun, setFilter, setGrouping, type ViewState } from '../../src/core/view-state.js';
+import { initialViewState, lockRun, setFilter, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
 import { arrangeToRevealStructure } from '../../src/core/reorder.js';
 import { anonymousIdentity } from '../../src/store/index.js';
 import { mountMatrix, type MatrixHandle } from '../../src/view/index.js';
@@ -252,5 +252,172 @@ describe('review findings', () => {
     await userEvent.click(handle);
     expect(el.querySelector('[role="menu"]')).toBeNull();
     input.remove();
+  });
+});
+
+describe('inside a shadow root (sprint review)', () => {
+  let host: HTMLElement;
+  beforeEach(() => {
+    // `el` moves into a shadow tree; the outer afterEach still destroys and removes it.
+    host = document.createElement('div');
+    document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    el.remove();
+    root.append(el);
+  });
+  afterEach(() => host.remove());
+
+  it('grab mode keeps hold across moves', async () => {
+    mount();
+    await tick();
+    header(crits[0]!).focus();
+    await userEvent.keyboard(' ');
+    await userEvent.keyboard('{ArrowRight}');
+    await tick();
+    await userEvent.keyboard('{ArrowRight}');
+    await tick();
+    expect(order().slice(0, 3)).toEqual([crits[1], crits[2], crits[0]]);
+    expect(header(crits[0]!).getAttribute('data-grabbed')).toBe('true');
+  });
+
+  it('a pointer drag finds its drop target', async () => {
+    mount();
+    await tick();
+    await routes['pointer drag']!();
+    await tick();
+    expect(order().slice(0, 3)).toEqual([crits[0], crits[2], crits[1]]);
+  });
+
+  // A guard against regression: this one passes on the code before the shadow-root fix too.
+  it('the move menu focuses its first item on opening and keeps a later one focused', async () => {
+    mount();
+    await tick();
+    header(crits[1]!).focus();
+    await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+    const items = () => Array.from(el.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const root = el.getRootNode() as ShadowRoot;
+    expect(root.activeElement).toBe(items()[0]);
+    await userEvent.keyboard('{ArrowDown}');
+    const second = root.activeElement;
+    expect(second).not.toBe(items()[0]);
+    // Another render must not pull focus back to the first item.
+    handles[0]!.update({ measure: 'score' });
+    await tick();
+    expect(root.activeElement).toBe(second);
+  });
+});
+
+describe('who a move is signed by (sprint review)', () => {
+  it('a slow identity the host has since cleared never signs a move', async () => {
+    let resolve: ((a: Awaited<ReturnType<ReturnType<typeof anonymousIdentity>['current']>>) => void) | undefined;
+    const slow = { current: () => new Promise<never>((r) => { resolve = r as never; }) };
+    views = [];
+    const handle = mountMatrix(el, { analysis: languages, measure: 'score', identity: slow, onViewChange: (v) => views.push(v) });
+    handles.push(handle);
+    handle.update({ identity: undefined });
+    await tick();
+    resolve!({ id: 'signed-out', displayName: 'Signed out', kind: 'human', principalId: 'signed-out' });
+    await tick();
+    header(crits[1]!).focus();
+    await userEvent.keyboard(' ');
+    await userEvent.keyboard('{ArrowRight}');
+    await tick();
+    expect((views.at(-1)!.criterionOrder.provenance as { by?: string }).by).toBe('anonymous');
+  });
+});
+
+describe('a drag across a host update (sprint review)', () => {
+  it('drops onto a header that appeared after the drag began', async () => {
+    views = [];
+    const handle = mountMatrix(el, { analysis: languages, measure: 'score', onViewChange: (v) => views.push(v) });
+    handles.push(handle);
+    const last = crits.at(-1)!;
+    const handleOf = (id: string) => header(id).querySelector<HTMLElement>('.comparanda-handle')!;
+    header(last).scrollIntoView({ block: 'center', inline: 'center' });
+    const from = handleOf(crits[0]!).getBoundingClientRect();
+    const pt = (x: number, y: number) => ({ clientX: x, clientY: y, bubbles: true, button: 0, pointerId: 1, isPrimary: true });
+    handleOf(crits[0]!).dispatchEvent(new PointerEvent('pointerdown', pt(from.left + 2, from.top + 2)));
+    window.dispatchEvent(new PointerEvent('pointermove', pt(from.left + 40, from.top + 2)));
+    const added = { ...languages.criteria.at(-1)!, id: 'added-mid-drag', label: 'Added' };
+    handle.update({ analysis: { ...languages, criteria: [...languages.criteria, added] } });
+    header('added-mid-drag').scrollIntoView({ block: 'center', inline: 'center' });
+    const target = header('added-mid-drag').getBoundingClientRect();
+    window.dispatchEvent(new PointerEvent('pointermove', pt(target.right - 3, target.top + target.height / 2)));
+    window.dispatchEvent(new PointerEvent('pointerup', pt(target.right - 3, target.top + target.height / 2)));
+    await tick();
+    expect(views.at(-1)?.criterionOrder.order.at(-1)).toBe(crits[0]);
+  });
+});
+
+describe('destroying mid-drag (sprint review)', () => {
+  it('leaves no listener on the window: the host page\'s Escape is its own again', () => {
+    const handle = mountMatrix(el, { analysis: languages, measure: 'score' });
+    const grip = header(crits[0]!).querySelector<HTMLElement>('.comparanda-handle')!;
+    const from = grip.getBoundingClientRect();
+    const pt = (x: number, y: number) => ({ clientX: x, clientY: y, bubbles: true, button: 0, pointerId: 1, isPrimary: true });
+    grip.dispatchEvent(new PointerEvent('pointerdown', pt(from.left + 2, from.top + 2)));
+    window.dispatchEvent(new PointerEvent('pointermove', pt(from.left + 40, from.top + 2)));
+    handle.destroy();
+    let heard = false;
+    const hostListener = () => { heard = true; };
+    document.addEventListener('keydown', hostListener);
+    try {
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      document.body.dispatchEvent(escape);
+      expect(heard).toBe(true);
+      expect(escape.defaultPrevented).toBe(false);
+    } finally {
+      document.removeEventListener('keydown', hostListener);
+    }
+  });
+});
+
+describe('the move menu on a row header (sprint review)', () => {
+  it('is drawn above the later rows\' sticky headers, so every item is where it looks', async () => {
+    mount();
+    const alt = languages.alternatives[0]!.id;
+    header(alt).focus();
+    await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+    const items = Array.from(el.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    expect(items.length).toBeGreaterThan(2);
+    for (const item of items.slice(0, 4)) {
+      item.scrollIntoView({ block: 'nearest' });
+      const r = item.getBoundingClientRect();
+      // The item's start side, which the next rows' headers cover when the menu is under them.
+      const hit = document.elementFromPoint(r.left + 4, r.top + r.height / 2);
+      expect(item.contains(hit), item.textContent!).toBe(true);
+    }
+  });
+});
+
+describe('a drag whose own header is re-mounted mid-drag (sprint review)', () => {
+  it('still hit-tests, and the drop lands', async () => {
+    views = [];
+    const view = initialViewState(languages);
+    const handle = mountMatrix(el, { analysis: languages, measure: 'score', view, onViewChange: (v) => views.push(v) });
+    handles.push(handle);
+    const grip = header(crits[0]!).querySelector<HTMLElement>('.comparanda-handle')!;
+    const from = grip.getBoundingClientRect();
+    const pt = (x: number, y: number) => ({ clientX: x, clientY: y, bubbles: true, button: 0, pointerId: 1, isPrimary: true });
+    grip.dispatchEvent(new PointerEvent('pointerdown', pt(from.left + 2, from.top + 2)));
+    window.dispatchEvent(new PointerEvent('pointermove', pt(from.left + 40, from.top + 2)));
+    // Transposed: every header is re-created under a new parent, the dragged one included.
+    handle.update({ view: transpose(view) });
+    expect(grip.isConnected).toBe(false);
+    header(crits[2]!).scrollIntoView({ block: 'center', inline: 'center' });
+    const target = header(crits[2]!).getBoundingClientRect();
+    const errors: unknown[] = [];
+    const onError = (e: ErrorEvent) => { errors.push(e.error); e.preventDefault(); };
+    window.addEventListener('error', onError);
+    try {
+      window.dispatchEvent(new PointerEvent('pointermove', pt(target.left + target.width / 2, target.bottom - 3)));
+      window.dispatchEvent(new PointerEvent('pointerup', pt(target.left + target.width / 2, target.bottom - 3)));
+      await tick();
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+    expect(errors).toEqual([]);
+    const order = views.at(-1)!.criterionOrder.order;
+    expect(order.indexOf(crits[0]!)).toBe(order.indexOf(crits[2]!) + 1);
   });
 });

@@ -28,6 +28,7 @@ import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
 import { trackStickyExtents } from './sticky.js';
+import { activeElementOf } from './dom.js';
 
 /** What `mountMatrix` returns. */
 export interface MatrixHandle {
@@ -55,7 +56,7 @@ export interface MountOptions {
   encodings?: EncodingRegistry;
   /** The time a thread write records. Default: the system clock. */
   now?: () => Date;
-  /** Mints thread and comment ids. Default: `crypto.randomUUID()`. */
+  /** Mints thread and comment ids. Default: a random version-4 UUID, from `crypto.randomUUID` where the context offers it. */
   newId?: () => string;
   /**
    * Seriation as an action, registered like an encoding (ADR-0017 clause 4):
@@ -113,7 +114,7 @@ const mounted = new WeakSet<object>();
  */
 export function mountMatrix(
   el: Element, props: MountMatrixProps,
-  { component = Matrix, encodings, now = () => new Date(), newId = () => globalThis.crypto.randomUUID(), arrange }: MountOptions = {},
+  { component = Matrix, encodings, now = () => new Date(), newId = randomUuid, arrange }: MountOptions = {},
 ): MatrixHandle {
   const registry = encodings ?? createEncodingRegistry([textOnly]);
   if (el === null || typeof el !== 'object' || typeof (el as { appendChild?: unknown }).appendChild !== 'function') {
@@ -143,7 +144,10 @@ export function mountMatrix(
   /** Who moves things, for the order's provenance: the identity's id once known (ADR-0012). */
   let actor = 'anonymous';
   const learnActor = (identity = current.identity ?? DEFAULT_IDENTITY) => {
-    identity.current().then((a) => { if (current.identity === undefined || current.identity === identity) actor = a.id; }, () => undefined);
+    // Until the new identity answers, nobody known: the previous one must not sign moves made in the gap.
+    actor = 'anonymous';
+    // Only the identity still in force: a slow one the host has since replaced, or cleared, never signs a move.
+    identity.current().then((a) => { if ((current.identity ?? DEFAULT_IDENTITY) === identity) actor = a.id; }, () => undefined);
   };
   /** What the `view` the caller last gave said about the session, to tell a new one from a re-passed one. */
   let givenFocus = sessionIn(props.view);
@@ -204,12 +208,18 @@ export function mountMatrix(
       const { source, identity = DEFAULT_IDENTITY, authorize } = current;
       const id = analysis.id;
       if (destroyed || !source) throw new Error('there is no source behind this matrix to write to.');
+      /** After every wait: a write the host has since cut off (destroyed, swapped source or document) is not made. */
+      const stillHere = () => {
+        if (destroyed || current.source !== source || analysis.id !== id) {
+          throw new Error('the matrix changed document while the comment was being written; nothing was written.');
+        }
+      };
       const author = await identity.current();
-      if (destroyed || current.source !== source || analysis.id !== id) {
-        throw new Error('the matrix changed document while the comment was being written; nothing was written.');
-      }
+      stillHere();
       // The source's own latest document, not the one shown: a write in flight may not have come back as an event yet.
-      const latest = (await source.getOne(id)) ?? analysis;
+      const latest = await source.getOne(id);
+      stillHere();
+      if (!latest) throw new Error(`the source no longer holds this analysis ("${id}"); nothing was written.`);
       // Asked again of the document being written, not the one the button was drawn from: the host is never overruled (ADR-0012).
       const anchor = anchorOf(latest);
       const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor), act);
@@ -266,7 +276,7 @@ export function mountMatrix(
 
   /** The focused element, if it is in the matrix; read from the root it lives in, a shadow root's own. */
   const focused = (): Element | null => {
-    const active = (el.getRootNode() as Document | ShadowRoot).activeElement ?? null;
+    const active = activeElementOf(el);
     return active !== null && el.contains(active) ? active : null;
   };
   /**
@@ -485,4 +495,20 @@ function describe(value: unknown): string {
   if (Array.isArray(value)) return 'an array';
   if (typeof value === 'string') return JSON.stringify(value);
   return typeof value === 'object' ? 'an object of the wrong shape' : String(value);
+}
+
+/**
+ * A version-4 UUID. `crypto.randomUUID` exists only in secure contexts, and a
+ * connected host may serve the page over plain http on a LAN; `getRandomValues`
+ * exists everywhere, so the UUID is built from it there (RFC 9562 section 5.4:
+ * the version nibble is 4, the variant bits are 10).
+ */
+function randomUuid(): string {
+  const c = globalThis.crypto;
+  if (typeof c.randomUUID === 'function') return c.randomUUID();
+  const b = c.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6]! & 0x0f) | 0x40;
+  b[8] = (b[8]! & 0x3f) | 0x80;
+  const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

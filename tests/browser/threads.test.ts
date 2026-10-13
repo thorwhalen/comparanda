@@ -354,3 +354,61 @@ describe('the grid says where discussion is', () => {
     expect(el.querySelector(`[data-cell="${rr}:${rc}"]`)!.textContent).not.toMatch(/open discussion/);
   });
 });
+
+describe('sprint review', () => {
+  it('a source swapped while the write read the document writes nothing to the old one', async () => {
+    const old = inMemoryAnalysisSource(relocation);
+    let release: (() => void) | undefined;
+    const slow: AnalysisSource = {
+      ...old,
+      getOne: async (id) => { await new Promise<void>((r) => { release = r; }); return old.getOne(id); },
+    };
+    const handle = mount({ analysis: relocation, measure: 'score', source: slow, identity: dana, view: at({ criterionId: 'rent' }) });
+    const box = Array.from(threads().querySelectorAll('textarea'))[0]!;
+    await userEvent.click(box);
+    await userEvent.keyboard('in flight');
+    const form = box.closest('form')!;
+    Array.from(form.querySelectorAll('button')).find((b) => b.textContent === 'Start thread')!.click();
+    await settled();
+    handle.update({ source: inMemoryAnalysisSource(relocation), analysis: structuredClone(relocation) });
+    release!();
+    await settled();
+    expect((await old.getOne(relocation.id))!.threads).toHaveLength(relocation.threads.length);
+    expect(threads().querySelector('[role="alert"]')!.textContent).toMatch(/nothing was written/);
+  });
+
+  it('inside a shadow root, resolving a thread returns focus to the panel heading', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    el.remove();
+    root.append(el);
+    try {
+      mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: dana, view: at({ alternativeId: 'berlin', criterionId: 'winter-daylight' }) });
+      const button = Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Resolve thread')!;
+      button.focus();
+      button.click();
+      await settled();
+      await settled();
+      expect(root.activeElement).not.toBeNull();
+      expect(root.activeElement!.matches('[data-panel-heading]')).toBe(true);
+    } finally {
+      host.remove();
+    }
+  });
+
+  it('writes with its default ids where crypto.randomUUID is missing (an insecure context)', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    const had = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(crypto), 'randomUUID')!;
+    Object.defineProperty(Object.getPrototypeOf(crypto), 'randomUUID', { value: undefined, configurable: true });
+    try {
+      handles.push(mountMatrix(el, { analysis: relocation, measure: 'score', source, identity: dana, view: at({ criterionId: 'rent' }) }));
+      await say(/Start a thread on the criterion Rent/, 'over plain http', 'Start thread');
+      const thread = (await source.getOne(relocation.id))!.threads.at(-1)!;
+      expect(thread.comments[0]!.body).toBe('over plain http');
+      expect(thread.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    } finally {
+      Object.defineProperty(Object.getPrototypeOf(crypto), 'randomUUID', had);
+    }
+  });
+});

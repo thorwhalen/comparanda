@@ -209,3 +209,14 @@ describe('nothing about rendering or storage is expressible', () => {
     expect(fromRoot).toBe(makeAffordances);
   });
 });
+
+describe('deciding a suggestion that is not anchored to a cell (sprint review)', () => {
+  it('refuses accepting it, with somewhere to go instead, and lets it be declined', () => {
+    const a = relocation();
+    const off = { ...a, suggestions: a.suggestions.map((s) => ({ ...s, anchor: { scope: 'analysis' as const } })) };
+    const aff = makeAffordances(off as Analysis);
+    const id = off.suggestions[0]!.id;
+    expect(aff.decideSuggestion(id, 'accept').reason).toMatch(/not anchored to one cell[\s\S]*decline it instead/);
+    expect(aff.decideSuggestion(id, 'decline')).toEqual({ enabled: true });
+  });
+});

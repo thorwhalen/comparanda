@@ -272,3 +272,12 @@ describe('second adversarial pass (#165)', () => {
   });
 });
 
+
+describe('a stored document the history checks cannot read (sprint review)', () => {
+  it('refuses the write with a way out, rather than throwing from inside a check', () => {
+    const unreadable = { ...analysis(), criteria: 'not a list' } as unknown as Analysis;
+    const problems = revisionProblems(unreadable, analysis());
+    expect(problems).toEqual([expect.objectContaining({ path: '(root)', message: expect.stringMatching(/cannot read/) })]);
+    expect(problems[0]!.fix).toMatch(/repairs only the stored document's shape errors/);
+  });
+});

@@ -21,6 +21,7 @@ import { measurementFor } from '../../core/schema/structure.js';
 import type { ScalarValue } from '../../core/schema/values.js';
 import type { Swatch, SwatchId } from './palette.js';
 import { VSUP_PALETTE } from './vsup-palette.js';
+import { capitalise } from '../words.js';
 import { layerFor, mergeTree, nodeOf, SCORE_LEVELS, vsupSwatchId, type LevelGroup, type MergeTree, type VsupSwatchId } from './vsup.js';
 import {
   defineEncoding, type CellMark, type EncodingContext, type EncodingDefinition, type LegendEntry,
@@ -241,7 +242,8 @@ export const datum = /* @__PURE__ */ defineEncoding({
   },
 });
 
-const CONFIDENCE = 'confidence';
+/** The measure a confidence qualifies its score with, by name: what value suppression and a cell's announcement read. */
+export const CONFIDENCE = 'confidence';
 /** Confidence recorded on a range rather than as levels is read in this many layers, the hatch's maximum. */
 const CONTINUOUS_CONFIDENCE_LAYERS = 3;
 const CONTINUOUS_CONFIDENCE_WORDS = ['low', 'medium', 'high'];
@@ -488,8 +490,4 @@ function towardBest(v: ScalarValue | undefined, m: Measurement): number | undefi
   const at = Math.min(1, Math.max(0, (v - range.min) / (range.max - range.min)));
   if (m.preference === 'decreasing') return 1 - at;
   return at;
-}
-
-function capitalise(word: string): string {
-  return word.charAt(0).toUpperCase() + word.slice(1);
 }
