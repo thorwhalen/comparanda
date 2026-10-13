@@ -24,6 +24,7 @@ export interface ThreadWrites {
   start(anchor: Anchor, body: string): Promise<void>;
   reply(threadId: string, body: string): Promise<void>;
   resolve(threadId: string): Promise<void>;
+  reopen(threadId: string): Promise<void>;
 }
 
 export interface ThreadsProps {
@@ -64,7 +65,7 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
       )}
       {showResolved && resolved.length > 0 && (
         <ol class="comparanda-thread-list" data-resolved="true">
-          {resolved.map((x) => <ThreadItem key={x.thread.id} at={x} analysis={analysis} names={names} affordances={affordances} idBase={idBase} />)}
+          {resolved.map((x) => <ThreadItem key={x.thread.id} at={x} analysis={analysis} names={names} writes={writes} affordances={affordances} idBase={idBase} />)}
         </ol>
       )}
       {allowed.enabled && writes
@@ -95,12 +96,13 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
   const who = (id: string | undefined) => (id === undefined ? 'someone' : names.get(id) ?? `an author this analysis does not describe (“${id}”)`);
-  const resolve = async () => {
+  /** Resolve an open thread, or reopen a resolved one (#186). */
+  const toggle = async () => {
     setBusy(true);
     setError(undefined);
     try {
-      await writes!.resolve(thread.id);
-      // The thread leaves the open list, and focus with it: back to the panel's heading.
+      await writes![thread.resolved ? 'reopen' : 'resolve'](thread.id);
+      // The thread changes list, and focus leaves with it: back to the panel's heading.
       document.getElementById(idBase)?.focus();
     } catch (e) {
       setError(messageOf(e));
@@ -117,14 +119,14 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
         ))}
       </ol>
       {thread.resolved && <p class="comparanda-panel-hint">{`Resolved by ${who(thread.resolvedBy)}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}. Kept for the record.`}</p>}
-      {writes && !thread.resolved && !may.enabled && (
-        <p class="comparanda-reason">{`Answering or resolving this thread is not available: ${may.reason ?? 'not allowed here.'}`}</p>
+      {writes && !may.enabled && (
+        <p class="comparanda-reason">{`${thread.resolved ? 'Reopening' : 'Answering or resolving'} this thread is not available: ${may.reason ?? 'not allowed here.'}`}</p>
       )}
-      {writes && !thread.resolved && may.enabled && (
+      {writes && may.enabled && (
         <>
-          <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />
-          <button type="button" disabled={busy} onClick={resolve}>Resolve thread</button>
-          {error && <p role="alert" key={error.attempt}>{`Not resolved: ${error.text}`}</p>}
+          {!thread.resolved && <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />}
+          <button type="button" disabled={busy} onClick={toggle}>{thread.resolved ? 'Reopen thread' : 'Resolve thread'}</button>
+          {error && <p role="alert" key={error.attempt}>{`Not ${thread.resolved ? 'reopened' : 'resolved'}: ${error.text}`}</p>}
         </>
       )}
     </li>

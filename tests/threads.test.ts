@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
-import { replyToThread, resolveThread, startThread, threadsAt } from '../src/core/threads.js';
+import { reopenThread, replyToThread, resolveThread, startThread, threadsAt } from '../src/core/threads.js';
 import type { Author } from '../src/core/schema/provenance.js';
 import relocationJson from '../examples/relocation.json';
 
@@ -99,5 +99,30 @@ describe('writes', () => {
     const ana = relocation.authors.find((x) => x.id === 'ana')!;
     const a = startThread(relocation, { threadId: 't1', anchor: { scope: 'analysis' }, comment: { ...note('c'), author: { ...ana, displayName: 'Impostor' } } });
     expect(a.authors.find((x) => x.id === 'ana')!.displayName).toBe(ana.displayName);
+  });
+});
+
+describe('reopening a resolved thread (#186)', () => {
+  it('reopens it, and records the resolution it undoes as a comment by whoever reopens', () => {
+    const ana: Author = { id: 'ana-r', displayName: 'Ana', kind: 'human' };
+    let a = startThread(relocation, { threadId: 't1', anchor: { scope: 'analysis' }, comment: note('c1') });
+    a = resolveThread(a, 't1', { by: dana, at: '2026-10-13T01:00:00Z' });
+    a = reopenThread(a, 't1', { id: 'c2', by: ana, at: '2026-10-14T00:00:00Z' });
+    const t = a.threads.find((x) => x.id === 't1')!;
+    expect(t.resolved).toBe(false);
+    expect(t.comments.at(-1)).toEqual({ id: 'c2', authorId: 'ana-r', at: '2026-10-14T00:00:00Z', body: 'Reopened. It had been resolved by Dana, 2026-10-13T01:00:00Z.' });
+    expect(a.authors.some((x) => x.id === 'ana-r')).toBe(true);
+    // Resolved again: the fields move on, the first resolution stays in the comments.
+    a = resolveThread(a, 't1', { by: ana, at: '2026-10-15T00:00:00Z' });
+    expect(a.threads.find((x) => x.id === 't1')).toMatchObject({ resolved: true, resolvedBy: 'ana-r' });
+    expect(validateAnalysis(a).ok).toBe(true);
+  });
+
+  it('refuses an open thread, a missing one, and a used comment id', () => {
+    let a = startThread(relocation, { threadId: 't1', anchor: { scope: 'analysis' }, comment: note('c1') });
+    expect(() => reopenThread(a, 't1', { id: 'c2', by: dana, at: 'x' })).toThrow(/is open/);
+    expect(() => reopenThread(a, 'nope', { id: 'c2', by: dana, at: 'x' })).toThrow(/no thread "nope"/);
+    a = resolveThread(a, 't1', { by: dana, at: 'x' });
+    expect(() => reopenThread(a, 't1', { id: 'c1', by: dana, at: 'x' })).toThrow(/already used/);
   });
 });

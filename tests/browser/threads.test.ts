@@ -86,6 +86,15 @@ describe('threads in the panel', () => {
     expect(threads().querySelector('[data-resolved]')!.textContent).toMatch(/Resolved by Dana/);
     // Kept, never deleted.
     expect((await source.getOne(relocation.id))!.threads.length).toBe(relocation.threads.length);
+
+    // Reopened (#186): back in the open list, and the resolution is kept as a comment.
+    const resolvedItem = threads().querySelector('[data-resolved] > [data-thread]')!;
+    const reopenedId = resolvedItem.getAttribute('data-thread')!;
+    await userEvent.click(Array.from(resolvedItem.querySelectorAll('button')).find((b) => b.textContent === 'Reopen thread')!);
+    await settled();
+    const back = threads().querySelector(`ol:not([data-resolved]) > [data-thread="${reopenedId}"]`)!;
+    expect(back.textContent).toMatch(/Reopened\. It had been resolved by Dana, 2026-10-13T12:00:00\.000Z\./);
+    expect(document.activeElement?.id).toBe(panel().querySelector('[data-panel-heading]')!.id);
   });
 
   it('every scope is reachable: a cell offers the group-pair blocks covering it', async () => {

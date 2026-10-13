@@ -146,6 +146,26 @@ export function resolveThread(a: Analysis, threadId: string, { by, at }: { by: A
   };
 }
 
+/**
+ * Reopen a resolved thread (#186). The resolution is not erased: a comment by
+ * whoever reopens it records who resolved it and when, so the next resolve,
+ * which overwrites `resolvedBy` and `resolvedAt`, loses nothing (ADR-0011:
+ * the record of *why* is the point). Until then those fields keep the last
+ * resolution.
+ */
+export function reopenThread(a: Analysis, threadId: string, { id, by, at }: { id: string; by: Author; at: string }): Analysis {
+  const thread = a.threads.find((t) => t.id === threadId);
+  if (!thread) throw new Error(`there is no thread "${threadId}" to reopen in this analysis.`);
+  if (!thread.resolved) throw new Error(`the thread "${threadId}" is open; only a resolved thread can be reopened.`);
+  if (thread.comments.some((c) => c.id === id)) throw new Error(`comment id "${id}" is already used in this thread.`);
+  const resolver = thread.resolvedBy && (a.authors.find((x) => x.id === thread.resolvedBy)?.displayName ?? thread.resolvedBy);
+  const body = `Reopened. It had been resolved${resolver ? ` by ${resolver}` : ''}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}.`;
+  return {
+    ...withAuthor(a, by),
+    threads: a.threads.map((t) => (t === thread ? { ...t, resolved: false, comments: [...t.comments, commentOf({ id, at, body, author: by })] } : t)),
+  };
+}
+
 function openThread(a: Analysis, threadId: string, doing: string): Thread {
   const thread = a.threads.find((t) => t.id === threadId);
   if (!thread) throw new Error(`there is no thread "${threadId}" to ${doing} in this analysis.`);
