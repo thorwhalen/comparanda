@@ -82,12 +82,17 @@ jobs:
 
       - name: Name the cache for the engines and the installed Playwright version
         id: playwright-version
-        run: echo "key=${PW_ENGINES// /-}-$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')" >> "$GITHUB_OUTPUT"
+        # A failed lookup must fail the step, not yield a key without a version (a pipe hides the failure unless the shell is told).
+        shell: bash
+        run: |
+          version=$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')
+          echo "key=${RUNNER_ARCH}-${ImageOS}-${PW_ENGINES// /-}-${version}" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: playwright-cache
         # The download is the slow, repeated part (a few hundred MB per engine). The key is the engines and the installed Playwright
-        # version, so a lockfile change that leaves the version alone keeps the browsers, and a new version fetches new ones.
+        # version (and the runner architecture and image, which Playwright downloads different builds for), so a lockfile change that leaves the version
+        # alone keeps the browsers, and a new version fetches new ones.
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
@@ -136,12 +141,17 @@ jobs:
 
       - name: Name the cache for the engines and the installed Playwright version
         id: playwright-version
-        run: echo "key=${PW_ENGINES// /-}-$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')" >> "$GITHUB_OUTPUT"
+        # A failed lookup must fail the step, not yield a key without a version (a pipe hides the failure unless the shell is told).
+        shell: bash
+        run: |
+          version=$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')
+          echo "key=${RUNNER_ARCH}-${ImageOS}-${PW_ENGINES// /-}-${version}" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: playwright-cache
         # The download is the slow, repeated part (a few hundred MB per engine). The key is the engines and the installed Playwright
-        # version, so a lockfile change that leaves the version alone keeps the browsers, and a new version fetches new ones.
+        # version (and the runner architecture and image, which Playwright downloads different builds for), so a lockfile change that leaves the version
+        # alone keeps the browsers, and a new version fetches new ones.
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright

@@ -5,7 +5,7 @@
  * differently by each engine; contrast and the background-image ban are read
  * off what it computed. The rest (focus, keys, announcements) is the DOM's and
  * the view's, run once in Chromium. WebKit is not here, and why is in
- * ADR-0029's amendment on #216; B6 is the real-device pass.
+ * ADR-0029's amendment on #216; B3, B4 and B8 are the Safari passes, and B6 is real forced colors.
  */
 import { describe, expect, it } from 'vitest';
 
