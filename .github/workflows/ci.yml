@@ -58,6 +58,9 @@ jobs:
         run: pnpm lint:boundaries
 
   browser:
+    env:
+      # Written once: the cache key, the install and the system libraries all follow it, so an engine added here cannot be cached under a key that lacks it.
+      PW_ENGINES: chromium
     # A real browser, provisioned now because the accessibility gate (ADR-0029)
     # needs one and a Phase 3 rewrite of the workflow is the alternative (#41).
     # New browser tests are new files under tests/browser/; this job's shape
@@ -77,8 +80,32 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Name the cache for the engines and the installed Playwright version
+        id: playwright-version
+        # A failed lookup must fail the step, not yield a key without a version (a pipe hides the failure unless the shell is told).
+        shell: bash
+        run: |
+          version=$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')
+          echo "key=${RUNNER_ARCH}-${ImageOS}-${PW_ENGINES// /-}-${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        # The download is the slow, repeated part (a few hundred MB per engine). The key is the engines and the installed Playwright
+        # version (and the runner architecture and image, which Playwright downloads different builds for), so a lockfile change that leaves the version
+        # alone keeps the browsers, and a new version fetches new ones.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.key }}
+
+      - name: Install the browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps $PW_ENGINES
+
+      - name: Install the system libraries the browsers need
+        # A cached browser still needs the operating system's libraries, which are not cached.
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps $PW_ENGINES
 
       - name: Browser tests
         run: pnpm test:browser
@@ -89,6 +116,8 @@ jobs:
         run: pnpm build && pnpm test:standalone
 
   a11y-gate:
+    env:
+      PW_ENGINES: chromium firefox
     # The accessibility merge gate (ADR-0029, #105): the automated set A1-A20,
     # each check shown to hold on the shipped view and to fail on its own
     # deliberately broken fixture. Its own job, so that the status a branch
@@ -110,8 +139,32 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Install Chromium and Firefox
-        run: pnpm exec playwright install --with-deps chromium firefox
+      - name: Name the cache for the engines and the installed Playwright version
+        id: playwright-version
+        # A failed lookup must fail the step, not yield a key without a version (a pipe hides the failure unless the shell is told).
+        shell: bash
+        run: |
+          version=$(pnpm exec playwright --version | tr -c '[:alnum:].' '-')
+          echo "key=${RUNNER_ARCH}-${ImageOS}-${PW_ENGINES// /-}-${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        # The download is the slow, repeated part (a few hundred MB per engine). The key is the engines and the installed Playwright
+        # version (and the runner architecture and image, which Playwright downloads different builds for), so a lockfile change that leaves the version
+        # alone keeps the browsers, and a new version fetches new ones.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.key }}
+
+      - name: Install the browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps $PW_ENGINES
+
+      - name: Install the system libraries the browsers need
+        # A cached browser still needs the operating system's libraries, which are not cached.
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps $PW_ENGINES
 
       - name: A1-A20, and the broken fixture for each
         run: pnpm test:a11y
