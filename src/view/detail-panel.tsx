@@ -27,6 +27,8 @@ import type { Independence } from '../core/schema/provenance.js';
 import { aliasesOf, measurementFor } from '../core/schema/structure.js';
 import type { Session } from '../core/view-state.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
+import { Threads, type ThreadWrites } from './threads.js';
+import type { Affordances } from '../core/affordances.js';
 
 export interface DetailPanelProps {
   analysis: Analysis;
@@ -44,6 +46,9 @@ export interface DetailPanelProps {
    * component mounted after its siblings can be handed one of their ids.
    */
   headingId: string;
+  /** Asked before any thread write is offered. */
+  affordances: Affordances;
+  writes?: ThreadWrites | undefined;
 }
 
 const INDEPENDENCE_SAID: Readonly<Record<Independence, string>> = {
@@ -100,6 +105,10 @@ export function DetailPanel(props: DetailPanelProps) {
           : criterion
             ? <CriterionSection measurement={measurementFor(criterion, props.measure)} criterion={criterion} />
             : <p>{analysis.subject.question}</p>}
+      <Threads
+        analysis={analysis} measure={props.measure} affordances={props.affordances} writes={props.writes} idBase={headingId}
+        position={{ alternativeId: alternative?.id, criterionId: criterion?.id }}
+      />
     </aside>
   );
 }

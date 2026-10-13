@@ -21,7 +21,7 @@ import type { Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { MissingnessVocabulary } from '../core/schema/missingness.js';
 import type { ViewState } from '../core/view-state.js';
-import type { AnalysisSource } from '../store/index.js';
+import type { AnalysisSource, IdentityProvider } from '../store/index.js';
 
 /** What the matrix renders. The contract ADR-0032 publishes before the matrix. */
 export interface MatrixProps {
@@ -66,6 +66,12 @@ export interface MountMatrixProps extends MatrixProps {
    * back synchronously and unthrottled: a stale one moves the reader back.
    */
   onViewChange?: (view: ViewState) => void;
+  /**
+   * Who is acting, for the threads the reader starts, answers and resolves
+   * (#106, ADR-0012). Default: `anonymousIdentity()`, which says it is
+   * unverified. Only consulted with a `source`; without one nothing is written.
+   */
+  identity?: IdentityProvider;
 }
 
 /**

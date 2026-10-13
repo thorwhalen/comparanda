@@ -62,6 +62,8 @@ import { PALETTE } from './encodings/palette.js';
 import { revealClear } from './sticky.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
 import { DetailPanel } from './detail-panel.js';
+import type { ThreadWrites } from './threads.js';
+import { resolveAnchor } from '../core/schema/anchors.js';
 
 /** The default encoding, and the fallback when the chosen one cannot draw (ADR-0032 clause 1). */
 export const TEXT_ONLY = textOnly.id;
@@ -92,6 +94,8 @@ export interface MatrixViewProps {
    * The panel is drawn only with this, since without it nothing could close it.
    */
   onPanelChange?: (open: boolean, options?: { into?: boolean }) => void;
+  /** Start, answer and resolve threads (#106); absent, the panel offers none. `mountMatrix` writes them through the source. */
+  threadWrites?: ThreadWrites;
 }
 
 /** The measure a cell's announcement adds beside the shown one, when the analysis has it. */
@@ -114,7 +118,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, affordances, onFocusChange, onPanelChange }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, affordances, onFocusChange, onPanelChange, threadWrites }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -144,6 +148,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
   const groupLabel = new Map(analysis.groups.map((g) => [g.id, g.label]));
+  const openHere = openThreadCounts(analysis);
   const rowWord = transposed ? words.criterion : words.alternative;
   const plural = (axis: AxisLayout) => (axis.axis === 'alternatives' ? words.alternatives : words.criteria);
   const hiddenAxis = [rows, columns].find((axis) => axis.entries.length === 0);
@@ -215,6 +220,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         {hatch && <Hatch level={hatch} />}
         {mark.badge && <span class="comparanda-badge" aria-hidden="true">{mark.badge}</span>}
         {said && <span class="comparanda-sr">{said}</span>}
+        <ThreadMark count={openHere.get(`${altId}\u0000${critId}`)} />
       </td>
     );
   };
@@ -224,6 +230,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       {e.alsoIn.length > 0 && (
         <span class="comparanda-also">{` (also in ${e.alsoIn.map((g) => groupLabel.get(g) ?? g).join(', ')})`}</span>
       )}
+      <ThreadMark count={openHere.get(`${(scope === 'row' ? rows : columns).axis === 'alternatives' ? 'a' : 'c'}:${e.id}`)} />
     </th>
   );
   const rowIndex = new Map(rows.entries.map((e, i) => [e.id, i + 1]));
@@ -311,6 +318,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         {onPanelChange && ' Enter opens the details of where you are, and Escape closes them.'}
       </p>
       <Legend definition={active} legend={prepared.legend} glyphs={shownGlyphs} hatches={shownHatches} />
+      {openHere.size > 0 && (
+        <p class="comparanda-legend-note"><ThreadMark count={1} quiet />{' A speech bubble and a number: open discussion threads anchored on that cell or header, or at the corner on the analysis. Threads on groups and blocks are listed in the details of their members.'}</p>
+      )}
       <div class="comparanda-body">
       {/* Not itself a tab stop: focusing a cell scrolls it, and the grid is the matrix's one stop. */}
       <div class="comparanda-scroll" role="region" aria-label={analysis.subject.question}>
@@ -335,14 +345,14 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           <thead>
             {columns.bands && (
               <tr class="comparanda-band">
-                <th scope="col" rowSpan={2} class="comparanda-corner" {...stop(0, 0)}>{capitalise(rowWord)}</th>
+                <th scope="col" rowSpan={2} class="comparanda-corner" {...stop(0, 0)}>{capitalise(rowWord)}<ThreadMark count={openHere.get('')} /></th>
                 {columns.bands.map((b) => (
                   <th scope="colgroup" colSpan={b.entries.length} key={bandKey(b)}>{bandLabel(b, columns)}</th>
                 ))}
               </tr>
             )}
             <tr>
-              {!columns.bands && <th scope="col" class="comparanda-corner" {...stop(0, 0)}>{capitalise(rowWord)}</th>}
+              {!columns.bands && <th scope="col" class="comparanda-corner" {...stop(0, 0)}>{capitalise(rowWord)}<ThreadMark count={openHere.get('')} /></th>}
               {columns.entries.map((c, i) => header(c, 'col', 0, i + 1))}
             </tr>
           </thead>
@@ -363,7 +373,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           analysis={analysis} measure={measure} vocabulary={vocabulary} standing={standing}
           // Where the grid's stop actually is: a hidden or removed id has fallen back to its header.
           focus={grid.focusAt(at.r, at.c)}
-          headingId={`${helpId}-panel`}
+          headingId={`${helpId}-panel`} affordances={affordances} writes={threadWrites}
           onClose={() => onPanelChange(false)}
           onReturn={() => root.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus()}
         />
@@ -664,4 +674,35 @@ function bandLabel(b: Band, axis: AxisLayout): string {
 function asSentence(phrase: string): string {
   const bare = phrase.replace(/^[\s,;.]+/, '').replace(/[\s,;.]+$/, '');
   return bare ? `${capitalise(bare)}.` : '';
+}
+
+/**
+ * Open threads anchored exactly on each position, keyed `alt\0crit` for a cell,
+ * `a:id` and `c:id` for headers, and `''` for the analysis. Live anchors only:
+ * an orphan is the orphan tray's.
+ */
+function openThreadCounts(analysis: Analysis): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const t of analysis.threads) {
+    if (t.resolved || resolveAnchor(analysis, t.anchor).status !== 'live') continue;
+    const { scope, alternativeId, criterionId } = t.anchor;
+    const key = scope === 'cell' ? `${alternativeId}\u0000${criterionId}`
+      : scope === 'alternative' ? `a:${alternativeId}` : scope === 'criterion' ? `c:${criterionId}` : scope === 'analysis' ? '' : undefined;
+    if (key !== undefined) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** The open-thread mark: a bubble and a count for the eye, the count in words for the ear. */
+function ThreadMark({ count, quiet = false }: { count: number | undefined; quiet?: boolean }) {
+  if (!count) return null;
+  return (
+    <>
+      <span class="comparanda-thread-mark" aria-hidden="true">
+        <svg viewBox="0 0 12 12" class="comparanda-thread-icon" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1.5 2h9v6h-5l-2.5 2.5V8h-1.5z" /></svg>
+        {!quiet && String(count)}
+      </span>
+      {!quiet && <span class="comparanda-sr">{` ${count} open discussion thread${count === 1 ? '' : 's'}.`}</span>}
+    </>
+  );
 }

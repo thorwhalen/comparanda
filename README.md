@@ -88,6 +88,8 @@ mountMatrix(el, {
 
 Enter (or a click) opens the detail panel beside the matrix: a non-modal `<aside role="complementary">` for wherever the reader is. On a cell it lists every assertion with its author, justification, evidence links and provenance, the absence's reason and note, and how several values fall across the levels; on an alternative's header, its strongest and weakest criteria relative to the other alternatives; on a criterion's header, its definition and scale. It follows the grid position while open; Escape returns to the grid, and Escape again closes it. Whether it is open is view state too (`session.detailPanelOpen`), so a reload restores it. The same content is available headless as `cellDetail` and `alternativeStanding`.
 
+The panel also carries the discussion (ADR-0011): every thread bearing on the position — the cell's, the header's, its groups' and group-pair blocks', and at the corner the analysis's — with forms to start, answer and resolve one. Resolved threads are hidden behind a button and never deleted. Writes go through the `source`, as the `identity` prop's author (`anonymousIdentity()` by default); without a source the panel says why it cannot write. Cells and headers with open threads carry a speech-bubble mark and say so to a screen reader. Headless: `threadsAt`, `startThread`, `replyToThread`, `resolveThread`.
+
 Encodings are registered by you, not by the package (ADR-0010): without `encodings`, the matrix shows values as text. Name the ones you ship, and switch with the `encoding` prop or the view state's; the legend follows:
 
 ```ts

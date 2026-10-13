@@ -14,9 +14,15 @@ import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/anal
 import type { Affordances } from '../core/affordances.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
-  DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
+  anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
 } from '../store/index.js';
+
+/** Who writes when the host names no one: usable, not a stub (ADR-0012). */
+const DEFAULT_IDENTITY = anonymousIdentity();
 import { createEncodingRegistry, type EncodingRegistry } from './encodings/registry.js';
+import type { Author } from '../core/schema/provenance.js';
+import { replyToThread, resolveThread, startThread } from '../core/threads.js';
+import type { ThreadWrites } from './threads.js';
 import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
@@ -46,6 +52,10 @@ export interface MountOptions {
    * `text-only` alone (ADR-0032), so a consumer ships only the encodings it names.
    */
   encodings?: EncodingRegistry;
+  /** The time a thread write records. Default: the system clock. */
+  now?: () => Date;
+  /** Mints thread and comment ids. Default: `crypto.randomUUID()`. */
+  newId?: () => string;
 }
 
 /**
@@ -80,7 +90,7 @@ function withoutSource(a: Affordances): Affordances {
 
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
-  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize', 'onViewChange',
+  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize', 'onViewChange', 'identity',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
 /** Elements with a live matrix. Two mounts on one element would each think they own its children. */
@@ -93,7 +103,10 @@ const mounted = new WeakSet<object>();
  * this analysis; `analysis` is the document as of mount (`await source.getOne(id)`).
  * Without one, it shows `analysis` read-only until `update` says otherwise.
  */
-export function mountMatrix(el: Element, props: MountMatrixProps, { component = Matrix, encodings }: MountOptions = {}): MatrixHandle {
+export function mountMatrix(
+  el: Element, props: MountMatrixProps,
+  { component = Matrix, encodings, now = () => new Date(), newId = () => globalThis.crypto.randomUUID() }: MountOptions = {},
+): MatrixHandle {
   const registry = encodings ?? createEncodingRegistry([textOnly]);
   if (el === null || typeof el !== 'object' || typeof (el as { appendChild?: unknown }).appendChild !== 'function') {
     throw new TypeError(`mountMatrix needs a DOM element to render into; got ${describe(el)}.`);
@@ -147,6 +160,39 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
     current.onViewChange?.(shown);
   };
 
+  /** The thread writes in flight, chained so each builds on the last. */
+  let writes: Promise<unknown> = Promise.resolve();
+  /**
+   * A thread write, through the source the matrix follows: who is acting comes
+   * from the host's identity (the anonymous one by default, ADR-0012). Writes
+   * are queued and each is built on the source's latest document, so none
+   * undoes another. The source's event re-renders the matrix; nothing here draws.
+   */
+  const writeThread = (change: (a: Analysis, author: Author, at: string) => Analysis): Promise<void> => {
+    const run = async () => {
+      const { source, identity = DEFAULT_IDENTITY } = current;
+      const id = analysis.id;
+      if (destroyed || !source) throw new Error('there is no source behind this matrix to write to.');
+      const author = await identity.current();
+      if (destroyed || current.source !== source || analysis.id !== id) {
+        throw new Error('the matrix changed document while the comment was being written; nothing was written.');
+      }
+      // The source's own latest document, not the one shown: a write in flight may not have come back as an event yet.
+      const latest = (await source.getOne(id)) ?? analysis;
+      await source.update(id, change(latest, author, now().toISOString()));
+    };
+    // One write at a time: two sent together would each build on the same document, and the second would undo the first.
+    const next = writes.then(run, run);
+    writes = next.catch(() => undefined);
+    return next;
+  };
+  const threadWrites: ThreadWrites = {
+    start: (anchor, body) => writeThread((a, author, at) =>
+      startThread(a, { threadId: newId(), anchor, comment: { id: newId(), at, body, author } })),
+    reply: (threadId, body) => writeThread((a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author })),
+    resolve: (threadId) => writeThread((a, by, at) => resolveThread(a, threadId, { by, at })),
+  };
+
   const draw = () => {
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
     // Without one, the document's own order, so a source's added alternative shows.
@@ -161,6 +207,7 @@ export function mountMatrix(el: Element, props: MountMatrixProps, { component = 
       view: shown,
       onFocusChange: moveFocus,
       onPanelChange: changePanel,
+      ...(source ? { threadWrites } : {}),
       encodings: registry,
       affordances: source
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
@@ -344,6 +391,9 @@ function checked(props: MountMatrixProps): MountMatrixProps {
     }
     // The parsed copy, defaults filled, so the component never meets a partial one.
     props = { ...props, view: parsed.data };
+  }
+  if (props.identity !== undefined && typeof props.identity?.current !== 'function') {
+    throw new TypeError(`props.identity must be an IdentityProvider ({ current(): Promise<Author> }), e.g. anonymousIdentity(); got ${describe(props.identity)}.`);
   }
   if (props.onViewChange !== undefined && typeof props.onViewChange !== 'function') {
     throw new TypeError(`props.onViewChange must be a function (view) => void; got ${describe(props.onViewChange)}.`);
