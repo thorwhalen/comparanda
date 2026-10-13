@@ -99,7 +99,7 @@ function withoutSource(a: Affordances): Affordances {
 
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
-  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'source', 'authorize', 'onViewChange', 'identity',
+  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'source', 'authorize', 'onViewChange', 'identity',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
 /** Elements with a live matrix. Two mounts on one element would each think they own its children. */
@@ -147,7 +147,12 @@ export function mountMatrix(
     // Until the new identity answers, nobody known: the previous one must not sign moves made in the gap.
     actor = 'anonymous';
     // Only the identity still in force: a slow one the host has since replaced, or cleared, never signs a move.
-    identity.current().then((a) => { if ((current.identity ?? DEFAULT_IDENTITY) === identity) actor = a.id; }, () => undefined);
+    identity.current().then((a) => {
+      if ((current.identity ?? DEFAULT_IDENTITY) !== identity || a.id === actor) return;
+      actor = a.id;
+      // Who is looking decides what an open round shows them.
+      if (!destroyed) draw();
+    }, () => undefined);
   };
   /** What the `view` the caller last gave said about the session, to tell a new one from a re-passed one. */
   let givenFocus = sessionIn(props.view);
@@ -266,6 +271,8 @@ export function mountMatrix(
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
         : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
       ...(standing ? { standing } : {}),
+      // The caller's, else the reader the identity names at the moment drawn: an outside reader, if no one has said who they are.
+      viewer: current.viewer ?? { viewerId: actor, now: now().toISOString() },
     };
     const was = focused();
     render(h(component, resolved), el);

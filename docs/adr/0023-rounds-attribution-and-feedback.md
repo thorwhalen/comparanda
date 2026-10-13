@@ -98,3 +98,16 @@ The other half of #68, ADR-0018's direction of preference, needs no amendment. I
    7:52](https://pmc.ncbi.nlm.nih.gov/articles/PMC2216026/)
 2. [The RAND/UCLA Appropriateness Method User's Manual — Fitch et al. (2001), RAND
    MR-1269](https://www.rand.org/content/dam/rand/pubs/monograph_reports/2011/MR1269.pdf)
+
+### 2026-10-13 — The activity record, and the one place a hidden author is kept out (#107)
+
+- **Status:** accepted
+- **Date:** 2026-10-13
+
+ADR-0011 clause 7 ("what moved, who moved it, when, and what justification they gave") is now a function: `activityRecord(analysis, viewer, { since? })` in `core/activity.ts`, oldest first, derived from the document and stored nowhere. **No schema change**: every assertion already carries `authorId`, `at`, `value`, `justification`, `roundId` and, when replaced, its successor; a superseded assertion's successor gives `previous`. Comments, replies, resolutions and edits are listed too. `since` answers "what changed since I last looked", the case clause 7 names ("a comparison that changed under you between readings").
+
+**One enforcement point.** Every fact about an assertion passes through `assertionVisibility` and then `redactForViewer` / `withoutAuthor` (`core/schema/redaction.ts`). An entry for an assertion whose author the round hides has `whoHidden: true`, no `who`, and nothing to reconstruct the author from: the id (producers mint ids from the author), the procedure (it names the agent) and the persona's principal are taken out, and its sentence says "Someone". It carries the value and the justification only as far as the round's `feedback` allows. `cellDetail` takes the same `viewer`: a hidden author's assertion is the anonymised copy under a stand-in id (`hidden-1`, with `supersededBy` mapped to match), `author`, `principal` and `procedure` are absent, and `reduced.contributing`, which carries whole assertions, is anonymised too. `tests/redaction-enforcement-point.test.ts` lists the only places `src/view` may name an author (comments, which belong to no round, and the fallback for an author the document does not describe), so a second one cannot appear without someone saying why it is safe.
+
+**Who is looking** is the `viewer` prop (`{ viewerId, now }`, injected like `standing`, ADR-0032 clause 4). `mountMatrix` supplies one when the host gives none: the identity's id once it resolves (the matrix redraws when it does) and its clock. A pure `Matrix` given none hides nothing; a caller of `cellDetail` that says nothing about who is looking is not told to redact. Still a presentation policy, not a security boundary: the document holds every author.
+
+**What this does not do, and why.** The panel's rows hide the *author* (the done-when of #107); they do not yet hide the *values and rationales* a round's `feedback` withholds, and the cell's reduced value is computed over every assertion. Hiding those would change what every analysis with a declared round shows its readers, including the replication passes of ADR-0023's earlier amendment, which declare `feedback: 'none'` and are never closed. That is a decision (manual-task #217), not a refactor. `activityRecord` does apply the full visibility, being new. A comment edit is recorded as `editedAt` only: the document keeps neither the earlier wording nor the editor, and the record does not invent them (#195).

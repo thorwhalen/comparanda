@@ -27,6 +27,7 @@ import { makeReadings } from './analyses/readings.js';
 import { cellIndex, cellKey, isInapplicable, reducedValue, type Analysis } from './schema/analysis.js';
 import type { CheckStanding, CitationCheck, EvidenceRef } from './schema/evidence.js';
 import { isOrdered, type Measurement } from './schema/measurement.js';
+import { assertionVisibility, withoutAuthor, type ViewerContext } from './schema/redaction.js';
 import { absenceStanding, NOT_APPLICABLE, NOT_ASSESSED, type AbsenceStanding, type MissingnessVocabulary } from './schema/missingness.js';
 import type { Author } from './schema/provenance.js';
 import { measurementFor } from './schema/structure.js';
@@ -60,7 +61,14 @@ export interface EvidenceDetail {
 /** One assertion, as the panel lists it. */
 export interface AssertionDetail {
   assertion: Assertion;
-  /** The author record; absent when the document names an author it does not describe. */
+  /**
+   * The round hides who wrote this from this viewer (ADR-0023, `viewer` in the
+   * options): `author`, `principal` and `procedure` are then absent, and
+   * `assertion` is the anonymised copy, with a stand-in id. Distinct from an
+   * author the document does not describe, which is absent with this false.
+   */
+  authorHidden: boolean;
+  /** The author record; absent when the document names an author it does not describe, or when `authorHidden`. */
   author?: Author | undefined;
   /** The principal behind a persona or an agent run, by display name, when it is another author. */
   principal?: string | undefined;
@@ -118,6 +126,13 @@ export interface CellDetailOptions {
   vocabulary: MissingnessVocabulary;
   /** The standing of a citation check, injected so core owns no clock (ADR-0032 clause 4). */
   standing?: ((check: CitationCheck | undefined) => CheckStanding) | undefined;
+  /**
+   * Who is looking, and when. With it, an assertion whose author the round hides
+   * from this viewer is anonymised (`AssertionDetail.authorHidden`). Without it,
+   * nothing is hidden: a caller that does not say who is looking is not told to
+   * redact (the policy is a presentation one, ADR-0023).
+   */
+  viewer?: ViewerContext | undefined;
 }
 
 /**
@@ -128,7 +143,7 @@ export interface CellDetailOptions {
  * `not-assessed` -- so the panel never shows a bare blank either.
  */
 export function cellDetail(
-  a: Analysis, alternativeId: string, criterionId: string, measure: string, { vocabulary, standing }: CellDetailOptions,
+  a: Analysis, alternativeId: string, criterionId: string, measure: string, { vocabulary, standing, viewer }: CellDetailOptions,
 ): CellDetail {
   const cell = cellIndex(a).get(cellKey(alternativeId, criterionId, measure));
   const criterion = a.criteria.find((c) => c.id === criterionId);
@@ -155,23 +170,32 @@ export function cellDetail(
     unfounded: (ref.sourceType === 'agent-summary' || ref.sourceType === 'agent-inference') && ref.derivedFrom.length === 0,
   });
   const live = new Set(cell ? liveAssertions(cell.assertions) : []);
+  // Which authors the round hides from this viewer, decided once, here: every field that could name one is taken from the anonymised copy.
+  const hiddenIds = new Map<string, string>();
+  for (const s of cell?.assertions ?? []) {
+    if (viewer && !assertionVisibility(a, s, viewer).author) hiddenIds.set(s.id, `hidden-${hiddenIds.size + 1}`);
+  }
   const detailOf = (s: Assertion): AssertionDetail => {
-    const author = authors.get(s.authorId);
+    const authorHidden = hiddenIds.has(s.id);
+    const shownAssertion = authorHidden ? withoutAuthor(s, hiddenIds.get(s.id)!) : s;
+    const successor = s.supersededBy === undefined ? undefined : hiddenIds.get(s.supersededBy);
+    const author = authorHidden ? undefined : authors.get(s.authorId);
     const principal = author?.principalId && author.principalId !== author.id ? authors.get(author.principalId) : undefined;
     const round = s.roundId === undefined ? undefined : rounds.get(s.roundId);
-    const procedure = s.procedureId === undefined ? undefined : procedures.get(s.procedureId);
+    const procedure = s.procedureId === undefined || authorHidden ? undefined : procedures.get(s.procedureId);
     const hidden = isWithheldFromReader(s);
     return {
-      assertion: s,
+      assertion: successor === undefined ? shownAssertion : { ...shownAssertion, supersededBy: successor },
+      authorHidden,
       ...(author ? { author } : {}),
-      ...(principal ? { principal: principal.displayName } : author?.principalId && author.principalId !== author.id ? { principal: author.principalId } : {}),
+      ...(authorHidden ? {} : principal ? { principal: principal.displayName } : author?.principalId && author.principalId !== author.id ? { principal: author.principalId } : {}),
       // A withheld assertion stands for a value; its stand-in absence is not the author's.
       ...(s.missing && !hidden ? { absence: absenceOf(s.missing.code, s.missing.note) } : {}),
       withheldFromReader: hidden,
       superseded: !live.has(s),
       evidence: s.evidence.map(evidenceOf),
       ...(s.roundId !== undefined ? { round: round?.label ?? `round ${round?.index ?? s.roundId}` } : {}),
-      ...(s.procedureId !== undefined ? { procedure: procedure?.describedAs ?? s.procedureId } : {}),
+      ...(s.procedureId !== undefined && !authorHidden ? { procedure: procedure?.describedAs ?? s.procedureId } : {}),
     };
   };
   const all = cell?.assertions ?? [];
@@ -187,7 +211,8 @@ export function cellDetail(
 
   return {
     alternativeId, criterionId, measure,
-    ...(reduced ? { reduced } : {}),
+    // `contributing` carries the assertions themselves, authors and all: the anonymised copies stand in for the hidden ones.
+    ...(reduced ? { reduced: hiddenIds.size === 0 ? reduced : { ...reduced, contributing: reduced.contributing.map((c) => (hiddenIds.has(c.id) ? withoutAuthor(c, hiddenIds.get(c.id)!) : c)) } } : {}),
     reduction: cell?.reduction ?? a.defaultReduction,
     ...(shownAbsence ? { absence: shownAbsence } : {}),
     inapplicable,

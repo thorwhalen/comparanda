@@ -13,6 +13,7 @@ export * from './core/reorder.js';
 export * from './core/layout.js';
 export * from './core/assertion-set.js';
 export * from './core/detail.js';
+export * from './core/activity.js';
 export * from './core/threads.js';
 export * from './core/identity.js';
 export * from './core/criteria-revision.js';

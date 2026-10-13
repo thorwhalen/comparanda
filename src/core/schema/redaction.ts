@@ -111,3 +111,38 @@ export function visibilityFor(a: Analysis, viewer: ViewerContext): Map<string, A
   }
   return out;
 }
+
+/**
+ * An assertion as a viewer who may not see its author may be shown it: the
+ * author, the procedure that names the agent behind it, and the id (producers
+ * mint ids from the author) are taken out, and `shownId` stands in for the id.
+ * Nothing else changes; what the viewer may see of the value and the
+ * justification is `redactForViewer`'s.
+ *
+ * The one place an assertion is made safe to name. `cellDetail` and
+ * `activityRecord` both go through here, so a surface built on either cannot
+ * show an author the round hides without bypassing core.
+ */
+export function withoutAuthor(s: Assertion, shownId: string): Assertion {
+  const { procedureId: _procedure, ...rest } = s;
+  return { ...rest, id: shownId, authorId: '' };
+}
+
+/**
+ * What a round's policies let this viewer see of an assertion: `withoutAuthor`
+ * when the author is hidden, then the value and any recorded absence removed
+ * unless the value is `shown`, and the justification and the evidence that
+ * backs it removed unless the justification may be.
+ */
+export function redactForViewer(s: Assertion, v: AssertionVisibility, shownId: string): Assertion {
+  const out: Assertion = { ...(v.author ? s : withoutAuthor(s, shownId)) };
+  if (v.value !== 'shown') {
+    delete out.value;
+    delete out.missing;
+  }
+  if (!v.justification) {
+    delete out.justification;
+    out.evidence = [];
+  }
+  return out;
+}
