@@ -4,8 +4,8 @@
  * Forced colors, print and reduced motion are recoloured, dropped and honoured
  * differently by each engine; contrast and the background-image ban are read
  * off what it computed. The rest (focus, keys, announcements) is the DOM's and
- * the view's, run once in Chromium. WebKit is not here: it needs system
- * libraries the CI image does not carry, and B6 is the real-device pass.
+ * the view's, run once in Chromium. WebKit is not here, and why is in
+ * ADR-0029's amendment on #216; B6 is the real-device pass.
  */
 import { describe, expect, it } from 'vitest';
 
