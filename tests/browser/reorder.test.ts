@@ -347,3 +347,26 @@ describe('a drag across a host update (sprint review)', () => {
     expect(views.at(-1)?.criterionOrder.order.at(-1)).toBe(crits[0]);
   });
 });
+
+describe('destroying mid-drag (sprint review)', () => {
+  it('leaves no listener on the window: the host page\'s Escape is its own again', () => {
+    const handle = mountMatrix(el, { analysis: languages, measure: 'score' });
+    const grip = header(crits[0]!).querySelector<HTMLElement>('.comparanda-handle')!;
+    const from = grip.getBoundingClientRect();
+    const pt = (x: number, y: number) => ({ clientX: x, clientY: y, bubbles: true, button: 0, pointerId: 1, isPrimary: true });
+    grip.dispatchEvent(new PointerEvent('pointerdown', pt(from.left + 2, from.top + 2)));
+    window.dispatchEvent(new PointerEvent('pointermove', pt(from.left + 40, from.top + 2)));
+    handle.destroy();
+    let heard = false;
+    const hostListener = () => { heard = true; };
+    document.addEventListener('keydown', hostListener);
+    try {
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      document.body.dispatchEvent(escape);
+      expect(heard).toBe(true);
+      expect(escape.defaultPrevented).toBe(false);
+    } finally {
+      document.removeEventListener('keydown', hostListener);
+    }
+  });
+});

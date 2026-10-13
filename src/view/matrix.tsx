@@ -1,10 +1,12 @@
 /**
- * The matrix component: a pure function of resolved props, with no
- * subscriptions, effects or timers of its own.
+ * The matrix component: a function of resolved props, with no subscriptions
+ * of its own.
  *
  * Everything that lives over time -- following a source, re-rendering, tearing
- * down -- is `mountMatrix`'s, so that this stays a function a test can call and
- * a destroy has nothing in here to forget.
+ * down -- is `mountMatrix`'s, so that this stays a function a test can call. It
+ * keeps only interaction state (grab mode, an open menu, a drag in progress),
+ * and a drag in progress is ended when the matrix unmounts, so a destroy leaves
+ * no listener on the window.
  *
  * The structure (#89): a real `<table>` inside a scroll container, sticky
  * column and row headers, group bands on either axis (one `<tbody>` per row
@@ -39,7 +41,7 @@
  * control that is present and does nothing is the failure the affordance layer
  * exists to prevent.
  */
-import { useId, useRef, useState } from 'preact/hooks';
+import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
 import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
@@ -231,6 +233,10 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   // Likewise its scope: a header added, removed or re-banded mid-drag is read as it is at the drop.
   const latestScope = useRef(scopeOf);
   latestScope.current = scopeOf;
+  /** Ends the drag in progress, if any: called on unmount, so a destroy mid-drag leaves nothing on the window. */
+  const endDrag = useRef<(() => void) | undefined>(undefined);
+  // A layout effect, so it is registered before any destroy can come, however soon after mount.
+  useLayoutEffect(() => () => endDrag.current?.(), []);
   const labelOf = (axis: Axis) => (id: string) =>
     (axis === 'alternatives' ? analysis.alternatives : analysis.criteria).find((x) => x.id === id)?.label ?? id;
 
@@ -290,7 +296,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             if (closedBy.current === menuKey) { closedBy.current = undefined; return; }
             setMenu(menu === menuKey ? undefined : menuKey);
           }}
-          onPointerDown={(event: PointerEvent) => startPointerDrag(event, {
+          onPointerDown={(event: PointerEvent) => { endDrag.current = startPointerDrag(event, {
             scroller: root.current!.querySelector<HTMLElement>('.comparanda-scroll')!, axis, id: e.id,
             direction: scope === 'row' ? 'vertical' : 'horizontal',
             onDrop: ({ targetId, edge }) => {
@@ -299,7 +305,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
                 commitMove(latest.current, axis, e.id, { kind: edge, id: targetId }, 'pointer', scope);
               }
             },
-          })}
+          }); }}
         >
           <svg viewBox="0 0 12 12" aria-hidden="true" class="comparanda-thread-icon" fill="currentColor" stroke="none">
             <circle cx="4" cy="3" r="1" /><circle cx="8" cy="3" r="1" /><circle cx="4" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="4" cy="9" r="1" /><circle cx="8" cy="9" r="1" />

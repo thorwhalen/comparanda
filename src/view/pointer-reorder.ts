@@ -10,7 +10,8 @@
  * scrolls in both axes under sticky headers, so the one thing a library would
  * add -- auto-scroll near an edge -- is a frame loop here. A drag lives only
  * between press and release: every listener it adds is removed when it ends,
- * however it ends, so nothing outlives it.
+ * however it ends -- release, cancel, `Escape`, or the cancel it returns,
+ * which the matrix calls when it unmounts mid-drag -- so nothing outlives it.
  */
 import { elementAt } from './dom.js';
 
@@ -41,11 +42,12 @@ export interface PointerDragOptions {
 }
 
 /**
- * Start following a press on a handle. Returns nothing: the drag ends on
- * release, on cancel, or on `Escape`, and cleans up after itself.
+ * Start following a press on a handle. The drag ends on release, on cancel,
+ * or on `Escape`, and cleans up after itself; the function returned ends it
+ * early, dropping nothing (a no-op once it has ended).
  */
-export function startPointerDrag(event: PointerEvent, opts: PointerDragOptions): void {
-  if (event.button !== 0) return;
+export function startPointerDrag(event: PointerEvent, opts: PointerDragOptions): () => void {
+  if (event.button !== 0) return () => undefined;
   const handle = event.currentTarget as HTMLElement;
   const startX = event.clientX;
   const startY = event.clientY;
@@ -82,7 +84,10 @@ export function startPointerDrag(event: PointerEvent, opts: PointerDragOptions):
     }
     frame = view.requestAnimationFrame(scroll);
   };
+  let ended = false;
   const end = (drop: boolean) => {
+    if (ended) return;
+    ended = true;
     view.cancelAnimationFrame(frame);
     marked?.removeAttribute('data-drop');
     handle.removeAttribute('data-dragging');
@@ -126,4 +131,5 @@ export function startPointerDrag(event: PointerEvent, opts: PointerDragOptions):
   view.addEventListener('pointerup', up);
   view.addEventListener('pointercancel', cancel);
   view.addEventListener('keydown', key, true);
+  return () => end(false);
 }
