@@ -23,6 +23,7 @@ import type { Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { Measurement } from '../core/schema/measurement.js';
 import type { MissingnessVocabulary } from '../core/schema/missingness.js';
+import { attribution } from '../core/identity.js';
 import type { Independence } from '../core/schema/provenance.js';
 import { aliasesOf, measurementFor } from '../core/schema/structure.js';
 import type { Session } from '../core/view-state.js';
@@ -165,7 +166,7 @@ function Absence({ absence }: { absence: NonNullable<ReturnType<typeof cellDetai
 function AssertionItem({ detail, replacedBy }: { detail: AssertionDetail; replacedBy?: AssertionDetail | undefined }) {
   const { assertion: s, author } = detail;
   const who = author
-    ? `${author.displayName} (${author.kind}${author.role ? `, ${author.role}` : ''}${detail.principal ? `, for ${detail.principal}` : ''})`
+    ? attribution(author, { principal: detail.principal })
     : `An author this analysis does not describe (“${s.authorId}”)`;
   const provenance = [
     s.independence ? INDEPENDENCE_SAID[s.independence] : 'independence not recorded',
@@ -176,7 +177,7 @@ function AssertionItem({ detail, replacedBy }: { detail: AssertionDetail; replac
   return (
     <li data-assertion={s.id} data-superseded={detail.superseded ? 'true' : undefined}>
       <p class="comparanda-assertion-head">
-        {detail.superseded && `Superseded${replacedBy ? ` by ${replacedBy.author?.displayName ?? replacedBy.assertion.authorId}'s ${replacedBy.assertion.value !== undefined && !replacedBy.withheldFromReader ? String(replacedBy.assertion.value) : 'assertion'}` : ''}: `}
+        {detail.superseded && `Superseded${replacedBy ? ` by ${(replacedBy.author ? attribution(replacedBy.author) : replacedBy.assertion.authorId)}'s ${replacedBy.assertion.value !== undefined && !replacedBy.withheldFromReader ? String(replacedBy.assertion.value) : 'assertion'}` : ''}: `}
         <strong>{detail.withheldFromReader ? 'Withheld from you' : s.value !== undefined ? String(s.value) : 'No value'}</strong>
         {` — ${who}, ${s.at}`}
       </p>

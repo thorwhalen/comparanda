@@ -61,7 +61,7 @@ export interface EvidenceDetail {
 export interface AssertionDetail {
   assertion: Assertion;
   /** The author record; absent when the document names an author it does not describe. */
-  author?: Pick<Author, 'id' | 'displayName' | 'kind' | 'role'> | undefined;
+  author?: Author | undefined;
   /** The principal behind a persona or an agent run, by display name, when it is another author. */
   principal?: string | undefined;
   /** The absence it records, read through the vocabulary. */
@@ -163,7 +163,7 @@ export function cellDetail(
     const hidden = isWithheldFromReader(s);
     return {
       assertion: s,
-      ...(author ? { author: { id: author.id, displayName: author.displayName, kind: author.kind, ...(author.role ? { role: author.role } : {}) } } : {}),
+      ...(author ? { author } : {}),
       ...(principal ? { principal: principal.displayName } : author?.principalId && author.principalId !== author.id ? { principal: author.principalId } : {}),
       // A withheld assertion stands for a value; its stand-in absence is not the author's.
       ...(s.missing && !hidden ? { absence: absenceOf(s.missing.code, s.missing.note) } : {}),

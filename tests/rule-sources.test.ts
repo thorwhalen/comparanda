@@ -64,7 +64,12 @@ const hostile = {
   id: 'a1',
   schemaVersion: 99,
   subject: { question: 'which one?' },
-  authors: [AUTHOR],
+  authors: [
+    AUTHOR,
+    // A model dressed as a person, and a persona that changes its principal's kind (ADR-0012).
+    { id: 'bot', displayName: 'Bot', kind: 'human', agent: { name: 'bot' } },
+    { id: 'ana-as-bot', displayName: 'Ana as a bot', kind: 'agent', principalId: 'ana' },
+  ],
   // Half an alias pair (#165).
   aliases: { alternatives: 'vendors' },
   alternatives: [{ id: 'x', label: 'X', groupIds: ['ghost-group', 'gc'] }, { id: 'x', label: 'X again' }],

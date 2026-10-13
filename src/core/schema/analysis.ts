@@ -217,6 +217,8 @@ export const RULE_SOURCES = Object.freeze({
   // Honesty and completeness.
   'score-has-a-reason': 'ADR-0031',
   'assertion-attributed': 'ADR-0012',
+  'agent-is-typed': 'ADR-0012',
+  'persona-keeps-kind': 'ADR-0012',
   'value-has-evidence': 'ADR-0014',
   // Disclosure.
   'disclosure-flag-is-projection-only': 'ADR-0021',
@@ -419,6 +421,29 @@ export function validateAnalysis(
   const critIds = new Set(a.criteria.map((x) => x.id));
   const groupIds = new Set(a.groups.map((x) => x.id));
   const authorIds = new Set(a.authors.map((x) => x.id));
+
+  // ADR-0012: a reader tells a model from a person by `kind`, so the typed
+  // field and what travels beside it must agree, and a persona never changes it.
+  const kindOf = new Map(a.authors.map((x) => [x.id, x.kind]));
+  a.authors.forEach((x, i) => {
+    const at = `authors[${i}]`;
+    // A model dressed as a person is the lie; an import or a derivation that records the run behind it is not.
+    if (x.agent && x.kind === 'human') {
+      honesty(
+        'agent-is-typed', at,
+        `author "${x.id}" carries an agent run but is of kind "human", so a model's assertions would read as a person's`,
+        'set `kind` to "agent", or remove the `agent` record if a person or import really made these assertions.',
+      );
+    }
+    const principalKind = x.principalId === undefined ? undefined : kindOf.get(x.principalId);
+    if (principalKind !== undefined && principalKind !== x.kind) {
+      honesty(
+        'persona-keeps-kind', at,
+        `persona "${x.id}" is of kind "${x.kind}" but its principal "${x.principalId}" is "${principalKind}"; a persona never changes who made the assertion`,
+        `give the persona its principal's kind, "${principalKind}".`,
+      );
+    }
+  });
 
   for (const [label, list] of [
     ['alternatives', a.alternatives], ['criteria', a.criteria], ['groups', a.groups],
