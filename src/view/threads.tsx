@@ -45,7 +45,7 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   const open = all.filter((x) => !x.thread.resolved);
   const resolved = all.filter((x) => x.thread.resolved);
   const choices = anchorChoices(analysis, position, measure, words);
-  const allowed = affordances.comment(choices[0]!.target);
+  const allowed = affordances.comment(choices[0]!.target, 'start');
   const names = attributions(analysis.authors);
   return (
     <section class="comparanda-threads" aria-labelledby={`${idBase}-threads`} data-detail="threads">
@@ -77,12 +77,12 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
             choices={choices.map((x) => x.here)}
             send={(body, i = 0) => {
               const { anchor, target } = choices[i]!;
-              const may = affordances.comment(target);
+              const may = affordances.comment(target, 'start');
               return may.enabled ? writes.start(anchor, body) : Promise.reject(new Error(may.reason ?? 'not allowed here'));
             }}
           />
         )
-        : <p class="comparanda-reason">{`Starting or answering a thread is not available here: ${allowed.reason ?? 'there is nowhere to write it.'}`}</p>}
+        : <p class="comparanda-reason">{`Starting a thread is not available here: ${allowed.reason ?? 'there is nowhere to write it.'}`}</p>}
     </section>
   );
 }
@@ -92,7 +92,10 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
 }) {
   const { thread, relation } = at;
   // Asked about the thread's own anchor, not the reader's position: a group's thread listed at a member is the group's.
-  const may = affordances.comment(targetOf(thread.anchor));
+  const anchor = targetOf(thread.anchor);
+  // Each act is its own question to the host (#194): a reader may answer where only the owner resolves.
+  const mayReply = affordances.comment(anchor, 'reply');
+  const mayToggle = affordances.comment(anchor, thread.resolved ? 'reopen' : 'resolve');
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
   // A ref, not `busy`: two activations in one task both see the same render.
@@ -124,12 +127,17 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
         ))}
       </ol>
       {thread.resolved && <p class="comparanda-panel-hint">{`Resolved by ${who(thread.resolvedBy)}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}. Kept for the record.`}</p>}
-      {writes && !may.enabled && (
-        <p class="comparanda-reason">{`${thread.resolved ? 'Reopening' : 'Answering or resolving'} this thread is not available: ${may.reason ?? 'not allowed here.'}`}</p>
+      {writes && !thread.resolved && !mayReply.enabled && (
+        <p class="comparanda-reason">{`Answering this thread is not available: ${mayReply.reason ?? 'not allowed here.'}`}</p>
       )}
-      {writes && may.enabled && (
+      {writes && !thread.resolved && mayReply.enabled && (
+        <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />
+      )}
+      {writes && !mayToggle.enabled && (
+        <p class="comparanda-reason">{`${thread.resolved ? 'Reopening' : 'Resolving'} this thread is not available: ${mayToggle.reason ?? 'not allowed here.'}`}</p>
+      )}
+      {writes && mayToggle.enabled && (
         <>
-          {!thread.resolved && <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />}
           <button type="button" aria-disabled={busy} onClick={toggle}>{thread.resolved ? 'Reopen thread' : 'Resolve thread'}</button>
           {error && <p role="alert" key={error.attempt}>{`Not ${thread.resolved ? 'reopened' : 'resolved'}: ${error.text}`}</p>}
         </>

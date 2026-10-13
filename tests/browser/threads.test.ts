@@ -296,6 +296,47 @@ describe('who writes, and who may (#74, ADR-0012)', () => {
   });
 });
 
+describe('the host tells starting, answering and resolving apart (#194)', () => {
+  const owner = (r: { action: string; thread?: string }) => (r.action === 'comment' && r.thread === 'resolve' ? { enabled: false, reason: 'only the owner resolves' } : true);
+
+  it('offers the Reply form and no Resolve button where only resolving is refused, each with its own reason', () => {
+    mount({
+      analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: dana,
+      view: at({ alternativeId: 'berlin', criterionId: 'winter-daylight' }), authorize: owner,
+    });
+    const item = threads().querySelector('[data-thread]')!;
+    expect(item.querySelector('textarea')).not.toBeNull();
+    expect(Array.from(item.querySelectorAll('button')).some((b) => b.textContent === 'Resolve thread')).toBe(false);
+    expect(item.querySelector('.comparanda-reason')!.textContent).toMatch(/Resolving this thread is not available: only the owner resolves/);
+    // Starting is still open.
+    expect(threads().textContent).toContain('Start a thread on');
+  });
+
+  it('asks again at write time with the act named: a refusal since the button was drawn writes nothing', async () => {
+    const store = inMemoryAnalysisSource(relocation);
+    const asked: string[] = [];
+    let closed = false;
+    let pressed = false;
+    // The window closes after the button is drawn and pressed, as the write reads the latest document.
+    const source: AnalysisSource = { ...store, getOne: async (id) => { if (pressed) closed = true; return store.getOne(id); } };
+    mount({
+      analysis: relocation, measure: 'score', source, identity: dana, view: at({ alternativeId: 'berlin', criterionId: 'winter-daylight' }),
+      authorize: (r) => {
+        if (r.action === 'comment') asked.push(r.thread ?? '');
+        return closed && r.action === 'comment' && r.thread === 'resolve' ? { enabled: false, reason: 'resolving closed meanwhile' } : true;
+      },
+    });
+    const button = Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Resolve thread')!;
+    pressed = true;
+    await userEvent.click(button);
+    await settled();
+    // The refusal redraws the thread with the host's reason in place of the button.
+    expect(threads().textContent).toContain('resolving closed meanwhile');
+    expect(asked).toContain('resolve');
+    expect((await source.getOne(relocation.id))!.threads.filter((t) => t.resolved)).toHaveLength(relocation.threads.filter((t) => t.resolved).length);
+  });
+});
+
 describe('the grid says where discussion is', () => {
   it('a cell with an open thread says so in words, and the legend keys the mark', () => {
     mount({ analysis: relocation, measure: 'score' });

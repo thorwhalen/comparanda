@@ -11,7 +11,7 @@
 import { h, render, type ComponentType } from 'preact';
 
 import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/analysis.js';
-import type { Affordances } from '../core/affordances.js';
+import type { Affordances, ThreadAct } from '../core/affordances.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
   anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
@@ -199,7 +199,7 @@ export function mountMatrix(
    * are queued and each is built on the source's latest document, so none
    * undoes another. The source's event re-renders the matrix; nothing here draws.
    */
-  const writeThread = (anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis): Promise<void> => {
+  const writeThread = (act: ThreadAct, anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis): Promise<void> => {
     const run = async () => {
       const { source, identity = DEFAULT_IDENTITY, authorize } = current;
       const id = analysis.id;
@@ -212,7 +212,7 @@ export function mountMatrix(
       const latest = (await source.getOne(id)) ?? analysis;
       // Asked again of the document being written, not the one the button was drawn from: the host is never overruled (ADR-0012).
       const anchor = anchorOf(latest);
-      const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor));
+      const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor), act);
       if (may && !may.enabled) throw new Error(may.reason);
       await source.update(id, change(latest, author, now().toISOString()));
     };
@@ -224,11 +224,11 @@ export function mountMatrix(
   /** A thread's anchor in a document; absent, the thread's own write says there is no such thread. */
   const anchorIn = (threadId: string) => (a: Analysis) => a.threads.find((t) => t.id === threadId)?.anchor;
   const threadWrites: ThreadWrites = {
-    start: (anchor, body) => writeThread(() => anchor, (a, author, at) =>
+    start: (anchor, body) => writeThread('start', () => anchor, (a, author, at) =>
       startThread(a, { threadId: newId(), anchor, comment: { id: newId(), at, body, author } })),
-    reply: (threadId, body) => writeThread(anchorIn(threadId), (a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author })),
-    resolve: (threadId) => writeThread(anchorIn(threadId), (a, by, at) => resolveThread(a, threadId, { by, at })),
-    reopen: (threadId) => writeThread(anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at })),
+    reply: (threadId, body) => writeThread('reply', anchorIn(threadId), (a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author })),
+    resolve: (threadId) => writeThread('resolve', anchorIn(threadId), (a, by, at) => resolveThread(a, threadId, { by, at })),
+    reopen: (threadId) => writeThread('reopen', anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at })),
   };
 
   const draw = () => {
