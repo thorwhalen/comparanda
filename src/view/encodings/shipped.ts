@@ -21,7 +21,7 @@ import { measurementFor } from '../../core/schema/structure.js';
 import type { ScalarValue } from '../../core/schema/values.js';
 import type { Swatch, SwatchId } from './palette.js';
 import { VSUP_PALETTE } from './vsup-palette.js';
-import { layerFor, mergeTree, nodeOf, vsupSwatchId, type LevelGroup, type MergeTree, type VsupSwatchId } from './vsup.js';
+import { layerFor, mergeTree, nodeOf, SCORE_LEVELS, vsupSwatchId, type LevelGroup, type MergeTree, type VsupSwatchId } from './vsup.js';
 import {
   defineEncoding, type CellMark, type EncodingContext, type EncodingDefinition, type LegendEntry,
 } from './registry.js';
@@ -379,7 +379,7 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
       return {
         unavailable: [...columns.values()].some(Boolean)
           ? `no shown cell records both a ${ctx.measure} and a confidence on their declared scales.`
-          : `no shown criterion has a ${ctx.measure} on a ranked scale of 2 to 7 levels and a ranked confidence to suppress it by.`,
+          : `no shown criterion has a ${ctx.measure} on a ranked scale of ${SCORE_LEVELS[0]} to ${SCORE_LEVELS[1]} levels and a ranked confidence to suppress it by.`,
       };
     }
     const palette: Record<string, Swatch> = {};
@@ -414,7 +414,7 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
           ...aliasing,
           `The ${ctx.measure} stays as text in every cell. In the study that introduced this blend, it changed which options readers chose -- they avoided the least certain, and accepted worse expected value to do so -- not how accurately they read values.`,
           ...(unplaced || [...columns.values()].some((c) => !c)
-            ? [`Cells with no confidence recorded, and criteria with no ranked confidence or whose ${ctx.measure} is not on a ranked scale of 2 to 7 levels, are left uncoloured.`]
+            ? [`Cells with no confidence recorded, and criteria with no ranked confidence or whose ${ctx.measure} is not on a ranked scale of ${SCORE_LEVELS[0]} to ${SCORE_LEVELS[1]} levels, are left uncoloured.`]
             : []),
         ],
       },

@@ -21,6 +21,14 @@
  * encoding and still looks plausible, so the corners are unit-tested.
  */
 
+/**
+ * The score arities the palette is built for, inclusive. Seven was the first
+ * ambition; the colour-vision-deficiency gate (#104, `tests/browser/cvd.test.ts`)
+ * found that beyond five steps neighbouring groups collapse for a tritan reader
+ * on the dark theme, and the fix for collapsing steps is fewer steps.
+ */
+export const SCORE_LEVELS = [2, 5] as const;
+
 /** A run of adjacent levels, by index into the scale's levels: `[first, last]`, inclusive. */
 export type LevelGroup = readonly [first: number, last: number];
 
