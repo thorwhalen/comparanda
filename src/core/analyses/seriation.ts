@@ -36,6 +36,7 @@ import { isOrdered, type Measurement } from '../schema/measurement.js';
 import type { OrderProvenance } from '../view-state.js';
 import { makeReadings, widenedCells, type Reading } from './readings.js';
 import type { AnalysisResult } from './registry.js';
+import { alternativeScope } from './scope.js';
 
 /** What every seriation result rests on, carried with it (#87, ADR-0015). */
 export const SERIATION_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
@@ -64,6 +65,8 @@ export interface SeriationOptions {
   /** Which axis to order. Each axis is seriated independently (ADR-0025). */
   axis?: 'alternatives' | 'criteria';
   alternativeIds?: readonly string[];
+  /** Compare only the live members of this alternatives group (exclusive with `alternativeIds`). */
+  groupId?: string;
   criterionIds?: readonly string[];
   /** Default `structural-matches`: the structural row is a derivation, abandoning it is a preference. */
   missingPolicy?: MissingPolicy;
@@ -335,7 +338,7 @@ export function seriate(a: Analysis, opts: SeriationOptions): SeriationResult {
   const notes: string[] = [];
   const excludedFeatures: ExcludedFeature[] = [];
 
-  const altIds = (opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id)).slice();
+  const altIds = alternativeScope(a, opts);
   const allCritIds = (opts.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id)).slice();
   const critIds = opts.sortBy ? allCritIds.filter((c) => c === opts.sortBy!.criterionId) : allCritIds;
   if (opts.sortBy && critIds.length === 0) {
