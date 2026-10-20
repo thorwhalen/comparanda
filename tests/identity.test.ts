@@ -28,8 +28,8 @@ describe('attribution says what kind of author, and how well it is known', () =>
   it('labels a typed name unverified, and an attestation by what it is worth', () => {
     expect(attribution({ displayName: 'Ada', kind: 'human' })).toBe('Ada (human, unverified)');
     expect(attribution({ displayName: 'Ada', kind: 'human', attestation: { method: 'oauth', issuer: 'idp.example' } }))
-      .toBe('Ada (human, verified by idp.example)');
-    expect(attribution({ displayName: 'Ada', kind: 'human', attestation: { method: 'host-session' } })).toBe('Ada (human, signed in)');
+      .toBe('Ada (human, unverified; claims verified by idp.example)');
+    expect(attribution({ displayName: 'Ada', kind: 'human', attestation: { method: 'host-session' } }, { vouched: true })).toBe('Ada (human, signed in)');
   });
 
   it('names an agent by its kind and its run, not by its display name', () => {
@@ -44,8 +44,30 @@ describe('attribution says what kind of author, and how well it is known', () =>
       { id: 'ghost-buyer', displayName: 'Buyer', kind: 'human', principalId: 'ghost' },
     ]);
     expect(map.get('ada')).toBe('Ada (human, unverified)');
-    expect(map.get('ada-buyer')).toBe('Ada as buyer (human, acting as the buyer, for Ada, unverified)');
+    expect(map.get('ada-buyer')).toBe('Ada as buyer (human, acting as the buyer, for Ada [ada], unverified)');
     expect(map.get('ghost-buyer')).toBe('Buyer (human, for ghost, unverified)');
+  });
+});
+
+describe('a look-alike persona never shows only a display name (#243)', () => {
+  it('names the principal id beside a display name that copies another author', () => {
+    const map = attributions([
+      { id: 'ana', displayName: 'Ana', kind: 'human' },
+      { id: 'aaa', displayName: 'Ana', kind: 'human' },
+      { id: 'aaa:Ana', displayName: 'Ana', kind: 'human', principalId: 'aaa', actingAs: 'ana' },
+      { id: 'aaa:\u0430na', displayName: 'Ana', kind: 'human', principalId: 'aaa', actingAs: 'ana' },
+    ]);
+    expect(map.get('ana')).toBe('Ana (human, unverified)');
+    expect(map.get('aaa:Ana')).toBe('Ana (human, acting as ana, for Ana [aaa], unverified)');
+    expect(map.get('aaa:\u0430na')).toBe('Ana (human, acting as ana, for Ana [aaa], unverified)');
+    // Without the principal's display name, the id alone; never dropped.
+    expect(attribution({ id: 'aaa:Ana', displayName: 'Ana', kind: 'human', principalId: 'aaa' })).toBe('Ana (human, for aaa, unverified)');
+  });
+
+  it('reads a claimed attestation as a claim unless the host vouches for it', () => {
+    const signed = { id: 'ada', displayName: 'Ada', kind: 'human' as const, attestation: { method: 'host-session' as const, issuer: 'intranet' } };
+    expect(attributions([signed]).get('ada')).toBe('Ada (human, unverified; claims signed in to intranet)');
+    expect(attributions([signed], { vouched: (a) => a.id === 'ada' }).get('ada')).toBe('Ada (human, signed in to intranet)');
   });
 });
 
@@ -166,7 +188,7 @@ describe('a writer cannot sign as an author the document already describes diffe
 
 describe('every attestation method has its own words (sprint review)', () => {
   it('names the issuer when there is one, and says so plainly when there is not', () => {
-    const ada = (attestation: object) => attribution({ displayName: 'Ada', kind: 'human', attestation } as never);
+    const ada = (attestation: object) => attribution({ displayName: 'Ada', kind: 'human', attestation } as never, { vouched: true });
     expect(ada({ method: 'host-session', issuer: 'intranet' })).toBe('Ada (human, signed in to intranet)');
     expect(ada({ method: 'oauth' })).toBe('Ada (human, verified by an identity provider)');
     expect(ada({ method: 'signature' })).toBe('Ada (human, signed)');
