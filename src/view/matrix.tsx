@@ -115,6 +115,13 @@ export interface MatrixViewProps {
   onReorder?: (state: ViewState, said: string) => void;
   /** The latest sentence for the polite live region: a move, a seriation, a refusal. */
   announcement?: string;
+  /**
+   * Something the person must be told and must explicitly acknowledge, such as
+   * a browser that will not keep their arrangement (#224). Drawn as an alert
+   * above the matrix, and gone only when `onAcknowledge` is called: no
+   * timeout, and nothing dismisses it by accident.
+   */
+  notice?: { message: string; onAcknowledge: () => void };
   /** Who is moving things, recorded in the order's provenance, read when a move is made. Default: `anonymous`. */
   actor?: () => string;
   /**
@@ -143,7 +150,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, affordances, onFocusChange, onPanelChange, threadWrites, onReorder, announcement, actor = anonymous, arrange }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, affordances, onFocusChange, onPanelChange, threadWrites, onReorder, announcement, notice, actor = anonymous, arrange }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -465,6 +472,12 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       {/* After MATRIX_CSS: its swatch rules tie the muted-ink rules on specificity, and win by order. */}
       {prepared.palette && <style>{derivedPaletteCss(prepared.palette)}</style>}
       {fallback && <p class="comparanda-degraded" role="note">{fallback}</p>}
+      {notice && (
+        <div class="comparanda-notice" role="alert" data-notice="">
+          <p>{notice.message}</p>
+          <button type="button" onClick={notice.onAcknowledge}>I understand</button>
+        </div>
+      )}
       <RefusedEdits
         analysis={analysis} measure={measure} affordances={affordances}
         rows={rows.entries} columns={columns.entries} transposed={transposed}

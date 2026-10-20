@@ -11,7 +11,7 @@ import { h } from 'preact';
 
 import { Analysis, vocabularyOf } from '../../src/core/schema/analysis.js';
 import { inMemoryAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
-import { mountMatrix, type MatrixHandle, type MatrixViewProps } from '../../src/view/index.js';
+import { mountMatrix, mountPersistedMatrix, type MatrixHandle, type MatrixViewProps } from '../../src/view/index.js';
 import languagesJson from '../../examples/languages.json';
 import relocationJson from '../../examples/relocation.json';
 
@@ -444,5 +444,36 @@ describe('the third review pass', () => {
     await source.update(two.id, { measures: relocation.measures });
     expect(() => handle.update(props, { replace: true })).not.toThrow();
     expect(() => handle.update({ ...props, measure: 'scroe' }, { replace: true })).toThrow(/not a measure/);
+  });
+});
+
+describe('the view-state notice (#224)', () => {
+  const throwing = {
+    getItem: () => null,
+    setItem: () => { throw new Error('private mode'); },
+    removeItem: () => undefined,
+  };
+
+  it('shows an alert when storage refuses writes, and clears it only on acknowledgement', async () => {
+    const el = document.createElement('div');
+    document.body.append(el);
+    const handle = await mountPersistedMatrix(el, { analysis: relocation, measure: 'score' }, { storage: throwing, events: null });
+    const alert = el.querySelector('[role="alert"]');
+    expect(alert?.textContent).toMatch(/not letting the page save/);
+    (alert!.querySelector('button') as HTMLButtonElement).click();
+    expect(el.querySelector('[role="alert"]')).toBeNull();
+    handle.destroy();
+    el.remove();
+  });
+
+  it('shows no alert when storage works', async () => {
+    const map = new Map<string, string>();
+    const storage = { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v), removeItem: (k: string) => void map.delete(k) };
+    const el = document.createElement('div');
+    document.body.append(el);
+    const handle = await mountPersistedMatrix(el, { analysis: relocation, measure: 'score' }, { storage, events: null });
+    expect(el.querySelector('[role="alert"]')).toBeNull();
+    handle.destroy();
+    el.remove();
   });
 });

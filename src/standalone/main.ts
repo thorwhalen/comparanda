@@ -8,18 +8,18 @@
  * from rendering is said, in words, where the matrix would have been.
  */
 import { Analysis } from '../core/schema/analysis.js';
-import { mountMatrix } from '../view/mount.js';
+import { mountPersistedMatrix } from '../view/persist.js';
 import {
   ANALYSIS_ELEMENT_ID, ROOT_ELEMENT_ID, SETTINGS_ELEMENT_ID, type StandaloneSettings,
 } from './contract.js';
 
-function start(): void {
+async function start(): Promise<void> {
   const root = document.getElementById(ROOT_ELEMENT_ID);
   if (!root) throw new Error(`this page has no #${ROOT_ELEMENT_ID} element to show the matrix in.`);
   try {
     const analysis = Analysis.parse(JSON.parse(inlined(ANALYSIS_ELEMENT_ID)));
     const settings = JSON.parse(inlined(SETTINGS_ELEMENT_ID)) as StandaloneSettings;
-    mountMatrix(root, { analysis, measure: settings.measure, ...(settings.encoding !== undefined ? { encoding: settings.encoding } : {}) });
+    await mountPersistedMatrix(root, { analysis, measure: settings.measure, ...(settings.encoding !== undefined ? { encoding: settings.encoding } : {}) });
   } catch (error) {
     const p = document.createElement('p');
     p.setAttribute('role', 'alert');
@@ -34,4 +34,4 @@ function inlined(id: string): string {
   return text;
 }
 
-start();
+void start();

@@ -80,6 +80,8 @@ export interface MountMatrixProps extends MatrixProps {
    * unverified. Only consulted with a `source`; without one nothing is written.
    */
   identity?: IdentityProvider;
+  /** A message the reader must acknowledge before it goes away (#224); see `MatrixViewProps.notice`. */
+  notice?: { message: string; onAcknowledge: () => void };
 }
 
 /**

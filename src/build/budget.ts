@@ -38,7 +38,7 @@ export interface ByteBudget {
 
 /** The default, and the one CI enforces. Change it here, with a reason in the commit. */
 export const STANDALONE_BUDGET: ByteBudget = Object.freeze({
-  limit: 200 * kB,
+  limit: 206 * kB,
   reserved: Object.freeze([
     Object.freeze({
       package: '@atlaskit/pragmatic-drag-and-drop',
