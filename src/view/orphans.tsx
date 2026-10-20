@@ -7,11 +7,12 @@
 import { useId } from 'preact/hooks';
 
 import type { Analysis } from '../core/schema/analysis.js';
+import type { Vouched } from '../core/identity.js';
 import { describeOrphans } from '../core/orphans.js';
 
-export function OrphanTray({ analysis }: { analysis: Analysis }) {
+export function OrphanTray({ analysis, vouched }: { analysis: Analysis; vouched?: Vouched | undefined }) {
   const id = useId();
-  const orphans = describeOrphans(analysis);
+  const orphans = describeOrphans(analysis, { vouched });
   if (orphans.length === 0) return null;
   return (
     <section class="comparanda-orphans" aria-labelledby={id} data-orphans={String(orphans.length)}>

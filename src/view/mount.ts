@@ -102,7 +102,7 @@ function withoutSource(a: Affordances): Affordances {
 
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
-  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'source', 'authorize', 'onViewChange', 'identity', 'notice',
+  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'vouched', 'source', 'authorize', 'onViewChange', 'identity', 'notice',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
 /** Which assertions' authors the rounds hide from `viewer`, as a string to compare: equal strings, equal view. */
@@ -297,6 +297,7 @@ export function mountMatrix(
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
         : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
       ...(standing ? { standing } : {}),
+      ...(current.vouched ? { vouched: current.vouched } : {}),
       // The caller's, else the reader the identity names at the moment drawn: an outside reader, if no one has said who they are.
       viewer,
     };

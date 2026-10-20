@@ -46,7 +46,7 @@ import type { Axis } from './schema/groups.js';
 import { aliasesOf } from './schema/structure.js';
 import { applyOrder, type ViewState } from './view-state.js';
 import { seriate } from './analyses/seriation.js';
-import { attributions } from './identity.js';
+import { attributions, type Vouched } from './identity.js';
 
 /** Which gesture asked for a move. Carried for logging; never part of the sentence. */
 export type MoveRoute = 'keyboard' | 'menu' | 'pointer';
@@ -412,7 +412,7 @@ export function arrangeToRevealStructure(
  * arrangement and by whom, a sort, or a seriation run with what it rested on.
  * The provenance ADR-0025 requires shown, not only stored.
  */
-export function describeOrder(a: Analysis, v: ViewState, axis: Axis): string {
+export function describeOrder(a: Analysis, v: ViewState, axis: Axis, { vouched }: { vouched?: Vouched | undefined } = {}): string {
   const p = v[orderKeyOf(axis)].provenance;
   const labels = labelsOf(a, axis);
   const noun = capitalised(pluralNoun(a, axis));
@@ -421,7 +421,7 @@ export function describeOrder(a: Analysis, v: ViewState, axis: Axis): string {
     case 'authored':
       return `${noun} are in the order the analysis gives them.`;
     case 'manual':
-      return `${noun} were arranged by hand, by ${attributions(a.authors).get(p.by) ?? `${p.by} (unverified)`}${when}.`;
+      return `${noun} were arranged by hand, by ${attributions(a.authors, { vouched }).get(p.by) ?? `${p.by} (unverified)`}${when}.`;
     case 'sorted': {
       const crit = a.criteria.find((c) => c.id === p.criterionId)?.label ?? p.criterionId;
       return `${noun} are sorted by ${crit}, ${p.direction === 'best-first' ? 'best' : 'worst'} first${when}.`;

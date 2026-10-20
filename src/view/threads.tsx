@@ -16,7 +16,7 @@ import type { Anchor, Thread } from '../core/schema/annotations.js';
 import { aliasesOf } from '../core/schema/structure.js';
 import { axisGroups, groupsOf } from '../core/schema/groups.js';
 import { commentTarget, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
-import { attributions } from '../core/identity.js';
+import { attributions, type Vouched } from '../core/identity.js';
 import { capitalise } from './words.js';
 import { treeOf } from './dom.js';
 
@@ -37,9 +37,11 @@ export interface ThreadsProps {
   writes?: ThreadWrites | undefined;
   /** For the form controls' ids. */
   idBase: string;
+  /** Which authors' attestations the host performed (#263). */
+  vouched?: Vouched | undefined;
 }
 
-export function Threads({ analysis, measure, position, affordances, writes, idBase }: ThreadsProps) {
+export function Threads({ analysis, measure, position, affordances, writes, idBase, vouched }: ThreadsProps) {
   const [showResolved, setShowResolved] = useState(false);
   const words = aliasesOf(analysis);
   const all = threadsAt(analysis, position);
@@ -47,7 +49,7 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   const resolved = all.filter((x) => x.thread.resolved);
   const choices = anchorChoices(analysis, position, measure, words);
   const allowed = affordances.comment(commentTarget(choices[0]!.anchor), 'start');
-  const names = attributions(analysis.authors);
+  const names = attributions(analysis.authors, { vouched });
   return (
     <section class="comparanda-threads" aria-labelledby={`${idBase}-threads`} data-detail="threads">
       <h3 id={`${idBase}-threads`}>{`Discussion (${open.length} open${resolved.length ? `, ${resolved.length} resolved` : ''})`}</h3>

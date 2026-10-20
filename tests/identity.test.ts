@@ -9,6 +9,8 @@ import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
 import { makeAffordances, type Authorize } from '../src/core/affordances.js';
 import { attribution, attributions } from '../src/core/identity.js';
 import { startThread } from '../src/core/threads.js';
+import { activityRecord } from '../src/core/activity.js';
+import { describeOrphans } from '../src/core/orphans.js';
 import { agentIdentity, localIdentity, type IdentityStorage } from '../src/store/index.js';
 import relocationJson from '../examples/relocation.json';
 
@@ -68,6 +70,21 @@ describe('a look-alike persona never shows only a display name (#243)', () => {
     const signed = { id: 'ada', displayName: 'Ada', kind: 'human' as const, attestation: { method: 'host-session' as const, issuer: 'intranet' } };
     expect(attributions([signed]).get('ada')).toBe('Ada (human, unverified; claims signed in to intranet)');
     expect(attributions([signed], { vouched: (a) => a.id === 'ada' }).get('ada')).toBe('Ada (human, signed in to intranet)');
+  });
+
+  it('lets a host vouch through the descriptions the view shows (#263)', () => {
+    const base = relocation();
+    const a: Analysis = {
+      ...base,
+      authors: base.authors.map((x) => x.id === 'ana' ? { ...x, attestation: { method: 'host-session' as const, issuer: 'intranet' } } : x),
+    };
+    const viewer = { viewerId: 'ana', now: '2100-01-01T00:00:00Z' };
+    const said = (vouched?: (x: { id: string }) => boolean) =>
+      activityRecord(a, viewer, { vouched }).map((e) => e.who ?? '').filter((w) => w.startsWith('Ana Ruiz (human'));
+    expect(said()[0]).toContain('unverified; claims signed in to intranet');
+    expect(said((x) => x.id === 'ana')[0]).toBe('Ana Ruiz (human, signed in to intranet)');
+    // Orphans accept the same option; with none vouched, nothing changes.
+    expect(describeOrphans(a, { vouched: () => false })).toEqual(describeOrphans(a));
   });
 });
 
