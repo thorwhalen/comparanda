@@ -168,6 +168,15 @@ describe('the shipped build (dist/), when it has been built', () => {
   });
 });
 
+describe('the page is the production page under any NODE_ENV', () => {
+  it('carries no development JSX source locations, so no local file path, even under vitest\'s NODE_ENV=test', async () => {
+    expect(process.env.NODE_ENV).toBe('test');
+    const { html } = await buildStandalone(relocation, { check: 'static' });
+    expect(html).not.toContain('fileName');
+    expect(html).not.toContain(repo);
+  });
+});
+
 describe('the command', () => {
   it('writes the page and prints its size', async () => {
     const out = join(dir, 'from-cli.html');

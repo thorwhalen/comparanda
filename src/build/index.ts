@@ -205,11 +205,18 @@ async function bundleShell(entry: string): Promise<{ shell: string; codeBytes: n
       base: './',
       configFile: false,
       envFile: false,
+      // The production page whatever NODE_ENV the caller's process has: Vite keeps an inherited
+      // NODE_ENV (vitest's "test", a dev server's "development") and then compiles the TSX with
+      // the development JSX transform, which writes every element's absolute source path and line
+      // into the page -- the builder's file paths in a file meant to be mailed, and about 23 kB the
+      // budget charged as if the page needed them.
+      mode: 'production',
+      define: { 'process.env.NODE_ENV': JSON.stringify('production') },
       publicDir: false,
       logLevel: 'error',
       plugins: [measure, singleFile.viteSingleFile()],
       // The matrix is TSX on Preact; this only matters when building from source.
-      esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
+      esbuild: { jsx: 'automatic', jsxImportSource: 'preact', jsxDev: false },
       build: { outDir: join(root, 'out'), emptyOutDir: true, modulePreload: false, reportCompressedSize: false },
     });
     return { shell: await readFile(join(root, 'out', 'index.html'), 'utf8'), codeBytes, rendered };
