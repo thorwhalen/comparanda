@@ -20,3 +20,4 @@ export * from './core/identity.js';
 export * from './core/criteria-revision.js';
 export * from './core/affordances.js';
 export * from './core/revision.js';
+export * from './core/annotation-history.js';

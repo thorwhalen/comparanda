@@ -24,6 +24,7 @@ import type { Analysis } from './schema/analysis.js';
 import { cellKey, compareCriteriaVersions } from './schema/analysis.js';
 import type { Assertion } from './schema/values.js';
 import type { Criterion } from './schema/structure.js';
+import { canonical } from './canonical.js';
 
 /**
  * The fields that carry what a criterion *means*. Editing any of them changes
@@ -254,13 +255,6 @@ function scalesMeaning(doc: Partial<Pick<Analysis, 'scales'>>, c: Criterion): st
   return canonical((doc.scales ?? []).filter((d) => ids.has(d.id)).sort((x, y) => (x.id < y.id ? -1 : 1)));
 }
 
-/** JSON with sorted keys, so a reordered object is not mistaken for a changed one. */
-function canonical(v: unknown): string {
-  return JSON.stringify(v, (_k, x) =>
-    x && typeof x === 'object' && !Array.isArray(x)
-      ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, (x as Record<string, unknown>)[k]]))
-      : x) ?? 'undefined';
-}
 
 /**
  * What was asserted: a stored assertion without the fields that may change --

@@ -4,15 +4,19 @@
  * Validation answers "is this document well-formed and honest". A write needs a
  * second question answered -- "does this *change* rewrite history" -- which no
  * single document can answer, because it is about the difference between two.
- * Three families, each owned by its own module and composed here so that a
- * provider runs one function and cannot forget the third:
+ * Five families, each owned by its own module and composed here so that a
+ * provider runs one function and cannot forget one:
  *
  * - `criteriaRevisionProblems`: a criterion's meaning changed without the set
  *   version moving, or a referenced criterion was removed (#62, #165);
  * - `scoreHistoryProblems`: a stored assertion was moved, deleted, or edited in
  *   place (#165);
  * - `tombstonedGroupProblems`: something was attached to a tombstoned group, or
- *   one was tombstoned without releasing its blocks (#51, #165).
+ *   one was tombstoned without releasing its blocks (#51, #165);
+ * - `annotationHistoryProblems`: a thread, comment or suggestion was removed or
+ *   rewritten in place (#204);
+ * - `removedEntityProblems`: an alternative or group something refers to was
+ *   removed rather than tombstoned (#204).
  *
  * And the validator, counted **by difference**: a write is refused for an error
  * it introduces, never for one already in the document -- otherwise one stored
@@ -23,7 +27,8 @@
  */
 import { Analysis, cellKey, compareCriteriaVersions, validateAnalysis, type ValidationProblem } from './schema/analysis.js';
 import { criteriaRevisionProblems, scoreHistoryProblems } from './criteria-revision.js';
-import { tombstonedGroupProblems } from './schema/anchors.js';
+import { removedEntityProblems, tombstonedGroupProblems } from './schema/anchors.js';
+import { annotationHistoryProblems } from './annotation-history.js';
 import { valueRefusal } from './schema/measurement.js';
 import { measurementFor } from './schema/structure.js';
 
@@ -80,6 +85,8 @@ export function revisionProblems(before: Analysis, after: unknown): RevisionProb
       ...criteriaRevisionProblems(b, a),
       ...scoreHistoryProblems(b, a, { repairable }),
       ...tombstonedGroupProblems(b, a),
+      ...annotationHistoryProblems(b, a),
+      ...removedEntityProblems(b, a),
       ...newValuesOffScale(b, a),
       ...introduced,
     ];

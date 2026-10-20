@@ -217,6 +217,7 @@ export const RULE_SOURCES = Object.freeze({
   // Honesty and completeness.
   'score-has-a-reason': 'ADR-0031',
   'assertion-attributed': 'ADR-0012',
+  'annotation-attributed': 'ADR-0012',
   'agent-is-typed': 'ADR-0012',
   'persona-keeps-kind': 'ADR-0012',
   'value-has-evidence': 'ADR-0014',
@@ -447,6 +448,9 @@ export function validateAnalysis(
 
   for (const [label, list] of [
     ['alternatives', a.alternatives], ['criteria', a.criteria], ['groups', a.groups],
+    // A thread or suggestion is acted on by id: with two, reply and resolve reach the first (#204).
+    ['threads', a.threads], ['suggestions', a.suggestions],
+    ...a.threads.map((t, i) => [`threads[${i}].comments`, t.comments] as const),
   ] as const) {
     const seen = new Set<string>();
     for (const item of list) {
@@ -774,6 +778,25 @@ export function validateAnalysis(
         `the proposed value is not one the "${sg.anchor.measure}" measurement of criterion "${sg.anchor.criterionId}" admits: ${reason}`,
         'propose a value the measurement declares.');
     }
+  });
+
+  // A comment, a resolution or a decision names who made it, as an assertion
+  // does: the panel attributes it, and an unknown id reads as nobody (#204).
+  const unattributed = (at: string, id: string | undefined, what: string) => {
+    if (id !== undefined && !authorIds.has(id)) {
+      honesty(
+        'annotation-attributed', at, `unknown author "${id}" for ${what}; the reader cannot tell who said it.`,
+        'add the author to `authors`, or attribute it to an existing one.',
+      );
+    }
+  };
+  a.threads.forEach((t, i) => {
+    t.comments.forEach((c, j) => unattributed(`threads[${i}].comments[${j}].authorId`, c.authorId, `comment "${c.id}"`));
+    unattributed(`threads[${i}].resolvedBy`, t.resolvedBy, `the resolution of thread "${t.id}"`);
+  });
+  a.suggestions.forEach((sg, i) => {
+    unattributed(`suggestions[${i}].authorId`, sg.authorId, `suggestion "${sg.id}"`);
+    unattributed(`suggestions[${i}].decidedBy`, sg.decidedBy, `the decision on suggestion "${sg.id}"`);
   });
 
   // Groups belong to one axis, and nest as a tree (ADR-0008, the `labels`
