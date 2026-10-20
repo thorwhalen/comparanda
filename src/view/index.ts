@@ -10,6 +10,7 @@
  */
 export { mountMatrix, type MatrixHandle, type MountOptions } from './mount.js';
 export { mountPersistedMatrix, type PersistedMatrixHandle } from './persist.js';
+export { AgreementPanel, type AnalysisPanelProps } from './agreement.js';
 export { Matrix, TEXT_ONLY, type CellState, type MatrixViewProps } from './matrix.js';
 export type { MatrixProps, MatrixPropsUpdate, MountMatrixProps } from './props.js';
 export {

@@ -42,6 +42,7 @@
  * exists to prevent.
  */
 import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import type { ComponentType } from 'preact';
 
 import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
 import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
@@ -69,6 +70,7 @@ import { revealClear } from './sticky.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
 import { DetailPanel } from './detail-panel.js';
 import { OrphanTray } from './orphans.js';
+import type { AnalysisPanelProps } from './agreement.js';
 import type { ThreadWrites } from './threads.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
 import { startPointerDrag } from './pointer-reorder.js';
@@ -136,6 +138,11 @@ export interface MatrixViewProps {
    * host's own. Absent, each axis still says how its order came about.
    */
   arrange?: (analysis: Analysis, view: ViewState, axis: Axis, measure: string) => { state: ViewState; said: string };
+  /**
+   * The analysis panels the composition root registered, drawn in order below
+   * the grid (#253): `AgreementPanel`, or a host's own. Absent, none.
+   */
+  panels?: readonly ComponentType<AnalysisPanelProps>[];
 }
 
 
@@ -156,7 +163,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, onReorder, announcement, notice, actor = anonymous, arrange }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, onReorder, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -642,6 +649,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         />
       )}
       </div>
+      {panels.map((Panel, i) => <Panel key={i} analysis={analysis} measure={measure} vouched={vouched} viewer={viewer} />)}
     </div>
   );
 }

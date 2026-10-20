@@ -68,6 +68,12 @@ export interface MountOptions {
    * share of the standalone page's byte budget, so a build ships it by naming it.
    */
   arrange?: MatrixViewProps['arrange'];
+  /**
+   * Analysis panels, registered like `arrange` (#253): pass `[AgreementPanel]`
+   * to draw per-criterion agreement and the camps' common ground below the
+   * grid. None by default, for the same byte-budget reason.
+   */
+  panels?: MatrixViewProps['panels'];
 }
 
 /**
@@ -122,7 +128,7 @@ const mounted = new WeakSet<object>();
  */
 export function mountMatrix(
   el: Element, props: MountMatrixProps,
-  { component = Matrix, encodings, now = () => new Date(), newId = randomUuid, arrange }: MountOptions = {},
+  { component = Matrix, encodings, now = () => new Date(), newId = randomUuid, arrange, panels }: MountOptions = {},
 ): MatrixHandle {
   const registry = encodings ?? createEncodingRegistry([textOnly]);
   if (el === null || typeof el !== 'object' || typeof (el as { appendChild?: unknown }).appendChild !== 'function') {
@@ -290,6 +296,7 @@ export function mountMatrix(
       ...(current.notice ? { notice: current.notice } : {}),
       actor: () => actor,
       ...(arrange ? { arrange } : {}),
+      ...(panels ? { panels } : {}),
       ...(announcement !== undefined ? { announcement } : {}),
       ...(source ? { threadWrites } : {}),
       encodings: registry,
