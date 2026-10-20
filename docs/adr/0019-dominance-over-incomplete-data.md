@@ -128,6 +128,12 @@ deliberately messy example ADR-0016 requires, not asserted here.
 - *Call the relations `certain` / `possible`.* "Certain" is unattested in the literature and
   collides with `confidence`, a stored measure in this schema.
 
+## Amendments
+
+### 2026-10-20 — The group scope is named, not defaulted
+
+Clause 3 calls an alternatives group the natural scope. It ships as `groupId` on the dominance options (`dominanceScope()` resolves it: the group's members, sub-groups included, tombstoned alternatives left out), shared by `dominance`, `explainDominance` and `blanksWorthFilling`, and the basis sentence names the group ("across 7 options in \"Europe\""). It is **not a default**: groups are many-to-many, so an alternative in several groups gives no single scope to pick, and a guessed scope would change which alternatives are set aside without the reader asking. Without `groupId` the scope stays the whole analysis, which clause 3 keeps legal and transitive. The basis sentence also says "criteria that admit a dominance comparison" rather than "criteria applicable to all N": a not-applicable cell drops only the pairs it is in (clause 3's structural rule), so applicability is reported per cell, not as a criterion count.
+
 ## References
 1. [Skyline Query Processing for Incomplete Data — M. E. Khalefa, M. F. Mokbel & J. J. Levandoski, ICDE 2008](https://dmlab.cs.umn.edu/new/papers/ICDE08_Skyline.pdf)
 2. [A Survey of Skyline Query Processing — C. Kalyvas & T. Tzouramanis, arXiv:1704.01788 (2017)](https://arxiv.org/pdf/1704.01788)
