@@ -31,7 +31,8 @@
 import type { Analysis } from '../schema/analysis.js';
 import { reducedValue, makeCellReader, cellIndex, cellKey, vocabularyOf } from '../schema/analysis.js';
 import { isWidenedByDisclosure } from '../schema/values.js';
-import { axisGroups, makeInapplicability, membersOfGroup } from '../schema/groups.js';
+import { makeInapplicability } from '../schema/groups.js';
+import { alternativeScope } from './scope.js';
 import { aliasesOf, measurementFor } from '../schema/structure.js';
 import { admitsDominance, isOrdered, type Measurement } from '../schema/measurement.js';
 import type { AnalysisResult } from './registry.js';
@@ -81,23 +82,8 @@ export interface DominanceOptions {
   criterionIds?: readonly string[];
 }
 
-/**
- * The alternatives a dominance call compares: `alternativeIds`, the members of
- * `groupId`, or every live alternative. Throws on an unknown group, or when
- * both `alternativeIds` and `groupId` are given.
- */
-export function dominanceScope(a: Analysis, opts: Pick<DominanceOptions, 'alternativeIds' | 'groupId'>): string[] {
-  if (opts.groupId === undefined) {
-    return (opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id)).slice();
-  }
-  if (opts.alternativeIds) throw new Error('pass alternativeIds or groupId, not both');
-  const ag = axisGroups(a, 'alternatives');
-  if (!a.groups.some((g) => g.id === opts.groupId && g.axis === 'alternatives' && !g.tombstoned)) {
-    throw new Error(`"${opts.groupId}" is not a live alternatives group`);
-  }
-  const live = new Set(a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id));
-  return membersOfGroup(ag, opts.groupId).filter((id) => live.has(id));
-}
+/** The alternatives a dominance call compares; see `alternativeScope`. */
+export const dominanceScope = alternativeScope;
 
 export interface DominanceResult extends AnalysisResult {
   /** Not dominated even in the optimistic reading. Robustly surviving. */

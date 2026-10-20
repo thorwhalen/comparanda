@@ -8,6 +8,9 @@
 import { describe, it, expect } from 'vitest';
 
 import { blanksWorthFilling, dominance, dominanceScope, explainDominance } from '../src/core/analyses/dominance.js';
+import { pughTally } from '../src/core/analyses/pugh.js';
+import { alternativeScope } from '../src/core/analyses/scope.js';
+import { seriate } from '../src/core/analyses/seriation.js';
 import { Analysis } from '../src/core/schema/analysis.js';
 
 const range = { level: 'ratio', preference: 'increasing', range: { min: 0, max: 10 } };
@@ -87,5 +90,25 @@ describe('dominance scoped to an alternatives group', () => {
     expect(() => dominance(a, { measure: 'score', groupId: 'nowhere' })).toThrow(/not a live alternatives group/);
     expect(() => dominance(a, { measure: 'score', groupId: 'eu-only' })).toThrow(/not a live alternatives group/);
     expect(() => dominance(a, { measure: 'score', groupId: 'asia', alternativeIds: ['r'] })).toThrow(/not both/);
+  });
+});
+
+describe('the shared alternative scope (#239)', () => {
+  it('is the one resolver dominance, pugh and seriation use', () => {
+    const a = fixture();
+    expect(alternativeScope(a, { groupId: 'asia' })).toEqual(['r', 's']);
+    expect(dominanceScope(a, { groupId: 'asia' })).toEqual(['r', 's']);
+    expect(() => alternativeScope(a, { groupId: 'asia', alternativeIds: ['r'] })).toThrow(/not both/);
+    expect(() => alternativeScope(a, { groupId: 'nope' })).toThrow(/not a live alternatives group/);
+  });
+
+  it('scopes pugh to the group', () => {
+    const r = pughTally(fixture(), { measure: 'score', datum: 'p', groupId: 'europe' });
+    expect(r.rows.map((x) => x.alternativeId)).toEqual(['q']);
+  });
+
+  it('scopes seriation to the group', () => {
+    const r = seriate(fixture(), { measure: 'score', minOverlap: 1, groupId: 'europe' });
+    expect([...r.order].sort()).toEqual(['p', 'q']);
   });
 });

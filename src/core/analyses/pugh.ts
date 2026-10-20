@@ -32,6 +32,7 @@ import { measurementFor } from '../schema/structure.js';
 import { isOrdered, type Measurement } from '../schema/measurement.js';
 import { indifferenceOf, makeReadings, widenedCells, type Reading } from './readings.js';
 import type { AnalysisResult } from './registry.js';
+import { alternativeScope } from './scope.js';
 
 /** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
 export const PUGH_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
@@ -46,6 +47,8 @@ export interface PughOptions {
   /** The alternative every other one is compared against. */
   datum: string;
   alternativeIds?: readonly string[];
+  /** Compare only the live members of this alternatives group (exclusive with `alternativeIds`). */
+  groupId?: string;
   criterionIds?: readonly string[];
 }
 
@@ -115,7 +118,7 @@ function criterionRefusal(m: Measurement | undefined): NotComparableReason | und
 }
 
 export function pughTally(a: Analysis, opts: PughOptions): PughResult {
-  const altIds = (opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id)).slice();
+  const altIds = alternativeScope(a, opts);
   const critIds = (opts.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id)).slice();
   if (!a.alternatives.some((x) => x.id === opts.datum)) {
     throw new Error(`the datum "${opts.datum}" is not an alternative in this analysis`);
