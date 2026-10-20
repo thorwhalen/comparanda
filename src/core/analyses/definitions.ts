@@ -15,6 +15,7 @@ import { pughTally, type PughOptions } from './pugh.js';
 import { findNonDiscriminatingCriteria, type NonDiscriminatingOptions } from './non-discriminating.js';
 import { agreement, type AgreementOptions } from './agreement.js';
 import { groupInformedConsensus, type ConsensusOptions } from './consensus.js';
+import { stabilityTrace, type StabilityOptions } from './stability.js';
 import { weightedSum, type WeightedSumOptions } from './weighted-sum.js';
 import { seriate, type SeriationOptions } from './seriation.js';
 import { sensitivity, type SensitivityOptions } from './sensitivity.js';
@@ -42,6 +43,9 @@ export const agreementAnalysis = /* @__PURE__ */ defineAnalysis({
 export const consensusAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'group-informed-consensus', label: 'Where the camps agree',
   run: (a, o: ConsensusOptions) => groupInformedConsensus(a, o),
+export const stabilityAnalysis = /* @__PURE__ */ defineAnalysis({
+  id: 'stability-trace', label: 'Between-round stability',
+  run: (a, o: StabilityOptions) => stabilityTrace(a, o),
 });
 export const weightedSumAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'weighted-sum', label: 'Weighted sum (opt-in)',
