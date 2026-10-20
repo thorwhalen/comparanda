@@ -104,12 +104,41 @@ export interface NewComment {
  */
 export function commentTarget(anchor: Anchor): EditTarget {
   switch (anchor.scope) {
-    case 'cell': return { kind: 'cell', id: `${anchor.alternativeId ?? ''}/${anchor.criterionId ?? ''}` };
+    case 'cell': {
+      const [alternativeId, criterionId] = [anchor.alternativeId ?? '', anchor.criterionId ?? ''];
+      return { kind: 'cell', id: JSON.stringify([alternativeId, criterionId]), alternativeId, criterionId };
+    }
     case 'alternative': return { kind: 'alternative', id: anchor.alternativeId ?? '' };
     case 'criterion': return { kind: 'criterion', id: anchor.criterionId ?? '' };
     case 'group': return { kind: 'group', id: anchor.groupId ?? '' };
-    case 'group-pair': return { kind: 'group-pair', id: `${anchor.groupId ?? ''}/${anchor.otherGroupId ?? ''}` };
+    case 'group-pair': {
+      // Sorted: the view offers (alternatives group, criteria group), a stored thread may hold either order.
+      const [groupId, otherGroupId] = [anchor.groupId ?? '', anchor.otherGroupId ?? ''].sort();
+      return { kind: 'group-pair', id: JSON.stringify([groupId, otherGroupId]), groupId: groupId!, otherGroupId: otherGroupId! };
+    }
     case 'analysis': return { kind: 'analysis' };
+  }
+}
+
+/**
+ * The anchor a comment target names: `commentTarget`'s inverse, up to a
+ * group-pair's order. `undefined` for what no thread is anchored on -- a
+ * suggestion, an unknown kind, or a cell or group-pair without its two ids.
+ */
+export function anchorOfTarget(target: EditTarget): Anchor | undefined {
+  const { kind, id } = target;
+  switch (kind) {
+    case 'cell':
+      if (target.alternativeId === undefined || target.criterionId === undefined) return undefined;
+      return { scope: 'cell', alternativeId: target.alternativeId, criterionId: target.criterionId };
+    case 'alternative': return { scope: 'alternative', alternativeId: id };
+    case 'criterion': return { scope: 'criterion', criterionId: id };
+    case 'group': return { scope: 'group', groupId: id };
+    case 'group-pair':
+      if (target.groupId === undefined || target.otherGroupId === undefined) return undefined;
+      return { scope: 'group-pair', groupId: target.groupId, otherGroupId: target.otherGroupId };
+    case 'analysis': return { scope: 'analysis' };
+    default: return undefined;
   }
 }
 

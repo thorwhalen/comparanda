@@ -143,8 +143,17 @@ describe('commentTarget: what the host is asked about, for every scope (sprint r
     expect(commentTarget({ scope: 'alternative', alternativeId: 'berlin' })).toEqual({ kind: 'alternative', id: 'berlin' });
     expect(commentTarget({ scope: 'criterion', criterionId: 'rent' })).toEqual({ kind: 'criterion', id: 'rent' });
     expect(commentTarget({ scope: 'cell', alternativeId: 'berlin', criterionId: 'rent', measure: 'score' }))
-      .toEqual({ kind: 'cell', id: 'berlin/rent' });
+      .toEqual({ kind: 'cell', id: '["berlin","rent"]', alternativeId: 'berlin', criterionId: 'rent' });
     expect(commentTarget({ scope: 'group', groupId: 'eu' })).toEqual({ kind: 'group', id: 'eu' });
-    expect(commentTarget({ scope: 'group-pair', groupId: 'eu', otherGroupId: 'cost' })).toEqual({ kind: 'group-pair', id: 'eu/cost' });
+    expect(commentTarget({ scope: 'group-pair', groupId: 'eu', otherGroupId: 'cost' }))
+      .toEqual({ kind: 'group-pair', id: '["cost","eu"]', groupId: 'cost', otherGroupId: 'eu' });
+  });
+
+  it('gives two cells two ids however their ids are spelled, and one block one id in either order (#206)', () => {
+    const one = commentTarget({ scope: 'cell', alternativeId: 'a/b', criterionId: 'c' });
+    const two = commentTarget({ scope: 'cell', alternativeId: 'a', criterionId: 'b/c' });
+    expect(one.id).not.toBe(two.id);
+    expect(commentTarget({ scope: 'group-pair', groupId: 'cost', otherGroupId: 'eu' }))
+      .toEqual(commentTarget({ scope: 'group-pair', groupId: 'eu', otherGroupId: 'cost' }));
   });
 });

@@ -6,6 +6,8 @@
  * the host's authorisation; with no host it is the document's policy.
  */
 import { describe, it, expect } from 'vitest';
+
+import { resolveThread, startThread } from '../src/core/threads.js';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -199,6 +201,32 @@ describe('nothing about rendering or storage is expressible', () => {
     expect(() => aff.comment(target, 'delete' as never)).toThrow(/start.*reply.*resolve.*reopen/);
   });
 
+  it('names the thread an act is on, and refuses what its state rules out (#206)', () => {
+    const seen: EditRequest[] = [];
+    const base = relocation();
+    const alt = base.alternatives[0]!.id;
+    const a = resolveThread(startThread(startThread(base, {
+      threadId: 't1', anchor: { scope: 'alternative', alternativeId: alt }, comment: { id: 'k1', at: 'T0', body: 'one', author: ANA_206 },
+    }), { threadId: 't2', anchor: { scope: 'alternative', alternativeId: alt }, comment: { id: 'k1', at: 'T0', body: 'two', author: ANA_206 } }),
+    't2', { by: ANA_206, at: 'T1' });
+    const aff = makeAffordances(a, { authorize: (r) => (seen.push(r), true) });
+    expect(aff.comment(undefined, 'resolve', { threadId: 't1' })).toEqual({ enabled: true });
+    expect(seen.at(-1)).toEqual({ action: 'comment', doing: 'resolving a thread', target: { kind: 'alternative', id: alt }, thread: 'resolve', threadId: 't1' });
+    expect(aff.comment(undefined, 'reply', { threadId: 't2' }).reason).toMatch(/resolved; it takes no further reply/);
+    expect(aff.comment(undefined, 'resolve', { threadId: 't2' }).reason).toMatch(/no further resolution/);
+    expect(aff.comment(undefined, 'reopen', { threadId: 't1' }).reason).toMatch(/only a resolved thread can be reopened/);
+    expect(aff.comment(undefined, 'reopen', { threadId: 't2' })).toEqual({ enabled: true });
+    expect(aff.comment(undefined, 'reply', { threadId: 'nope' }).reason).toMatch(/no thread "nope"/);
+    expect(aff.comment({ kind: 'analysis' }, 'reply', { threadId: 't1' }).reason).toMatch(/not anchored on the target/);
+    const dead = makeAffordances(tombstone(a, { kind: 'alternative', id: alt }));
+    expect(dead.comment({ kind: 'alternative', id: alt }, 'start').reason).toMatch(/tombstoned; a new thread needs a live anchor/);
+    expect(dead.comment({ kind: 'alternative', id: 'ghost' }, 'start').reason).toMatch(/not in this analysis/);
+    // Refused, not thrown, for what no thread is anchored on; a target matched whatever its key order (review).
+    expect(aff.comment({ kind: 'suggestion', id: 'sg' }, 'start').reason).toMatch(/cannot be anchored on a suggestion/);
+    expect(aff.comment({ kind: 'cell', id: '["x","c"]' }, 'start').reason).toMatch(/alternativeId and criterionId/);
+    expect(aff.comment({ id: alt, kind: 'alternative' }, 'resolve', { threadId: 't1' })).toEqual({ enabled: true });
+  });
+
   it('exposes only policy queries', () => {
     expect(Object.keys(makeAffordances(relocation())).sort()).toEqual(
       ['assert', 'changeLock', 'comment', 'decideSuggestion', 'inapplicable', 'missingCode', 'missingCodes', 'revise', 'screens', 'suggest', 'value'],
@@ -220,3 +248,5 @@ describe('deciding a suggestion that is not anchored to a cell (sprint review)',
     expect(aff.decideSuggestion(id, 'decline')).toEqual({ enabled: true });
   });
 });
+
+const ANA_206 = { id: 'ana-206', displayName: 'Ana', kind: 'human' } as const;

@@ -226,7 +226,7 @@ export function mountMatrix(
    * are queued and each is built on the source's latest document, so none
    * undoes another. The source's event re-renders the matrix; nothing here draws.
    */
-  const writeThread = (act: ThreadAct, anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis): Promise<void> => {
+  const writeThread = (act: ThreadAct, anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis, threadId?: string): Promise<void> => {
     const run = async () => {
       const { source, identity = DEFAULT_IDENTITY, authorize } = current;
       const id = analysis.id;
@@ -247,7 +247,7 @@ export function mountMatrix(
       if (!latest) throw new Error(`the source no longer holds this analysis ("${id}"); nothing was written.`);
       // Asked again of the document being written, not the one the button was drawn from: the host is never overruled (ADR-0012).
       const anchor = anchorOf(latest);
-      const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor), act);
+      const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor), act, threadId === undefined ? {} : { threadId });
       if (may && !may.enabled) throw new Error(may.reason);
       const written = change(latest, author, now().toISOString());
       if (versioned && isVersioned(source)) await source.updateIfVersion(id, written, versioned.version);
@@ -264,9 +264,9 @@ export function mountMatrix(
   const threadWrites: ThreadWrites = {
     start: (anchor, body) => writeThread('start', () => anchor, (a, author, at) =>
       startThread(a, { threadId: newId(), anchor, comment: { id: newId(), at, body, author } })),
-    reply: (threadId, body) => writeThread('reply', anchorIn(threadId), (a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author })),
-    resolve: (threadId) => writeThread('resolve', anchorIn(threadId), (a, by, at) => resolveThread(a, threadId, { by, at })),
-    reopen: (threadId) => writeThread('reopen', anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at })),
+    reply: (threadId, body) => writeThread('reply', anchorIn(threadId), (a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author }), threadId),
+    resolve: (threadId) => writeThread('resolve', anchorIn(threadId), (a, by, at) => resolveThread(a, threadId, { by, at }), threadId),
+    reopen: (threadId) => writeThread('reopen', anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at }), threadId),
   };
 
   const draw = () => {
