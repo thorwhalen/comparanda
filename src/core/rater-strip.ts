@@ -73,9 +73,13 @@ export function stripLevels(m: Measurement | undefined, { maxSlots = DEFAULT_MAX
  */
 export function raterStrip(
   cell: Pick<Cell, 'assertions'>,
-  { authors, levels }: { authors: readonly Pick<Author, 'id' | 'kind' | 'principalId'>[]; levels: readonly ScalarValue[] },
+  { authors, levels, means }: {
+    authors: readonly Pick<Author, 'id' | 'kind' | 'principalId'>[]; levels: readonly ScalarValue[];
+    /** Reads an absence's code as what it means, for the label (#209). */
+    means?: ((code: string) => string | undefined) | undefined;
+  },
 ): RaterStrip | undefined {
-  const set = describeAssertionSet(cell, { authors, levels });
+  const set = describeAssertionSet(cell, { authors, levels, means });
   if (set.reading === 'single') return undefined;
   const shape = cellShape(set.values, levels);
   if (shape.n === 0) return undefined;
@@ -115,9 +119,11 @@ export function isRaterStrip(value: unknown): value is RaterStrip {
  */
 export function raterStripInView(
   analysis: Analysis, cell: Pick<Cell, 'assertions'>,
-  { levels, viewer }: { levels: readonly ScalarValue[]; viewer?: ViewerContext | undefined },
+  { levels, viewer, means }: {
+    levels: readonly ScalarValue[]; viewer?: ViewerContext | undefined; means?: ((code: string) => string | undefined) | undefined;
+  },
 ): RaterStrip | undefined {
-  if (!viewer) return raterStrip(cell, { authors: analysis.authors, levels });
+  if (!viewer) return raterStrip(cell, { authors: analysis.authors, levels, means });
   const taken = new Set(cell.assertions.map((s) => s.id));
   let standIns = 0;
   let unseen = 0;
@@ -130,7 +136,7 @@ export function raterStripInView(
     taken.add(`hidden-author:${standIns}`);
     kept.push(standingInSet(s, `hidden-author:${standIns}`));
   }
-  const strip = raterStrip({ assertions: kept }, { authors: analysis.authors, levels });
+  const strip = raterStrip({ assertions: kept }, { authors: analysis.authors, levels, means });
   if (!strip || unseen === 0) return strip;
   return { ...strip, unseen, label: `${strip.label} ${unseen} more not shown to you.` };
 }

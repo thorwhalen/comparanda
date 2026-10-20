@@ -41,7 +41,9 @@ describe('the static pre-filter', () => {
     ['window.open(u)', 'window.open, which no CSP governs'],
     ['location.assign(u)', 'a navigation through location, which no CSP governs'],
     ['window.location.href = u', 'a navigation through location, which no CSP governs'],
-    ['location=u', 'a navigation through location, which no CSP governs'],
+    ['window.location=u', 'a navigation through location, which no CSP governs'],
+    ['location.href += "#"', 'a navigation through location, which no CSP governs'],
+    ['location?.assign(u)', 'a navigation through location, which no CSP governs'],
     ['document.location.replace(u)', 'a navigation through location, which no CSP governs'],
     ['import("./chunk.js")', 'a dynamic import'],
     ['const css = "@import \'x.css\';"', 'a CSS @import'],
@@ -66,6 +68,7 @@ describe('the static pre-filter', () => {
       'const prefetch = 1; refetch(); const fetcher = 2;',
       'cache.fetch(key); if (typeof WebSocket === "undefined") {} x.open("GET", u);',
       'location.hash = "#c3"; if (location.protocol === "file:") {} const here = location.href; allocation = 3;',
+      'let location = a; function f(location = 2) {} row.location = 1; a.location.replace(/x/g, "");',
     ].join('\n');
     expect(hits(page(code, '<link rel="icon" href="data:,">'))).toEqual([]);
   });

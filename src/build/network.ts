@@ -62,6 +62,9 @@ export const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${C
  * a URL other than `data:` or a fragment. URL *strings* in code are not
  * flagged: Preact carries the SVG namespace URI, which is a name, not a request.
  */
+/** The globals `location` is reached through, as a navigation names it. */
+const GLOBALS = '\\b(?:window|self|top|parent|document|globalThis)';
+
 export const NETWORK_PATTERNS: readonly { readonly what: string; readonly in: 'code' | 'markup'; readonly pattern: RegExp }[] = Object.freeze([
   // The global, called or borrowed; not a method of the same name (\`cache.fetch(k)\`).
   { what: 'a fetch() call', in: 'code', pattern: /(?<![\w$.])(?:(?:window|self|globalThis)\.)?fetch\s*(?:\(|\.(?:call|apply|bind)\b)/ },
@@ -72,10 +75,15 @@ export const NETWORK_PATTERNS: readonly { readonly what: string; readonly in: 'c
   { what: 'a WebRTC connection, which no CSP governs', in: 'code', pattern: /\b(?:webkit)?RTCPeerConnection\b/ },
   { what: 'window.open, which no CSP governs', in: 'code', pattern: /\bwindow\.open\s*\(/ },
   // A top-level navigation, which no CSP governs either (#209). Not `location.hash`: a fragment stays on the page.
+  // The global, bare or through one of its holders; not a property or field of that name (`row.location = x`).
   {
     what: 'a navigation through location, which no CSP governs', in: 'code',
-    pattern: /(?<![\w$])location\s*(?:\.\s*(?:assign|replace)\s*\(|\.\s*(?:href|pathname|search|host|hostname|origin|protocol|port)\s*=(?!=)|=(?![=>]))/,
+    pattern: new RegExp(
+      `(?:(?<![\\w$.])|${GLOBALS}\\.)location\\s*\\??\\.\\s*(?:(?:assign|replace)\\s*\\(|(?:href|pathname|search|host|hostname|origin|protocol|port)\\s*\\+?=(?!=))` +
+        `|${GLOBALS}\\.location\\s*\\+?=(?![=>])`,
+    ),
   },
+
   { what: 'sendBeacon', in: 'code', pattern: /\bsendBeacon\b/ },
   { what: 'importScripts', in: 'code', pattern: /\bimportScripts\b/ },
   { what: 'a worker', in: 'code', pattern: /\bnew\s+(?:Shared)?Worker\s*\(/ },

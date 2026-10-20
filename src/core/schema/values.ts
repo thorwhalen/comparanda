@@ -128,7 +128,7 @@ function arithmeticRefusal(named: string, level: LevelOfMeasurement | undefined)
   // An unstated level is not a licence to average (#209): 1-5 codes are ordinal until the schema says otherwise.
   if (level === undefined) {
     return `"${named}" produces a value nobody asserted, and the level of measurement is not stated, so ` +
-      'whether averaging is legal cannot be known; pass the level, or use lower-median.';
+      'whether averaging is legal cannot be known; declare a measurement with its level on the criterion, or use lower-median.';
   }
   return `"${named}" produces a value nobody asserted, which is not legal on an ` +
     `${level} level; use lower-median. Averaging ordinal codes produces a value no ` +

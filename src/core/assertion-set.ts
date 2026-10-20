@@ -158,7 +158,7 @@ function absenceWords(absences: readonly string[], means: ((code: string) => str
   if (!means) return absences.join(', ');
   const counts = new Map<string, number>();
   for (const code of absences) {
-    const words = means(code)?.trim().replace(/\.$/, '');
+    const words = means(code)?.trim().replace(/\.+$/, '');
     const said = words ? `“${words}”` : code;
     counts.set(said, (counts.get(said) ?? 0) + 1);
   }

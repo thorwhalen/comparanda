@@ -196,7 +196,7 @@ function withAuthor(a: Analysis, author: Author): Analysis {
   if (!known) return { ...a, authors: [...a.authors, author] };
   // Who the record says made it, not only how well it is known: another model, run or principal is another author (ADR-0012, #209).
   const vouch = (x: Author) => JSON.stringify([
-    x.kind, x.attestation?.method ?? 'unverified', x.attestation?.issuer ?? '', x.principalId, x.actingAs,
+    x.kind, x.attestation?.method ?? 'unverified', x.attestation?.issuer ?? '', x.principalId ?? x.id, x.actingAs,
     x.agent && [x.agent.name, x.agent.model, x.agent.promptVersion, x.agent.runId],
   ]);
   if (vouch(known) !== vouch(author)) {

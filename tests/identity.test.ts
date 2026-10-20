@@ -152,13 +152,15 @@ describe('a writer cannot sign as an author the document already describes diffe
     const a = relocation();
     const bot = { id: 'bot', displayName: 'Bot', kind: 'agent' as const, agent: { name: 'scorer', model: 'm1', runId: 'r1' } };
     const persona = { id: 'p', displayName: 'P', kind: 'human' as const, principalId: 'ana', actingAs: 'skeptic' };
-    const doc = { ...a, authors: [...a.authors, bot, persona] };
+    const doc = { ...a, authors: [...a.authors, bot, persona, { id: 'p0', displayName: 'P0', kind: 'human' as const }] };
     const write = (author: Parameters<typeof startThread>[1]['comment']['author']) => startThread(doc, {
       threadId: 't-new', anchor: { scope: 'analysis' }, comment: { id: 'c-new', at: '2026-10-13', body: 'hi', author },
     });
     expect(() => write({ ...bot, agent: { ...bot.agent, runId: 'r2' } })).toThrow(/another run or persona/);
     expect(() => write({ ...persona, actingAs: 'champion' })).toThrow(/another run or persona/);
     expect(write({ ...bot, agent: { ...bot.agent } }).threads.at(-1)!.comments[0]!.authorId).toBe('bot');
+    // An absent principal is the author themself: a host identity that spells it out is the same author (review).
+    expect(write({ id: 'p0', displayName: 'P0', kind: 'human', principalId: 'p0' }).threads.at(-1)!.comments[0]!.authorId).toBe('p0');
   });
 });
 
