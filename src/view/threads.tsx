@@ -95,8 +95,9 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   // Asked about the thread's own anchor, not the reader's position: a group's thread listed at a member is the group's.
   const target = commentTarget(thread.anchor);
   // Each act is its own question to the host (#194): a reader may answer where only the owner resolves.
-  const mayReply = thread.resolved ? undefined : affordances.comment(target, 'reply');
-  const mayToggle = affordances.comment(target, thread.resolved ? 'reopen' : 'resolve');
+  // Asked about this thread (#206): the document half refuses what its state rules out.
+  const mayReply = affordances.comment(target, 'reply', { threadId: thread.id });
+  const mayToggle = affordances.comment(target, thread.resolved ? 'reopen' : 'resolve', { threadId: thread.id });
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
   // A ref, not `busy`: two activations in one task both see the same render.
@@ -130,10 +131,11 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
         ))}
       </ol>
       {thread.resolved && <p class="comparanda-panel-hint">{`Resolved by ${who(thread.resolvedBy)}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}. Kept for the record.`}</p>}
-      {writes && mayReply && !mayReply.enabled && (
+      {/* A resolved thread says so above; its refused reply needs no second sentence. */}
+      {writes && !thread.resolved && !mayReply.enabled && (
         <p class="comparanda-reason">{`Answering this thread is not available: ${mayReply.reason ?? 'not allowed here.'}`}</p>
       )}
-      {writes && mayReply?.enabled && (
+      {writes && mayReply.enabled && (
         <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />
       )}
       {writes && !mayToggle.enabled && (

@@ -178,7 +178,7 @@ export function editAffordances(
   const writes: Pick<Affordances, WriteAffordance> = {
     assert: (alt, crit, measure) => gated('writing to this cell', () => doc.assert(alt, crit, measure)),
     suggest: (alt, crit, measure) => gated('proposing a suggestion', () => doc.suggest(alt, crit, measure)),
-    comment: (target, act) => gated(threadDoing(act), () => doc.comment(target, act)),
+    comment: (target, act, options) => gated(threadDoing(act), () => doc.comment(target, act, options)),
     revise: (doing, target) => {
       const phrase = requireDoing(doing);
       return gated(phrase, () => doc.revise(phrase, target));

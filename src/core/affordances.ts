@@ -28,6 +28,8 @@ import { CORE_MISSING_CODES } from './schema/missingness.js';
 import { valueRefusal, type Measurement, type Preference } from './schema/measurement.js';
 import { measurementFor } from './schema/structure.js';
 import type { Cell, ScalarValue } from './schema/values.js';
+import { resolveAnchor } from './schema/anchors.js';
+import { anchorOfTarget, commentTarget } from './threads.js';
 
 /** Whether an action is offered, and -- when it is not -- why not, in words. */
 export interface Affordance {
@@ -54,10 +56,20 @@ export interface CellEditRequest {
  * What a document edit is about, for a host that authorises by object rather
  * than by wording. The anchor scopes of ADR-0011, plus a suggestion; `id` is
  * absent for the analysis as a whole.
+ *
+ * A cell and a group-pair are named by two ids, carried as their own fields --
+ * the ones `Anchor` uses -- so a host reads them rather than parsing `id`. Their
+ * `id` is the JSON array of the two, which no pair of ids can share (#206); a
+ * group-pair's two groups are in sorted order, so one block reaches the host
+ * under one id whichever order its thread stored them in.
  */
 export interface EditTarget {
   kind: AnchorScope | 'suggestion';
   id?: string;
+  alternativeId?: string;
+  criterionId?: string;
+  groupId?: string;
+  otherGroupId?: string;
 }
 
 /**
@@ -82,6 +94,12 @@ export interface DocumentEditRequest {
   target?: EditTarget;
   /** On `comment` only: which of the four it is. */
   thread?: ThreadAct;
+  /**
+   * On `comment` only, when the act is on an existing thread: which one (#206).
+   * Two threads on one cell are two questions -- "whoever started a thread may
+   * resolve it" needs to know which was started by whom.
+   */
+  threadId?: string;
   /** On `decide-suggestion` only: which way. */
   decision?: SuggestionDecision;
   /**
@@ -217,8 +235,14 @@ export interface Affordances {
    * with no `act` -- whether discussion is open to this reader at all. The host
    * is asked with the act named (#194). A lock does not refuse any of them
    * (`documentPolicy`).
+   *
+   * Given `threadId`, the act is asked about that thread, and refused when its
+   * state rules the act out -- a reply or a resolve on a resolved thread, a
+   * reopen on an open one -- or when there is no such thread; `target` then
+   * defaults to the thread's anchor. A `start` is refused on a target that is
+   * tombstoned or not in the document (#206).
    */
-  comment(target?: EditTarget, act?: ThreadAct): Affordance;
+  comment(target?: EditTarget, act?: ThreadAct, options?: { threadId?: string }): Affordance;
   /**
    * Whether the analysis may be revised outside its cells: alternatives,
    * criteria, groups, definitions, declarations. `doing` names the edit as a
@@ -346,8 +370,33 @@ export function makeAffordances(
         }];
       });
     },
-    comment(target, act) {
-      return withHost(documentRequest('comment', threadDoing(act), target, act), documentPolicy(a, 'comment'));
+    comment(target, act, { threadId } = {}) {
+      const doing = threadDoing(act);
+      const thread = threadId === undefined ? undefined : a.threads.find((t) => t.id === threadId);
+      const about = target ?? (thread && commentTarget(thread.anchor));
+      const own = (): Affordance => {
+        if (threadId !== undefined) {
+          if (act === 'start') return refuse('a thread being started has no id yet; ask about its anchor instead.');
+          if (!thread) return refuse(`there is no thread "${threadId}" in this analysis.`);
+          if (target !== undefined && JSON.stringify(commentTarget(thread.anchor)) !== JSON.stringify(target)) {
+            return refuse(`thread "${threadId}" is not anchored on the target asked about.`);
+          }
+          if (thread.resolved && (act === 'reply' || act === 'resolve')) {
+            return refuse(`this thread is resolved; it takes no further ${act === 'reply' ? 'reply' : 'resolution'} unless it is reopened.`);
+          }
+          if (!thread.resolved && act === 'reopen') return refuse('this thread is open; only a resolved thread can be reopened.');
+        }
+        if (act === 'start' && target !== undefined) {
+          const where = resolveAnchor(a, anchorOfTarget(target));
+          if (where.status !== 'live') {
+            return refuse(`the ${where.entity.kind} "${where.entity.id ?? ''}" this would be anchored on is ` +
+              `${where.reason === 'tombstoned' ? 'tombstoned' : 'not in this analysis'}; a new thread needs a live anchor.`);
+          }
+        }
+        return documentPolicy(a, 'comment');
+      };
+      const request = documentRequest('comment', doing, about, act);
+      return withHost(threadId === undefined ? request : { ...request, threadId }, own());
     },
     revise(doing, target) {
       return withHost(documentRequest('revise', requireDoing(doing), target), documentPolicy(a, 'revise'));
