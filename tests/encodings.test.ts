@@ -8,11 +8,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { pughTally } from '../src/core/analyses/pugh.js';
-import { Analysis, makeCellReader, vocabularyOf } from '../src/core/schema/analysis.js';
+import { Analysis, cellIndex, cellKey, makeCellReader, vocabularyOf } from '../src/core/schema/analysis.js';
+import { raterStripInView } from '../src/core/rater-strip.js';
+import { spreadStep } from '../src/view/encodings/shipped.js';
+import { vsupSwatchId } from '../src/view/encodings/vsup.js';
 import { coreReasonOf } from '../src/core/schema/missingness.js';
 import { editAffordances, inMemoryAnalysisSource } from '../src/store/index.js';
 import {
-  categorical, createEncodingRegistry, datum, defineEncoding, describeTexture, missingness, SHIPPED_ENCODINGS,
+  categorical, consensusSuppressed, createEncodingRegistry, datum, disagreementSpread, mergeTree, defineEncoding, describeTexture, missingness, SHIPPED_ENCODINGS,
   textOnly, value, type EncodingContext, type EncodingDefinition, type PreparedEncoding,
 } from '../src/view/index.js';
 import { relativeLuminanceWcag, TEXT_CONTRAST_MIN, wcagContrastRatio } from '../src/view/encodings/contrast.js';
@@ -251,12 +254,57 @@ describe('datum', () => {
   });
 });
 
-describe('the registered-but-not-drawn two', () => {
-  it('each says why it cannot draw rather than drawing something else', () => {
+describe('the two drawn over the disagreement index (#258)', () => {
+  it('each says why it cannot draw when the host gives no assertions, rather than drawing something else', () => {
     const ctx = contextOf(languagesWithConfidence());
     for (const id of ['consensus-suppressed', 'disagreement-spread']) {
       const p = SHIPPED_ENCODINGS.find((e) => e.id === id)!.prepare(ctx);
       expect('unavailable' in p, id).toBe(true);
     }
+  });
+
+  const ORDINAL5 = { level: 'ordinal', preference: 'increasing', range: { min: 1, max: 5 }, levels: [1, 2, 3, 4, 5] } as const;
+  const rated = (byAlt: Record<string, number[]>) => Analysis.parse({
+    id: 'spread', subject: { question: 'q' }, defaultReduction: 'lower-median',
+    authors: ['r1', 'r2', 'r3', 'r4'].map((id) => ({ id, displayName: id, kind: 'human' })),
+    alternatives: Object.keys(byAlt).map((id) => ({ id, label: id })),
+    criteria: [{ id: 'c', label: 'C', defaultMeasurement: ORDINAL5 }],
+    cells: Object.entries(byAlt).map(([alt, values]) => ({
+      alternativeId: alt, criterionId: 'c', measure: 'score',
+      assertions: values.map((value, i) => ({ id: `${alt}-${i}`, authorId: `r${i + 1}`, at: '2026-10-20T00:00:00Z', value, justification: 'j', independence: 'independent' })),
+    })),
+  });
+  const withStrips = (a: Analysis): EncodingContext => {
+    const index = cellIndex(a);
+    return { ...contextOf(a), stripOf: (alt, crit, levels) => { const cell = index.get(cellKey(alt, crit, 'score')); return cell && raterStripInView(a, cell, { levels }); } };
+  };
+  const doc = rated({ unanimous: [4, 4, 4, 4], bimodal: [1, 1, 5, 5], lone: [3] });
+
+  it('ramp: unanimity takes the lightest step and bimodality the darkest, with A and n said', () => {
+    const p = prepared(disagreementSpread, withStrips(doc));
+    expect(p.mark('unanimous', 'c')).toMatchObject({ swatch: 'seq-1' });
+    expect(p.mark('unanimous', 'c').said).toMatch(/Disagreement 0\.00 \(A 1\.00, n 4\)/);
+    expect(p.mark('bimodal', 'c')).toMatchObject({ swatch: 'seq-5' });
+    expect(p.mark('bimodal', 'c').said).toMatch(/Disagreement 1\.00 \(A -1\.00, n 4\)/);
+    // One rating: no set to disagree, so nothing drawn.
+    expect(p.mark('lone', 'c')).toEqual({});
+  });
+
+  it('ramp: the value never enters the mapping', () => {
+    const p = prepared(disagreementSpread, withStrips(rated({ low: [1, 1, 1], high: [5, 5, 5] })));
+    expect(p.mark('low', 'c').swatch).toBe(p.mark('high', 'c').swatch);
+    expect([0, 0.19, 0.2, 0.99, 1].map(spreadStep)).toEqual(['seq-1', 'seq-1', 'seq-2', 'seq-5', 'seq-5']);
+  });
+
+  it('consensus-suppressed: unanimity keeps the value its own colour, bimodality recedes to the root, like low confidence', () => {
+    const p = prepared(consensusSuppressed, withStrips(rated({ unanimous: [5, 5, 5, 5], bimodal: [1, 1, 5, 5], lone: [3] })));
+    const top = mergeTree(5, 3).layers.length - 1;
+    // Unanimity: the most-agreed layer, the value's own leaf, no hatch.
+    expect(p.mark('unanimous', 'c')).toEqual({ swatch: vsupSwatchId(5, 3, top, 4) });
+    // Perfect bimodality: the root, densest hatch.
+    expect(p.mark('bimodal', 'c')).toMatchObject({ swatch: vsupSwatchId(5, 3, 0, 0), hatch: 3 });
+    expect(p.mark('lone', 'c')).toEqual({});
+    expect(p.legend.title).toMatch(/as the raters disagree/);
+    expect(p.legend.entries.map((e) => e.label).join(' ')).toMatch(/high agreement/);
   });
 });

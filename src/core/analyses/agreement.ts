@@ -490,7 +490,11 @@ export function vanDerEijkA(counts: readonly number[]): number | undefined {
 export function disagreementIndex(
   values: readonly ScalarValue[], levels: readonly ScalarValue[],
 ): { index: number; a: number; n: number } | undefined {
-  const counts = levels.map((l) => values.filter((v) => v === l).length);
+  return disagreementOfCounts(levels.map((l) => values.filter((v) => v === l).length));
+}
+
+/** `disagreementIndex` from counts per level, in level order: what a rater strip already holds. */
+export function disagreementOfCounts(counts: readonly number[]): { index: number; a: number; n: number } | undefined {
   const a = vanDerEijkA(counts);
   const n = counts.reduce((s, c) => s + c, 0);
   return a === undefined ? undefined : { index: (1 - a) / 2, a, n };
