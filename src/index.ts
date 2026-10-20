@@ -18,6 +18,7 @@ export * from './core/activity.js';
 export * from './core/threads.js';
 export * from './core/orphans.js';
 export * from './core/suggestions.js';
+export * from './core/suggestion-list.js';
 export * from './core/identity.js';
 export * from './core/criteria-revision.js';
 export * from './core/affordances.js';

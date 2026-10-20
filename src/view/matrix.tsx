@@ -72,6 +72,7 @@ import { DetailPanel } from './detail-panel.js';
 import { OrphanTray } from './orphans.js';
 import type { AnalysisPanelProps } from './agreement.js';
 import type { ThreadWrites } from './threads.js';
+import { SuggestionsPanel, type SuggestionWrites } from './suggestions.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
 import { startPointerDrag } from './pointer-reorder.js';
 import { activeElementOf } from './dom.js';
@@ -116,6 +117,8 @@ export interface MatrixViewProps {
   onPanelChange?: (open: boolean, options?: { into?: boolean }) => void;
   /** Start, answer and resolve threads (#106); absent, the panel offers none. `mountMatrix` writes them through the source. */
   threadWrites?: ThreadWrites;
+  /** Write staged suggestion decisions (#256); absent, the suggestions panel stages nothing it could write. */
+  suggestionWrites?: SuggestionWrites;
   /**
    * The reader rearranged an axis (#92): the new view state, and the sentence
    * to announce. Without it the matrix offers no reordering.
@@ -163,7 +166,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, onReorder, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, onReorder, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -530,6 +533,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         </div>
       )}
       <OrphanTray analysis={analysis} vouched={vouched} />
+      <SuggestionsPanel analysis={analysis} affordances={affordances} writes={suggestionWrites} viewer={viewer} vouched={vouched} />
       <RefusedEdits
         analysis={analysis} measure={measure} affordances={affordances}
         rows={rows.entries} columns={columns.entries} transposed={transposed}

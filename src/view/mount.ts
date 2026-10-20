@@ -12,7 +12,8 @@ import { h, render, type ComponentType } from 'preact';
 
 import { unknownMeasure, vocabularyOf, type Analysis } from '../core/schema/analysis.js';
 import { assertionVisibility, type ViewerContext } from '../core/schema/redaction.js';
-import { threadDoing, type Affordances, type ThreadAct } from '../core/affordances.js';
+import { threadDoing, type Affordance, type Affordances, type ThreadAct } from '../core/affordances.js';
+import type { decideSuggestions as DecideSuggestions } from '../core/suggestions.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
   anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, isVersioned, type AnalysisSource, type DataChangeEvent, type DataProvider,
@@ -27,6 +28,7 @@ import type { Author } from '../core/schema/provenance.js';
 import { commentTarget, reopenThread, replyToThread, resolveThread, startThread } from '../core/threads.js';
 import type { Anchor } from '../core/schema/annotations.js';
 import type { ThreadWrites } from './threads.js';
+import type { SuggestionWrites } from './suggestions.js';
 import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
@@ -74,6 +76,14 @@ export interface MountOptions {
    * grid. None by default, for the same byte-budget reason.
    */
   panels?: MatrixViewProps['panels'];
+  /**
+   * Lets the suggestions panel write its staged decisions (#256): pass core's
+   * `decideSuggestions`. Registered like `arrange`, not by default: it carries
+   * the document's revision checks, about 47 kB of the standalone page's budget,
+   * and that page has no source to write to anyway. Without it, accept and
+   * decline are shown refused, with the reason.
+   */
+  decideSuggestions?: typeof DecideSuggestions;
 }
 
 /**
@@ -128,7 +138,7 @@ const mounted = new WeakSet<object>();
  */
 export function mountMatrix(
   el: Element, props: MountMatrixProps,
-  { component = Matrix, encodings, now = () => new Date(), newId = randomUuid, arrange, panels }: MountOptions = {},
+  { component = Matrix, encodings, now = () => new Date(), newId = randomUuid, arrange, panels, decideSuggestions }: MountOptions = {},
 ): MatrixHandle {
   const registry = encodings ?? createEncodingRegistry([textOnly]);
   if (el === null || typeof el !== 'object' || typeof (el as { appendChild?: unknown }).appendChild !== 'function') {
@@ -232,7 +242,11 @@ export function mountMatrix(
    * are queued and each is built on the source's latest document, so none
    * undoes another. The source's event re-renders the matrix; nothing here draws.
    */
-  const writeThread = (act: ThreadAct, anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis, threadId?: string): Promise<void> => {
+  const writeDocument = (
+    ask: (latest: Analysis, may: Affordances) => Affordance | undefined,
+    change: (a: Analysis, author: Author, at: string) => Analysis,
+    what: string,
+  ): Promise<void> => {
     const run = async () => {
       const { source, identity = DEFAULT_IDENTITY, authorize } = current;
       const id = analysis.id;
@@ -240,7 +254,7 @@ export function mountMatrix(
       /** After every wait: a write the host has since cut off (destroyed, swapped source or document) is not made. */
       const stillHere = () => {
         if (destroyed || current.source !== source || analysis.id !== id) {
-          throw new Error('the matrix changed document while the comment was being written; nothing was written.');
+          throw new Error(`the matrix changed document while ${what} was being written; nothing was written.`);
         }
       };
       const author = await identity.current();
@@ -252,8 +266,7 @@ export function mountMatrix(
       stillHere();
       if (!latest) throw new Error(`the source no longer holds this analysis ("${id}"); nothing was written.`);
       // Asked again of the document being written, not the one the button was drawn from: the host is never overruled (ADR-0012).
-      const anchor = anchorOf(latest);
-      const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor), act, threadId === undefined ? {} : { threadId });
+      const may = ask(latest, editAffordances(source, latest, authorize ? { authorize } : {}));
       if (may && !may.enabled) throw new Error(may.reason);
       const written = change(latest, author, now().toISOString());
       if (versioned && isVersioned(source)) await source.updateIfVersion(id, written, versioned.version);
@@ -264,6 +277,19 @@ export function mountMatrix(
     const next = writes.then(run, run);
     writes = next.catch(() => undefined);
     return next;
+  };
+  const writeThread = (act: ThreadAct, anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis, threadId?: string): Promise<void> =>
+    writeDocument((latest, may) => {
+      const anchor = anchorOf(latest);
+      return anchor && may.comment(commentTarget(anchor), act, threadId === undefined ? {} : { threadId });
+    }, change, 'the comment');
+  /** Staged suggestion decisions (#256), written as one change: every one is asked again of the latest document first. */
+  const suggestionWrites: SuggestionWrites | undefined = decideSuggestions && {
+    decide: (choices) => writeDocument(
+      (_latest, may) => choices.map((c) => may.decideSuggestion(c.suggestionId, c.decision)).find((x) => !x.enabled),
+      (a, by, at) => decideSuggestions(a, choices, { by, at }).analysis,
+      'the decisions',
+    ),
   };
   /** A thread's anchor in a document; absent, the thread's own write says there is no such thread. */
   const anchorIn = (threadId: string) => (a: Analysis) => a.threads.find((t) => t.id === threadId)?.anchor;
@@ -299,6 +325,7 @@ export function mountMatrix(
       ...(panels ? { panels } : {}),
       ...(announcement !== undefined ? { announcement } : {}),
       ...(source ? { threadWrites } : {}),
+      ...(source && suggestionWrites ? { suggestionWrites } : {}),
       encodings: registry,
       affordances: source
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
