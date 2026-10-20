@@ -31,7 +31,7 @@
 import type { Analysis } from '../schema/analysis.js';
 import { reducedValue, makeCellReader, cellIndex, cellKey, vocabularyOf } from '../schema/analysis.js';
 import { isWidenedByDisclosure } from '../schema/values.js';
-import { makeInapplicability } from '../schema/groups.js';
+import { axisGroups, makeInapplicability, membersOfGroup } from '../schema/groups.js';
 import { aliasesOf, measurementFor } from '../schema/structure.js';
 import { admitsDominance, isOrdered, type Measurement } from '../schema/measurement.js';
 import type { AnalysisResult } from './registry.js';
@@ -70,7 +70,33 @@ export interface DominanceOptions {
    */
   usePracticalTolerance?: boolean;
   alternativeIds?: readonly string[];
+  /**
+   * Scope to one alternatives group, sub-groups' members included: ADR-0019's
+   * natural scope, where a declared group-pair inapplicability makes
+   * applicability homogeneous. Not a default, because an alternative may sit
+   * in several groups and picking one would be a guess; without it the scope is
+   * the whole analysis, which stays transitive. Exclusive with `alternativeIds`.
+   */
+  groupId?: string;
   criterionIds?: readonly string[];
+}
+
+/**
+ * The alternatives a dominance call compares: `alternativeIds`, the members of
+ * `groupId`, or every live alternative. Throws on an unknown group, or when
+ * both `alternativeIds` and `groupId` are given.
+ */
+export function dominanceScope(a: Analysis, opts: Pick<DominanceOptions, 'alternativeIds' | 'groupId'>): string[] {
+  if (opts.groupId === undefined) {
+    return (opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id)).slice();
+  }
+  if (opts.alternativeIds) throw new Error('pass alternativeIds or groupId, not both');
+  const ag = axisGroups(a, 'alternatives');
+  if (!a.groups.some((g) => g.id === opts.groupId && g.axis === 'alternatives' && !g.tombstoned)) {
+    throw new Error(`"${opts.groupId}" is not a live alternatives group`);
+  }
+  const live = new Set(a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id));
+  return membersOfGroup(ag, opts.groupId).filter((id) => live.has(id));
 }
 
 export interface DominanceResult extends AnalysisResult {
@@ -202,6 +228,8 @@ type Row = Map<string, Interval | CellExclusion>;
  */
 interface Prepared {
   altIds: string[];
+  /** The alternatives group the scope is, if one was named. */
+  groupLabel: string | undefined;
   basis: string[];
   excluded: ExcludedCriterion[];
   measurements: Map<string, Measurement>;
@@ -211,7 +239,8 @@ interface Prepared {
 
 function prepare(a: Analysis, opts: DominanceOptions): Prepared {
   const excluded: ExcludedCriterion[] = [];
-  const altIds = (opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id)).slice();
+  const altIds = dominanceScope(a, opts);
+  const groupLabel = opts.groupId === undefined ? undefined : a.groups.find((g) => g.id === opts.groupId)?.label;
   const candidateCrits = opts.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
 
   // Fix the basis once, across the whole scope. A basis chosen per pair is the
@@ -255,7 +284,7 @@ function prepare(a: Analysis, opts: DominanceOptions): Prepared {
     return measurements.get(cid)?.thresholds?.indifference ?? 0;
   };
 
-  return { altIds, basis, excluded, measurements, rows, tolerance };
+  return { altIds, groupLabel, basis, excluded, measurements, rows, tolerance };
 }
 
 /**
@@ -378,7 +407,8 @@ function describeBasis(a: Analysis, p: Prepared): string {
   const al = aliasesOf(a);
   const noun = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const crit = (n: number) => noun(n, al.criterion, al.criteria);
-  const alts = noun(p.altIds.length, al.alternative, al.alternatives);
+  const alts = noun(p.altIds.length, al.alternative, al.alternatives) +
+    (p.groupLabel === undefined ? '' : ` in "${p.groupLabel}"`);
 
   let s = p.basis.length === 0
     ? `no ${al.criterion} admits a dominance comparison, across ${alts}`
@@ -642,7 +672,7 @@ export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlanksW
   const result = dominance(a, opts);
   if (result.basis.length === 0) return { blanks: [], widenedByDisclosure: result.widenedByDisclosure };
 
-  const altIds = opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id);
+  const altIds = dominanceScope(a, opts);
   const reader = makeCellReader(a, opts.measure);
 
   // Rebuild the oriented intervals once, exactly as `dominance` does.
