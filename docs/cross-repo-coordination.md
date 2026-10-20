@@ -454,18 +454,26 @@ cannot see a semantic disagreement about ties; this can.
 
 ## 5. Failure modes if the gates are ignored
 
-### 5.1 v1 freezes before the per-assertion requests are dispositioned
+### 5.1 v1 froze with the per-assertion fields in it — settled
 
-`authorKind`, `independence`, `perturbation` and the analysis-level `procedure` record are
-**per-assertion** fields. If they land after v1, every stored analysis must be migrated with a
-guessed default, and the only safe default is "unknown independence".
+`authorKind`, `independence`, `perturbation` and the analysis-level `procedure` record were the
+**per-assertion** requests this section once warned about. All of them are in v1
+(`src/core/schema/values.ts`, `src/core/schema/provenance.ts`), so no stored analysis needs a
+migration with a guessed default.
 
-The cost is not the migration script. It is that **every agreement statistic computed before the
-migration becomes permanently uninterpretable** — nobody can afterwards say whether a given
-Krippendorff's alpha was computed over five raters or over five draws of one model. Five draws of
-one model must never render as five raters, and after the fact there is no way to find out which it
-was. This is precisely the hazard `comparanda: docs/adr/0011-collaboration.md` names for multi-rater,
-arriving through the `rubricator` door instead of the multi-rater door.
+`independence` is **optional with no default**, and absent means **unknown independence**:
+everything downstream treats unknown as not-independent. `rubricator` writes it whenever it knows
+it, either from the caller or derived from a `procedure`, and never invents it
+([thorwhalen/rubricator#118](https://github.com/thorwhalen/rubricator/issues/118)). An earlier
+draft defaulted it to `independent`, the least cautious rung, and that default was removed for the
+reason below.
+
+Why the field exists: without it, **every agreement statistic is uninterpretable**. Nobody can say
+whether a given Krippendorff's alpha was computed over five raters or over five draws of one model.
+Five draws of one model must never render as five raters, and after the fact there is no way to
+find out which it was. This is the hazard `comparanda: docs/adr/0011-collaboration.md` names for
+multi-rater, arriving through the `rubricator` door instead of the multi-rater door. An optimistic
+default would recreate it silently, which is why the absence is kept and read as "unknown".
 
 ### 5.2 `rubricator` builds against no schema at all, rather than against a sketch
 
