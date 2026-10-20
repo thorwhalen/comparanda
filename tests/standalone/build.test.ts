@@ -181,4 +181,22 @@ describe('the command', () => {
     expect(stdout).toMatch(/the page without the analysis: [\d.]+ kB \+ [\d.]+ kB reserved for @atlaskit\/pragmatic-drag-and-drop = [\d.]+ kB, of a 213\.0 kB budget/);
     expect(Analysis.parse(inlinedAnalysis(await readFile(out, 'utf8')))).toEqual(relocation);
   });
+  const run = (...extra: string[]) => promisify(execFile)(
+    process.execPath, [join(repo, 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(repo, 'src', 'cli.ts'),
+      'build', join(repo, 'examples', 'relocation.json'), '--out', join(dir, 'labelled.html'), '--check', 'static', ...extra],
+    { cwd: dir },
+  );
+
+  it('warns, with counts, that labelled assertions are inlined (#207)', async () => {
+    const { stderr } = await run();
+    expect(stderr).toMatch(/warning: .*household-finances \(2\).*--withhold-label/);
+  });
+
+  it('--withhold-label withholds them and stops warning (#207)', async () => {
+    const { stderr } = await run('--withhold-label', 'household-finances');
+    expect(stderr).not.toMatch(/household-finances/);
+    const built = Analysis.parse(inlinedAnalysis(await readFile(join(dir, 'labelled.html'), 'utf8')));
+    const rent = built.cells.flatMap((c) => c.assertions).find((a) => a.id === 'a-rent-tai-ana')!;
+    expect(rent.value).toBeUndefined();
+  });
 });
