@@ -386,7 +386,7 @@ export function plantTooltip(
   const off = new AbortController();
   el.addEventListener('mouseover', (e) => {
     const td = (e.target as Element).closest('td');
-    if (!td || document.querySelector('[role="tooltip"]')) return;
+    if (!td || document.querySelector('[role="tooltip"]:not(.comparanda-tip)')) return;
     let tip: HTMLElement | undefined;
     // Started with the hover, as a handler that opens and schedules the close in one go does.
     if (autoClose?.how === 'timeout') setTimeout(() => tip?.remove(), autoClose.ms);
@@ -419,6 +419,7 @@ const a12: Check<BrowserEnv> = {
     what: 'a tooltip, shown after a delay, carries a link',
     sabotage: (env) => env.afterMount((el) => env.onDispose(plantTooltip(el, { dismissOnEscape: true, withLink: true, delayMs: 200 }))),
   },
+  alsoTrips: { A14: 'a tooltip left showing over a cell is the colour its screenshot reads' },
 };
 
 const a11: Check<BrowserEnv> = {

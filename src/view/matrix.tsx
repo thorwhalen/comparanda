@@ -53,7 +53,7 @@ import {
   absenceStanding, coreReasonOf, NOT_APPLICABLE, NOT_ASSESSED, type AbsenceStanding, type MissingnessVocabulary,
 } from '../core/schema/missingness.js';
 import { aliasesOf } from '../core/schema/structure.js';
-import type { Reduced } from '../core/schema/values.js';
+import { isWithheldFromReader, type Reduced } from '../core/schema/values.js';
 import type { Session, ViewState } from '../core/view-state.js';
 import { CONFIDENCE, textOnly } from './encodings/shipped.js';
 import {
@@ -189,6 +189,20 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const [menu, setMenu] = useState<string | undefined>(undefined);
   /** The menu focus-out just closed, so the click on its own handle that caused it does not reopen it. */
   const closedBy = useRef<string | undefined>(undefined);
+  /**
+   * The cell whose tooltip shows (ADR-0027): the one-line justification and the confidence flag. No timer
+   * closes it; Escape does, and `muted` keeps it closed until the reader moves to another cell. It holds
+   * nothing focusable: the evidence links live in the panel.
+   */
+  const [tip, setTip] = useState<{ pair: string; left: number; top: number } | undefined>(undefined);
+  const muted = useRef<string | undefined>(undefined);
+  const showTip = (td: Element | null | undefined, scroll: Element | null) => {
+    const pair = td?.getAttribute('data-pair');
+    if (!td || !pair || !scroll || muted.current === pair) return;
+    muted.current = undefined;
+    const [t, s] = [td.getBoundingClientRect(), scroll.getBoundingClientRect()];
+    setTip({ pair, left: t.left - s.left + scroll.scrollLeft, top: t.bottom - s.top + scroll.scrollTop });
+  };
   const words = aliasesOf(analysis);
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
@@ -255,6 +269,17 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const labelOf = (axis: Axis) => (id: string) =>
     (axis === 'alternatives' ? analysis.alternatives : analysis.criteria).find((x) => x.id === id)?.label ?? id;
 
+  /** What a cell's tooltip says: the first justification this reader may see, then the confidence flag. */
+  const tipText = (altId: string, critId: string) => {
+    const reduced = read(altId, critId);
+    if (reduced?.withheldFromReader) return '';
+    const why = reduced?.contributing.find((a) => !isWithheldFromReader(a) && a.justification?.trim())?.justification?.trim();
+    const sure = confidence?.read(altId, critId)?.value;
+    return [why, sure !== undefined ? `${CONFIDENCE} ${String(sure)}` : undefined].filter(Boolean).join(' \u00b7 ');
+  };
+  const tipId = `${helpId}-tip`;
+  const tipSaid = tip && tipText(...(tip.pair.split('\u0000') as [string, string]));
+
   const cell = (rowId: string, columnId: string, r: number, c: number) => {
     const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
     const reduced = read(altId, critId);
@@ -280,6 +305,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       <td
         key={columnId} data-state={state} data-absence={absence} data-terminal={terminal === undefined ? undefined : String(terminal)} {...stop(r, c)}
         data-swatch={mark.swatch} data-hatch={hatch} data-glyph={glyph}
+        data-pair={`${altId}\u0000${critId}`} aria-describedby={tipSaid && tip?.pair === `${altId}\u0000${critId}` ? tipId : undefined}
       >
         <span class="comparanda-sr">{`${critLabel}, ${altLabel}, `}</span>
         {glyph && <Glyph reason={glyph} />}
@@ -432,6 +458,10 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       onPanelChange(true, { into: true });
       return;
     }
+    if (event.key === 'Escape' && tip) {
+      muted.current = tip.pair;
+      setTip(undefined);
+    }
     if (event.key === 'Escape' && panelOpen && onPanelChange) {
       event.preventDefault();
       onPanelChange(false);
@@ -461,6 +491,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     // Leaving a held header puts it down where it is.
     if (grab && !(into.getAttribute('data-axis') === grab.axis && into.getAttribute('data-entry') === grab.id)) setGrab(undefined);
     pressed.current = null;
+    if (into.hasAttribute('data-pair')) showTip(into, root.current?.querySelector('.comparanda-scroll') ?? null); else setTip(undefined);
     if (!byPointer) revealClear(into);
     if (!onFocusChange) return;
     const [r, c] = into.getAttribute('data-cell')!.split(':').map(Number) as [number, number];
@@ -531,7 +562,15 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       )}
       <div class="comparanda-body">
       {/* Not itself a tab stop: focusing a cell scrolls it, and the grid is the matrix's one stop. */}
-      <div class="comparanda-scroll" role="region" aria-label={analysis.subject.question}>
+      <div
+        class="comparanda-scroll" role="region" aria-label={analysis.subject.question}
+        onMouseOver={(event: MouseEvent) => showTip((event.target as Element).closest?.('td[data-pair]'), event.currentTarget as Element)}
+        onMouseOut={(event: MouseEvent) => {
+          // Moving into the tooltip, or between a cell's own parts, leaves it: the pointer may enter it.
+          const to = event.relatedTarget as Element | null;
+          if (!to?.closest?.('td[data-pair], [role="tooltip"]')) { muted.current = undefined; setTip(undefined); }
+        }}
+      >
         <table
           role="grid" aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}
           onPointerDownCapture={(event: PointerEvent) => { pressed.current = event.target as Element | null; }}
@@ -541,6 +580,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           // Focus leaving the grid puts a held header down where it is: it is never left in the air.
           // Checked a tick later: moving a header moves its node, which blurs it until the stop is refocused.
           onFocusOut={(event: FocusEvent) => {
+            if (!(event.relatedTarget as Element | null)?.closest?.('[role="grid"]')) setTip(undefined);
             if (!grab) return;
             const table = event.currentTarget as HTMLElement;
             setTimeout(() => { if (!table.contains(activeElementOf(table))) setGrab(undefined); }, 0);
@@ -584,6 +624,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             ))
             : <tbody>{rows.entries.map(row)}</tbody>}
         </table>
+        {tip && tipSaid && <div role="tooltip" id={tipId} class="comparanda-tip" style={{ left: `${tip.left}px`, top: `${tip.top}px` }}>{tipSaid}</div>}
       </div>
       {panelOpen && onPanelChange && (
         <DetailPanel
