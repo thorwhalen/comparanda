@@ -22,6 +22,10 @@ const ALLOWED: Readonly<Record<string, { reads: number; because: string }>> = {
     reads: 7,
     because: 'the redacted detail core hands it: `author`, `principal` and the successor\'s name are absent when `authorHidden`, and the fallback for an author the document does not describe is reached only when it is not',
   },
+  'agreement.tsx': {
+    reads: 5,
+    because: 'the document\'s roster of principals, to name camps by; which values a camp gave is decided by core\'s groupInformedConsensus with the viewer, which leaves out every assertion whose author the round hides',
+  },
   'mount.ts': { reads: 1, because: '`.author` of a visibility verdict (may this viewer be told who), compared to decide whether a new reader needs a redraw' },
 };
 

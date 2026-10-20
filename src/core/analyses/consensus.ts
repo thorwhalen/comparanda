@@ -23,6 +23,7 @@ import { makeInapplicability } from '../schema/groups.js';
 import { measurementFor } from '../schema/structure.js';
 import { isWidenedByDisclosure, isWithheldFromReader, type ScalarValue } from '../schema/values.js';
 import type { Measurement } from '../schema/measurement.js';
+import { assertionVisibility, type ViewerContext } from '../schema/redaction.js';
 import type { AnalysisResult } from './registry.js';
 import { alternativeScope, type AlternativeScopeOptions } from './scope.js';
 
@@ -71,6 +72,11 @@ export interface ConsensusResult extends AnalysisResult {
   /** Counts per criterion. Deliberately no matrix-wide count. */
   criteria: CriterionConsensus[];
   skipped: { criterionId: string; reason: string }[];
+  /**
+   * Assertions left out because the round hides their author from `viewer`
+   * (ADR-0023): placing them in a camp would say who gave them. 0 without a viewer.
+   */
+  authorHidden: number;
 }
 
 export interface ConsensusOptions extends AlternativeScopeOptions {
@@ -84,11 +90,17 @@ export interface ConsensusOptions extends AlternativeScopeOptions {
    * in the rule.
    */
   tolerance?: number;
+  /**
+   * Who is reading. With one, an assertion whose author an open round hides
+   * from this viewer takes part in no camp, since a camp of one would name its
+   * author (ADR-0023); it is counted in `authorHidden`. Without one, nothing is hidden.
+   */
+  viewer?: ViewerContext | undefined;
 }
 
 /** Cell by cell, whether the camps' answers overlap. */
 export function groupInformedConsensus(a: Analysis, opts: ConsensusOptions): ConsensusResult {
-  const { measure, camps, tolerance = 0 } = opts;
+  const { measure, camps, tolerance = 0, viewer } = opts;
   const campOf = campIndex(a, camps);
   const alts = alternativeScope(a, opts);
   const crits = opts.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
@@ -98,6 +110,7 @@ export function groupInformedConsensus(a: Analysis, opts: ConsensusOptions): Con
   const criteria: CriterionConsensus[] = [];
   const skipped: { criterionId: string; reason: string }[] = [];
   let widenedByDisclosure = 0;
+  let authorHidden = 0;
 
   for (const criterionId of crits) {
     const crit = a.criteria.find((c) => c.id === criterionId);
@@ -112,7 +125,9 @@ export function groupInformedConsensus(a: Analysis, opts: ConsensusOptions): Con
       for (const s of cell?.assertions ?? []) {
         if (s.supersededBy || s.independence === 'consensus' || s.value === undefined || isWithheldFromReader(s)) continue;
         const camp = campOf.get(s.authorId);
-        if (camp !== undefined) byCamp.get(camp)!.push(s.value);
+        if (camp === undefined) continue;
+        if (viewer && !assertionVisibility(a, s, viewer).author) { authorHidden += 1; continue; }
+        byCamp.get(camp)!.push(s.value);
       }
       const entry = compare(alternativeId, criterionId, byCamp, m, tolerance);
       cells.push(entry);
@@ -122,7 +137,7 @@ export function groupInformedConsensus(a: Analysis, opts: ConsensusOptions): Con
     }
     criteria.push(counts);
   }
-  return { measure, cells, criteria, skipped, widenedByDisclosure, assumptions: CONSENSUS_ASSUMPTIONS };
+  return { measure, cells, criteria, skipped, authorHidden, widenedByDisclosure, assumptions: CONSENSUS_ASSUMPTIONS };
 }
 
 /** Author id -> camp id, with personas following their principal. Throws on fewer than two camps or an author in two. */

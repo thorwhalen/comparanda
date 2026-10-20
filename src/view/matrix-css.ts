@@ -212,6 +212,9 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 .comparanda-matrix .comparanda-thread-list > li { margin: 0 0 0.6em; }
 .comparanda-matrix .comparanda-orphans { border: 1px solid var(--cmp-muted); padding: 0.4em 0.8em; margin: 0 0 0.75em; }
 .comparanda-matrix .comparanda-orphans h2 { font-size: 1em; margin: 0.2em 0; }
+.comparanda-matrix .comparanda-analysis { border: 1px solid var(--cmp-muted); padding: 0.4em 0.8em; margin: 0.75em 0 0; }
+.comparanda-matrix .comparanda-analysis-table { border-collapse: collapse; margin: 0.4em 0; }
+.comparanda-matrix .comparanda-analysis-table :is(th, td) { border: 1px solid var(--cmp-muted); padding: 0.15em 0.4em; text-align: start; }
 .comparanda-matrix .comparanda-thread-list[data-resolved] { color: var(--cmp-muted); }
 .comparanda-matrix .comparanda-compose { display: grid; gap: 0.2em; margin: 0.35em 0; }
 .comparanda-matrix .comparanda-compose button { justify-self: start; }

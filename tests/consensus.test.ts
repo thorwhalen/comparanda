@@ -37,7 +37,7 @@ describe('groupInformedConsensus', () => {
     expect(at('y').status).toBe('divided');
     expect(at('z')).toMatchObject({ status: 'not-compared', silent: ['B'] });
     expect(r.criteria).toEqual([{ criterionId: 'c', shared: 1, divided: 1, notCompared: 1 }]);
-    expect(Object.keys(r).sort()).toEqual(['assumptions', 'cells', 'criteria', 'measure', 'skipped', 'widenedByDisclosure']);
+    expect(Object.keys(r).sort()).toEqual(['assumptions', 'authorHidden', 'cells', 'criteria', 'measure', 'skipped', 'widenedByDisclosure']);
     expect(r.assumptions.join(' ')).toMatch(/named by a person/);
   });
 
@@ -65,5 +65,28 @@ describe('groupInformedConsensus', () => {
     expect(() => groupInformedConsensus(doc(), { measure: 'score', camps: [{ id: 'A', label: 'A', authorIds: ['ana'] }, { id: 'A', label: 'A2', authorIds: ['bo'] }] }))
       .toThrow(/share an id/);
     expect(consensusAnalysis.id).toBe('group-informed-consensus');
+  });
+});
+
+describe('groupInformedConsensus for a viewer (ADR-0023)', () => {
+  const anonymous = () => {
+    const d = doc();
+    return Analysis.parse({
+      ...d,
+      rounds: [{ id: 'r', index: 1, feedback: 'none', attribution: 'anonymous', openedAt: '2026-10-01T00:00:00Z' }],
+      cells: d.cells.map((c) => ({ ...c, assertions: c.assertions.map((x) => (x.authorId === 'bea' ? { ...x, roundId: 'r' } : x)) })),
+    });
+  };
+
+  it('leaves out an assertion whose author an open anonymous round hides, and counts it', () => {
+    const r = groupInformedConsensus(anonymous(), { measure: 'score', camps: CAMPS, criterionIds: ['c'], viewer: { viewerId: 'ana', now: '2026-10-20T00:00:00Z' } });
+    expect(r.authorHidden).toBe(1);
+    expect(r.cells.find((c) => c.alternativeId === 'x')!.camps).toEqual([{ campId: 'A', values: [2, 3] }, { campId: 'B', values: [3] }]);
+  });
+
+  it('hides nothing from the author themselves, or without a viewer', () => {
+    const own = groupInformedConsensus(anonymous(), { measure: 'score', camps: CAMPS, criterionIds: ['c'], viewer: { viewerId: 'bea', now: '2026-10-20T00:00:00Z' } });
+    const none = groupInformedConsensus(anonymous(), { measure: 'score', camps: CAMPS, criterionIds: ['c'] });
+    expect([own.authorHidden, none.authorHidden]).toEqual([0, 0]);
   });
 });
