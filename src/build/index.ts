@@ -20,7 +20,8 @@
  * pre-filter, then the page exercised in Chromium -- before returning it
  * (#115, `network.ts`). Out of scope here, with its own issue: the mail-filter
  * warning (#118). A disclosure projection, when given, runs before anything is
- * inlined (ADR-0021), because View Source recovers whatever the file carries.
+ * inlined (ADR-0021), because View Source recovers whatever the file carries, and
+ * the finished file is then checked for what the projection removed (`withheld.ts`, #183).
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -35,6 +36,7 @@ import {
   type BudgetReport, type ByteBudget, type ReadPrebundled,
 } from './budget.js';
 import { projectForReader, type DisclosureDecision } from '../core/schema/disclosure.js';
+import { withheldLeaks, WithheldLeaked } from './withheld.js';
 import { CSP_META, exerciseInBrowser, NetworkReached, staticNetworkFindings } from './network.js';
 import {
   ANALYSIS_ELEMENT_ID, ROOT_ELEMENT_ID, SETTINGS_ELEMENT_ID, scriptSafeJson, type StandaloneSettings,
@@ -94,6 +96,7 @@ export interface BuildResult {
   checked: { by: 'browser' | 'static'; encodings: readonly string[]; couldNotDraw: readonly string[] };
 }
 
+export { WithheldLeaked, type WithheldLeak } from './withheld.js';
 export {
   BudgetExceeded, STANDALONE_BUDGET, type BudgetReport, type ByteBudget, type Contribution, type Reservation,
 } from './budget.js';
@@ -126,7 +129,8 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
   if (problem !== undefined) throw new Error(`no page was built: ${problem}.`);
   // Verbatim when nothing is withheld: the document as given, not the parsed
   // copy with its defaults filled in. A projection is a new document.
-  const inlined: unknown = discloses ? projectForReader(checked.analysis, discloses).analysis : wire;
+  const projection = discloses ? projectForReader(checked.analysis, discloses).analysis : undefined;
+  const inlined: unknown = projection ?? wire;
   // The first that says something: an empty or blank title is no title (a page needs a <title> and an <h1> a reader can hear).
   const title = [options.title, checked.analysis.title, checked.analysis.subject.question].map((t) => t?.trim()).find((t) => t) ?? checked.analysis.subject.question;
   const settings: StandaloneSettings = { measure };
@@ -158,6 +162,10 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
     exercised = { by: 'browser', encodings: drawn, couldNotDraw };
   }
   html = page;
+  if (projection) {
+    const leaks = withheldLeaks(html, checked.analysis, projection);
+    if (leaks.length > 0) throw new WithheldLeaked(leaks);
+  }
   return {
     html,
     bytes: Buffer.byteLength(html),
