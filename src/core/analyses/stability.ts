@@ -93,15 +93,20 @@ export function stabilityTrace(a: Analysis, opts: StabilityOptions): StabilityRe
       if (!cell) continue;
       if (isWidenedByDisclosure(cell)) widenedByDisclosure += 1;
       const byRound = new Map<string, Map<string, Assertion>>();
+      const byId = new Map(cell.assertions.map((s) => [s.id, s]));
       for (const s of cell.assertions) {
-        if (s.roundId === undefined || s.value === undefined || s.independence === 'consensus') continue;
-        if (viewer && assertionVisibility(a, s, viewer).value === 'hidden') { unseen += 1; continue; }
+        if (s.roundId === undefined || s.independence === 'consensus') continue;
+        // Revised within its own round, it is not that round's answer; superseded by the next round's, it still is.
+        if (s.supersededBy !== undefined && byId.get(s.supersededBy)?.roundId === s.roundId) continue;
+        if (viewer && s.value !== undefined && assertionVisibility(a, s, viewer).value === 'hidden') { unseen += 1; continue; }
         const who = principalOf.get(s.authorId) ?? s.authorId;
         const round = byRound.get(s.roundId) ?? new Map<string, Assertion>();
         const was = round.get(who);
         if (!was || was.at <= s.at) round.set(who, s);
         byRound.set(s.roundId, round);
       }
+      // A rater whose last word in a round is an absence gave no answer there.
+      for (const round of byRound.values()) for (const [who, s] of round) if (s.value === undefined) round.delete(who);
       answers.set(cellKey(altId, critId, measure), byRound);
     }
   }
@@ -129,6 +134,8 @@ export function stabilityTrace(a: Analysis, opts: StabilityOptions): StabilityRe
           if (t.value !== s.value) step.changed += 1;
         }
         step.compared += pairs.length;
+        // One rater has no spread to narrow or widen.
+        if (pairs.length < 2) continue;
         const [was, now] = [spreadOf(pairs.map((p) => p[0]), m), spreadOf(pairs.map((p) => p[1]), m)];
         if (was === undefined || now === undefined) continue;
         if (now < was) step.spread.narrowed += 1;
@@ -145,6 +152,8 @@ export function stabilityTrace(a: Analysis, opts: StabilityOptions): StabilityRe
 
 /** Highest minus lowest answer, in level steps where the measurement declares levels. */
 function spreadOf(answers: readonly Assertion[], m: Measurement): number | undefined {
+  // Nominal levels have no order, so no distance between them.
+  if (m.level === 'nominal') return undefined;
   const at = (v: ScalarValue | undefined): number | undefined => {
     if (v === undefined) return undefined;
     if (m.levels && m.levels.length > 0) {

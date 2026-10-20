@@ -37,8 +37,18 @@ describe('stabilityTrace', () => {
     const r = stabilityTrace(delphi(), { measure: 'score' });
     expect(r.steps).toHaveLength(1);
     expect(r.steps[0]).toMatchObject({ fromRoundId: 'r1', toRoundId: 'r2', quantity: 'churn' });
-    expect(r.steps[0]!.criteria).toEqual([{ criterionId: 'c', compared: 3, changed: 1, fraction: 1 / 3, spread: { narrowed: 1, widened: 0, unchanged: 1 } }]);
+    expect(r.steps[0]!.criteria).toEqual([{ criterionId: 'c', compared: 3, changed: 1, fraction: 1 / 3, spread: { narrowed: 1, widened: 0, unchanged: 0 } }]);
     expect(stabilityAnalysis.id).toBe('stability-trace');
+  });
+
+  it('reads a revision within a round, and a retraction, as that round\'s answer (review)', () => {
+    const a = delphi();
+    const cells = [{ alternativeId: 'x', criterionId: 'c', measure: 'score', assertions: [
+      { ...s('1', 'ana', 1, 'r1'), supersededBy: '2' }, s('2', 'ana', 2, 'r1'), s('3', 'ana', 2, 'r2'),
+      { ...s('4', 'bo', 1, 'r1'), supersededBy: '5' }, { id: '5', authorId: 'bo', at: '2026-10-01T00:00:00Z', missing: { code: 'not-evidenced' }, independence: 'independent' as const, roundId: 'r1' }, s('6', 'bo', 1, 'r2'),
+    ] }];
+    const [step] = stabilityTrace(Analysis.parse({ ...a, cells }), { measure: 'score' }).steps;
+    expect(step!.criteria[0]).toMatchObject({ compared: 1, changed: 0 });
   });
 
   it('labels a step into a round without feedback as test-retest, not churn', () => {
