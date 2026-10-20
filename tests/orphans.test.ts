@@ -11,7 +11,11 @@ import { fileURLToPath } from 'node:url';
 import { Analysis } from '../src/core/schema/analysis.js';
 import { tombstone } from '../src/core/schema/anchors.js';
 import { resolveThread, startThread } from '../src/core/threads.js';
-import { describeOrphans } from '../src/core/orphans.js';
+import { describeOrphans, reattach, reattachChoices } from '../src/core/orphans.js';
+import { resolveAnchor } from '../src/core/schema/anchors.js';
+import { annotationHistoryProblems } from '../src/core/annotation-history.js';
+import { makeAffordances } from '../src/core/affordances.js';
+import { commentTarget } from '../src/core/threads.js';
 import { describeOrphans as fromRoot } from '../src/index.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,5 +47,41 @@ describe('describeOrphans', () => {
     expect(entry!.said).toMatch(/replaced by .*, and which one this was about is a person's call\.$/);
     const gone = { ...argued(), threads: [{ ...argued().threads.at(-1)!, anchor: { scope: 'criterion' as const, criterionId: 'ghost', repairHint: 'Old' } }] };
     expect(describeOrphans(gone)[0]!.said).toMatch(/“ghost” \(when it was attached: “Old”\): the criterion "ghost" is not in this analysis\./);
+  });
+});
+
+describe('re-attaching an orphan (#249)', () => {
+  const split = () => tombstone(argued(), { kind: 'criterion', id: 'rent' }, { supersededBy: ['income-tax'] });
+  const thread = { kind: 'thread', id: 't-rent' } as const;
+
+  it('offers the successors first, then every other live criterion, then the analysis', () => {
+    const choices = reattachChoices(split(), thread);
+    expect(choices[0]).toMatchObject({ anchor: { scope: 'criterion', criterionId: 'income-tax' }, successor: true });
+    expect(choices[0]!.said).toMatch(/^The criterion Income tax burden \(what it was split or merged into\)$/);
+    expect(choices.at(-1)).toEqual({ anchor: { scope: 'analysis' }, successor: false, said: 'The analysis as a whole' });
+    const ids = choices.slice(1, -1).map((c) => (c.anchor as { criterionId: string }).criterionId);
+    expect(ids).not.toContain('rent');
+    expect(ids).not.toContain('income-tax');
+    expect(choices.every((c) => resolveAnchor(split(), c.anchor).status === 'live')).toBe(true);
+  });
+
+  it('offers nothing for a live annotation, and refuses to move one', () => {
+    expect(reattachChoices(argued(), thread)).toEqual([]);
+    expect(() => reattach(argued(), thread, { scope: 'analysis' })).toThrow(/attached to something live/);
+  });
+
+  it('moves the orphan to a live anchor, and the history check accepts it', () => {
+    const before = split();
+    const after = reattach(before, thread, { scope: 'criterion', criterionId: 'income-tax' });
+    expect(after.threads.find((t) => t.id === 't-rent')!.anchor).toEqual({ scope: 'criterion', criterionId: 'income-tax' });
+    expect(annotationHistoryProblems(before, after)).toEqual([]);
+    expect(() => reattach(before, thread, { scope: 'criterion', criterionId: 'rent' })).toThrow(/does not resolve/);
+  });
+
+  it('asks the reattach affordance of the new anchor, and refuses for a live thread', () => {
+    const aff = makeAffordances(split());
+    expect(aff.comment(commentTarget({ scope: 'criterion', criterionId: 'income-tax' }), 'reattach', { threadId: 't-rent' })).toEqual({ enabled: true });
+    expect(aff.comment(commentTarget({ scope: 'criterion', criterionId: 'rent' }), 'reattach', { threadId: 't-rent' }).enabled).toBe(false);
+    expect(makeAffordances(argued()).comment(commentTarget({ scope: 'analysis' }), 'reattach', { threadId: 't-rent' }).reason).toMatch(/only an orphaned thread/);
   });
 });

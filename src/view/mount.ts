@@ -29,6 +29,8 @@ import { commentTarget, reopenThread, replyToThread, resolveThread, startThread 
 import type { Anchor } from '../core/schema/annotations.js';
 import type { ThreadWrites } from './threads.js';
 import type { SuggestionWrites } from './suggestions.js';
+import type { ReattachWrite } from './orphans.js';
+import { reattach } from '../core/orphans.js';
 import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
@@ -291,6 +293,12 @@ export function mountMatrix(
       const anchor = anchorOf(latest);
       return anchor && may.comment(commentTarget(anchor), act, threadId === undefined ? {} : { threadId });
     }, change, 'the comment');
+  /** Move an orphan to a live anchor (#249), asked of the new anchor's comment affordance on the latest document. */
+  const reattachWrite: ReattachWrite = (which, anchor) => writeDocument(
+    (_latest, may) => may.comment(commentTarget(anchor), 'reattach', which.kind === 'thread' ? { threadId: which.id } : {}),
+    (a) => reattach(a, which, anchor),
+    'the re-attachment',
+  );
   /** Staged suggestion decisions (#256), written as one change: every one is asked again of the latest document first. */
   const suggestionWrites: SuggestionWrites | undefined = decideSuggestions && {
     decide: (choices) => writeDocument(
@@ -334,7 +342,7 @@ export function mountMatrix(
       ...(arrange ? { arrange } : {}),
       ...(panels ? { panels } : {}),
       ...(announcement !== undefined ? { announcement } : {}),
-      ...(source ? { threadWrites } : {}),
+      ...(source ? { threadWrites, reattachWrite } : {}),
       ...(source && suggestionWrites ? { suggestionWrites } : {}),
       encodings: registry,
       affordances: source
