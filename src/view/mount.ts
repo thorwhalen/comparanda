@@ -15,7 +15,7 @@ import { assertionVisibility, type ViewerContext } from '../core/schema/redactio
 import { threadDoing, type Affordances, type ThreadAct } from '../core/affordances.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
-  anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, type AnalysisSource, type DataChangeEvent, type DataProvider,
+  anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, isVersioned, type AnalysisSource, type DataChangeEvent, type DataProvider,
 } from '../store/index.js';
 
 /** Who writes when the host names no one: usable, not a stub (ADR-0012). */
@@ -240,14 +240,19 @@ export function mountMatrix(
       const author = await identity.current();
       stillHere();
       // The source's own latest document, not the one shown: a write in flight may not have come back as an event yet.
-      const latest = await source.getOne(id);
+      // A versioned source is read with its version, and written only against it: another contributor's write in between is a conflict, never overwritten (ADR-0011 clause 6).
+      const versioned = isVersioned(source) ? await source.getVersioned(id) : undefined;
+      const latest = versioned ? versioned.item : await source.getOne(id);
       stillHere();
       if (!latest) throw new Error(`the source no longer holds this analysis ("${id}"); nothing was written.`);
       // Asked again of the document being written, not the one the button was drawn from: the host is never overruled (ADR-0012).
       const anchor = anchorOf(latest);
       const may = anchor && editAffordances(source, latest, authorize ? { authorize } : {}).comment(commentTarget(anchor), act);
       if (may && !may.enabled) throw new Error(may.reason);
-      await source.update(id, change(latest, author, now().toISOString()));
+      const written = change(latest, author, now().toISOString());
+      if (versioned && isVersioned(source)) await source.updateIfVersion(id, written, versioned.version);
+      // A source with no versions is the host's own last-write-wins: ADR-0011 clause 6 asks hosts with several contributors to supply a versioned one.
+      else await source.update(id, written);
     };
     // One write at a time: two sent together would each build on the same document, and the second would undo the first.
     const next = writes.then(run, run);
