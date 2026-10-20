@@ -67,6 +67,7 @@ import { PALETTE } from './encodings/palette.js';
 import { revealClear } from './sticky.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
 import { DetailPanel } from './detail-panel.js';
+import { OrphanTray } from './orphans.js';
 import type { ThreadWrites } from './threads.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
 import { startPointerDrag } from './pointer-reorder.js';
@@ -518,6 +519,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           <button type="button" onClick={notice.onAcknowledge}>I understand</button>
         </div>
       )}
+      <OrphanTray analysis={analysis} />
       <RefusedEdits
         analysis={analysis} measure={measure} affordances={affordances}
         rows={rows.entries} columns={columns.entries} transposed={transposed}
