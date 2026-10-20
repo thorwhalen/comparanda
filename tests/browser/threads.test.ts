@@ -11,7 +11,7 @@ import { Analysis } from '../../src/core/schema/analysis.js';
 import { startThread } from '../../src/core/threads.js';
 import { reviseCriterion } from '../../src/core/criteria-revision.js';
 import { applyOrder, initialViewState, setDetailPanel, setFocus, type ViewState } from '../../src/core/view-state.js';
-import { agentIdentity, anonymousIdentity, inMemoryAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
+import { agentIdentity, anonymousIdentity, inMemoryAnalysisSource, versionedAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
 import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
@@ -110,6 +110,25 @@ describe('threads in the panel', () => {
     expect(thread.anchor).toMatchObject({ scope: 'group-pair', groupId: alt.groupIds[0], otherGroupId: crit.groupIds[0] });
     // It is listed here, as the block's.
     expect(threads().querySelector(`[data-thread="${thread.id}"]`)!.getAttribute('data-relation')).toBe('group-pair');
+  });
+
+  it('a write that lost a race to another contributor is a conflict, not an overwrite (#109)', async () => {
+    const source = versionedAnalysisSource(relocation);
+    // Another contributor writes between this reader's read and write.
+    const racing: typeof source = {
+      ...source,
+      getVersioned: async (id) => {
+        const read = await source.getVersioned(id);
+        await source.update(id, { subject: { ...read.item.subject, question: 'changed under you?' } });
+        return read;
+      },
+    };
+    mount({ analysis: relocation, measure: 'score', source: racing, view: at(undefined) });
+    await say(/Start a thread on the analysis/, 'overall: are we missing a criterion?', 'Start thread');
+    expect(threads().querySelector('[role="alert"]')!.textContent).toContain('someone else changed this analysis');
+    const stored = (await source.getOne(relocation.id))!;
+    expect(stored.threads.length).toBe(relocation.threads.length);
+    expect(stored.subject.question).toBe('changed under you?');
   });
 
   it('a failed write says why and keeps the draft', async () => {
