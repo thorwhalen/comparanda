@@ -124,7 +124,12 @@ export function isWidenedByDisclosure(cell: { assertions: readonly Assertion[] }
   return cell.assertions.some((s) => !s.supersededBy && isWithheldFromReader(s));
 }
 
-function arithmeticRefusal(named: string, level: LevelOfMeasurement): string {
+function arithmeticRefusal(named: string, level: LevelOfMeasurement | undefined): string {
+  // An unstated level is not a licence to average (#209): 1-5 codes are ordinal until the schema says otherwise.
+  if (level === undefined) {
+    return `"${named}" produces a value nobody asserted, and the level of measurement is not stated, so ` +
+      'whether averaging is legal cannot be known; declare a measurement with its level on the criterion, or use lower-median.';
+  }
   return `"${named}" produces a value nobody asserted, which is not legal on an ` +
     `${level} level; use lower-median. Averaging ordinal codes produces a value no ` +
     'rater could have chosen.';
@@ -528,9 +533,9 @@ function reduceValue(
 
   // Refusals that depend only on the level or on the values the reader can
   // see are the owner's too, so they are reported as themselves.
-  const arithmeticIllegal = resolved.facts.arithmetic && opts.level !== undefined && !meanIsLegal(opts.level);
+  const arithmeticIllegal = resolved.facts.arithmetic && (opts.level === undefined || !meanIsLegal(opts.level));
   if (arithmeticIllegal && valued.length > 0) {
-    return { contributing, disagreement, spread, refused: arithmeticRefusal(named, opts.level!) };
+    return { contributing, disagreement, spread, refused: arithmeticRefusal(named, opts.level) };
   }
   if ((mode === 'lower-median' || mode === 'mean') && valued.some((a) => !isNumeric(a.value))) {
     return { contributing, disagreement, spread, refused: `${mode} needs numeric values` };
@@ -569,7 +574,7 @@ function reduceValue(
   // case for `mean`. A declared reduction that inherits `arithmetic: true` is
   // refused here without anyone having remembered to add it.
   if (arithmeticIllegal) {
-    return { contributing, disagreement, spread, refused: arithmeticRefusal(named, opts.level!) };
+    return { contributing, disagreement, spread, refused: arithmeticRefusal(named, opts.level) };
   }
 
   switch (mode) {

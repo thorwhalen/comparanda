@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { Analysis } from '../src/core/schema/analysis.js';
 import { initialViewState, isDirty, lockRun, pin, snapshotOf, transpose } from '../src/core/view-state.js';
 import {
+  LockedRunError,
   describeMove, moveByKeyboard, moveByMenu, moveByPointer, moveTo, type MoveReport,
 } from '../src/core/reorder.js';
 
@@ -209,6 +210,8 @@ describe('the routes agree on an axis that carries constraints (review finding)'
   it('refuses to move something before an entry locked to it', () => {
     expect(() => moveByMenu(locked(), 'alternatives', 0, { kind: 'before', id: 'berlin' }, ANA))
       .toThrow(/locked together/);
+    // Typed, so the view announces this refusal as itself and any other failure as a bug (#209).
+    expect(() => moveByMenu(locked(), 'alternatives', 0, { kind: 'before', id: 'berlin' }, ANA)).toThrow(LockedRunError);
   });
 });
 

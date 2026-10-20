@@ -11,7 +11,7 @@
  */
 import type { Axis } from '../core/schema/groups.js';
 import type { Analysis } from '../core/schema/analysis.js';
-import { describeMove, moveByMenu, movingBlock, moveTo, reportOverShown, type MenuMove, type MoveRoute } from '../core/reorder.js';
+import { describeMove, LockedRunError, moveByMenu, movingBlock, moveTo, reportOverShown, type MenuMove, type MoveRoute } from '../core/reorder.js';
 import { applyOrder, type ViewState } from '../core/view-state.js';
 import { activeElementOf } from './dom.js';
 
@@ -63,8 +63,14 @@ export function commitMove(ctx: ReorderContext, axis: Axis, id: string, step: St
       ? moveTo(v, axis, from, from, { by: ctx.actor(), route })
       : moveByMenu(v, axis, from, move, { by: ctx.actor(), route });
     ctx.onReorder(state, describeMove(ctx.analysis, reportOverShown(report, state, scope)));
-  } catch {
-    ctx.onReorder(ctx.view, `${label} was not moved: that would split entries locked together.`);
+  } catch (e) {
+    if (e instanceof LockedRunError) {
+      ctx.onReorder(ctx.view, `${label} was not moved: that would split entries locked together.`);
+      return;
+    }
+    // Anything else is a bug: the reader is told plainly, and the developer gets the error.
+    ctx.onReorder(ctx.view, `${label} was not moved: something went wrong.`);
+    throw e;
   }
 }
 

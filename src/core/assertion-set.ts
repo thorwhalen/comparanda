@@ -65,15 +65,22 @@ export interface AssertionSetDescription {
  * `levels` is the criterion's declared level order (`Measurement.levels`), used
  * to sort the multiset; without it, numbers sort numerically and anything else
  * by its text.
+ *
+ * `means` reads a missingness code as its declaration's one-line meaning, so
+ * the label -- which the detail panel reads aloud -- says what an absence means
+ * rather than its code (#209). `absences` keeps the raw codes, for machines.
+ * Without it, or for a code it cannot read, the label names the code.
  */
 export function describeAssertionSet(
   cell: Pick<Cell, 'assertions'>,
   {
     authors,
     levels,
+    means,
   }: {
     authors: readonly Pick<Author, 'id' | 'kind' | 'principalId'>[];
     levels?: readonly ScalarValue[] | undefined;
+    means?: ((code: string) => string | undefined) | undefined;
   },
 ): AssertionSetDescription {
   const set = liveAssertions(cell.assertions);
@@ -81,7 +88,7 @@ export function describeAssertionSet(
   const absences = set.flatMap((a) => (a.value === undefined && a.missing ? [a.missing.code] : []));
   const principals = distinctPrincipals(set, authors);
   const n = set.length;
-  const tail = multisetText(values, absences);
+  const tail = multisetText(values, absences, means);
 
   if (n < 2) {
     return { n, values, absences, principals, reading: 'single', label: `${n} assertion${n === 1 ? '' : 's'}${tail}` };
@@ -138,10 +145,24 @@ function correlatedPhrase(
   return `${n} assertions, not independent (${weakest})`;
 }
 
-function multisetText(values: readonly ScalarValue[], absences: readonly string[]): string {
-  const parts = [values.map(String).join(', '), absences.length ? `${absences.length} absent (${absences.join(', ')})` : '']
+function multisetText(
+  values: readonly ScalarValue[], absences: readonly string[], means: ((code: string) => string | undefined) | undefined,
+): string {
+  const parts = [values.map(String).join(', '), absences.length ? `${absences.length} absent (${absenceWords(absences, means)})` : '']
     .filter(Boolean);
   return parts.length ? `: ${parts.join('; ')}.` : '.';
+}
+
+/** The codes as they are read: raw, or -- given `means` -- each distinct meaning once, quoted, with its count. */
+function absenceWords(absences: readonly string[], means: ((code: string) => string | undefined) | undefined): string {
+  if (!means) return absences.join(', ');
+  const counts = new Map<string, number>();
+  for (const code of absences) {
+    const words = means(code)?.trim().replace(/\.+$/, '');
+    const said = words ? `“${words}”` : code;
+    counts.set(said, (counts.get(said) ?? 0) + 1);
+  }
+  return [...counts].map(([said, k]) => (k > 1 ? `${said} ×${k}` : said)).join(', ');
 }
 
 function sortedValues(set: readonly Assertion[], levels: readonly ScalarValue[] | undefined): ScalarValue[] {

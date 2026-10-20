@@ -172,7 +172,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const cells = cellIndex(analysis);
   const stripOf = (alt: string, crit: string, levels: readonly ScalarValue[]) => {
     const cell = cells.get(cellKey(alt, crit, measure));
-    return cell && raterStripInView(analysis, cell, { levels, viewer });
+    return cell && raterStripInView(analysis, cell, { levels, viewer, means: (code) => vocabulary.means(code, crit) });
   };
   const helpId = useId();
   /**

@@ -75,7 +75,7 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
             // A draft and its choice belong to the position they were written at: moving the panel starts afresh.
             key={`${position.alternativeId ?? ''}\u0000${position.criterionId ?? ''}`}
             label={`Start a thread on ${choices[0]!.here}`} action="Start thread" idBase={`${idBase}-new`}
-            choices={choices.map((x) => x.here)}
+            choices={choices.map((x) => ({ key: choiceKey(x.anchor), here: x.here }))}
             send={(body, i = 0) => {
               const { anchor } = choices[i]!;
               const may = affordances.comment(commentTarget(anchor), 'start');
@@ -151,10 +151,13 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
 
 /** A labelled text box and its button. The draft survives a failed send, which says why. */
 function Compose({ label, action, idBase, send, choices }: {
-  label: string; action: string; idBase: string; send: (body: string, choice?: number) => Promise<void>; choices?: string[] | undefined;
+  label: string; action: string; idBase: string; send: (body: string, choice?: number) => Promise<void>;
+  choices?: { key: string; here: string }[] | undefined;
 }) {
   const [draft, setDraft] = useState('');
-  const [choice, setChoice] = useState(0);
+  // Kept by what it is about, not by index: another writer's group can shift the list under it (#209).
+  const [chosen, setChosen] = useState<string | undefined>(undefined);
+  const choice = Math.max(0, choices?.findIndex((c) => c.key === chosen) ?? 0);
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
@@ -183,17 +186,22 @@ function Compose({ label, action, idBase, send, choices }: {
       {choices && choices.length > 1 && (
         <>
           <label for={`${idBase}-about`}>About</label>
-          <select id={`${idBase}-about`} value={String(choice)} onChange={(e) => setChoice(Number((e.currentTarget as HTMLSelectElement).value))}>
-            {choices.map((c, i) => <option key={c} value={String(i)}>{capitalise(c)}</option>)}
+          <select id={`${idBase}-about`} value={choices[choice]!.key} onChange={(e) => setChosen((e.currentTarget as HTMLSelectElement).value)}>
+            {choices.map((c) => <option key={c.key} value={c.key}>{capitalise(c.here)}</option>)}
           </select>
         </>
       )}
-      <label for={`${idBase}-text`}>{choices && choices.length > 1 ? `Start a thread on ${choices[choice]}` : label}</label>
+      <label for={`${idBase}-text`}>{choices && choices.length > 1 ? `Start a thread on ${choices[choice]!.here}` : label}</label>
       <textarea id={`${idBase}-text`} rows={2} value={draft} onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)} />
       <button type="submit" aria-disabled={busy}>{action}</button>
       {error && <p role="alert" key={error.attempt}>{`Not sent: ${error.text}`}</p>}
     </form>
   );
+}
+
+/** An anchor's identity, without the repair hint a relabel changes. */
+function choiceKey({ repairHint: _h, ...ids }: Anchor): string {
+  return JSON.stringify([ids.scope, ids.alternativeId, ids.criterionId, ids.groupId, ids.otherGroupId]);
 }
 
 /** A place a new thread may be anchored, and its name in words. What the host is asked about is `commentTarget(anchor)`. */

@@ -39,6 +39,12 @@ describe('the static pre-filter', () => {
     ['globalThis.fetch(u)', 'a fetch() call'],
     ['new RTCPeerConnection(c)', 'a WebRTC connection, which no CSP governs'],
     ['window.open(u)', 'window.open, which no CSP governs'],
+    ['location.assign(u)', 'a navigation through location, which no CSP governs'],
+    ['window.location.href = u', 'a navigation through location, which no CSP governs'],
+    ['window.location=u', 'a navigation through location, which no CSP governs'],
+    ['location.href += "#"', 'a navigation through location, which no CSP governs'],
+    ['location?.assign(u)', 'a navigation through location, which no CSP governs'],
+    ['document.location.replace(u)', 'a navigation through location, which no CSP governs'],
     ['import("./chunk.js")', 'a dynamic import'],
     ['const css = "@import \'x.css\';"', 'a CSS @import'],
     ['const css = "td { background: url(https://example.invalid/x.png) }"', 'a CSS url() naming a remote resource'],
@@ -61,6 +67,8 @@ describe('the static pre-filter', () => {
       'const css = "td { background: url(data:image/png;base64,AAAA); mask: url(#m) }";',
       'const prefetch = 1; refetch(); const fetcher = 2;',
       'cache.fetch(key); if (typeof WebSocket === "undefined") {} x.open("GET", u);',
+      'location.hash = "#c3"; if (location.protocol === "file:") {} const here = location.href; allocation = 3;',
+      'let location = a; function f(location = 2) {} row.location = 1; a.location.replace(/x/g, "");',
     ].join('\n');
     expect(hits(page(code, '<link rel="icon" href="data:,">'))).toEqual([]);
   });
