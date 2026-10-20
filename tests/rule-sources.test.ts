@@ -134,6 +134,11 @@ const hostile = {
     { alternativeId: 'nobody', criterionId: 'nothing', measure: 'score', assertions: [] },
     { alternativeId: 'x', criterionId: 'bare', measure: 'score', assertions: [] },
   ],
+  // A comment by nobody the document describes (#204).
+  threads: [{
+    id: 't1', anchor: { scope: 'analysis' },
+    comments: [{ id: 'k1', authorId: 'ghost', at: '2026-08-22T00:00:00Z', body: 'who said this?' }],
+  }],
 };
 
 function expectCited(problems: ValidationProblem[]) {

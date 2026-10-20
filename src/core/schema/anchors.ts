@@ -278,3 +278,48 @@ export function tombstonedGroupProblems(
   });
   return problems;
 }
+
+/** A write a store must refuse because it hard-deletes an entity something refers to. */
+export type RemovedEntityProblem = TombstoneProblem;
+
+/**
+ * Alternatives and groups removed from the document while a scored cell or an
+ * annotation still refers to them (#204). There is no hard delete of either:
+ * re-adding the id later would re-attach the old argument to whatever now bears
+ * it -- the re-add hole #165 closed for criteria, which `criteriaRevisionProblems`
+ * guards with its own, version-aware message. An entity nothing refers to has
+ * no history to lose, and may go.
+ *
+ * `revisionProblems` runs this; the in-memory analysis source runs that.
+ */
+export function removedEntityProblems(
+  before: Pick<Analysis, 'alternatives' | 'groups' | 'cells' | 'threads' | 'suggestions'>,
+  after: Pick<Analysis, 'alternatives' | 'groups'>,
+): RemovedEntityProblem[] {
+  // A stored document that does not parse may lack any of these (revision.ts reads it as stored).
+  const anchors = [...(before.threads ?? []), ...(before.suggestions ?? [])].map((t) => t.anchor);
+  const referenced = {
+    alternative: new Set([
+      ...(before.cells ?? []).filter((c) => c.assertions.length > 0).map((c) => c.alternativeId),
+      ...anchors.flatMap((x) => (x.alternativeId === undefined ? [] : [x.alternativeId])),
+    ]),
+    group: new Set(anchors.flatMap((x) => [x.groupId, x.otherGroupId].filter((g): g is string => g !== undefined))),
+  };
+  const problems: RemovedEntityProblem[] = [];
+  for (const [kind, label, was, now] of [
+    ['alternative', 'alternatives', before.alternatives ?? [], after.alternatives],
+    ['group', 'groups', before.groups ?? [], after.groups],
+  ] as const) {
+    const kept = new Set(now.map((x) => x.id));
+    was.forEach((x, i) => {
+      if (kept.has(x.id) || !referenced[kind].has(x.id)) return;
+      problems.push({
+        path: `${label}[${i}]`,
+        message: `${kind} "${x.id}" was removed from the document while ${kind === 'group' ? 'annotations' : 'scored cells or annotations'} ` +
+          `refer to it. Re-adding the id later would re-attach them to whatever then bears it.`,
+        fix: `tombstone it instead (\`tombstone(a, {kind: "${kind}", id})\`), which keeps it and its annotations.`,
+      });
+    });
+  }
+  return problems;
+}
