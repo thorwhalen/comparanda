@@ -149,3 +149,17 @@ one recorded above.
 4. [Value-Suppressing Uncertainty Palettes — Correll, Moritz & Heer (2018), CHI](https://www.domoritz.de/papers/2018-VSUPs-CHI.pdf)
 5. [Error Bars Considered Harmful: Exploring Alternate Encodings for Mean and Error — Correll & Gleicher (2014), IEEE TVCG 20(12):2142–2151](https://graphics.cs.wisc.edu/Papers/2014/CG14/Preprint.pdf)
 6. [Design of Diverging Stacked Bar Charts for Likert Scales and Other Applications — Heiberger & Robbins (2014), Journal of Statistical Software 57(5):1–32](https://www.jstatsoft.org/v57/i05/)
+
+### 2026-10-20 — The strip is drawn; its widths are `em` thresholds and the ramp is not yet
+
+- **Status:** accepted
+- **Date:** 2026-10-20
+- **Deciders:** Thor Whalen
+
+`disagreement` now draws (#110). Decisions the Decision section left to the build:
+
+- **Fixed slots come from the criterion's declared `levels`, else the whole numbers of an integer `range`**, and at most nine of them (`stripLevels`); a nominal, ranged-continuous or longer scale gets no strip, and the encoding says so rather than drawing something else.
+- **The assertion set, not the reduction, is drawn**, so a cell the reduction refuses to summarise still shows its strip. A cell with a single live assertion shows none. An assertion that records an absence, or whose value is off the level list, has no slot: the cell's words count it (`describeAssertionSet`'s label) and the drawing does not pretend.
+- **A filled dot is one of a set of independent raters; a ring is not** (a draw of one source, or a rung below `independent`), and in the range bracket a dashed bar is the same distinction. The difference is a shape, so it survives forced colours and print.
+- **Width chooses the form with a container query**, not a script: dots, then the range bracket (ends and modes marked, nothing at a mean), then the cell's text alone. The two thresholds are `PreparedEncoding.strip` in `em` of the cell's text, registered with the encoding (`STRIP_THRESHOLDS`: 3 em and 1.2 em).
+- **The third form is the text, for now.** The step down to the `disagreement-spread` ramp, and the one-keystroke switch between strip and ramp, wait for the per-cell `disagreementIndex`, which needs the van der Eijk layer decomposition ADR-0022 left as open question 9.

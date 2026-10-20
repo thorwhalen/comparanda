@@ -45,7 +45,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
 import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
-import { makeCellReader, unknownMeasure, type Analysis } from '../core/schema/analysis.js';
+import { cellIndex, cellKey, makeCellReader, unknownMeasure, type Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { Measurement } from '../core/schema/measurement.js';
 import type { ViewerContext } from '../core/schema/redaction.js';
@@ -59,8 +59,10 @@ import { CONFIDENCE, textOnly } from './encodings/shipped.js';
 import {
   describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
 } from './encodings/registry.js';
-import { Glyph, GLYPH_KEYS, glyphName, Hatch, isHatchLevel, type GlyphKey, type HatchLevel } from './channels.js';
-import { derivedPaletteCss, MATRIX_CSS } from './matrix-css.js';
+import { Glyph, GLYPH_KEYS, glyphName, Hatch, isHatchLevel, Strip, type GlyphKey, type HatchLevel } from './channels.js';
+import { isRaterStrip, raterStripInView } from '../core/rater-strip.js';
+import type { ScalarValue } from '../core/schema/values.js';
+import { derivedPaletteCss, MATRIX_CSS, stripCss } from './matrix-css.js';
 import { PALETTE } from './encodings/palette.js';
 import { revealClear } from './sticky.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
@@ -167,6 +169,11 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     if (!others.has(other)) others.set(other, unknownMeasure(analysis, other) === undefined ? makeCellReader(analysis, other) : null);
     return others.get(other)?.read(alt, crit);
   };
+  const cells = cellIndex(analysis);
+  const stripOf = (alt: string, crit: string, levels: readonly ScalarValue[]) => {
+    const cell = cells.get(cellKey(alt, crit, measure));
+    return cell && raterStripInView(analysis, cell, { levels, viewer });
+  };
   const helpId = useId();
   /**
    * What a pointer last pressed, until the focus it gives (or a key) uses it up:
@@ -195,7 +202,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
 
   const [alternatives, criteria] = transposed ? [columns.entries, rows.entries] : [rows.entries, columns.entries];
   const { active, prepared, fallback } = chooseEncoding(encodings, encoding, {
-    analysis, measure, vocabulary, read, readMeasure, inapplicable: affordances.inapplicable,
+    analysis, measure, vocabulary, read, readMeasure, stripOf, inapplicable: affordances.inapplicable,
     alternatives: alternatives.map((e) => e.id), criteria: criteria.map((e) => e.id),
   });
 
@@ -279,6 +286,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         <span class="comparanda-shown">{text}</span>
         {hatch && <Hatch level={hatch} />}
         {mark.badge && <span class="comparanda-badge" aria-hidden="true">{mark.badge}</span>}
+        {mark.strip && <Strip strip={mark.strip} />}
         {said && <span class="comparanda-sr">{said}</span>}
         <ThreadMark count={openHere.get(`${altId}\u0000${critId}`)} />
       </td>
@@ -471,6 +479,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       <style>{MATRIX_CSS}</style>
       {/* After MATRIX_CSS: its swatch rules tie the muted-ink rules on specificity, and win by order. */}
       {prepared.palette && <style>{derivedPaletteCss(prepared.palette)}</style>}
+      {prepared.strip && <style>{stripCss(prepared.strip)}</style>}
       {fallback && <p class="comparanda-degraded" role="note">{fallback}</p>}
       {notice && (
         <div class="comparanda-notice" role="alert" data-notice="">
@@ -741,14 +750,27 @@ function chooseEncoding(
     if (palette !== undefined && !paletteOk(palette)) {
       return cannot('its palette is not a table of swatch ids to #rrggbb light and dark [fill, ink] pairs.');
     }
+    // The thresholds become a stylesheet and a strip becomes a drawing: each is checked for shape first.
+    const { strip } = prepared;
+    if (strip !== undefined && !stripThresholdsOk(strip)) {
+      return cannot('its strip thresholds are not finite widths in em, with the bracket\'s above the hidden one.');
+    }
+    if ([...marks.values()].some((m) => m.strip !== undefined && !isRaterStrip(m.strip))) {
+      return cannot('a strip it marked is not a drawable set of slots.');
+    }
     return {
       active: chosen,
-      prepared: { legend, ...(palette && { palette }), mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? {} },
+      prepared: { legend, ...(palette && { palette }), ...(strip && { strip }), mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? {} },
     };
   } catch (error) {
     const message = (error instanceof Error ? error.message : String(error)).replace(/[.\s]+$/, '');
     return cannot(`it failed (${message}).`);
   }
+}
+
+function stripThresholdsOk(t: unknown): boolean {
+  const { bracketBelow: b, hiddenBelow: h } = (t ?? {}) as Record<string, unknown>;
+  return typeof b === 'number' && typeof h === 'number' && Number.isFinite(b) && Number.isFinite(h) && h >= 0 && b >= h && b <= 100;
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;

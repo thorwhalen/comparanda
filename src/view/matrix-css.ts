@@ -71,6 +71,23 @@ export function derivedPaletteCss(palette: Readonly<Record<string, Swatch>>): st
 ${paletteRules(palette, '.comparanda-matrix')}`;
 }
 
+/**
+ * The rater dot strip's two narrower forms (ADR-0024), chosen by the strip
+ * box's own width: a container query, so no script measures anything. The
+ * thresholds are the encoding's (`PreparedEncoding.strip`), in `em` of the
+ * cell's text, and are checked finite before they reach here.
+ */
+export function stripCss({ bracketBelow, hiddenBelow }: { bracketBelow: number; hiddenBelow: number }): string {
+  return `
+@container (max-width: ${bracketBelow}em) {
+  .comparanda-matrix .comparanda-strip-dots { display: none; }
+  .comparanda-matrix .comparanda-strip-bracket { display: block; }
+}
+@container (max-width: ${hiddenBelow}em) {
+  .comparanda-matrix .comparanda-strip-bracket { display: none; }
+}`;
+}
+
 export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
 .comparanda-matrix { color: var(--cmp-ink); background: var(--cmp-surface); }
 .comparanda-matrix .comparanda-scroll {
@@ -128,6 +145,10 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   display: inline-block; width: 0.9em; height: 0.9em; vertical-align: -0.1em; overflow: hidden;
 }
 .comparanda-matrix td .comparanda-glyph { margin-inline-end: 0.35em; }
+/* The strip: its box is a container (so the cell's width picks the form), as wide as one slot per level at rest. */
+.comparanda-matrix .comparanda-strip-box { display: block; container-type: inline-size; inline-size: calc(var(--k) * 0.8em); max-inline-size: 100%; margin-block-start: 0.15em; }
+.comparanda-matrix .comparanda-strip-dots, .comparanda-matrix .comparanda-strip-bracket { display: block; inline-size: 100%; block-size: auto; }
+.comparanda-matrix .comparanda-strip-bracket { display: none; }
 .comparanda-matrix td .comparanda-hatch { margin-inline-start: 0.4em; }
 .comparanda-matrix .comparanda-key { list-style: none; padding: 0; margin: 0 0 0.25em; display: flex; flex-wrap: wrap; gap: 0.25em 1em; }
 .comparanda-matrix .comparanda-forced-only, .comparanda-matrix .comparanda-print-only { display: none; }
