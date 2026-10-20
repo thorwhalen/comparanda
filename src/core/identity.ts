@@ -25,13 +25,16 @@ function attestedAs(a: Attestation): string {
   }
 }
 
+/** The methods that claim more than `unverified`; anything else reads as `unverified`. */
+const CLAIMED_METHODS: ReadonlySet<string> = new Set(['host-session', 'oauth', 'signature']);
+
 /**
  * How well the identity is known. A method other than `unverified` is a claim
  * the document makes about itself until the host that shows it says it
  * performed the check (`vouched`), so by default it reads as a claim (#243).
  */
 function attested(a: Attestation | undefined, vouched: boolean): string {
-  if (!a || a.method === 'unverified') return 'unverified';
+  if (!a || !CLAIMED_METHODS.has(a.method)) return 'unverified';
   return vouched ? attestedAs(a) : `unverified; claims ${attestedAs(a)}`;
 }
 

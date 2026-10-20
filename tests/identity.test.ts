@@ -196,3 +196,10 @@ describe('every attestation method has its own words (sprint review)', () => {
     expect(ada({ method: 'unverified' })).toBe('Ada (human, unverified)');
   });
 });
+
+describe('an attestation method outside the schema reads as unverified (#243 review)', () => {
+  it('never renders "claims unverified"', () => {
+    const odd = { displayName: 'Ada', kind: 'human' as const, attestation: { method: 'telepathy' } } as never;
+    expect(attribution(odd)).toBe('Ada (human, unverified)');
+  });
+});

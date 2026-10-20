@@ -457,14 +457,15 @@ cannot see a semantic disagreement about ties; this can.
 ### 5.1 v1 froze with the per-assertion fields in it — settled
 
 `authorKind`, `independence`, `perturbation` and the analysis-level `procedure` record were the
-**per-assertion** requests this section once warned about. All of them are in v1
-(`src/core/schema/values.ts`, `src/core/schema/provenance.ts`), so no stored analysis needs a
-migration with a guessed default.
+**per-assertion** requests this section once warned about. All of them are in v1: the author kind
+as `Author.kind` (`src/core/schema/provenance.ts`), `independence`, `perturbation` and
+`procedureId` on each assertion (`src/core/schema/values.ts`), and the analysis's `procedures`
+list (`src/core/schema/analysis.ts`). No stored analysis needs a migration with a guessed default.
 
 `independence` is **optional with no default**, and absent means **unknown independence**:
-everything downstream treats unknown as not-independent. `rubricator` writes it whenever it knows
-it, either from the caller or derived from a `procedure`, and never invents it
-([thorwhalen/rubricator#118](https://github.com/thorwhalen/rubricator/issues/118)). An earlier
+everything downstream treats unknown as not-independent. `rubricator` is to write it whenever it knows
+it, either from the caller or derived from a `procedure`, and never to invent it; its side is
+tracked in [thorwhalen/rubricator#118](https://github.com/thorwhalen/rubricator/issues/118). An earlier
 draft defaulted it to `independent`, the least cautious rung, and that default was removed for the
 reason below.
 
