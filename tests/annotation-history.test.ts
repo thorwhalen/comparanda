@@ -74,7 +74,7 @@ describe('annotation history (#204)', () => {
         const { resolvedBy: _b, resolvedAt: _a, ...rest } = t;
         return { ...rest, resolved: false };
       }),
-    }, /reopened with the resolution it had dropped/);
+    }, /resolution dropped or rewritten/);
     await rejects(resolved, { threads: resolved.threads.map((t) => ({ ...t, resolved: false })) }, /without a comment/);
     const reopened = reopenThread(resolved, 't1', { id: 'k2', by: BO, at: AT });
     await accepts(resolved, { threads: reopened.threads });
@@ -104,6 +104,30 @@ describe('annotation history (#204)', () => {
     const twins = { ...a, threads: [a.threads[0]!, { ...a.threads[1]!, id: 't1' }] };
     expect(validateAnalysis(twins).problems.map((p) => p.ruleId)).toContain('unique-ids');
     expect(annotationHistoryProblems(twins, a)).toEqual([]);
+  });
+
+  it('refuses dropping both twins of a duplicated id (review)', () => {
+    const a = argued();
+    const twins = { ...a, threads: [a.threads[0]!, { ...a.threads[1]!, id: 't1' }] };
+    expect(annotationHistoryProblems(twins, { ...a, threads: [] })[0]!.message).toMatch(/holds twice, was removed/);
+  });
+
+  it('keeps the last resolution after a reopen, refuses a reply to a resolved thread, and a backdated edit (review)', () => {
+    const reopened = reopenThread(resolveThread(argued(), 't1', { by: ANA, at: AT }), 't1', { id: 'k2', by: BO, at: AT });
+    const stripped = { ...reopened, threads: reopened.threads.map((t) => ({ ...t, resolvedBy: undefined, resolvedAt: undefined })) };
+    expect(annotationHistoryProblems(reopened, stripped)[0]!.message).toMatch(/last resolution dropped/);
+    const resolved = resolveThread(argued(), 't1', { by: ANA, at: AT });
+    const answered = { ...resolved, threads: resolved.threads.map((t) => (t.id === 't1' ? { ...t, comments: [...t.comments, { ...t.comments[0]!, id: 'k9' }] } : t)) };
+    expect(annotationHistoryProblems(resolved, answered)[0]!.message).toMatch(/resolved and was answered anyway/);
+    const a = argued();
+    const backdated = { ...a, threads: a.threads.map((t) => ({ ...t, comments: t.comments.map((c) => ({ ...c, body: 'new', editedAt: '1999-01-01T00:00:00Z' })) })) };
+    expect(annotationHistoryProblems(a, backdated)[0]!.message).toMatch(/claims an edit at 1999/);
+  });
+
+  it('reads a stored document without threads or suggestions, rather than refusing every write (review)', () => {
+    const { threads: _t, suggestions: _s, ...bare } = base();
+    expect(annotationHistoryProblems(bare as Analysis, base())).toEqual([]);
+    expect(removedEntityProblems(bare as Analysis, base())).toEqual([]);
   });
 
   it('accepts the thread functions: start, reply, resolve', async () => {

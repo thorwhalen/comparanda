@@ -10,10 +10,12 @@
  * - a thread, a comment or a suggestion removed;
  * - a comment's id, author or time rewritten, or its body rewritten without
  *   moving `editedAt` (the edit #195 records), or `editedAt` dropped;
- * - a resolved thread reopened without a new comment, or with the resolution it
- *   had (`resolvedBy`, `resolvedAt`) dropped or rewritten -- the record
- *   `reopenThread` keeps until the next resolve overwrites it;
- * - a resolved thread's resolution rewritten while it stays resolved;
+ * - a resolved thread reopened without a new comment, or answered while it
+ *   stays resolved;
+ * - the last resolution (`resolvedBy`, `resolvedAt`) dropped or rewritten other
+ *   than by resolving again -- the record `reopenThread` keeps until the next
+ *   resolve overwrites it;
+ * - an `editedAt` earlier than the comment or its last edit;
  * - a live thread or suggestion moved to another anchor. Re-attaching one whose
  *   anchor is orphaned is the repair the orphan tray exists for, and is allowed;
  * - a suggestion's author, time or proposal rewritten, or a decided suggestion
@@ -21,7 +23,8 @@
  *
  * **Repairs are exempt** the way they are for scores: a thread or suggestion id
  * that `before` already holds twice cannot be told from its twin, so neither is
- * compared, and the write that renames one is not refused.
+ * compared, and the write that renames one is not refused -- though one of the
+ * two must stay.
  *
  * Pure: no DOM, no clock, no store.
  */
@@ -55,8 +58,13 @@ export function annotationHistoryProblems(
   const anchorMoved = (was: Thread['anchor'], now: Thread['anchor']) =>
     canonical(was) !== canonical(now) && !orphaned(was);
 
+  const [beforeThreads, beforeSuggestions] = [before.threads ?? [], before.suggestions ?? []];
   const threads = indexed(after.threads);
-  for (const [id, was] of unique(before.threads)) {
+  for (const id of keptOnlyOnce(beforeThreads, threads)) {
+    refuse('threads', `thread "${id}", which this document holds twice, was removed altogether.`,
+      'keep one of them, renaming the other if they are two threads.');
+  }
+  for (const [id, was] of unique(beforeThreads)) {
     const found = threads.get(id);
     if (!found) {
       refuse('threads', `thread "${id}" was removed. A thread is resolvable, never deletable: the record of why a ` +
@@ -70,24 +78,30 @@ export function annotationHistoryProblems(
         'argument would read as about something it never discussed.', 'start a new thread at the new anchor.');
     }
     commentProblems(was, now, at, refuse);
-    if (was.resolved) {
-      const kept = was.resolvedBy === now.resolvedBy && was.resolvedAt === now.resolvedAt;
-      if (now.resolved && !kept) {
-        refuse(`${at}.resolvedBy`, `thread "${id}" is still resolved but its resolution was rewritten.`,
-          'reopen it (reopenThread) and resolve it again.');
-      } else if (!now.resolved && !kept) {
-        refuse(`${at}.resolved`, `thread "${id}" was reopened with the resolution it had dropped or rewritten. ` +
-          'Until it is resolved again, resolvedBy and resolvedAt are the record of who resolved it.',
-        'reopen it with reopenThread, which keeps them.');
-      } else if (!now.resolved && now.comments.length <= was.comments.length) {
-        refuse(`${at}.resolved`, `thread "${id}" was reopened without a comment saying so.`,
-          'reopen it with reopenThread, which records who reopened it and what it had been.');
-      }
+    // The last resolution is kept until the next one overwrites it, whether the thread is resolved or reopened.
+    const kept = was.resolvedBy === now.resolvedBy && was.resolvedAt === now.resolvedAt;
+    const resolvedAgain = !was.resolved && now.resolved && now.resolvedBy !== undefined;
+    if (!kept && !resolvedAgain && (was.resolvedBy !== undefined || was.resolvedAt !== undefined || was.resolved)) {
+      refuse(`${at}.resolvedBy`, `thread "${id}" had the record of its ${was.resolved ? '' : 'last '}resolution dropped or ` +
+        'rewritten. Until it is resolved again, resolvedBy and resolvedAt are the record of who resolved it.',
+      'reopen it with reopenThread and resolve it again with resolveThread; both keep the record.');
+    }
+    if (was.resolved && !now.resolved && now.comments.length <= (was.comments ?? []).length) {
+      refuse(`${at}.resolved`, `thread "${id}" was reopened without a comment saying so.`,
+        'reopen it with reopenThread, which records who reopened it and what it had been.');
+    }
+    if (was.resolved && now.resolved && now.comments.length > (was.comments ?? []).length) {
+      refuse(`${at}.comments`, `thread "${id}" is resolved and was answered anyway; a resolved thread takes no reply.`,
+        'reopen it (reopenThread) first.');
     }
   }
 
   const suggestions = indexed(after.suggestions);
-  for (const [id, was] of unique(before.suggestions)) {
+  for (const id of keptOnlyOnce(beforeSuggestions, suggestions)) {
+    refuse('suggestions', `suggestion "${id}", which this document holds twice, was removed altogether.`,
+      'keep one of them, renaming the other if they are two suggestions.');
+  }
+  for (const [id, was] of unique(beforeSuggestions)) {
     const found = suggestions.get(id);
     if (!found) {
       refuse('suggestions', `suggestion "${id}" was removed. A suggestion is kept whether it is accepted or declined, ` +
@@ -118,8 +132,9 @@ function commentProblems(
   was: Thread, now: Thread, at: string,
   refuse: (path: string, message: string, fix: string) => void,
 ): void {
-  const twice = duplicated(was.comments);
-  was.comments.forEach((c, j) => {
+  const comments = was.comments ?? [];
+  const twice = duplicated(comments);
+  comments.forEach((c, j) => {
     const d = now.comments[j];
     const path = `${at}.comments[${j}]`;
     if (!d) {
@@ -134,6 +149,9 @@ function commentProblems(
     } else if (c.editedAt !== undefined && d.editedAt === undefined) {
       refuse(`${path}.editedAt`, `comment "${c.id}" in thread "${was.id}" lost the record that it was edited.`,
         'keep editedAt.');
+    } else if (d.editedAt !== c.editedAt && d.editedAt !== undefined && earlier(d.editedAt, c.editedAt ?? c.at)) {
+      refuse(`${path}.editedAt`, `comment "${c.id}" in thread "${was.id}" claims an edit at ${d.editedAt}, before ` +
+        `${c.editedAt === undefined ? 'it was written' : 'its last edit'} (${c.editedAt ?? c.at}).`, 'set editedAt to the time of the edit.');
     } else if (c.body !== d.body && (d.editedAt === undefined || d.editedAt === c.editedAt)) {
       refuse(`${path}.body`, `comment "${c.id}" in thread "${was.id}" was rewritten without recording the edit, so ` +
         'replies to it would read as answering words it never had.', 'set editedAt to the time of the edit.');
@@ -152,6 +170,17 @@ function indexed<T extends { id: string }>(list: readonly T[]): Map<string, [T, 
 function unique<T extends { id: string }>(list: readonly T[]): [string, T][] {
   const twice = duplicated(list);
   return list.filter((x) => !twice.has(x.id)).map((x) => [x.id, x]);
+}
+
+/** The ids `before` holds more than once that `after` no longer holds at all: a twin may be renamed, not both dropped. */
+function keptOnlyOnce(before: readonly { id: string }[], after: ReadonlyMap<string, unknown>): string[] {
+  return [...duplicated(before)].filter((id) => !after.has(id));
+}
+
+/** Whether time `x` is before time `y`: as instants when both parse, else as the ISO strings they are stored as. */
+function earlier(x: string, y: string): boolean {
+  const [tx, ty] = [Date.parse(x), Date.parse(y)];
+  return Number.isNaN(tx) || Number.isNaN(ty) ? x < y : tx < ty;
 }
 
 function duplicated(list: readonly { id: string }[]): Set<string> {

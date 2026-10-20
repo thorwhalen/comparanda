@@ -296,18 +296,19 @@ export function removedEntityProblems(
   before: Pick<Analysis, 'alternatives' | 'groups' | 'cells' | 'threads' | 'suggestions'>,
   after: Pick<Analysis, 'alternatives' | 'groups'>,
 ): RemovedEntityProblem[] {
-  const anchors = [...before.threads, ...before.suggestions].map((t) => t.anchor);
+  // A stored document that does not parse may lack any of these (revision.ts reads it as stored).
+  const anchors = [...(before.threads ?? []), ...(before.suggestions ?? [])].map((t) => t.anchor);
   const referenced = {
     alternative: new Set([
-      ...before.cells.filter((c) => c.assertions.length > 0).map((c) => c.alternativeId),
+      ...(before.cells ?? []).filter((c) => c.assertions.length > 0).map((c) => c.alternativeId),
       ...anchors.flatMap((x) => (x.alternativeId === undefined ? [] : [x.alternativeId])),
     ]),
     group: new Set(anchors.flatMap((x) => [x.groupId, x.otherGroupId].filter((g): g is string => g !== undefined))),
   };
   const problems: RemovedEntityProblem[] = [];
   for (const [kind, label, was, now] of [
-    ['alternative', 'alternatives', before.alternatives, after.alternatives],
-    ['group', 'groups', before.groups, after.groups],
+    ['alternative', 'alternatives', before.alternatives ?? [], after.alternatives],
+    ['group', 'groups', before.groups ?? [], after.groups],
   ] as const) {
     const kept = new Set(now.map((x) => x.id));
     was.forEach((x, i) => {
