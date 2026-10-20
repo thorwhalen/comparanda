@@ -170,8 +170,10 @@ describe('every analysis result says how many cells were widened for its reader'
     // The same document with an ordinary blank there *is* ranked, so the skip is what matters.
     const withBlank = structuredClone(p);
     withBlank.cells[2]!.assertions[0] = { ...withBlank.cells[2]!.assertions[0]!, missing: { code: 'not-assessed' }, disclosure: {} } as never;
-    expect(blanksWorthFilling(withBlank, { measure: 'score' }).map((b) => `${b.alternativeId}|${b.criterionId}`)).toContain('y|c1');
-    expect(blanksWorthFilling(p, { measure: 'score' })).toEqual([]);
+    expect(blanksWorthFilling(withBlank, { measure: 'score' }).blanks.map((b) => `${b.alternativeId}|${b.criterionId}`)).toContain('y|c1');
+    expect(blanksWorthFilling(p, { measure: 'score' }).blanks).toEqual([]);
+    expect(blanksWorthFilling(p, { measure: 'score' }).widenedByDisclosure).toBe(1);
+    expect(blanksWorthFilling(withBlank, { measure: 'score' }).widenedByDisclosure).toBe(0);
     // And the pair explanation counts the withheld compared cell.
     const e = explainDominance(p, 'x', 'y', { measure: 'score' });
     expect(e.widenedByDisclosure).toBe(1);

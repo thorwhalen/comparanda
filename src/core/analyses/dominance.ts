@@ -609,6 +609,18 @@ export interface BlankWorthFilling {
 }
 
 /**
+ * The ranked blanks, with the disclosure accounting every analysis result carries
+ * (ADR-0021): cells withheld from this reader are not blanks they can fill, so
+ * they are skipped from `blanks`, and `widenedByDisclosure` counts every withheld
+ * cell in scope (as `dominance` does), whether or not it would have ranked.
+ */
+export interface BlanksWorthFillingResult {
+  blanks: BlankWorthFilling[];
+  /** Cells in scope that a disclosure projection left without a value. */
+  widenedByDisclosure: number;
+}
+
+/**
  * Which blanks, if filled, would actually decide something.
  *
  * The honest version of "value of information". For each blank cell it pins the
@@ -626,9 +638,9 @@ export interface BlankWorthFilling {
  * Cost is O(blanks x alternatives x criteria), which at the sizes this tool
  * targets is nothing.
  */
-export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlankWorthFilling[] {
+export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlanksWorthFillingResult {
   const result = dominance(a, opts);
-  if (result.basis.length === 0) return [];
+  if (result.basis.length === 0) return { blanks: [], widenedByDisclosure: result.widenedByDisclosure };
 
   const altIds = opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id);
   const reader = makeCellReader(a, opts.measure);
@@ -709,10 +721,11 @@ export function blanksWorthFilling(a: Analysis, opts: DominanceOptions): BlankWo
 
   // Ties broken by id so the ordering is reproducible -- a ranking whose order
   // depends on Map iteration would differ between runs on the same data.
-  return out.sort(
+  out.sort(
     (x, y) =>
       y.decidesPairs - x.decidesPairs ||
       x.alternativeId.localeCompare(y.alternativeId) ||
       x.criterionId.localeCompare(y.criterionId),
   );
+  return { blanks: out, widenedByDisclosure: result.widenedByDisclosure };
 }

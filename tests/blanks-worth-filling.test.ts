@@ -78,7 +78,7 @@ describe('blanksWorthFilling', () => {
       ['c1', 'c2', 'c3'],
     );
 
-    const ranked = blanksWorthFilling(a, { measure: 'score' });
+    const ranked = blanksWorthFilling(a, { measure: 'score' }).blanks;
     const scores = new Set(ranked.map((r) => r.decidesPairs));
     expect(scores.size, 'every blank scored the same — the ranking is not ranking').toBeGreaterThan(1);
 
@@ -98,7 +98,7 @@ describe('blanksWorthFilling', () => {
       ],
       ['c1', 'c2'],
     );
-    const ranked = blanksWorthFilling(a, { measure: 'score' });
+    const ranked = blanksWorthFilling(a, { measure: 'score' }).blanks;
     expect(ranked).toHaveLength(0);
   });
 
@@ -111,8 +111,8 @@ describe('blanksWorthFilling', () => {
       ],
       ['c1', 'c2', 'c3'],
     );
-    const once = blanksWorthFilling(a, { measure: 'score' });
-    const twice = blanksWorthFilling(a, { measure: 'score' });
+    const once = blanksWorthFilling(a, { measure: 'score' }).blanks;
+    const twice = blanksWorthFilling(a, { measure: 'score' }).blanks;
     expect(JSON.stringify(once)).toBe(JSON.stringify(twice));
   });
 
@@ -124,7 +124,7 @@ describe('blanksWorthFilling', () => {
       ],
       ['c1', 'c2'],
     );
-    const ranked = blanksWorthFilling(a, { measure: 'score' });
+    const ranked = blanksWorthFilling(a, { measure: 'score' }).blanks;
     for (const r of ranked) {
       expect(`${r.alternativeId}/${r.criterionId}`).not.toBe('a1/c1');
       expect(`${r.alternativeId}/${r.criterionId}`).not.toBe('a2/c1');
@@ -138,6 +138,6 @@ describe('blanksWorthFilling', () => {
       level: 'nominal', preference: 'none', levels: ['p', 'q'],
     } as never;
     expect(dominance(a, { measure: 'score' }).basis).toHaveLength(0);
-    expect(blanksWorthFilling(a, { measure: 'score' })).toHaveLength(0);
+    expect(blanksWorthFilling(a, { measure: 'score' }).blanks).toHaveLength(0);
   });
 });
