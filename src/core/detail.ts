@@ -239,7 +239,9 @@ export function cellDetail(
     inapplicable,
     ...(measurement ? { measurement } : {}),
     assertions,
-    set: describeAssertionSet(inSet(visible), { authors: a.authors, levels: measurement?.levels }),
+    set: describeAssertionSet(inSet(visible), {
+      authors: a.authors, levels: measurement?.levels, means: (code) => vocabulary.means(code, criterionId),
+    }),
     ...distributionOf(liveAssertions(visible.assertions), measurement),
   };
 }

@@ -293,7 +293,7 @@ export function moveByMenu(
     const { ids, offset } = blockAt(order, from, v[key].constraints.lockedRuns);
     const moving = new Set(ids);
     if (moving.has(target.id)) {
-      throw new Error(
+      throw new LockedRunError(
         `cannot move ${axis} position ${from} ${target.kind} "${target.id}": ` +
           'they are locked together and move as one.',
       );
@@ -476,4 +476,13 @@ export function reportOverShown(report: MoveReport, v: ViewState, shown: readonl
   const to = order.indexOf(report.id);
   const { before: _hidden, ...rest } = report;
   return { ...rest, to, total: order.length, ...(to > 0 ? { before: order[to - 1]! } : {}) };
+}
+
+/**
+ * A move refused because it would split, or land inside, entries locked
+ * together. Typed so a caller announces this refusal as itself and every other
+ * failure as the bug it is (#209).
+ */
+export class LockedRunError extends Error {
+  override name = 'LockedRunError';
 }

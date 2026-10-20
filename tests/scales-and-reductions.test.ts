@@ -193,3 +193,12 @@ describe('the arithmetic rule is a fact about the reduction, not a case for mean
     expect([2, 3, 4, 5]).toContain(r.value);
   });
 });
+
+describe('a mean needs a stated level (#209)', () => {
+  it('refuses a mean when the level of measurement is not given, and allows it on an interval one', () => {
+    const r = reduce(cell([2, 3, 4, 4], 'mean'), { defaultReduction: 'mean' });
+    expect(r.value).toBeUndefined();
+    expect(r.refused).toMatch(/level of measurement is not stated/);
+    expect(reduce(cell([2, 3, 4, 4], 'mean'), { defaultReduction: 'mean', level: 'interval' }).value).toBe(3.25);
+  });
+});

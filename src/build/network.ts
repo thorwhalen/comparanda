@@ -71,6 +71,11 @@ export const NETWORK_PATTERNS: readonly { readonly what: string; readonly in: 'c
   { what: 'WebSocket', in: 'code', pattern: /\bnew\s+WebSocket\b/ },
   { what: 'a WebRTC connection, which no CSP governs', in: 'code', pattern: /\b(?:webkit)?RTCPeerConnection\b/ },
   { what: 'window.open, which no CSP governs', in: 'code', pattern: /\bwindow\.open\s*\(/ },
+  // A top-level navigation, which no CSP governs either (#209). Not `location.hash`: a fragment stays on the page.
+  {
+    what: 'a navigation through location, which no CSP governs', in: 'code',
+    pattern: /(?<![\w$])location\s*(?:\.\s*(?:assign|replace)\s*\(|\.\s*(?:href|pathname|search|host|hostname|origin|protocol|port)\s*=(?!=)|=(?![=>]))/,
+  },
   { what: 'sendBeacon', in: 'code', pattern: /\bsendBeacon\b/ },
   { what: 'importScripts', in: 'code', pattern: /\bimportScripts\b/ },
   { what: 'a worker', in: 'code', pattern: /\bnew\s+(?:Shared)?Worker\s*\(/ },

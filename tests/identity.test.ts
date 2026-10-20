@@ -147,6 +147,19 @@ describe('a writer cannot sign as an author the document already describes diffe
     expect(() => write({ id: 'ana', displayName: 'Ana', kind: 'agent', attestation: ana.attestation })).toThrow(/cannot write as them/);
     expect(write({ ...ana }).threads.at(-1)!.comments[0]!.authorId).toBe('ana');
   });
+
+  it('refuses another agent run, or another persona, under a known id (#209)', () => {
+    const a = relocation();
+    const bot = { id: 'bot', displayName: 'Bot', kind: 'agent' as const, agent: { name: 'scorer', model: 'm1', runId: 'r1' } };
+    const persona = { id: 'p', displayName: 'P', kind: 'human' as const, principalId: 'ana', actingAs: 'skeptic' };
+    const doc = { ...a, authors: [...a.authors, bot, persona] };
+    const write = (author: Parameters<typeof startThread>[1]['comment']['author']) => startThread(doc, {
+      threadId: 't-new', anchor: { scope: 'analysis' }, comment: { id: 'c-new', at: '2026-10-13', body: 'hi', author },
+    });
+    expect(() => write({ ...bot, agent: { ...bot.agent, runId: 'r2' } })).toThrow(/another run or persona/);
+    expect(() => write({ ...persona, actingAs: 'champion' })).toThrow(/another run or persona/);
+    expect(write({ ...bot, agent: { ...bot.agent } }).threads.at(-1)!.comments[0]!.authorId).toBe('bot');
+  });
 });
 
 describe('every attestation method has its own words (sprint review)', () => {

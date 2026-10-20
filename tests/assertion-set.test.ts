@@ -194,6 +194,16 @@ describe('describeAssertionSet names what kind of set a cell holds', () => {
     expect(d.label).toBe('2 raters: 4; 1 absent (not-evidenced).');
   });
 
+  it('reads absences as what their codes mean when given a resolver, keeping the codes for machines (#209)', () => {
+    const d = describeAssertionSet(cellOf([
+      { id: 'a1', authorId: 'ana', at: '2026-08-22T00:00:00Z', missing: { code: 'not-evidenced' }, independence: 'independent' },
+      { id: 'a2', authorId: 'ben', at: '2026-08-22T00:00:00Z', missing: { code: 'not-evidenced' }, independence: 'independent' },
+      { id: 'a3', authorId: 'bot', at: '2026-08-22T00:00:00Z', missing: { code: 'mystery' }, independence: 'independent' },
+    ]), { authors: AUTHORS, means: (code) => (code === 'not-evidenced' ? 'We looked; the sources are silent.' : undefined) });
+    expect(d.absences).toEqual(['not-evidenced', 'not-evidenced', 'mystery']);
+    expect(d.label).toMatch(/absent \(“We looked; the sources are silent” ×2, mystery\)\.$/);
+  });
+
   it('ignores superseded assertions and calls one live assertion a single', () => {
     const d = describeAssertionSet(cellOf([
       assertion('a1', 'ana', { value: 1, supersededBy: 'a2' }),
