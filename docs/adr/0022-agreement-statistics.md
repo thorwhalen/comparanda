@@ -191,3 +191,7 @@ come from the surviving review findings on this draft in `docs/research/phase0-r
 12. [Gwet's AC1 is not a substitute for Cohen's kappa – A comparison of basic properties — Vach & Gerke (2023), MethodsX 10:102212](https://doi.org/10.1016/j.mex.2023.102212)
 13. [Consensus and dissention: A measure of ordinal dispersion — Tastle & Wierman (2007), International Journal of Approximate Reasoning 45(3):531–545](https://www.sciencedirect.com/science/article/pii/S0888613X06001186)
 14. [`agrmt` R package — `consensus.R` source, showing `mx = mean(expand(V))`](https://rdrr.io/rforge/agrmt/src/R/consensus.R)
+
+### 2026-10-20 — van der Eijk's A is computed by the `agrmt` layer decomposition (#233)
+
+The paper [5] is still unread; the layer decomposition is taken from the `agrmt` R package's `agreement` and `patternAgreement` (CRAN `agrmt`, read 2026-10-20), which is the reference implementation the measure's users cite. Layers peel off the smallest non-zero count across the occupied levels and are weighted by their share of observations; a 0/1 pattern scores `U · (1 − (S−1)/(K−1))` with `U = ((K−2)·TU − (K−1)·TDU) / ((K−2)·(TU + TDU))`, counting 1-1-0 and 0-1-1 triples as unimodal and 1-0-1 as bimodal. One occupied level scores 1, a pattern with no counted triple 0, and fewer than three levels is undefined. `vanDerEijkA` and `disagreementIndex` in `src/core/analyses/agreement.ts` implement it, unit-tested at the corners (unanimous 1, uniform 0, perfect bimodality −1).
