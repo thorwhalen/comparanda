@@ -15,15 +15,19 @@
  * `steps[n - k - 1]` (or the input, for all of them). Once written, a decision
  * stands (`annotationHistoryProblems` refuses re-deciding), as a decision should.
  *
- * Every refusal is the affordance layer's own reason (`decideSuggestion`), so a
- * button and the write it makes cannot disagree. Whether the *host* lets this
+ * The document's refusals are the affordance layer's reasons (`decideSuggestion`),
+ * so a button and the write it makes cannot disagree; an accepted write is also
+ * held to `revisionProblems`, the check the store runs, so what is staged here
+ * is never refused later (an off-scale value, a second assertion without its
+ * `independence`). Whether the *host* lets this
  * person decide is `authorize`'s, asked by whoever calls this. Ids and times are
  * the caller's; core mints nothing and owns no clock.
  */
 import type { Analysis } from './schema/analysis.js';
 import type { Author } from './schema/provenance.js';
 import { makeAffordances, type SuggestionDecision } from './affordances.js';
-import { withAuthor } from './threads.js';
+import { withAuthor } from './author-record.js';
+import { revisionProblems } from './revision.js';
 
 /** Who decides, when, and optionally why. */
 export interface SuggestionDecider {
@@ -39,6 +43,9 @@ export function decideSuggestion(
   const may = makeAffordances(a).decideSuggestion(suggestionId, decision);
   if (!may.enabled) throw new Error(`suggestion "${suggestionId}" cannot be ${decision === 'accept' ? 'accepted' : 'declined'}: ${may.reason}`);
   const s = a.suggestions.find((x) => x.id === suggestionId)!;
+  if (decision === 'accept' && s.proposed.authorId !== s.authorId) {
+    throw new Error(`suggestion "${suggestionId}" was made by "${s.authorId}" but proposes an assertion by "${s.proposed.authorId}"; accepting it would write under someone else's name.`);
+  }
   const decided = withAuthor(a, by);
   const suggestions = decided.suggestions.map((x) => (x === s
     ? { ...x, status: decision === 'accept' ? 'accepted' as const : 'declined' as const, decidedBy: by.id, decidedAt: at, ...(note === undefined ? {} : { decisionNote: note }) }
@@ -53,7 +60,13 @@ export function decideSuggestion(
   }
   const written = { ...cell, assertions: [...cell.assertions, s.proposed] };
   const cells = index < 0 ? [...decided.cells, written] : decided.cells.map((c, i) => (i === index ? written : c));
-  return { ...decided, cells: cells as Analysis['cells'], suggestions };
+  const result = { ...decided, cells: cells as Analysis['cells'], suggestions };
+  // The store would refuse it anyway; refusing here says so before anything is staged.
+  const problems = revisionProblems(a, result);
+  if (problems.length > 0) {
+    throw new Error(`accepting suggestion "${suggestionId}" would write what the document refuses: ${problems.map((p) => p.message).join('; ')}`);
+  }
+  return result;
 }
 
 /** One decision of a bulk action, and the document as it stands after it. */

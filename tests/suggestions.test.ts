@@ -51,6 +51,17 @@ describe('decideSuggestion', () => {
   });
 });
 
+describe('an accepted write is one the store will take (review)', () => {
+  it('refuses a proposal written under another author, and one the write guard would refuse', () => {
+    const a = doc();
+    const forged = { ...a, suggestions: [{ ...a.suggestions[0]!, proposed: { ...a.suggestions[0]!.proposed, authorId: 'other' } }] };
+    expect(() => decideSuggestion(forged, 's1', 'accept', { by: OWNER, at: AT })).toThrow(/under someone else's name/);
+    // A second live assertion in a cell needs its independence recorded.
+    const scored = { ...a, cells: [{ ...a.cells[0]!, assertions: [{ id: 'old', authorId: 'other', at: AT, value: 3, justification: 'j', independence: 'independent' as const, version: 1, evidence: [] }] }] };
+    expect(() => decideSuggestion(Analysis.parse(scored), 's1', 'accept', { by: OWNER, at: AT })).toThrow(/would write what the document refuses/);
+  });
+});
+
 describe('decideSuggestions: bulk, each step undoable, never partly applied', () => {
   it('steps one decision at a time, so a caller can keep any prefix', () => {
     const ids = openSuggestionsBy(doc(), 'rev');

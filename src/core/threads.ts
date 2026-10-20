@@ -21,7 +21,8 @@ import { resolveAnchor } from './schema/anchors.js';
 import { axisGroups, groupsOf } from './schema/groups.js';
 import type { Author } from './schema/provenance.js';
 import type { EditTarget } from './affordances.js';
-import { attribution, attributions } from './identity.js';
+import { attributions } from './identity.js';
+import { withAuthor } from './author-record.js';
 
 /** Where a reader is: both ids a cell, one a header, none the analysis as a whole. */
 export interface Position {
@@ -212,25 +213,4 @@ function commentOf({ id, at, body, author }: NewComment): Comment {
 
 function requireNewId(a: Analysis, threadId: string): void {
   if (a.threads.some((t) => t.id === threadId)) throw new Error(`thread id "${threadId}" is already used in this analysis.`);
-}
-
-/**
- * The analysis with this author described, added when it is not; an existing
- * record is never overwritten. A writer whose id the document already gives to
- * a different kind of author, or one known differently well, is refused: the
- * reader sees the document's record, so writing under it would sign as them.
- */
-export function withAuthor(a: Analysis, author: Author): Analysis {
-  const known = a.authors.find((x) => x.id === author.id);
-  if (!known) return { ...a, authors: [...a.authors, author] };
-  // Who the record says made it, not only how well it is known: another model, run or principal is another author (ADR-0012, #209).
-  const vouch = (x: Author) => JSON.stringify([
-    x.kind, x.attestation?.method ?? 'unverified', x.attestation?.issuer ?? '', x.principalId ?? x.id, x.actingAs,
-    x.agent && [x.agent.name, x.agent.model, x.agent.promptVersion, x.agent.runId],
-  ]);
-  if (vouch(known) !== vouch(author)) {
-    throw new Error(`"${author.id}" is ${attribution(known)} in this analysis; a ${author.kind} identity known differently, ` +
-      'or another run or persona, cannot write as them.');
-  }
-  return a;
 }
