@@ -62,6 +62,8 @@ describe('groupInformedConsensus', () => {
   it('refuses one camp, or an author on two sides, and is a registered definition', () => {
     expect(() => groupInformedConsensus(doc(), { measure: 'score', camps: CAMPS.slice(0, 1) })).toThrow(/at least two camps/);
     expect(() => groupInformedConsensus(doc(), { measure: 'score', camps: [...CAMPS, { id: 'C', label: 'C', authorIds: ['ana'] }] })).toThrow(/one author takes one/);
+    expect(() => groupInformedConsensus(doc(), { measure: 'score', camps: [{ id: 'A', label: 'A', authorIds: ['ana'] }, { id: 'A', label: 'A2', authorIds: ['bo'] }] }))
+      .toThrow(/share an id/);
     expect(consensusAnalysis.id).toBe('group-informed-consensus');
   });
 });

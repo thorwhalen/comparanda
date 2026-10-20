@@ -30,7 +30,9 @@ import { alternativeScope, type AlternativeScopeOptions } from './scope.js';
 export const CONSENSUS_ASSUMPTIONS: readonly [string, ...string[]] = Object.freeze([
   'The camps were named by a person, author by author; nothing here grouped the raters (ADR-0011).',
   "A camp's answer on a cell is the range of values its members gave; personas count as their principal's camp.",
-  'A cell is shared when every camp\'s range overlaps every other\'s, divided when two do not, and not compared when a camp gave no value.',
+  'On an ordered criterion a camp\'s answer is the span from its lowest to its highest value, and a cell is shared when the spans of all camps overlap. The common values are those any rater gave inside that overlap.',
+  'On a nominal criterion a cell is shared only when one value was given in every camp.',
+  'A cell is divided when the camps do not share ground, and not compared when a camp gave no value.',
   'Nothing is averaged: on an ordinal criterion the range is in level order, on a nominal one it is the set of values.',
   'Superseded, consensus and withheld assertions do not take part; structurally inapplicable cells are skipped.',
 ] as const);
@@ -126,6 +128,8 @@ export function groupInformedConsensus(a: Analysis, opts: ConsensusOptions): Con
 /** Author id -> camp id, with personas following their principal. Throws on fewer than two camps or an author in two. */
 function campIndex(a: Analysis, camps: readonly Camp[]): Map<string, string> {
   if (camps.length < 2) throw new Error('group-informed consensus needs at least two camps; with one, there is nobody to disagree with.');
+  const ids = new Set(camps.map((c) => c.id));
+  if (ids.size < camps.length) throw new Error('two camps share an id; each camp is a side of its own, so their ids must differ.');
   const member = new Map<string, string>();
   for (const camp of camps) {
     for (const id of camp.authorIds) {
