@@ -8,6 +8,7 @@ export * from './screening.js';
 export * from './non-discriminating.js';
 export * from './pugh.js';
 export * from './agreement.js';
+export * from './consensus.js';
 export * from './registry.js';
 export * from './definitions.js';
 export * from './weighted-sum.js';
