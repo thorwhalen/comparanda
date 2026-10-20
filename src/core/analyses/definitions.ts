@@ -43,6 +43,7 @@ export const agreementAnalysis = /* @__PURE__ */ defineAnalysis({
 export const consensusAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'group-informed-consensus', label: 'Where the camps agree',
   run: (a, o: ConsensusOptions) => groupInformedConsensus(a, o),
+});
 export const stabilityAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'stability-trace', label: 'Between-round stability',
   run: (a, o: StabilityOptions) => stabilityTrace(a, o),
