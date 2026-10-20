@@ -58,6 +58,8 @@ export interface CellMark {
   readonly said?: string;
   /** The rater dot strip (ADR-0024): data the matrix draws, with its range-bracket form for a narrow cell. */
   readonly strip?: RaterStrip;
+  /** The strip's narrowest form (ADR-0024): its step of the disagreement ramp, drawn when even the bracket does not fit. */
+  readonly ramp?: SwatchId;
 }
 
 /** One line of a legend: a sample, what it means, and how many shown cells carry it. */

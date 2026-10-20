@@ -84,6 +84,9 @@ const anonymous = () => 'anonymous';
 
 /** The default encoding, and the fallback when the chosen one cannot draw (ADR-0032 clause 1). */
 export const TEXT_ONLY = textOnly.id;
+/** The two forms ADR-0024 asks to be one keystroke apart. */
+const STRIP = 'disagreement';
+const SPREAD = 'disagreement-spread';
 
 /** What the component renders from: `MatrixProps` resolved, plus the edits the source allows. */
 export interface MatrixViewProps {
@@ -124,6 +127,11 @@ export interface MatrixViewProps {
    * to announce. Without it the matrix offers no reordering.
    */
   onReorder?: (state: ViewState, said: string) => void;
+  /**
+   * The reader switched encoding with one key (ADR-0024: the strip and the ramp,
+   * "S"): the encoding's id, and the sentence to announce. Without it, no switch.
+   */
+  onEncodingChange?: (encoding: string, said: string) => void;
   /** The latest sentence for the polite live region: a move, a seriation, a refusal. */
   announcement?: string;
   /**
@@ -166,7 +174,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, onReorder, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, onReorder, onEncodingChange, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -233,6 +241,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     analysis, measure, vocabulary, read, readMeasure, stripOf, inapplicable: affordances.inapplicable,
     alternatives: alternatives.map((e) => e.id), criteria: criteria.map((e) => e.id),
   });
+  /** What "S" switches to: the other of the strip and the ramp, when the reader asked for one and both are registered. */
+  const switchTo = encoding === STRIP && encodings.get(SPREAD) ? SPREAD : encoding === SPREAD && encodings.get(STRIP) ? STRIP : undefined;
 
   // The foreground channels (ADR-0028): a glyph on every missing cell, whatever the
   // encoding; a hatch only where the active encoding declares one, at a level it declares.
@@ -326,7 +336,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         <span class="comparanda-shown">{text}</span>
         {hatch && <Hatch level={hatch} />}
         {mark.badge && <span class="comparanda-badge" aria-hidden="true">{mark.badge}</span>}
-        {mark.strip && <Strip strip={mark.strip} />}
+        {mark.strip && <Strip strip={mark.strip} ramp={mark.ramp} />}
         {said && <span class="comparanda-sr">{said}</span>}
         <ThreadMark count={openHere.get(`${altId}\u0000${critId}`)} />
       </td>
@@ -481,6 +491,12 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       onPanelChange(false);
       return;
     }
+    // One key between the strip and the ramp (ADR-0024's interim position), when both are registered.
+    if ((event.key === 's' || event.key === 'S') && !event.ctrlKey && switchTo && onEncodingChange) {
+      event.preventDefault();
+      onEncodingChange(switchTo, switchTo === SPREAD ? 'Showing disagreement as a ramp. S switches back to the rater dot strip.' : 'Showing the rater dot strip. S switches back to the disagreement ramp.');
+      return;
+    }
     const rtl = getComputedStyle(table).direction === 'rtl';
     const to = grid.step(r, c, event.key, { ctrl: event.ctrlKey, rtl });
     if (!to) return;
@@ -542,6 +558,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       <p class="comparanda-keys" id={helpId}>
         Arrow keys move between cells; Home and End go to the start and end of a row; Ctrl+Home to the top-left corner and Ctrl+End to the last cell.
         {onPanelChange && ' Enter on a cell opens its details, which follow you onto the headers; Escape closes them.'}
+        {switchTo && onEncodingChange && ' S switches between the rater dot strip and the disagreement ramp.'}
         {onReorder && ' On a header, Space or Enter picks it up to move it with the arrows or Tab, and Shift+F10 opens a move menu.'}
       </p>
       {reorder && (

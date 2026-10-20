@@ -108,7 +108,7 @@ describe('the disagreement encoding', () => {
     const p = marked(contextOf(relocation));
     const m = p.mark('berlin', 'winter-daylight');
     expect(m.strip?.slots.map((x) => x.count)).toEqual([2, 0, 1, 0, 0]);
-    expect(m.said).toBe('. 3 raters: 1, 1, 3.');
+    expect(m.said).toMatch(/^\. 3 raters: 1, 1, 3\. Disagreement \d\.\d\d \(A -?\d\.\d\d, n 3\)\.$/);
     // A cell the strip has nothing to say about is unmarked, and a nominal or ranged criterion is left alone.
     expect(p.mark('berlin', 'rent')).toEqual({});
     expect(p.mark('berlin', 'climate-type')).toEqual({});

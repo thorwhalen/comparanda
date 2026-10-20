@@ -163,3 +163,16 @@ one recorded above.
 - **A filled dot is one of a set of independent raters; a ring is not** (a draw of one source, or a rung below `independent`), and in the range bracket a dashed bar is the same distinction. The difference is a shape, so it survives forced colours and print.
 - **Width chooses the form with a container query**, not a script: dots, then the range bracket (ends and modes marked, nothing at a mean), then the cell's text alone. The two thresholds are `PreparedEncoding.strip` in `em` of the cell's text, registered with the encoding (`STRIP_THRESHOLDS`: 3 em and 1.2 em).
 - **The third form is the text, for now.** The step down to the `disagreement-spread` ramp, and the one-keystroke switch between strip and ramp, wait for the per-cell `disagreementIndex`, which needs the van der Eijk layer decomposition ADR-0022 left as open question 9.
+
+### 2026-10-20 — The ramp is drawn, is the strip's narrowest form, and is one key away
+
+- **Status:** accepted
+- **Date:** 2026-10-20
+- **Deciders:** Thor Whalen
+
+With `disagreementIndex` in core (#233), the obligations the previous amendment deferred are met (#258):
+
+- **`disagreement-spread` draws** on the shared five-step sequential ramp over `(1 − A) / 2` alone, 0 the lightest step and 1 the darkest (`spreadStep`). Every cell that shows it says `Disagreement 0.42 (A 0.16, n 5)` after its ratings, so A is never shown without `n`. A cell with fewer than two ratings, or on fewer than three levels, has no A and is left uncoloured.
+- **`consensus-suppressed` draws** as the parameter change this ADR asked for: one body (`suppressedBy`) serves both blends, and the disagreement index takes uncertainty's place, read in three agreement layers (low, medium, high). The corners are unit-tested: unanimity keeps the value's own leaf with no hatch, perfect bimodality recedes to the root with the densest hatch.
+- **The strip's third form is the ramp, not the text.** Below `hiddenBelow` the strip draws a bar in the cell's ramp step (outlined, so it keeps a shape in forced colours and print), and the cell's words still carry every rating and the index.
+- **"S" switches between `disagreement` and `disagreement-spread`** on any grid position, when both are registered; the switch is announced in the polite live region, reported through `onViewChange` as the view's `encoding`, and yields to a host that says something new about the encoding.
