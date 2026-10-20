@@ -11,7 +11,7 @@ import { Analysis } from '../../src/core/schema/analysis.js';
 import { startThread } from '../../src/core/threads.js';
 import { reviseCriterion } from '../../src/core/criteria-revision.js';
 import { applyOrder, initialViewState, setDetailPanel, setFocus, type ViewState } from '../../src/core/view-state.js';
-import { agentIdentity, anonymousIdentity, inMemoryAnalysisSource, versionedAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
+import { agentIdentity, anonymousIdentity, inMemoryAnalysisSource, markVersioned, versionedAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
 import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
@@ -115,14 +115,14 @@ describe('threads in the panel', () => {
   it('a write that lost a race to another contributor is a conflict, not an overwrite (#109)', async () => {
     const source = versionedAnalysisSource(relocation);
     // Another contributor writes between this reader's read and write.
-    const racing: typeof source = {
+    const racing: typeof source = markVersioned({
       ...source,
       getVersioned: async (id) => {
         const read = await source.getVersioned(id);
         await source.update(id, { subject: { ...read.item.subject, question: 'changed under you?' } });
         return read;
       },
-    };
+    });
     mount({ analysis: relocation, measure: 'score', source: racing, view: at(undefined) });
     await say(/Start a thread on the analysis/, 'overall: are we missing a criterion?', 'Start thread');
     expect(threads().querySelector('[role="alert"]')!.textContent).toContain('someone else changed this analysis');
