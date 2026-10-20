@@ -551,7 +551,10 @@ export const disagreement = /* @__PURE__ */ defineEncoding({
     return {
       mark: (alt, crit) => {
         const strip = strips.get(`${alt}\u0000${crit}`);
-        return strip ? { strip, said: `. ${strip.label}` } : NO_MARK;
+        if (!strip) return NO_MARK;
+        const d = stripDisagreement(strip);
+        // Narrowest, the strip is a step of the ramp, and the index is said with A and n wherever it is shown.
+        return d ? { strip, ramp: spreadStep(d.index), said: `. ${withSpread(strip.label, d)}` } : { strip, said: `. ${strip.label}` };
       },
       strip: STRIP_THRESHOLDS,
       legend: {
@@ -562,7 +565,7 @@ export const disagreement = /* @__PURE__ */ defineEncoding({
         ],
         notes: [
           'Each level of the scale has a fixed place across the cell; dots at the same level stack. Nothing is drawn at an average.',
-          'A narrower cell shows a bracket from the lowest to the highest rating, with the most common rating marked, and a narrower one only its text.',
+          'A narrower cell shows a bracket from the lowest to the highest rating, with the most common rating marked, and a narrower one a bar shaded by how far the ratings disagree, as the disagreement ramp shades it.',
           'A cell with a single assertion shows no strip. Every cell lists its ratings in words.',
           ...note(count('raters'), 'independent raters'),
           ...note(count('draws'), 'draws of one source, not raters'),
@@ -572,6 +575,11 @@ export const disagreement = /* @__PURE__ */ defineEncoding({
     };
   },
 });
+
+/** A strip's words, then its disagreement index, never without A and the count (ADR-0022). */
+function withSpread(label: string, d: { index: number; a: number; n: number }): string {
+  return `${/[.!?]$/.test(label) ? label : `${label}.`} Disagreement ${d.index.toFixed(2)} (A ${d.a.toFixed(2)}, n ${d.n}).`;
+}
 
 /** A cell's disagreement index as a step of the sequential ramp: 0 (unanimity) the lightest, 1 (bimodality) the darkest. */
 export function spreadStep(index: number): SwatchId {
@@ -605,7 +613,7 @@ export const disagreementSpread = /* @__PURE__ */ defineEncoding({
       if (!strip || !d) continue;
       const swatch = spreadStep(d.index);
       counts.set(swatch, (counts.get(swatch) ?? 0) + 1);
-      marks.set(`${alt}\u0000${crit}`, { swatch, said: `. ${strip.label}. Disagreement ${d.index.toFixed(2)} (A ${d.a.toFixed(2)}, n ${d.n})` });
+      marks.set(`${alt}\u0000${crit}`, { swatch, said: `. ${withSpread(strip.label, d)}` });
     }
     if (marks.size === 0) return { unavailable: 'no shown cell holds two or more ratings on a scale of three or more levels, so there is no disagreement to show.' };
     const word = ['Unanimous or nearly', 'Little disagreement', 'Some disagreement', 'Much disagreement', 'Split, or nearly'];

@@ -283,7 +283,7 @@ describe('the two drawn over the disagreement index (#258)', () => {
   it('ramp: unanimity takes the lightest step and bimodality the darkest, with A and n said', () => {
     const p = prepared(disagreementSpread, withStrips(doc));
     expect(p.mark('unanimous', 'c')).toMatchObject({ swatch: 'seq-1' });
-    expect(p.mark('unanimous', 'c').said).toMatch(/Disagreement 0\.00 \(A 1\.00, n 4\)/);
+    expect(p.mark('unanimous', 'c').said).toMatch(/\. Disagreement 0\.00 \(A 1\.00, n 4\)\.$/);
     expect(p.mark('bimodal', 'c')).toMatchObject({ swatch: 'seq-5' });
     expect(p.mark('bimodal', 'c').said).toMatch(/Disagreement 1\.00 \(A -1\.00, n 4\)/);
     // One rating: no set to disagree, so nothing drawn.

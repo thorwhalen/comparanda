@@ -105,7 +105,7 @@ const PAD = 3.5;
  * a shape and survives forced colors and print. Both are `aria-hidden`: the
  * cell's hidden text is the exact multiset.
  */
-export function Strip({ strip }: { strip: RaterStrip }) {
+export function Strip({ strip, ramp }: { strip: RaterStrip; ramp?: string | undefined }) {
   const k = strip.slots.length;
   const independent = strip.reading === 'raters';
   const base = PAD + strip.tallest * ROW;
@@ -126,6 +126,7 @@ export function Strip({ strip }: { strip: RaterStrip }) {
         <path d={`M${x(from)} 8h${x(to) - x(from)}M${x(from)} 5.5v5M${x(to)} 5.5v5`} stroke-width="1.4" stroke-dasharray={independent ? undefined : '2.4 1.8'} />
         {modes.map((m) => <path key={m} d={`M${x(m)} 1.2l2.4 3.6h-4.8z`} fill="currentColor" stroke="none" />)}
       </svg>
+      {ramp && <span class="comparanda-swatch comparanda-strip-ramp" data-swatch={ramp} aria-hidden="true" />}
     </span>
   );
 }

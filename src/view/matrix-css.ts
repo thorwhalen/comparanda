@@ -85,6 +85,7 @@ export function stripCss({ bracketBelow, hiddenBelow }: { bracketBelow: number; 
 }
 @container (max-width: ${hiddenBelow}em) {
   .comparanda-matrix .comparanda-strip-bracket { display: none; }
+  .comparanda-matrix .comparanda-swatch.comparanda-strip-ramp { display: block; }
 }`;
 }
 
@@ -153,6 +154,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 .comparanda-matrix .comparanda-strip-box { display: block; container-type: inline-size; inline-size: calc(var(--k) * 0.8em); max-inline-size: 100%; margin-block-start: 0.15em; }
 .comparanda-matrix .comparanda-strip-dots, .comparanda-matrix .comparanda-strip-bracket { display: block; inline-size: 100%; block-size: auto; }
 .comparanda-matrix .comparanda-strip-bracket { display: none; }
+.comparanda-matrix .comparanda-swatch.comparanda-strip-ramp { display: none; min-width: 0; padding: 0; inline-size: 100%; block-size: 0.7em; box-shadow: inset 0 0 0 1px currentColor; }
 .comparanda-matrix td .comparanda-hatch { margin-inline-start: 0.4em; }
 .comparanda-matrix .comparanda-key { list-style: none; padding: 0; margin: 0 0 0.25em; display: flex; flex-wrap: wrap; gap: 0.25em 1em; }
 .comparanda-matrix .comparanda-forced-only, .comparanda-matrix .comparanda-print-only { display: none; }

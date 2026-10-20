@@ -161,7 +161,7 @@ export function mountMatrix(
    * `view`, each part until the host gives a `view` that says something new
    * about that part: a host that keeps only focus does not close the panel.
    */
-  let moved: { focus?: Session['focus']; panel?: boolean; orders?: Pick<ViewState, 'alternativeOrder' | 'criterionOrder'> } | undefined;
+  let moved: { focus?: Session['focus']; panel?: boolean; orders?: Pick<ViewState, 'alternativeOrder' | 'criterionOrder'>; encoding?: string } | undefined;
   /** The last sentence for the live region, and how many have been said, so a repeat is heard again. */
   let announcement: string | undefined;
   let said = 0;
@@ -224,6 +224,14 @@ export function mountMatrix(
     // Said, but nothing moved (a pick-up, a put-down, a refusal): no new arrangement to lay over the host's or report.
     if (same) return moveSession({});
     moveSession({ orders: { alternativeOrder: state.alternativeOrder, criterionOrder: state.criterionOrder } });
+    current.onViewChange?.(shown);
+  };
+  /** The reader switched encoding by key (ADR-0024): laid over the host's until the host says something new about it. */
+  const changeEncoding = (id: string, sentence: string) => {
+    if (destroyed) return;
+    said += 1;
+    announcement = said % 2 === 0 ? `${sentence}\u00a0` : sentence;
+    moveSession({ encoding: id });
     current.onViewChange?.(shown);
   };
   /** Open or close the detail panel; `into` moves focus to its heading once it is drawn. */
@@ -310,15 +318,17 @@ export function mountMatrix(
     shown = moved && 'focus' in moved ? setFocus(base, moved.focus) : base;
     if (moved?.panel !== undefined) shown = setDetailPanel(shown, moved.panel);
     if (moved?.orders) shown = { ...shown, ...moved.orders };
+    if (moved?.encoding) shown = { ...shown, encoding: moved.encoding };
     const resolved: MatrixViewProps = {
       analysis,
       measure,
       vocabulary: vocabulary ?? vocabularyOf(analysis),
-      encoding: encoding ?? view?.encoding ?? TEXT_ONLY,
+      encoding: moved?.encoding ?? encoding ?? view?.encoding ?? TEXT_ONLY,
       view: shown,
       onFocusChange: moveFocus,
       onPanelChange: changePanel,
       onReorder: reorder,
+      onEncodingChange: changeEncoding,
       ...(current.notice ? { notice: current.notice } : {}),
       actor: () => actor,
       ...(arrange ? { arrange } : {}),
@@ -460,6 +470,7 @@ export function mountMatrix(
         if (nextFocus.focus !== givenFocus.focus) delete kept.focus;
         if (nextFocus.panel !== givenFocus.panel) delete kept.panel;
         if (nextFocus.orders !== givenFocus.orders) delete kept.orders;
+        if (nextFocus.encoding !== givenFocus.encoding || 'encoding' in next) delete kept.encoding;
         moved = kept;
       }
       givenFocus = nextFocus;
@@ -537,7 +548,7 @@ function checked(props: MountMatrixProps): MountMatrixProps {
 }
 
 /** What a given `view` says about the reader's position (comparable by value, blind to key order) and the panel. */
-function sessionIn(view: unknown): { focus: string; panel: boolean; orders: string } {
+function sessionIn(view: unknown): { focus: string; panel: boolean; orders: string; encoding: string } {
   const v = view as ViewState | undefined;
   const focus = v?.session?.focus;
   return {
@@ -545,6 +556,7 @@ function sessionIn(view: unknown): { focus: string; panel: boolean; orders: stri
     panel: v?.session?.detailPanelOpen === true,
     // The host's arrangement, by value: a re-passed view keeps the reader's moves, a new order replaces them.
     orders: JSON.stringify([v?.alternativeOrder ?? null, v?.criterionOrder ?? null]),
+    encoding: v?.encoding ?? '',
   };
 }
 
