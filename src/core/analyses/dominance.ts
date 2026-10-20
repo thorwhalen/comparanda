@@ -611,7 +611,8 @@ export interface BlankWorthFilling {
 /**
  * The ranked blanks, with the disclosure accounting every analysis result carries
  * (ADR-0021): cells withheld from this reader are not blanks they can fill, so
- * they are skipped from `blanks` and counted in `widenedByDisclosure` instead.
+ * they are skipped from `blanks`, and `widenedByDisclosure` counts every withheld
+ * cell in scope (as `dominance` does), whether or not it would have ranked.
  */
 export interface BlanksWorthFillingResult {
   blanks: BlankWorthFilling[];
