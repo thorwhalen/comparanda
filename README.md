@@ -17,6 +17,23 @@ It is deliberately two separable things:
 Either is usable without the other. The schema is also the contract that **rubricator** — the
 agent side — writes against.
 
+## In a few lines
+
+```ts
+import { Analysis, validateAnalysis } from 'comparanda';
+import { mountMatrix } from 'comparanda/view';
+
+const { problems } = validateAnalysis(json);        // every problem names its rule and its ADR
+const analysis = Analysis.parse(json);
+mountMatrix(document.getElementById('matrix')!, { analysis, measure: 'score' });
+```
+
+```sh
+npx comparanda build analysis.json --out analysis.html   # one offline HTML file you can mail
+```
+
+`examples/` holds three invented analyses to try it on.
+
 ## Why it exists
 
 Comparison tables are where consequential decisions actually get made, and they are usually made
@@ -27,7 +44,7 @@ applicable" or "nobody has looked yet".
 `comparanda` takes a position on each of those:
 
 - **No forced aggregation.** A weighted total is one optional analysis among several, never the
-  default. The shape of a row is the finding.
+  default. The shape of a row is the finding. As the UK government's MCA manual puts it, "in a basic form of MCA this performance matrix may be the final product of the analysis" ([DCLG, *Multi-criteria analysis: a manual*, 2009, §4.3.2](https://researchonline.lse.ac.uk/id/eprint/12761/1/Multi-criteria_Analysis.pdf)).
 - **Uncertainty is data.** Values carry confidence, and the view can encode value and confidence
   together so a high score on thin evidence visibly recedes instead of shouting.
 - **Absence is data.** A missing value is qualified — not applicable, not yet assessed, unknown,
@@ -173,13 +190,15 @@ An analysis with validation errors is refused, with every error named. `vite`, `
 
 **Zero network is enforced where a browser can enforce it, and checked before the file is written** (ADR-0013). The page carries a Content-Security-Policy meta tag with `connect-src 'none'`, so `fetch`, XHR, `EventSource`, WebSocket and `sendBeacon` fail in the reader's browser rather than merely being absent from the code. Before writing, `comparanda build` scans the page's code for network APIs, then opens the file from `file://` in Chromium as built and under every encoding the page registers, focuses, presses and clicks every cell, runs a simulated minute on, and refuses the page on any console error, uncaught error, policy violation, request, navigation, new window or WebRTC connection. The last two are refused by the check, not by the policy: no CSP governs them. A `fetch()` inside a cell renderer only fires when that renderer runs, which is why the check drives the view instead of only loading it. On a machine with no Chromium, `--check static` (or `check: 'static'`) runs the scan alone; the policy is in the page either way.
 
+## The schema, for the agent side
+
+An analysis is JSON. Its contract is [`schema/comparanda.v1.json`](./schema/comparanda.v1.json) (JSON Schema, emitted from the Zod schema by `pnpm emit-schema`), with the extensible vocabularies in [`schema/vocabularies.v1.json`](./schema/vocabularies.v1.json); [docs/schema-v1.md](./docs/schema-v1.md) says what v1 freezes and why. A producer such as rubricator validates against the JSON Schema, then runs `validateAnalysis` for the rules a JSON Schema cannot state: no bare nulls, attributed assertions, an admitted value on every scale. Each problem it reports carries a stable `ruleId`, the ADR that decided the rule, and a fix. Breaking the schema is a coordinated change across both repositories.
+
 ## Status
 
-Pre-implementation. This repository currently contains the specification — a domain model, a set
-of architecture decision records, and research briefs for the questions that should be settled
-with evidence rather than taste.
+Implemented and tested: the schema and its validator, the write-path guards, the analyses (dominance, screening, Pugh, agreement, seriation, and the opt-in weighted sum), the matrix view under its accessibility gate, and the standalone build. **Not yet on npm**: until the first publish, build from a clone (`pnpm install && pnpm build`).
 
-**Start at [BRIEF.md](./BRIEF.md).**
+The decisions are in [docs/adr/](./docs/adr/README.md) (indexed by theme), the vocabulary in [docs/domain-model.md](./docs/domain-model.md), and the original brief in [BRIEF.md](./BRIEF.md).
 
 ## License
 
