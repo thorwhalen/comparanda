@@ -46,6 +46,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
 import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
 import { cellIndex, cellKey, makeCellReader, unknownMeasure, type Analysis } from '../core/schema/analysis.js';
+import type { Vouched } from '../core/identity.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { Measurement } from '../core/schema/measurement.js';
 import type { ViewerContext } from '../core/schema/redaction.js';
@@ -95,6 +96,8 @@ export interface MatrixViewProps {
   standing?: (check: CitationCheck | undefined) => CheckStanding;
   /** Who is looking, and when: what an open anonymous round hides (ADR-0023). */
   viewer?: ViewerContext;
+  /** Which authors' attestations the host performed (#263). */
+  vouched?: Vouched | undefined;
   /** `editAffordances` over the source: the only place a view may learn what it can offer. */
   affordances: Affordances;
   /**
@@ -153,7 +156,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, affordances, onFocusChange, onPanelChange, threadWrites, onReorder, announcement, notice, actor = anonymous, arrange }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, onReorder, announcement, notice, actor = anonymous, arrange }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -519,7 +522,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           <button type="button" onClick={notice.onAcknowledge}>I understand</button>
         </div>
       )}
-      <OrphanTray analysis={analysis} />
+      <OrphanTray analysis={analysis} vouched={vouched} />
       <RefusedEdits
         analysis={analysis} measure={measure} affordances={affordances}
         rows={rows.entries} columns={columns.entries} transposed={transposed}
@@ -534,7 +537,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         <div class="comparanda-arrange">
           {(['alternatives', 'criteria'] as const).map((axis) => (
             <p key={axis} data-order={axis}>
-              {describeOrder(analysis, view, axis)}
+              {describeOrder(analysis, view, axis, { vouched })}
               {arrange && ' '}
               {arrange && (
               <button
@@ -630,7 +633,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       </div>
       {panelOpen && onPanelChange && (
         <DetailPanel
-          analysis={analysis} measure={measure} vocabulary={vocabulary} standing={standing} viewer={viewer}
+          analysis={analysis} measure={measure} vocabulary={vocabulary} standing={standing} viewer={viewer} vouched={vouched}
           // Where the grid's stop actually is: a hidden or removed id has fallen back to its header.
           focus={grid.focusAt(at.r, at.c)}
           headingId={`${helpId}-panel`} affordances={affordances} writes={threadWrites}

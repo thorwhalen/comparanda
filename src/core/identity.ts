@@ -80,9 +80,16 @@ export function attribution(
  * describes it, and by its id when it does not -- never dropped. `vouched`
  * says which authors' attestations the host itself performed; none by default.
  */
+/**
+ * Whether the host itself performed `author`'s attestation (a host-session
+ * sign-in, say), so it reads as attested rather than as a claim (#243, #263).
+ * Supplied by the host; the document cannot vouch for itself.
+ */
+export type Vouched = (author: Author) => boolean;
+
 export function attributions(
   authors: readonly Author[],
-  { vouched = () => false }: { vouched?: (author: Author) => boolean } = {},
+  { vouched = () => false }: { vouched?: Vouched | undefined } = {},
 ): Map<string, string> {
   const names = new Map(authors.map((a) => [a.id, a.displayName]));
   return new Map(authors.map((a) => [a.id, attribution(a, {

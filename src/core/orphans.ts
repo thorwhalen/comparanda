@@ -13,7 +13,7 @@ import type { Analysis } from './schema/analysis.js';
 import { orphanedSuggestionsOf, orphanedThreadsOf, type AnchorResolution } from './schema/anchors.js';
 import type { Anchor } from './schema/annotations.js';
 import { aliasesOf } from './schema/structure.js';
-import { attributions } from './identity.js';
+import { attributions, type Vouched } from './identity.js';
 
 /** One orphaned annotation, as the tray shows it. */
 export interface OrphanEntry {
@@ -28,8 +28,8 @@ export interface OrphanEntry {
 }
 
 /** Every orphaned thread, then every orphaned suggestion, resolved and decided ones included. */
-export function describeOrphans(a: Analysis): OrphanEntry[] {
-  const names = attributions(a.authors);
+export function describeOrphans(a: Analysis, { vouched }: { vouched?: Vouched | undefined } = {}): OrphanEntry[] {
+  const names = attributions(a.authors, { vouched });
   const who = (id: string | undefined) =>
     id === undefined ? 'someone' : names.get(id) ?? `an author this analysis does not describe ("${id}")`;
   const threads = orphanedThreadsOf(a).map(({ thread: t, resolution }): OrphanEntry => ({

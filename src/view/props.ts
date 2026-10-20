@@ -17,6 +17,7 @@
  * over a source whose `update` is that callback.
  */
 import type { Authorize } from '../core/affordances.js';
+import type { Vouched } from '../core/identity.js';
 import type { Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { MissingnessVocabulary } from '../core/schema/missingness.js';
@@ -53,6 +54,14 @@ export interface MatrixProps {
    * and clock when the caller gives none; a pure `Matrix` given none hides nothing.
    */
   viewer?: ViewerContext;
+  /**
+   * Which authors' attestations the host itself performed (a sign-in this host
+   * ran), injected because the document cannot vouch for itself (#263). Those
+   * read as attested; every other attestation reads as a claim. Default: none.
+   * It is asked per author id: vouching for a persona says the host ran that
+   * record's check, not that the principal is acting as the persona.
+   */
+  vouched?: Vouched;
 }
 
 /** What `mountMatrix` takes: the props contract, plus the ports it follows and edits through. */

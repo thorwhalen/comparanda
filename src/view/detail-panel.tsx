@@ -23,8 +23,8 @@ import type { Analysis } from '../core/schema/analysis.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { Measurement } from '../core/schema/measurement.js';
 import type { MissingnessVocabulary } from '../core/schema/missingness.js';
-import { attribution } from '../core/identity.js';
-import type { Independence } from '../core/schema/provenance.js';
+import { attribution, type Vouched } from '../core/identity.js';
+import type { Author, Independence } from '../core/schema/provenance.js';
 import type { ViewerContext } from '../core/schema/redaction.js';
 import { aliasesOf, measurementFor } from '../core/schema/structure.js';
 import type { Session } from '../core/view-state.js';
@@ -41,6 +41,8 @@ export interface DetailPanelProps {
   standing?: ((check: CitationCheck | undefined) => CheckStanding) | undefined;
   /** Who is looking, and when: an author an open anonymous round hides is not shown (ADR-0023). */
   viewer?: ViewerContext | undefined;
+  /** Which authors' attestations the host performed (#263). */
+  vouched?: Vouched | undefined;
   /** The close button's action. */
   onClose: () => void;
   /** `Escape` inside the panel: back to the grid, the panel left open. */
@@ -110,14 +112,14 @@ export function DetailPanel(props: DetailPanelProps) {
             ? <CriterionSection measurement={measurementFor(criterion, props.measure)} criterion={criterion} />
             : <p>{analysis.subject.question}</p>}
       <Threads
-        analysis={analysis} measure={props.measure} affordances={props.affordances} writes={props.writes} idBase={headingId}
+        analysis={analysis} measure={props.measure} affordances={props.affordances} writes={props.writes} idBase={headingId} vouched={props.vouched}
         position={{ alternativeId: alternative?.id, criterionId: criterion?.id }}
       />
     </aside>
   );
 }
 
-function CellSection({ analysis, measure, vocabulary, standing, viewer, alternativeId, criterionId }: DetailPanelProps & { alternativeId: string; criterionId: string }) {
+function CellSection({ analysis, measure, vocabulary, standing, viewer, vouched, alternativeId, criterionId }: DetailPanelProps & { alternativeId: string; criterionId: string }) {
   const d = cellDetail(analysis, alternativeId, criterionId, measure, { vocabulary, standing, viewer });
   const { reduced, absence } = d;
   const shown = reduced?.refused !== undefined
@@ -143,12 +145,12 @@ function CellSection({ analysis, measure, vocabulary, standing, viewer, alternat
       {d.set.n > 1 && <p data-detail="set">{d.set.label}</p>}
       {d.distribution && <Distribution distribution={d.distribution} />}
       <h3>{live.length === 0 ? 'No assertions recorded' : `Assertions (${live.length})`}</h3>
-      {live.length > 0 && <ol class="comparanda-assertions">{live.map((x) => <AssertionItem key={x.assertion.id} detail={x} />)}</ol>}
+      {live.length > 0 && <ol class="comparanda-assertions">{live.map((x) => <AssertionItem key={x.assertion.id} detail={x} vouched={vouched} />)}</ol>}
       {superseded.length > 0 && (
         <>
           <h3>{`Superseded (${superseded.length}), kept for the record`}</h3>
           <ol class="comparanda-assertions">{superseded.map((x) => (
-            <AssertionItem key={x.assertion.id} detail={x} replacedBy={d.assertions.find((y) => y.assertion.id === x.assertion.supersededBy)} />
+            <AssertionItem key={x.assertion.id} detail={x} vouched={vouched} replacedBy={d.assertions.find((y) => y.assertion.id === x.assertion.supersededBy)} />
           ))}</ol>
         </>
       )}
@@ -166,12 +168,13 @@ function Absence({ absence }: { absence: NonNullable<ReturnType<typeof cellDetai
   );
 }
 
-function AssertionItem({ detail, replacedBy }: { detail: AssertionDetail; replacedBy?: AssertionDetail | undefined }) {
+function AssertionItem({ detail, replacedBy, vouched = () => false }: { detail: AssertionDetail; replacedBy?: AssertionDetail | undefined; vouched?: Vouched | undefined }) {
   const { assertion: s, author } = detail;
+  const named = (who: Author) => attribution(who, { vouched: vouched(who) });
   const who = detail.authorHidden
     ? 'Author hidden until the round closes'
     : author
-      ? attribution(author, { principal: detail.principal })
+      ? attribution(author, { principal: detail.principal, vouched: vouched(author) })
       : `An author this analysis does not describe (“${s.authorId}”)`;
   const provenance = [
     s.independence ? INDEPENDENCE_SAID[s.independence] : 'independence not recorded',
@@ -182,7 +185,7 @@ function AssertionItem({ detail, replacedBy }: { detail: AssertionDetail; replac
   return (
     <li data-assertion={s.id} data-superseded={detail.superseded ? 'true' : undefined}>
       <p class="comparanda-assertion-head">
-        {detail.superseded && `Superseded${replacedBy ? ` by ${(replacedBy.authorHidden ? 'someone' : replacedBy.author ? attribution(replacedBy.author) : replacedBy.assertion.authorId)}'s ${replacedBy.assertion.value !== undefined && !replacedBy.withheldFromReader ? String(replacedBy.assertion.value) : 'assertion'}` : ''}: `}
+        {detail.superseded && `Superseded${replacedBy ? ` by ${(replacedBy.authorHidden ? 'someone' : replacedBy.author ? named(replacedBy.author) : replacedBy.assertion.authorId)}'s ${replacedBy.assertion.value !== undefined && !replacedBy.withheldFromReader ? String(replacedBy.assertion.value) : 'assertion'}` : ''}: `}
         <strong>{detail.withheldFromReader ? 'Withheld from you' : s.value !== undefined ? String(s.value) : 'No value'}</strong>
         {` — ${who}, ${s.at}`}
       </p>

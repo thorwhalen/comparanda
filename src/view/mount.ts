@@ -102,7 +102,7 @@ function withoutSource(a: Affordances): Affordances {
 
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
-  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'source', 'authorize', 'onViewChange', 'identity', 'notice',
+  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'vouched', 'source', 'authorize', 'onViewChange', 'identity', 'notice',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
 /** Which assertions' authors the rounds hide from `viewer`, as a string to compare: equal strings, equal view. */
@@ -297,6 +297,7 @@ export function mountMatrix(
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
         : withoutSource(editAffordances(NO_SOURCE, analysis, authorize ? { authorize } : {})),
       ...(standing ? { standing } : {}),
+      ...(current.vouched ? { vouched: current.vouched } : {}),
       // The caller's, else the reader the identity names at the moment drawn: an outside reader, if no one has said who they are.
       viewer,
     };
@@ -483,6 +484,9 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   }
   if (props.identity !== undefined && typeof props.identity?.current !== 'function') {
     throw new TypeError(`props.identity must be an IdentityProvider ({ current(): Promise<Author> }), e.g. anonymousIdentity(); got ${describe(props.identity)}.`);
+  }
+  if (props.vouched !== undefined && typeof props.vouched !== 'function') {
+    throw new TypeError(`props.vouched must be a function (author) => boolean; got ${describe(props.vouched)}.`);
   }
   if (props.onViewChange !== undefined && typeof props.onViewChange !== 'function') {
     throw new TypeError(`props.onViewChange must be a function (view) => void; got ${describe(props.onViewChange)}.`);

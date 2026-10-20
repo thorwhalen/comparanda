@@ -19,7 +19,7 @@
  * shown. A comment edit is recorded only as `editedAt`: the document keeps no
  * earlier wording and no editor, which this record cannot invent (#195).
  */
-import { attributions } from './identity.js';
+import { attributions, type Vouched } from './identity.js';
 import type { Analysis } from './schema/analysis.js';
 import { assertionVisibility, redactForViewer, type AssertionVisibility, type ViewerContext } from './schema/redaction.js';
 import type { ScalarValue } from './schema/values.js';
@@ -59,6 +59,8 @@ export interface ActivityEntry {
 export interface ActivityOptions {
   /** Only what happened after this moment (exclusive): "what changed since I last looked". */
   since?: string | undefined;
+  /** Which authors' attestations the host performed (see `attributions`). */
+  vouched?: Vouched | undefined;
 }
 
 const time = (iso: string) => {
@@ -70,8 +72,8 @@ const time = (iso: string) => {
  * Everything that happened in the analysis, oldest first, as `viewer` may see it.
  * Equal moments keep the document's order (assertions by cell, then threads).
  */
-export function activityRecord(a: Analysis, viewer: ViewerContext, { since }: ActivityOptions = {}): ActivityEntry[] {
-  const names = attributions(a.authors);
+export function activityRecord(a: Analysis, viewer: ViewerContext, { since, vouched }: ActivityOptions = {}): ActivityEntry[] {
+  const names = attributions(a.authors, { vouched });
   const label = {
     alternative: new Map(a.alternatives.map((x) => [x.id, x.label])),
     criterion: new Map(a.criteria.map((x) => [x.id, x.label])),
