@@ -26,6 +26,8 @@ const SAMPLE_FRACTION = 0.9;
  * scrolled out of view are cropped.
  */
 export async function paintedColour(cell: Element): Promise<Rgb8> {
+  // A tooltip shown for wherever the pointer rests (#95) can sit over the cell: it is not the cell's fill.
+  document.querySelectorAll<HTMLElement>('[role="tooltip"]').forEach((t) => { t.style.visibility = 'hidden'; });
   const { base64 } = await page.elementLocator(cell).screenshot({ base64: true });
   const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${base64}`)).blob());
   const canvas = document.createElement('canvas');

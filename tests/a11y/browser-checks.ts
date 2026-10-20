@@ -419,7 +419,6 @@ const a12: Check<BrowserEnv> = {
     what: 'a tooltip, shown after a delay, carries a link',
     sabotage: (env) => env.afterMount((el) => env.onDispose(plantTooltip(el, { dismissOnEscape: true, withLink: true, delayMs: 200 }))),
   },
-  alsoTrips: { A14: 'a tooltip left showing over a cell is the colour its screenshot reads' },
 };
 
 const a11: Check<BrowserEnv> = {
