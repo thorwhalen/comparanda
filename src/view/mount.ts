@@ -485,6 +485,9 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   if (props.identity !== undefined && typeof props.identity?.current !== 'function') {
     throw new TypeError(`props.identity must be an IdentityProvider ({ current(): Promise<Author> }), e.g. anonymousIdentity(); got ${describe(props.identity)}.`);
   }
+  if (props.vouched !== undefined && typeof props.vouched !== 'function') {
+    throw new TypeError(`props.vouched must be a function (author) => boolean; got ${describe(props.vouched)}.`);
+  }
   if (props.onViewChange !== undefined && typeof props.onViewChange !== 'function') {
     throw new TypeError(`props.onViewChange must be a function (view) => void; got ${describe(props.onViewChange)}.`);
   }
