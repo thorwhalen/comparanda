@@ -111,12 +111,13 @@ export interface DocumentEditRequest {
 }
 
 /** The four things a thread write can be. */
-export const THREAD_ACTS = ['start', 'reply', 'resolve', 'reopen'] as const;
+export const THREAD_ACTS = ['start', 'reply', 'resolve', 'reopen', 'reattach'] as const;
 export type ThreadAct = typeof THREAD_ACTS[number];
 
 /** What each act is called to the host (`DocumentEditRequest.doing`) and in a refusal. */
 const THREAD_DOING: Readonly<Record<ThreadAct, string>> = {
   start: 'starting a thread', reply: 'answering a thread', resolve: 'resolving a thread', reopen: 'reopening a thread',
+  reattach: 'moving an orphaned annotation to a new anchor',
 };
 
 /** The gerund phrase for an act, or the general one when none is named. A word that is not an act throws. */
@@ -378,9 +379,12 @@ export function makeAffordances(
         if (threadId !== undefined) {
           if (act === 'start') return refuse('a thread being started has no id yet; ask about its anchor instead.');
           if (!thread) return refuse(`there is no thread "${threadId}" in this analysis.`);
+          if (act === 'reattach' && resolveAnchor(a, thread.anchor).status === 'live') {
+            return refuse('this thread is attached to something live; only an orphaned thread is re-attached.');
+          }
           // Compared as the anchors they name, so a target spelled in another key order, or a block in the other order, is the same one.
           const asked = target === undefined ? undefined : anchorOfTarget(target);
-          if (target !== undefined && (!asked || JSON.stringify(commentTarget(asked)) !== JSON.stringify(commentTarget(thread.anchor)))) {
+          if (act !== 'reattach' && target !== undefined && (!asked || JSON.stringify(commentTarget(asked)) !== JSON.stringify(commentTarget(thread.anchor)))) {
             return refuse(`thread "${threadId}" is not anchored on the target asked about.`);
           }
           if (thread.resolved && (act === 'reply' || act === 'resolve')) {
@@ -388,7 +392,8 @@ export function makeAffordances(
           }
           if (!thread.resolved && act === 'reopen') return refuse('this thread is open; only a resolved thread can be reopened.');
         }
-        if (act === 'start' && target !== undefined) {
+        // Starting or re-attaching: the anchor asked about is where it will be, so it must be live.
+        if ((act === 'start' || act === 'reattach') && target !== undefined) {
           const anchor = anchorOfTarget(target);
           if (!anchor) {
             return refuse(target.kind === 'cell' || target.kind === 'group-pair'
