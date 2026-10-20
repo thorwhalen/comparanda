@@ -34,28 +34,31 @@ export function describeOrphans(a: Analysis, { vouched }: { vouched?: Vouched | 
     id === undefined ? 'someone' : names.get(id) ?? `an author this analysis does not describe ("${id}")`;
   const threads = orphanedThreadsOf(a).map(({ thread: t, resolution }): OrphanEntry => ({
     kind: 'thread', id: t.id,
-    said: `A thread on ${aboutOf(a, t.anchor)}: ${whyOf(a, resolution)}`,
+    said: `A thread on ${describeAnchor(a, t.anchor)}: ${whyOf(a, resolution)}`,
     standing: t.resolved ? `resolved by ${who(t.resolvedBy)}${t.resolvedAt ? `, ${t.resolvedAt}` : ''}` : 'open',
     comments: t.comments.map((c) => ({ id: c.id, who: who(c.authorId), at: c.at, body: c.body })),
   }));
   const suggestions = orphanedSuggestionsOf(a).map(({ suggestion: s, resolution }): OrphanEntry => ({
     kind: 'suggestion', id: s.id,
-    said: `A suggestion by ${who(s.authorId)} on ${aboutOf(a, s.anchor)}: ${whyOf(a, resolution)}`,
+    said: `A suggestion by ${who(s.authorId)} on ${describeAnchor(a, s.anchor)}: ${whyOf(a, resolution)}`,
     standing: s.status === 'open' ? 'open' : `${s.status}${s.decidedBy ? ` by ${who(s.decidedBy)}` : ''}`,
     comments: [],
   }));
   return [...threads, ...suggestions];
 }
 
-/** What an anchor named, by the entity's label where the document still has it, else by its repair hint. */
-function aboutOf(a: Analysis, anchor: Anchor): string {
+/**
+ * What an anchor named, by the entity's label where the document still has it,
+ * and, unless `hint` is false (a live anchor needs none), its repair hint.
+ */
+export function describeAnchor(a: Analysis, anchor: Anchor, { hint: withHint = true }: { hint?: boolean } = {}): string {
   const words = aliasesOf(a);
   const label = (kind: 'alternative' | 'criterion' | 'group', id: string | undefined) => {
     const list: readonly { id: string; label: string }[] =
       kind === 'alternative' ? a.alternatives : kind === 'criterion' ? a.criteria : a.groups;
     return list.find((x) => x.id === id)?.label;
   };
-  const hint = anchor.repairHint ? ` (when it was attached: “${anchor.repairHint}”)` : '';
+  const hint = withHint && anchor.repairHint ? ` (when it was attached: “${anchor.repairHint}”)` : '';
   const named = (kind: 'alternative' | 'criterion' | 'group', id: string | undefined) => {
     const l = label(kind, id);
     return l === undefined ? `“${id ?? ''}”` : l;
