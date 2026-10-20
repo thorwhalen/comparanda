@@ -157,3 +157,15 @@ export function redactForViewer(s: Assertion, v: AssertionVisibility, shownId: s
   }
   return out;
 }
+
+/**
+ * An assertion as a *set description* may read it when its author, or its place
+ * in a distribution, must not be traceable: `withoutAuthor`, no independence
+ * claimed, and the stand-in as its author. A count of people or a reading of a
+ * source's kind taken over such copies cannot reach what the round hides; the
+ * count is still of assertions, never of raters.
+ */
+export function standingInSet(s: Assertion, standIn: string): Assertion {
+  const { independence: _independence, ...rest } = withoutAuthor(s, standIn);
+  return { ...rest, authorId: standIn };
+}

@@ -12,6 +12,7 @@
  * Both are `aria-hidden`: the cell already says its reason and its confidence
  * in words. The shape is for the eye, and the legend keys it in words.
  */
+import type { RaterStrip } from '../core/rater-strip.js';
 import type { MissingCode } from '../core/schema/missingness.js';
 
 /** What a missing cell's glyph keys on: a core reason, or a code nothing here defines. */
@@ -83,5 +84,48 @@ export function Hatch({ level }: { level: HatchLevel }) {
       <rect x="0.5" y="0.5" width={BOX - 1} height={BOX - 1} />
       <path d={lines.join('')} />
     </svg>
+  );
+}
+
+/** One slot of a strip is this wide and a dot this far across, in user units. */
+const SLOT = 10;
+const RADIUS = 2.8;
+const ROW = 7.5;
+const PAD = 3.5;
+
+/**
+ * The rater dot strip (ADR-0024), in two forms the cell's width chooses between
+ * with a container query (`stripCss`): dots at fixed slots, then a range
+ * bracket. The thresholds are the encoding's, not this file's.
+ *
+ * A dot sits at the centre of its level's slot and nowhere else, and a bracket
+ * is marked at its two ends and its modes: no mark is placed at a mean, a
+ * centroid or a midpoint. A filled dot is one of independent raters; a ring, or
+ * a dashed bracket, is one that is not (`strip.reading`), so the difference is
+ * a shape and survives forced colors and print. Both are `aria-hidden`: the
+ * cell's hidden text is the exact multiset.
+ */
+export function Strip({ strip }: { strip: RaterStrip }) {
+  const k = strip.slots.length;
+  const independent = strip.reading === 'raters';
+  const base = PAD + strip.tallest * ROW;
+  const x = (i: number) => i * SLOT + SLOT / 2;
+  const frame = { viewBox: `0 0 ${k * SLOT} ${base + 3}`, 'aria-hidden': 'true', focusable: 'false', fill: 'none', stroke: 'currentColor' } as const;
+  const dots = strip.slots.flatMap((s, i) =>
+    Array.from({ length: s.count }, (_, j) => (
+      <circle key={`${i}-${j}`} cx={x(i)} cy={base - ROW / 2 - j * ROW} r={RADIUS} fill={independent ? 'currentColor' : 'none'} stroke-width="1.4" />
+    )));
+  const { from, to, modes } = strip.bracket;
+  return (
+    <span class="comparanda-strip-box" style={`--k:${k}`} data-reading={strip.reading}>
+      <svg class="comparanda-strip-dots" {...frame}>
+        <path d={`M0 ${base + 1}h${k * SLOT}`} stroke-width=".6" />
+        {dots}
+      </svg>
+      <svg class="comparanda-strip-bracket" {...frame} viewBox={`0 0 ${k * SLOT} 12`}>
+        <path d={`M${x(from)} 8h${x(to) - x(from)}M${x(from)} 5.5v5M${x(to)} 5.5v5`} stroke-width="1.4" stroke-dasharray={independent ? undefined : '2.4 1.8'} />
+        {modes.map((m) => <path key={m} d={`M${x(m)} 1.2l2.4 3.6h-4.8z`} fill="currentColor" stroke="none" />)}
+      </svg>
+    </span>
   );
 }

@@ -24,7 +24,8 @@
  */
 import type { MissingnessVocabulary } from '../../core/schema/missingness.js';
 import type { Analysis } from '../../core/schema/analysis.js';
-import type { Reduced } from '../../core/schema/values.js';
+import type { RaterStrip } from '../../core/rater-strip.js';
+import type { Reduced, ScalarValue } from '../../core/schema/values.js';
 import type { Swatch, SwatchId } from './palette.js';
 import type { VsupSwatchId } from './vsup.js';
 
@@ -55,6 +56,8 @@ export interface CellMark {
   readonly badge?: string;
   /** What a screen reader hears after the value, in words: the badge's meaning, never its symbol. */
   readonly said?: string;
+  /** The rater dot strip (ADR-0024): data the matrix draws, with its range-bracket form for a narrow cell. */
+  readonly strip?: RaterStrip;
 }
 
 /** One line of a legend: a sample, what it means, and how many shown cells carry it. */
@@ -85,6 +88,12 @@ export interface EncodingContext {
   readonly read: (alternativeId: string, criterionId: string) => Reduced | undefined;
   /** The same cell's reduced value for another measure the analysis records, e.g. its confidence. */
   readonly readMeasure: (measure: string, alternativeId: string, criterionId: string) => Reduced | undefined;
+  /**
+   * One cell's assertion set laid on `levels`, as this viewer may see it (the
+   * round's redaction already applied by core), for an encoding that must not
+   * reduce first (ADR-0024). Absent from a host that does not supply it.
+   */
+  readonly stripOf?: (alternativeId: string, criterionId: string, levels: readonly ScalarValue[]) => RaterStrip | undefined;
   /** Whether a declared block makes this cell structurally inapplicable. */
   readonly inapplicable: (alternativeId: string, criterionId: string) => boolean;
 }
@@ -99,6 +108,18 @@ export interface PreparedEncoding {
    * them. Never computed here: the render path does no colour maths.
    */
   readonly palette?: Readonly<Record<string, Swatch>>;
+  /**
+   * Where a strip degrades, as a registered parameter, in `em` of the cell's
+   * own text (ADR-0024). Below `bracketBelow` the dots give way to the range
+   * bracket; below `hiddenBelow` the bracket gives way to the cell's text alone.
+   */
+  readonly strip?: StripThresholds;
+}
+
+/** Widths, in `em`, below which a strip draws its next, narrower form. */
+export interface StripThresholds {
+  readonly bracketBelow: number;
+  readonly hiddenBelow: number;
 }
 
 /** An encoding, described. `prepare` either readies it over the shown matrix, or says why it cannot. */

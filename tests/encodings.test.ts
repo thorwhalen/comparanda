@@ -251,10 +251,10 @@ describe('datum', () => {
   });
 });
 
-describe('the registered-but-not-drawn three', () => {
+describe('the registered-but-not-drawn two', () => {
   it('each says why it cannot draw rather than drawing something else', () => {
     const ctx = contextOf(languagesWithConfidence());
-    for (const id of ['consensus-suppressed', 'disagreement', 'disagreement-spread']) {
+    for (const id of ['consensus-suppressed', 'disagreement-spread']) {
       const p = SHIPPED_ENCODINGS.find((e) => e.id === id)!.prepare(ctx);
       expect('unavailable' in p, id).toBe(true);
     }

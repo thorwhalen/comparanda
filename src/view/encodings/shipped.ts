@@ -5,19 +5,19 @@
  * `createEncodingRegistry`; `SHIPPED_ENCODINGS` is all nine, for a root that
  * wants them all.
  *
- * Six draw today: `text-only`, `value`, `categorical`, `missingness`,
- * `datum`, `uncertainty-suppressed`. Three are registered with their texture
- * and legend, and say why they cannot draw yet when chosen, so the matrix
- * falls back to text and says so: `consensus-suppressed` waits for the
- * per-cell disagreement index; `disagreement` for the rater dot strip
- * (#110); `disagreement-spread` for the per-cell disagreement index
- * (ADR-0024's `(1 − A) / 2`). Each of those lands behind this same
+ * Seven draw today: `text-only`, `value`, `categorical`, `missingness`,
+ * `datum`, `uncertainty-suppressed`, and `disagreement` (the rater dot strip,
+ * #110). Two are registered with their texture and legend, and say why they
+ * cannot draw yet when chosen, so the matrix falls back to text and says so:
+ * `consensus-suppressed` and `disagreement-spread` wait for the per-cell
+ * disagreement index (ADR-0024's `(1 − A) / 2`). Each lands behind this same
  * registration rather than as a new one.
  */
 import { pughTally, type PughStanding } from '../../core/analyses/pugh.js';
 import { CORE_MISSING_CODES, coreReasonOf, NOT_APPLICABLE, NOT_ASSESSED, type MissingCode } from '../../core/schema/missingness.js';
 import { isOrdered, type Measurement } from '../../core/schema/measurement.js';
 import { measurementFor } from '../../core/schema/structure.js';
+import { stripLevels, type RaterStrip } from '../../core/rater-strip.js';
 import type { ScalarValue } from '../../core/schema/values.js';
 import type { Swatch, SwatchId } from './palette.js';
 import { VSUP_PALETTE } from './vsup-palette.js';
@@ -432,12 +432,66 @@ export const consensusSuppressed = /* @__PURE__ */ defineEncoding({
   prepare: () => ({ unavailable: 'the per-cell disagreement index it suppresses by is not in this build yet.' }),
 });
 
-/** The rater dot strip (ADR-0024): registered; drawn by #110. */
+/**
+ * Where the strip gives way to its narrower forms, in `em` of the cell's text
+ * (ADR-0024: registered parameters, not constants in the renderer). Set so the
+ * dots of a five-level scale (4 em wide at rest) stay at least 0.6 em apart.
+ */
+export const STRIP_THRESHOLDS = Object.freeze({ bracketBelow: 3, hiddenBelow: 1.2 });
+
+/**
+ * The rater dot strip (ADR-0024, #110): the criterion's levels are fixed slots
+ * across the cell and each assertion is one dot at its level, ties stacked.
+ * It reads the assertion set, not the reduction, so a cell the reduction
+ * refuses to summarise is exactly where it draws; and it never marks a centre.
+ *
+ * A dot is filled for a set of independent raters and a ring for anything
+ * else, so five draws of one model do not read as five raters (the cell's
+ * words say which, too). A narrow cell draws the range bracket instead.
+ */
 export const disagreement = /* @__PURE__ */ defineEncoding({
   id: 'disagreement',
   label: 'Raters, as a dot strip',
   texture: { channel: 'none', because: 'each rater is a dot at a position on the scale, and the cell\'s text lists every rating.' },
-  prepare: () => ({ unavailable: 'the rater dot strip is not drawn in this build yet.' }),
+  prepare: (ctx) => {
+    const stripOf = ctx.stripOf;
+    if (!stripOf) return { unavailable: 'this host does not give the encoding the cells\' assertions.' };
+    const levelsOf = new Map([...criteriaMeasured(ctx)].map(([id, m]) => [id, stripLevels(m)] as const));
+    if (![...levelsOf.values()].some((l) => l !== undefined)) {
+      return { unavailable: `no shown criterion has a short ordered list of levels (or whole-number range) to lay a ${ctx.measure} on.` };
+    }
+    const strips = new Map<string, RaterStrip>();
+    for (const alt of ctx.alternatives) for (const crit of ctx.criteria) {
+      const levels = levelsOf.get(crit);
+      const strip = levels && stripOf(alt, crit, levels);
+      if (strip) strips.set(`${alt}\u0000${crit}`, strip);
+    }
+    if (strips.size === 0) return { unavailable: 'no shown cell holds more than one live assertion, so there is no set of ratings to show.' };
+    const count = (reading: RaterStrip['reading']) => [...strips.values()].filter((s) => s.reading === reading).length;
+    const note = (n: number, what: string) => (n > 0 ? [`${n} cell${n === 1 ? '' : 's'}: ${what}`] : []);
+    return {
+      mark: (alt, crit) => {
+        const strip = strips.get(`${alt}\u0000${crit}`);
+        return strip ? { strip, said: `. ${strip.label}` } : NO_MARK;
+      },
+      strip: STRIP_THRESHOLDS,
+      legend: {
+        title: 'Ratings, one dot each',
+        entries: [
+          { badge: '\u25cf', label: 'one assertion, by a rater who is independent of the others' },
+          { badge: '\u25cb', label: 'one assertion that is not independent: a draw of one source, or a rung below independent' },
+        ],
+        notes: [
+          'Each level of the scale has a fixed place across the cell; dots at the same level stack. Nothing is drawn at an average.',
+          'A narrower cell shows a bracket from the lowest to the highest rating, with the most common rating marked, and a narrower one only its text.',
+          'A cell with a single assertion shows no strip. Every cell lists its ratings in words.',
+          ...note(count('raters'), 'independent raters'),
+          ...note(count('draws'), 'draws of one source, not raters'),
+          ...note(count('correlated'), 'assertions that are not independent'),
+        ],
+      },
+    };
+  },
 });
 
 /** A ramp over `(1 − A) / 2` and nothing else (ADR-0024 amendment): registered; needs the per-cell index. */
