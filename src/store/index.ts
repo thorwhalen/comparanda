@@ -556,3 +556,5 @@ export function writeSafety(
       'and DataProvider.update is last-write-wins, so a contribution would be lost silently (ADR-0006, ADR-0011).',
   };
 }
+
+export * from './view-state-store.js';
