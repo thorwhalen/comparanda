@@ -166,3 +166,15 @@ in the repository that writes the files. A TypeScript port is deferred; when it 
 that agree by inspection is exactly the drift ADR-0004's amendment of this date says a key-parity
 check cannot see. The fixtures are `comparanda`'s to author (ADR-0016 governs their content) and are
 the prerequisite for the port, not a follow-up to it.
+
+### 2026-10-20 — The view-state provider: the fallback chain, cross-tab sync and quota failure, built (#73)
+
+- **Status:** accepted
+- **Date:** 2026-10-20
+- **Deciders:** Thor Whalen
+
+`viewStateProvider(initial, options)` in `comparanda/store` is the one-item `DataProvider` over view state that clause 2 of the 2026-08-21 amendment describes, with the Decision's three steps: a caller-provided provider, `localStorage` **only if a write succeeds** (probed by writing and removing a key), and memory with a `notice`. It is headless: it reports `status()` (`backing` and `notice`), `onStatus` and `acknowledge()`; rendering the notice is the view's job and is tracked separately. The notice is cleared only by an explicit `acknowledge()`, which is the "not dismissable by accident" rule in API form.
+
+A write refused for quota rejects with `StorageQuotaError` (the message is written for the person), keeps the last good stored value, and sets the notice. An error that is not a quota error propagates as itself. Stored state is migrated and validated by `parseViewState` on load; anything malformed is ignored in favour of `initial`.
+
+Cross-tab sync is the `storage` event, last-write-wins, for the view-state key only. It lives inside this provider, which refuses anything that is not a `ViewState`, so it is not reachable for the analysis (ADR-0011 clause 6). `BroadcastChannel` is not used: nothing in v1 needs richer coordination than last-write-wins.
