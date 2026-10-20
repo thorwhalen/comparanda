@@ -9,6 +9,7 @@ import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { startThread } from '../../src/core/threads.js';
+import { tombstone } from '../../src/core/schema/anchors.js';
 import { reviseCriterion } from '../../src/core/criteria-revision.js';
 import { applyOrder, initialViewState, setDetailPanel, setFocus, type ViewState } from '../../src/core/view-state.js';
 import { agentIdentity, anonymousIdentity, inMemoryAnalysisSource, markVersioned, versionedAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
@@ -429,5 +430,23 @@ describe('sprint review', () => {
     } finally {
       Object.defineProperty(Object.getPrototypeOf(crypto), 'randomUUID', had);
     }
+  });
+});
+
+describe('the orphaned-annotations tray (#108)', () => {
+  it('shows a tombstoned criterion\'s thread above the matrix, and nothing while every anchor is live', async () => {
+    const argued = startThread(relocation, {
+      threadId: 't-orphan', anchor: { scope: 'criterion', criterionId: 'rent', repairHint: 'Rent' },
+      comment: { id: 'k1', at: 'T0', body: 'before or after utilities?', author: { id: 'dana', displayName: 'Dana', kind: 'human' } },
+    });
+    const live = mount({ analysis: argued, measure: 'score' });
+    expect(el.querySelector('.comparanda-orphans')).toBeNull();
+    live.destroy();
+    mount({ analysis: tombstone(argued, { kind: 'criterion', id: 'rent' }), measure: 'score' });
+    const tray = el.querySelector<HTMLElement>('section.comparanda-orphans')!;
+    expect(tray.getAttribute('aria-labelledby')).toBe(tray.querySelector('h2')!.id);
+    expect(tray.textContent).toMatch(/Orphaned annotations \(\d+\)/);
+    expect(tray.textContent).toMatch(/the criterion Rent .*deleted \(tombstoned\)/);
+    expect(tray.textContent).toContain('before or after utilities?');
   });
 });

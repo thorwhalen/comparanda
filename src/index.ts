@@ -16,6 +16,7 @@ export * from './core/rater-strip.js';
 export * from './core/detail.js';
 export * from './core/activity.js';
 export * from './core/threads.js';
+export * from './core/orphans.js';
 export * from './core/identity.js';
 export * from './core/criteria-revision.js';
 export * from './core/affordances.js';

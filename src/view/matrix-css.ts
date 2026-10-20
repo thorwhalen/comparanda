@@ -210,6 +210,8 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 .comparanda-matrix .comparanda-thread-icon { display: inline-block; width: 0.9em; height: 0.9em; vertical-align: -0.1em; margin-inline-end: 0.1em; }
 .comparanda-matrix .comparanda-thread-list, .comparanda-matrix .comparanda-comments { padding-inline-start: 1.1em; margin: 0.25em 0; }
 .comparanda-matrix .comparanda-thread-list > li { margin: 0 0 0.6em; }
+.comparanda-matrix .comparanda-orphans { border: 1px solid var(--cmp-muted); padding: 0.4em 0.8em; margin: 0 0 0.75em; }
+.comparanda-matrix .comparanda-orphans h2 { font-size: 1em; margin: 0.2em 0; }
 .comparanda-matrix .comparanda-thread-list[data-resolved] { color: var(--cmp-muted); }
 .comparanda-matrix .comparanda-compose { display: grid; gap: 0.2em; margin: 0.35em 0; }
 .comparanda-matrix .comparanda-compose button { justify-self: start; }
