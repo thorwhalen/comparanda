@@ -378,7 +378,9 @@ export function makeAffordances(
         if (threadId !== undefined) {
           if (act === 'start') return refuse('a thread being started has no id yet; ask about its anchor instead.');
           if (!thread) return refuse(`there is no thread "${threadId}" in this analysis.`);
-          if (target !== undefined && JSON.stringify(commentTarget(thread.anchor)) !== JSON.stringify(target)) {
+          // Compared as the anchors they name, so a target spelled in another key order, or a block in the other order, is the same one.
+          const asked = target === undefined ? undefined : anchorOfTarget(target);
+          if (target !== undefined && (!asked || JSON.stringify(commentTarget(asked)) !== JSON.stringify(commentTarget(thread.anchor)))) {
             return refuse(`thread "${threadId}" is not anchored on the target asked about.`);
           }
           if (thread.resolved && (act === 'reply' || act === 'resolve')) {
@@ -387,7 +389,13 @@ export function makeAffordances(
           if (!thread.resolved && act === 'reopen') return refuse('this thread is open; only a resolved thread can be reopened.');
         }
         if (act === 'start' && target !== undefined) {
-          const where = resolveAnchor(a, anchorOfTarget(target));
+          const anchor = anchorOfTarget(target);
+          if (!anchor) {
+            return refuse(target.kind === 'cell' || target.kind === 'group-pair'
+              ? `a ${target.kind} target names its two ids in their own fields (${target.kind === 'cell' ? 'alternativeId and criterionId' : 'groupId and otherGroupId'}); use commentTarget(anchor).`
+              : `a thread cannot be anchored on a ${String(target.kind)}.`);
+          }
+          const where = resolveAnchor(a, anchor);
           if (where.status !== 'live') {
             return refuse(`the ${where.entity.kind} "${where.entity.id ?? ''}" this would be anchored on is ` +
               `${where.reason === 'tombstoned' ? 'tombstoned' : 'not in this analysis'}; a new thread needs a live anchor.`);

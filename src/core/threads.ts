@@ -120,17 +120,25 @@ export function commentTarget(anchor: Anchor): EditTarget {
   }
 }
 
-/** The anchor a comment target names: `commentTarget`'s inverse, up to a group-pair's order. */
-export function anchorOfTarget(target: EditTarget): Anchor {
+/**
+ * The anchor a comment target names: `commentTarget`'s inverse, up to a
+ * group-pair's order. `undefined` for what no thread is anchored on -- a
+ * suggestion, an unknown kind, or a cell or group-pair without its two ids.
+ */
+export function anchorOfTarget(target: EditTarget): Anchor | undefined {
   const { kind, id } = target;
   switch (kind) {
-    case 'cell': return { scope: 'cell', alternativeId: target.alternativeId, criterionId: target.criterionId };
+    case 'cell':
+      if (target.alternativeId === undefined || target.criterionId === undefined) return undefined;
+      return { scope: 'cell', alternativeId: target.alternativeId, criterionId: target.criterionId };
     case 'alternative': return { scope: 'alternative', alternativeId: id };
     case 'criterion': return { scope: 'criterion', criterionId: id };
     case 'group': return { scope: 'group', groupId: id };
-    case 'group-pair': return { scope: 'group-pair', groupId: target.groupId, otherGroupId: target.otherGroupId };
+    case 'group-pair':
+      if (target.groupId === undefined || target.otherGroupId === undefined) return undefined;
+      return { scope: 'group-pair', groupId: target.groupId, otherGroupId: target.otherGroupId };
     case 'analysis': return { scope: 'analysis' };
-    case 'suggestion': throw new TypeError('a suggestion is not something a thread is anchored on.');
+    default: return undefined;
   }
 }
 

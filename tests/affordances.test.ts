@@ -221,6 +221,10 @@ describe('nothing about rendering or storage is expressible', () => {
     const dead = makeAffordances(tombstone(a, { kind: 'alternative', id: alt }));
     expect(dead.comment({ kind: 'alternative', id: alt }, 'start').reason).toMatch(/tombstoned; a new thread needs a live anchor/);
     expect(dead.comment({ kind: 'alternative', id: 'ghost' }, 'start').reason).toMatch(/not in this analysis/);
+    // Refused, not thrown, for what no thread is anchored on; a target matched whatever its key order (review).
+    expect(aff.comment({ kind: 'suggestion', id: 'sg' }, 'start').reason).toMatch(/cannot be anchored on a suggestion/);
+    expect(aff.comment({ kind: 'cell', id: '["x","c"]' }, 'start').reason).toMatch(/alternativeId and criterionId/);
+    expect(aff.comment({ id: alt, kind: 'alternative' }, 'resolve', { threadId: 't1' })).toEqual({ enabled: true });
   });
 
   it('exposes only policy queries', () => {
