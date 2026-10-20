@@ -140,6 +140,8 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 }
 .comparanda-matrix .comparanda-legend-note { margin: 0 0 0.15em; color: var(--cmp-muted); font-size: 0.9em; }
 .comparanda-matrix .comparanda-degraded { color: var(--cmp-ink); }
+.comparanda-matrix .comparanda-notice { color: var(--cmp-ink); border: 2px solid var(--cmp-ink); padding: 0.4em 0.6em; margin: 0 0 0.5em; }
+.comparanda-matrix .comparanda-notice p { margin: 0 0 0.3em; }
 .comparanda-matrix .comparanda-edits { list-style: none; padding: 0; margin: 0 0 0.5em; color: var(--cmp-muted); }
 .comparanda-matrix .comparanda-edits button {
   font: inherit; color: var(--cmp-muted); background: var(--cmp-header);

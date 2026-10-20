@@ -102,7 +102,7 @@ function withoutSource(a: Affordances): Affordances {
 
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
-  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'source', 'authorize', 'onViewChange', 'identity',
+  'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'source', 'authorize', 'onViewChange', 'identity', 'notice',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
 /** Which assertions' authors the rounds hide from `viewer`, as a string to compare: equal strings, equal view. */
@@ -282,6 +282,7 @@ export function mountMatrix(
       onFocusChange: moveFocus,
       onPanelChange: changePanel,
       onReorder: reorder,
+      ...(current.notice ? { notice: current.notice } : {}),
       actor: () => actor,
       ...(arrange ? { arrange } : {}),
       ...(announcement !== undefined ? { announcement } : {}),
