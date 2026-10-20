@@ -155,7 +155,7 @@ One analysis in, one self-contained HTML file out: Preact, the matrix and its st
 ```sh
 npm install --save-dev comparanda vite vite-plugin-singlefile playwright   # the build's peers are optional
 npx playwright install chromium                                             # the browser the zero-network check opens
-npx comparanda build analysis.json --out analysis.html                      # prints sizes and how it was checked
+npx comparanda build analysis.json --out analysis.html                      # prints sizes, how it was checked, and a note on mailing it
 ```
 
 Or from code, with an optional disclosure decision that is applied before anything is inlined (ADR-0021):

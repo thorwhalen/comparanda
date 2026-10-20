@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { chromium, type Browser } from 'playwright';
 
-import { buildStandalone, type BuildResult } from '../../src/build/index.js';
+import { buildStandalone, MAILING_NOTE, type BuildResult } from '../../src/build/index.js';
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { ANALYSIS_ELEMENT_ID } from '../../src/standalone/contract.js';
 
@@ -180,6 +180,9 @@ describe('the command', () => {
     // The shell, then the reservation, then what is charged, against the budget (#116).
     expect(stdout).toMatch(/the page without the analysis: [\d.]+ kB \+ [\d.]+ kB reserved for @atlaskit\/pragmatic-drag-and-drop = [\d.]+ kB, of a 213\.0 kB budget/);
     expect(Analysis.parse(inlinedAnalysis(await readFile(out, 'utf8')))).toEqual(relocation);
+    // Every successful build says the file may be refused as an attachment, and what to do instead (#118).
+    expect(stdout).toContain(MAILING_NOTE);
+    expect(MAILING_NOTE).toMatch(/zip.*link/);
   });
   const run = (...extra: string[]) => promisify(execFile)(
     process.execPath, [join(repo, 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(repo, 'src', 'cli.ts'),
