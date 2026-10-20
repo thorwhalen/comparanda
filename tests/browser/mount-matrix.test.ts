@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h } from 'preact';
 
 import { Analysis, vocabularyOf } from '../../src/core/schema/analysis.js';
+import { initialViewState, serializeViewState } from '../../src/core/view-state.js';
 import { inMemoryAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
 import { mountMatrix, mountPersistedMatrix, type MatrixHandle, type MatrixViewProps } from '../../src/view/index.js';
 import languagesJson from '../../examples/languages.json';
@@ -474,6 +475,32 @@ describe('the view-state notice (#224)', () => {
     const handle = await mountPersistedMatrix(el, { analysis: relocation, measure: 'score' }, { storage, events: null });
     expect(el.querySelector('[role="alert"]')).toBeNull();
     handle.destroy();
+    el.remove();
+  });
+});
+
+describe('cross-tab view-state sync reaches the mounted view (#228)', () => {
+  it("shows another tab's arrangement without echoing it back as a local change", async () => {
+    const map = new Map<string, string>();
+    const storage = { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v), removeItem: (k: string) => void map.delete(k) };
+    const listeners = new Set<(e: { key: string | null; newValue: string | null }) => void>();
+    const events = {
+      addEventListener: (_t: 'storage', l: (e: { key: string | null; newValue: string | null }) => void) => void listeners.add(l),
+      removeEventListener: (_t: 'storage', l: (e: { key: string | null; newValue: string | null }) => void) => void listeners.delete(l),
+    };
+    const el = document.createElement('div');
+    document.body.append(el);
+    const reported: boolean[] = [];
+    const handle = await mountPersistedMatrix(
+      el, { analysis: relocation, measure: 'score', onViewChange: (v) => reported.push(v.transposed) }, { storage, events },
+    );
+    const before = el.textContent;
+    const other = { ...initialViewState(relocation), transposed: true };
+    for (const l of listeners) l({ key: `comparanda.view-state.${relocation.id}`, newValue: serializeViewState(other) });
+    expect(el.textContent).not.toBe(before);
+    expect(reported).toEqual([]); // the remote arrangement is shown, not re-reported as the reader's move
+    handle.destroy();
+    expect(listeners.size).toBe(0);
     el.remove();
   });
 });

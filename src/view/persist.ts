@@ -7,6 +7,12 @@
  * fallback, or a write the storage refused -- is shown in the view as an alert
  * the person must acknowledge. The provider's `status()` stays the single
  * source of what is wrong; this only carries it to the screen.
+ *
+ * The provider's changes are carried to the screen too (#228): another tab's
+ * arrangement arrives as `handle.update({ view })`, so this tab shows it and its
+ * next write builds on it instead of overwriting it. The mount's own
+ * `onViewChange` writes come back as provider events; those are recognised by
+ * their content and not applied again.
  */
 import { initialViewState } from '../core/view-state.js';
 import { VIEW_STATE_RECORD_ID, viewStateProvider, type ViewStateProvider, type ViewStateProviderOptions } from '../store/index.js';
@@ -38,12 +44,15 @@ export async function mountPersistedMatrix(
     return message === undefined ? undefined : { message, onAcknowledge: vs.acknowledge };
   };
   let handle: MatrixHandle;
+  /** The arrangement the mount last showed or was given, serialised: an event carrying it is an echo. */
+  let known = JSON.stringify(record ? record.state : props.view ?? null);
   try {
     handle = mountMatrix(el, {
       ...props,
       ...(record ? { view: record.state } : {}),
       ...(noticeOf() ? { notice: noticeOf()! } : {}),
       onViewChange: (view) => {
+        known = JSON.stringify(view);
         props.onViewChange?.(view);
         // A refused write is not lost: it is in `status().notice`, which the view shows.
         vs.provider.update(VIEW_STATE_RECORD_ID, { state: view }).catch(() => undefined);
@@ -53,13 +62,21 @@ export async function mountPersistedMatrix(
     vs.dispose();
     throw error;
   }
-  const off = vs.onStatus(() => handle.update({ notice: noticeOf() }));
+  const offStatus = vs.onStatus(() => handle.update({ notice: noticeOf() }));
+  const offChanges = vs.provider.subscribe?.((event) => {
+    if (event.type !== 'updated') return;
+    const state = event.item?.state;
+    if (!state || JSON.stringify(state) === known) return;
+    known = JSON.stringify(state);
+    handle.update({ view: state });
+  });
   return {
     ...handle,
     viewState: vs,
     destroy: () => {
       try {
-        off();
+        offStatus();
+        offChanges?.();
         vs.dispose();
       } finally {
         handle.destroy();
