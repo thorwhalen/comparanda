@@ -432,3 +432,66 @@ export function cellShape(
     polarised: occupied.length >= 2 && widestGap >= gap && modes.length !== 1,
   };
 }
+
+/**
+ * Van der Eijk's agreement **A** over the counts of K ordered levels (ADR-0022,
+ * #233): +1 unanimity, 0 uniform, -1 perfect bimodality. `undefined` below
+ * three levels, where the measure is not defined, or with no observations.
+ *
+ * The layer decomposition, as the `agrmt` R package implements it (settling
+ * ADR-0022's open question on the paper we could not read): peel off layers of
+ * the smallest non-zero count across the still-occupied levels; each layer is a
+ * 0/1 pattern, weighted by its share of the observations. A pattern's A is
+ * `U * (1 - (S - 1) / (K - 1))`, S its occupied levels, with
+ * `U = ((K-2)·TU - (K-1)·TDU) / ((K-2)·(TU + TDU))` over every triple of levels
+ * i < j < k: 1-1-0 and 0-1-1 count as unimodal (TU), 1-0-1 as bimodal (TDU).
+ * A pattern with one occupied level has A = 1; one with no counted triple, 0.
+ *
+ * A shape statistic that does not know the count: never shown without `n`.
+ */
+export function vanDerEijkA(counts: readonly number[]): number | undefined {
+  const K = counts.length;
+  const n = counts.reduce((s, c) => s + c, 0);
+  if (K < 3 || n <= 0 || counts.some((c) => c < 0 || !Number.isFinite(c))) return undefined;
+  const patternA = (p: readonly boolean[]): number => {
+    const S = p.filter(Boolean).length;
+    if (S === 1) return 1;
+    let tu = 0;
+    let tdu = 0;
+    for (let i = 0; i < K - 2; i += 1) {
+      for (let j = i + 1; j < K - 1; j += 1) {
+        for (let k = j + 1; k < K; k += 1) {
+          if (p[i] && !p[j] && p[k]) tdu += 1;
+          else if ((p[i] && p[j] && !p[k]) || (!p[i] && p[j] && p[k])) tu += 1;
+        }
+      }
+    }
+    if (tu + tdu === 0) return 0;
+    const u = ((K - 2) * tu - (K - 1) * tdu) / ((K - 2) * (tu + tdu));
+    return u * (1 - (S - 1) / (K - 1));
+  };
+  let rest = counts.slice();
+  let a = 0;
+  while (rest.some((c) => c > 0)) {
+    const m = Math.min(...rest.filter((c) => c > 0));
+    const pattern = rest.map((c) => c > 0);
+    a += patternA(pattern) * ((m * pattern.filter(Boolean).length) / n);
+    rest = rest.map((c) => (c > 0 ? c - m : 0));
+  }
+  return a;
+}
+
+/**
+ * The disagreement ramp's domain, `(1 - A) / 2` over [0, 1] (ADR-0024
+ * amendment): 0 unanimity, 1 perfect bimodality. Named apart from A because
+ * the two run in opposite directions. Carries `n` and `a`, since A is never
+ * shown without the count. `undefined` where A is.
+ */
+export function disagreementIndex(
+  values: readonly ScalarValue[], levels: readonly ScalarValue[],
+): { index: number; a: number; n: number } | undefined {
+  const counts = levels.map((l) => values.filter((v) => v === l).length);
+  const a = vanDerEijkA(counts);
+  const n = counts.reduce((s, c) => s + c, 0);
+  return a === undefined ? undefined : { index: (1 - a) / 2, a, n };
+}
