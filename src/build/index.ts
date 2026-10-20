@@ -101,6 +101,16 @@ export {
   BudgetExceeded, STANDALONE_BUDGET, type BudgetReport, type ByteBudget, type Contribution, type Reservation,
 } from './budget.js';
 
+/**
+ * What every successful build says about mailing the file (ADR-0013 clause 4,
+ * #118). Some mail gateways can block `.html` attachments, matched by their
+ * true type, so renaming the file does not get it through; the user should
+ * learn that from the tool, with what to do instead, not from a bounce.
+ */
+export const MAILING_NOTE =
+  'mailing: some mail gateways block .html attachments by what they contain, not their name, so renaming the file ' +
+  'does not get it through. If it bounces, send it zipped, or share a link to the file instead.';
+
 /** What to install when the optional peers are missing. */
 export const BUILD_PEERS = ['vite', 'vite-plugin-singlefile'] as const;
 
