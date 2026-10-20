@@ -58,6 +58,9 @@ const MEMORY_NOTICE =
 const QUOTA_NOTICE =
   'This browser\'s storage is full, so your latest change was NOT saved. Export your analysis, or free space, before closing this tab.';
 
+const SAVE_FAILED_NOTICE =
+  'This browser refused to save your latest change, so it was NOT saved. Export your analysis before closing this tab.';
+
 /** The slice of an event target the `storage` event arrives on. */
 export interface StorageEvents {
   addEventListener(type: 'storage', listener: (event: { key: string | null; newValue: string | null }) => void): void;
@@ -163,7 +166,10 @@ export function viewStateProvider(
           try {
             store.setItem(key, serializeViewState(checked.data));
           } catch (e) {
-            if (!isQuota(e)) throw e;
+            if (!isQuota(e)) {
+              set({ backing: current.backing, notice: SAVE_FAILED_NOTICE });
+              throw e;
+            }
             set({ backing: current.backing, notice: QUOTA_NOTICE });
             throw new StorageQuotaError();
           }

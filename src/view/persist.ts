@@ -18,6 +18,10 @@ export interface PersistedMatrixHandle extends MatrixHandle {
   viewState: ViewStateProvider;
 }
 
+/**
+ * `props.view` is the first-visit default only: a stored arrangement wins over it,
+ * which is the point of keeping one.
+ */
 export async function mountPersistedMatrix(
   el: HTMLElement,
   props: MountMatrixProps,
@@ -33,24 +37,33 @@ export async function mountPersistedMatrix(
     const message = vs.status().notice;
     return message === undefined ? undefined : { message, onAcknowledge: vs.acknowledge };
   };
-  const handle = mountMatrix(el, {
-    ...props,
-    ...(record ? { view: record.state } : {}),
-    ...(noticeOf() ? { notice: noticeOf()! } : {}),
-    onViewChange: (view) => {
-      props.onViewChange?.(view);
-      // A refused write is not lost: it is in `status().notice`, which the view shows.
-      vs.provider.update(VIEW_STATE_RECORD_ID, { state: view }).catch(() => undefined);
-    },
-  });
+  let handle: MatrixHandle;
+  try {
+    handle = mountMatrix(el, {
+      ...props,
+      ...(record ? { view: record.state } : {}),
+      ...(noticeOf() ? { notice: noticeOf()! } : {}),
+      onViewChange: (view) => {
+        props.onViewChange?.(view);
+        // A refused write is not lost: it is in `status().notice`, which the view shows.
+        vs.provider.update(VIEW_STATE_RECORD_ID, { state: view }).catch(() => undefined);
+      },
+    });
+  } catch (error) {
+    vs.dispose();
+    throw error;
+  }
   const off = vs.onStatus(() => handle.update({ notice: noticeOf() }));
   return {
     ...handle,
     viewState: vs,
     destroy: () => {
-      off();
-      vs.dispose();
-      handle.destroy();
+      try {
+        off();
+        vs.dispose();
+      } finally {
+        handle.destroy();
+      }
     },
   };
 }
