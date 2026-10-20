@@ -19,6 +19,9 @@ import { CVD_MIN_DELTA_E, DEFICIENCIES, distance, parseHex, simulate, type Rgb8 
 /** Where a cell's own fill shows: this fraction across from its left edge, level with its middle, clear of the border and of the left-aligned numeral and glyph. */
 const SAMPLE_FRACTION = 0.9;
 
+/** The rule that keeps a tooltip out of a screenshot of a cell (#95). */
+const NO_TOOLTIP = '[role="tooltip"] { display: none !important; }';
+
 /**
  * The colour a cell painted, read from a screenshot of that cell. One screenshot
  * per cell, not one of the table: the test frame is scaled down to fit the
@@ -26,9 +29,17 @@ const SAMPLE_FRACTION = 0.9;
  * scrolled out of view are cropped.
  */
 export async function paintedColour(cell: Element): Promise<Rgb8> {
-  // A tooltip shown for wherever the pointer rests (#95) can sit over the cell: it is not the cell's fill.
-  document.querySelectorAll<HTMLElement>('[role="tooltip"]').forEach((t) => { t.style.visibility = 'hidden'; });
-  const { base64 } = await page.elementLocator(cell).screenshot({ base64: true });
+  // A tooltip shown for wherever the pointer rests can sit over the cell, and is not its fill. A rule for the
+  // length of the screenshot, since the pointer can bring one in after any one-off hide.
+  const style = document.createElement('style');
+  style.textContent = NO_TOOLTIP;
+  document.head.append(style);
+  let base64: string;
+  try {
+    ({ base64 } = await page.elementLocator(cell).screenshot({ base64: true }));
+  } finally {
+    style.remove();
+  }
   const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${base64}`)).blob());
   const canvas = document.createElement('canvas');
   canvas.width = bitmap.width;
