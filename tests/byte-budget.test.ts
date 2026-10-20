@@ -74,8 +74,8 @@ describe('chargeBudget', () => {
     expect(report.within).toBe(true);
   });
 
-  it('the shipped budget is ADR-0017 clause 8\'s budget (200 kB, raised to 206 kB, then 210 kB, by the 2026-10-20 amendments), and charges the drag-and-drop dependency ADR-0008 names', () => {
-    expect(STANDALONE_BUDGET.limit).toBe(210 * 1024);
+  it('the shipped budget is ADR-0017 clause 8\'s budget (200 kB, raised to 206 kB, then 213 kB, by the 2026-10-20 amendments), and charges the drag-and-drop dependency ADR-0008 names', () => {
+    expect(STANDALONE_BUDGET.limit).toBe(213 * 1024);
     expect(STANDALONE_BUDGET.reserved.map((r) => r.package)).toContain('@atlaskit/pragmatic-drag-and-drop');
   });
 });
