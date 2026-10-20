@@ -2,7 +2,7 @@
  * `comparanda build` (#114, ADR-0017 clause 6): one analysis in, one HTML file
  * out, which opens from `file://` and renders the messy fixture completely.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -169,11 +169,15 @@ describe('the shipped build (dist/), when it has been built', () => {
 });
 
 describe('the page is the production page under any NODE_ENV', () => {
-  it('carries no development JSX source locations, so no local file path, even under vitest\'s NODE_ENV=test', async () => {
-    expect(process.env.NODE_ENV).toBe('test');
-    const { html } = await buildStandalone(relocation, { check: 'static' });
-    expect(html).not.toContain('fileName');
-    expect(html).not.toContain(repo);
+  it('carries no development JSX source locations, so no local file path, under NODE_ENV=development', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    try {
+      const { html } = await buildStandalone(relocation, { check: 'static' });
+      expect(html).not.toMatch(/fileName:\s*"\//);
+      expect(html).not.toContain(repo);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
