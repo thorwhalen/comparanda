@@ -249,4 +249,17 @@ describe('deciding a suggestion that is not anchored to a cell (sprint review)',
   });
 });
 
+describe('deciding a suggestion whose proposed value is off-scale (#268)', () => {
+  it('refuses accepting it with the measurement reason, and lets it be declined', () => {
+    const a = relocation();
+    const off = { ...a, suggestions: a.suggestions.map((s) => ({ ...s, proposed: { ...s.proposed, value: 9 } })) };
+    const aff = makeAffordances(off as Analysis);
+    const id = off.suggestions[0]!.id;
+    expect(makeAffordances(a).decideSuggestion(id, 'accept')).toEqual({ enabled: true });
+    expect(aff.decideSuggestion(id, 'accept').reason)
+      .toMatch(/not one this cell's measurement admits: 9 is not one of the declared levels \(1, 2, 3, 4, 5\)\.[\s\S]*Decline it instead/);
+    expect(aff.decideSuggestion(id, 'decline')).toEqual({ enabled: true });
+  });
+});
+
 const ANA_206 = { id: 'ana-206', displayName: 'Ana', kind: 'human' } as const;

@@ -435,6 +435,14 @@ export function makeAffordances(
           const st = structural(alt, crit, measure);
           if (!st.enabled) return st;
           if (cellAt(alt, crit, measure)?.readOnly) return refuse('the cell this suggestion targets is declared read-only in the analysis; decline it instead.');
+          // The write refuses an off-scale value (`revisionProblems`), so the
+          // button does too, with the same `valueRefusal` reason (#268).
+          if (s.proposed.value !== undefined) {
+            const admitted = valueAffordance(measurementFor(crits.get(crit)!, measure)!, s.proposed.value);
+            if (!admitted.enabled) {
+              return refuse(`the proposed value is not one this cell's measurement admits: ${admitted.reason} Decline it instead.`);
+            }
+          }
         }
         return documentPolicy(a, 'decide-suggestion');
       };
