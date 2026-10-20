@@ -251,6 +251,7 @@ export function mountMatrix(
       if (may && !may.enabled) throw new Error(may.reason);
       const written = change(latest, author, now().toISOString());
       if (versioned && isVersioned(source)) await source.updateIfVersion(id, written, versioned.version);
+      // A source with no versions is the host's own last-write-wins: ADR-0011 clause 6 asks hosts with several contributors to supply a versioned one.
       else await source.update(id, written);
     };
     // One write at a time: two sent together would each build on the same document, and the second would undo the first.
