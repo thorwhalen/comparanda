@@ -5,26 +5,23 @@
  * `createEncodingRegistry`; `SHIPPED_ENCODINGS` is all nine, for a root that
  * wants them all.
  *
- * Seven draw today: `text-only`, `value`, `categorical`, `missingness`,
- * `datum`, `uncertainty-suppressed`, and `disagreement` (the rater dot strip,
- * #110). Two are registered with their texture and legend, and say why they
- * cannot draw yet when chosen, so the matrix falls back to text and says so:
- * `consensus-suppressed` and `disagreement-spread` wait for the per-cell
- * disagreement index (ADR-0024's `(1 − A) / 2`). Each lands behind this same
- * registration rather than as a new one.
+ * All nine draw: `text-only`, `value`, `categorical`, `missingness`, `datum`,
+ * `uncertainty-suppressed`, `disagreement` (the rater dot strip, #110), and,
+ * over the per-cell disagreement index (ADR-0024's `(1 − A) / 2`, #258),
+ * `disagreement-spread` and `consensus-suppressed`.
  */
 import { pughTally, type PughStanding } from '../../core/analyses/pugh.js';
 import { CORE_MISSING_CODES, coreReasonOf, NOT_APPLICABLE, NOT_ASSESSED, type MissingCode } from '../../core/schema/missingness.js';
 import { isOrdered, type Measurement } from '../../core/schema/measurement.js';
 import { measurementFor } from '../../core/schema/structure.js';
-import { stripLevels, type RaterStrip } from '../../core/rater-strip.js';
+import { stripDisagreement, stripLevels, type RaterStrip } from '../../core/rater-strip.js';
 import type { ScalarValue } from '../../core/schema/values.js';
 import type { Swatch, SwatchId } from './palette.js';
 import { VSUP_PALETTE } from './vsup-palette.js';
 import { capitalise } from '../words.js';
 import { layerFor, mergeTree, nodeOf, SCORE_LEVELS, vsupSwatchId, type LevelGroup, type MergeTree, type VsupSwatchId } from './vsup.js';
 import {
-  defineEncoding, type CellMark, type EncodingContext, type EncodingDefinition, type LegendEntry,
+  defineEncoding, type CellMark, type EncodingContext, type EncodingDefinition, type LegendEntry, type PreparedEncoding,
 } from './registry.js';
 
 const NO_MARK: CellMark = Object.freeze({});
@@ -340,18 +337,24 @@ function groupWords([first, last]: LevelGroup, { levelWords: words, reversed }: 
  * from the precomputed, tested `VSUP_PALETTE`; the hatch says the confidence
  * layer in a second channel (drawn by #102), and the value stays as text.
  */
-export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
-  id: 'uncertainty-suppressed',
-  label: 'Value, suppressed by low confidence',
-  texture: { channel: 'hatch', carries: 'confidence', levels: 3 },
-  prepare: (ctx) => {
-    if (ctx.measure === CONFIDENCE) return { unavailable: 'the shown measure is the confidence itself; show the measure it qualifies.' };
-    if (!ctx.analysis.measures.some((m) => m.name === CONFIDENCE)) return { unavailable: 'this analysis records no confidence measure to suppress by.' };
-    const byId = new Map(ctx.analysis.criteria.map((c) => [c.id, c]));
-    const columns = new Map(ctx.criteria.map((id) => {
-      const c = byId.get(id);
-      return [id, c ? suppressedColumn(measurementFor(c, ctx.measure), measurementFor(c, CONFIDENCE)) : undefined] as const;
-    }));
+/** What one value-suppressing blend suppresses by: the per-column tree, the per-cell certainty, and its words. */
+interface SuppressionSpec {
+  columnOf: (criterionId: string) => SuppressedColumn | undefined;
+  /** The cell's certainty, read by its column's `layer`. */
+  certainty: (alt: string, crit: string) => ScalarValue | undefined;
+  /** What a layer is a level of: "confidence", "agreement". */
+  noun: string;
+  /** What makes a cell recede: "confidence falls". */
+  falls: string;
+  noCell: string;
+  /** After "no shown criterion has a <measure> on a ranked scale of 2 to 5 levels". */
+  noColumn: string;
+  notes: (someUncoloured: boolean) => string[];
+}
+
+/** The value-suppressing blend over a certainty (ADR-0010; ADR-0024 for disagreement): one body, two parameterisations. */
+function suppressedBy(ctx: EncodingContext, spec: SuppressionSpec): PreparedEncoding | { unavailable: string } {
+    const columns = new Map(ctx.criteria.map((id) => [id, spec.columnOf(id)] as const));
     const marks = new Map<string, CellMark>();
     // Keyed by the swatch *and* the column's words: two columns with one tree share a colour, but
     // when their levels read differently (other words, the other direction) each gets its own line.
@@ -362,7 +365,7 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
         const column = columns.get(crit);
         const v = ctx.read(alt, crit)?.value;
         if (!column || v === undefined) continue;
-        const c = ctx.readMeasure(CONFIDENCE, alt, crit)?.value;
+        const c = spec.certainty(alt, crit);
         const level = column.level(v);
         const layer = c === undefined ? undefined : column.layer(c);
         if (level === undefined || layer === undefined) { unplaced = true; continue; }
@@ -380,8 +383,8 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
     if (used.size === 0) {
       return {
         unavailable: [...columns.values()].some(Boolean)
-          ? `no shown cell records both a ${ctx.measure} and a confidence on their declared scales.`
-          : `no shown criterion has a ${ctx.measure} on a ranked scale of ${SCORE_LEVELS[0]} to ${SCORE_LEVELS[1]} levels and a ranked confidence to suppress it by.`,
+          ? spec.noCell
+          : `no shown criterion has a ${ctx.measure} on a ranked scale of ${SCORE_LEVELS[0]} to ${SCORE_LEVELS[1]} levels${spec.noColumn}.`,
       };
     }
     const palette: Record<string, Swatch> = {};
@@ -390,46 +393,122 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
     const confident = (u: { column: SuppressedColumn; layer: number }) => u.layer / (u.column.tree.confidenceLevels - 1);
     const entries = [...used.values()].sort((a, b) => (confident(b) - confident(a)) || (a.node - b.node)).map((u) => ({
       swatch: u.swatch,
-      label: `${capitalise(groupWords(u.column.tree.layers[u.layer]![u.node]!, u.column).replace(/^any$/, `any ${ctx.measure}`))}, ${u.column.layerWords[u.layer]} confidence`,
+      label: `${capitalise(groupWords(u.column.tree.layers[u.layer]![u.node]!, u.column).replace(/^any$/, `any ${ctx.measure}`))}, ${u.column.layerWords[u.layer]} ${spec.noun}`,
       count: u.count,
     }));
     const aliasing = new Set<string>();
     for (const { column } of used.values()) {
       const least = column.layerWords[0];
-      aliasing.add(`At ${least} confidence, every ${ctx.measure} is shown as one colour.`);
+      aliasing.add(`At ${least} ${spec.noun}, every ${ctx.measure} is shown as one colour.`);
       column.tree.layers.slice(1, -1).forEach((groups, i) => {
         if (groups.length === 1) {
-          aliasing.add(`At ${column.layerWords[i + 1]} confidence, every ${ctx.measure} is shown as one colour.`);
+          aliasing.add(`At ${column.layerWords[i + 1]} ${spec.noun}, every ${ctx.measure} is shown as one colour.`);
           return;
         }
         const merged = groups.filter(([first, last]) => last > first).map((g) => groupWords(g, column));
-        if (merged.length > 0) aliasing.add(`At ${column.layerWords[i + 1]} confidence, each of these is shown as one colour: ${merged.join('; ')}.`);
+        if (merged.length > 0) aliasing.add(`At ${column.layerWords[i + 1]} ${spec.noun}, each of these is shown as one colour: ${merged.join('; ')}.`);
       });
     }
     return {
       mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? NO_MARK,
       palette,
       legend: {
-        title: `${capitalise(ctx.measure)}, fading toward the background as confidence falls`,
+        title: `${capitalise(ctx.measure)}, fading toward the background as ${spec.falls}`,
         entries,
         notes: [
           ...aliasing,
-          `The ${ctx.measure} stays as text in every cell. In the study that introduced this blend, it changed which options readers chose -- they avoided the least certain, and accepted worse expected value to do so -- not how accurately they read values.`,
-          ...(unplaced || [...columns.values()].some((c) => !c)
-            ? [`Cells with no confidence recorded, and criteria with no ranked confidence or whose ${ctx.measure} is not on a ranked scale of ${SCORE_LEVELS[0]} to ${SCORE_LEVELS[1]} levels, are left uncoloured.`]
-            : []),
+          ...spec.notes(unplaced || [...columns.values()].some((c) => !c)),
         ],
       },
     };
+}
+
+/**
+ * The value-suppressing blend (ADR-0010 clauses 2, 3, 5 and 9): a cell's colour
+ * is its value's node in an ordinal merge tree, pulled toward the theme surface
+ * as confidence falls, so a high value on thin evidence recedes. Colours come
+ * from the precomputed, tested `VSUP_PALETTE`; the hatch says the confidence
+ * layer in a second channel (drawn by #102), and the value stays as text.
+ */
+export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
+  id: 'uncertainty-suppressed',
+  label: 'Value, suppressed by low confidence',
+  texture: { channel: 'hatch', carries: 'confidence', levels: 3 },
+  prepare: (ctx) => {
+    if (ctx.measure === CONFIDENCE) return { unavailable: 'the shown measure is the confidence itself; show the measure it qualifies.' };
+    if (!ctx.analysis.measures.some((m) => m.name === CONFIDENCE)) return { unavailable: 'this analysis records no confidence measure to suppress by.' };
+    const byId = new Map(ctx.analysis.criteria.map((c) => [c.id, c]));
+    return suppressedBy(ctx, {
+      columnOf: (id) => {
+        const c = byId.get(id);
+        return c ? suppressedColumn(measurementFor(c, ctx.measure), measurementFor(c, CONFIDENCE)) : undefined;
+      },
+      certainty: (alt, crit) => ctx.readMeasure(CONFIDENCE, alt, crit)?.value,
+      noun: 'confidence',
+      falls: 'confidence falls',
+      noCell: `no shown cell records both a ${ctx.measure} and a confidence on their declared scales.`,
+      noColumn: ' and a ranked confidence to suppress it by',
+      notes: (uncoloured) => [
+        `The ${ctx.measure} stays as text in every cell. In the study that introduced this blend, it changed which options readers chose -- they avoided the least certain, and accepted worse expected value to do so -- not how accurately they read values.`,
+        ...(uncoloured
+          ? [`Cells with no confidence recorded, and criteria with no ranked confidence or whose ${ctx.measure} is not on a ranked scale of ${SCORE_LEVELS[0]} to ${SCORE_LEVELS[1]} levels, are left uncoloured.`]
+          : []),
+      ],
+    });
   },
 });
 
-/** The blend re-parameterised by disagreement (ADR-0024): registered; the palette is in, the per-cell index is not. */
+/** Agreement layers of `consensus-suppressed`, least agreement first: the disagreement index read in three. */
+const AGREEMENT_LAYERS = 3;
+const AGREEMENT_WORDS = ['low', 'medium', 'high'];
+
+/**
+ * The blend re-parameterised by disagreement (ADR-0024 and its amendment): the
+ * same palette and tree, with the cell's `disagreementIndex` in place of
+ * uncertainty, so a value the raters split on recedes as a value on thin
+ * evidence does. A cell with fewer than two ratings, or on fewer than three
+ * levels, has no index and is left uncoloured.
+ */
 export const consensusSuppressed = /* @__PURE__ */ defineEncoding({
   id: 'consensus-suppressed',
   label: 'Value, suppressed by disagreement',
   texture: { channel: 'hatch', carries: 'disagreement', levels: 3 },
-  prepare: () => ({ unavailable: 'the per-cell disagreement index it suppresses by is not in this build yet.' }),
+  prepare: (ctx) => {
+    const stripOf = ctx.stripOf;
+    if (!stripOf) return { unavailable: 'this host does not give the encoding the cells\' assertions.' };
+    const measured = criteriaMeasured(ctx);
+    return suppressedBy(ctx, {
+      columnOf: (id) => {
+        const m = measured.get(id);
+        const levels = rankedLevels(m);
+        if (!levels || !m) return undefined;
+        const k = levels.length;
+        if (!Object.prototype.hasOwnProperty.call(VSUP_PALETTE, vsupSwatchId(k, AGREEMENT_LAYERS, 0, 0))) return undefined;
+        return {
+          tree: mergeTree(k, AGREEMENT_LAYERS),
+          level: (v) => { const i = levels.findIndex((l) => l === v); return i < 0 ? undefined : i; },
+          // The index is the uncertainty: 0 unanimity takes the top layer, 1 bimodality the root.
+          layer: (d) => (typeof d === 'number' ? layerFor(d, AGREEMENT_LAYERS) : undefined),
+          levelWords: levels.map(String),
+          reversed: m.preference === 'decreasing',
+          layerWords: AGREEMENT_WORDS,
+        };
+      },
+      certainty: (alt, crit) => {
+        const levels = stripLevels(measured.get(crit));
+        const strip = levels && stripOf(alt, crit, levels);
+        return strip ? stripDisagreement(strip)?.index : undefined;
+      },
+      noun: 'agreement',
+      falls: 'the raters disagree',
+      noCell: `no shown cell has two or more ratings of a ${ctx.measure} on a scale of three or more levels to measure disagreement on.`,
+      noColumn: ' to suppress by its raters\' disagreement',
+      notes: (uncoloured) => [
+        `The ${ctx.measure} stays as text in every cell. Agreement is the cell's disagreement index, (1 - A) / 2 of van der Eijk's A, read in three layers; each cell's text gives its ratings.`,
+        ...(uncoloured ? ['Cells with fewer than two ratings, or on a scale of fewer than three levels, have no disagreement to suppress by and are left uncoloured.'] : []),
+      ],
+    });
+  },
 });
 
 /**
@@ -494,12 +573,54 @@ export const disagreement = /* @__PURE__ */ defineEncoding({
   },
 });
 
-/** A ramp over `(1 − A) / 2` and nothing else (ADR-0024 amendment): registered; needs the per-cell index. */
+/** A cell's disagreement index as a step of the sequential ramp: 0 (unanimity) the lightest, 1 (bimodality) the darkest. */
+export function spreadStep(index: number): SwatchId {
+  return STEPS[Math.max(0, Math.min(STEPS.length - 1, Math.floor(index * STEPS.length)))]!;
+}
+
+/**
+ * The disagreement ramp (ADR-0024 and its amendment): one hue, light to dark,
+ * over each cell's `disagreementIndex`, `(1 - A) / 2`, and nothing else; the
+ * value never enters the mapping. The thing to sort on, thumbnail and print
+ * small, where the strip is the thing to read. A and `n` are said with it in
+ * every cell, since A is a shape statistic that does not know the count.
+ */
 export const disagreementSpread = /* @__PURE__ */ defineEncoding({
   id: 'disagreement-spread',
   label: 'Disagreement',
   texture: { channel: 'none', because: 'the ramp is one statistic, stated with its rater count in the cell\'s text.' },
-  prepare: () => ({ unavailable: 'the per-cell disagreement index its ramp is laid on is not in this build yet.' }),
+  prepare: (ctx) => {
+    const stripOf = ctx.stripOf;
+    if (!stripOf) return { unavailable: 'this host does not give the encoding the cells\' assertions.' };
+    const levelsOf = new Map([...criteriaMeasured(ctx)].map(([id, m]) => [id, stripLevels(m)] as const));
+    if (![...levelsOf.values()].some((l) => l !== undefined && l.length >= 3)) {
+      return { unavailable: `no shown criterion has an ordered list of three or more levels to measure the disagreement of a ${ctx.measure} on.` };
+    }
+    const marks = new Map<string, CellMark>();
+    const counts = new Map<SwatchId, number>();
+    for (const alt of ctx.alternatives) for (const crit of ctx.criteria) {
+      const levels = levelsOf.get(crit);
+      const strip = levels && stripOf(alt, crit, levels);
+      const d = strip && stripDisagreement(strip);
+      if (!strip || !d) continue;
+      const swatch = spreadStep(d.index);
+      counts.set(swatch, (counts.get(swatch) ?? 0) + 1);
+      marks.set(`${alt}\u0000${crit}`, { swatch, said: `. ${strip.label}. Disagreement ${d.index.toFixed(2)} (A ${d.a.toFixed(2)}, n ${d.n})` });
+    }
+    if (marks.size === 0) return { unavailable: 'no shown cell holds two or more ratings on a scale of three or more levels, so there is no disagreement to show.' };
+    const word = ['Unanimous or nearly', 'Little disagreement', 'Some disagreement', 'Much disagreement', 'Split, or nearly'];
+    return {
+      mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? NO_MARK,
+      legend: {
+        title: 'Disagreement between the ratings, light to dark',
+        entries: STEPS.map((swatch, i) => ({ swatch, label: `${word[i]} (index ${(i / STEPS.length).toFixed(1)} to ${((i + 1) / STEPS.length).toFixed(1)})`, count: counts.get(swatch) ?? 0 })),
+        notes: [
+          'The index is (1 - A) / 2 of van der Eijk\'s A over the cell\'s ratings: 0 when every rating is the same, 1 when they split evenly between the two ends. The value itself plays no part in the colour.',
+          'Each cell says its index with A and the number of ratings, n, and lists its ratings. A cell with fewer than two ratings is left uncoloured.',
+        ],
+      },
+    };
+  },
 });
 
 /** All nine, for a composition root that ships them all. Importing this keeps every one in the bundle. */

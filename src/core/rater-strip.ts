@@ -13,7 +13,7 @@
  *
  * Derived, never stored (ADR-0003).
  */
-import { cellShape } from './analyses/agreement.js';
+import { cellShape, disagreementOfCounts } from './analyses/agreement.js';
 import { describeAssertionSet, type AssertionSetReading } from './assertion-set.js';
 import type { Author } from './schema/provenance.js';
 import type { Measurement } from './schema/measurement.js';
@@ -139,4 +139,13 @@ export function raterStripInView(
   const strip = raterStrip({ assertions: kept }, { authors: analysis.authors, levels, means });
   if (!strip || unseen === 0) return strip;
   return { ...strip, unseen, label: `${strip.label} ${unseen} more not shown to you.` };
+}
+
+/**
+ * The strip's disagreement index (ADR-0024 amendment): `(1 - A) / 2` over its
+ * slot counts, 0 unanimity and 1 perfect bimodality, with A and `n`, which are
+ * never shown apart. `undefined` where A is (fewer than three levels).
+ */
+export function stripDisagreement(strip: RaterStrip): { index: number; a: number; n: number } | undefined {
+  return disagreementOfCounts(strip.slots.map((x) => x.count));
 }
