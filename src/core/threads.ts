@@ -220,7 +220,7 @@ function requireNewId(a: Analysis, threadId: string): void {
  * a different kind of author, or one known differently well, is refused: the
  * reader sees the document's record, so writing under it would sign as them.
  */
-function withAuthor(a: Analysis, author: Author): Analysis {
+export function withAuthor(a: Analysis, author: Author): Analysis {
   const known = a.authors.find((x) => x.id === author.id);
   if (!known) return { ...a, authors: [...a.authors, author] };
   // Who the record says made it, not only how well it is known: another model, run or principal is another author (ADR-0012, #209).
