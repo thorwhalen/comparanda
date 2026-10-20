@@ -91,7 +91,7 @@ export function stripCss({ bracketBelow, hiddenBelow }: { bracketBelow: number; 
 export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
 .comparanda-matrix { color: var(--cmp-ink); background: var(--cmp-surface); }
 .comparanda-matrix .comparanda-scroll {
-  overflow: auto; max-height: var(--comparanda-max-height, 80vh);
+  overflow: auto; max-height: var(--comparanda-max-height, 80vh); position: relative;
   /* Focus scrolls clear of the sticky chrome (SC 2.4.11): the extents are measured by mount (sticky.ts). */
   scroll-padding-block-start: var(--cmp-sticky-block, 0px);
   scroll-padding-inline-start: var(--cmp-sticky-inline, 0px);
@@ -105,6 +105,10 @@ export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
 .comparanda-matrix table { border-collapse: separate; border-spacing: 0; }
 .comparanda-matrix caption { text-align: start; font-weight: 600; padding: 0.35em 0; }
 .comparanda-matrix td { position: relative; }
+.comparanda-matrix .comparanda-tip {
+  position: absolute; z-index: 3; max-inline-size: 22em; padding: 0.3em 0.5em; border: 1px solid var(--cmp-ink);
+  background: var(--cmp-surface); color: var(--cmp-ink); font-size: 0.9em;
+}
 .comparanda-matrix th, .comparanda-matrix td {
   padding: 0.35em 0.6em; line-height: 1.4; text-align: start; vertical-align: top;
   background: var(--cmp-surface); color: var(--cmp-ink);

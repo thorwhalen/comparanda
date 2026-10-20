@@ -386,7 +386,7 @@ export function plantTooltip(
   const off = new AbortController();
   el.addEventListener('mouseover', (e) => {
     const td = (e.target as Element).closest('td');
-    if (!td || document.querySelector('[role="tooltip"]')) return;
+    if (!td || document.querySelector('[role="tooltip"]:not(.comparanda-tip)')) return;
     let tip: HTMLElement | undefined;
     // Started with the hover, as a handler that opens and schedules the close in one go does.
     if (autoClose?.how === 'timeout') setTimeout(() => tip?.remove(), autoClose.ms);
