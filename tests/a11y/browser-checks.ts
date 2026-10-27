@@ -12,6 +12,7 @@
 import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
+import { initialViewState, setGrouping, type ViewState } from '../../src/core/view-state.js';
 import { CORE_MISSING_CODES, vocabularyOf } from '../../src/index.js';
 import { anonymousIdentity } from '../../src/store/index.js';
 import { SHIPPED_ENCODINGS, type MountMatrixProps } from '../../src/view/index.js';
@@ -33,6 +34,20 @@ const relocation = FIXTURES['relocation']!;
 const confident = FIXTURES['languages with confidence']!;
 const crits = languages.criteria.map((c) => c.id);
 const ENCODING_IDS = SHIPPED_ENCODINGS.map((e) => e.id);
+
+/**
+ * A fixture's matrix as it opens, then, where both axes have groups, banded on
+ * both by their top-level groups (#93): the band rows and an omitted block are
+ * drawn, and checked, like any other cell.
+ */
+function viewsOf(analysis: Analysis): { view?: ViewState; as: string }[] {
+  const tops = (axis: 'alternatives' | 'criteria') =>
+    analysis.groups.filter((g) => g.axis === axis && !g.tombstoned && g.parentId === undefined).map((g) => g.id);
+  const [alternatives, criteria] = [tops('alternatives'), tops('criteria')];
+  if (alternatives.length === 0 || criteria.length === 0) return [{ as: '' }];
+  const banded = setGrouping(setGrouping(initialViewState(analysis), 'alternatives', alternatives), 'criteria', criteria);
+  return [{ as: '' }, { view: banded, as: ' / banded' }];
+}
 
 /** A sentence cap: a check that finds a hundred faults reports the first dozen and the count. */
 const REPORT_MAX = 12;
@@ -199,12 +214,16 @@ const a3: Check<BrowserEnv> = {
   run(env) {
     const found: string[] = [];
     for (const [name, analysis] of Object.entries(FIXTURES)) {
-      for (const encoding of ENCODING_IDS) {
-        const { el } = env.mount({ analysis, measure: 'score', encoding });
-        const cells = el.querySelectorAll<HTMLElement>('tbody td');
-        if (cells.length === 0) found.push(`${name} / ${encoding}: no cells were drawn`);
-        for (const td of Array.from(cells)) {
-          if (heard(td) === '') found.push(`${name} / ${encoding}: cell ${td.dataset['cell']} is announced as blank`);
+      for (const { view, as } of viewsOf(analysis)) {
+        for (const encoding of ENCODING_IDS) {
+          const { el } = env.mount({ analysis, measure: 'score', encoding, ...(view ? { view } : {}) });
+          const cells = el.querySelectorAll<HTMLElement>('tbody td');
+          if (cells.length === 0) found.push(`${name}${as} / ${encoding}: no cells were drawn`);
+          // Relocation declares a two-cell block (Asia x EU): banded, it must be drawn, or this case checked nothing new.
+          if (view && name === 'relocation' && el.querySelector('td[data-block]') === null) found.push(`${name}${as} / ${encoding}: no omitted block was drawn`);
+          for (const td of Array.from(cells)) {
+            if (heard(td) === '') found.push(`${name}${as} / ${encoding}: cell ${td.dataset['cell']} is announced as blank`);
+          }
         }
       }
     }
@@ -645,12 +664,14 @@ const a13: Check<BrowserEnv> = {
     const found: string[] = [];
     for (const theme of THEMES) {
       for (const [name, analysis] of Object.entries(FIXTURES)) {
-        for (const encoding of ENCODING_IDS) {
-          const where = `${name} / ${encoding} / ${theme}`;
-          const { el } = env.mount({ analysis, measure: 'score', encoding }, { theme });
-          const cells = Array.from(el.querySelectorAll('tbody td, tbody th, thead th'));
-          if (cells.length === 0) found.push(`${where}: nothing was drawn to measure`);
-          for (const cell of cells) found.push(...contrastFaults(cell, where));
+        for (const { view, as } of viewsOf(analysis)) {
+          for (const encoding of ENCODING_IDS) {
+            const where = `${name}${as} / ${encoding} / ${theme}`;
+            const { el } = env.mount({ analysis, measure: 'score', encoding, ...(view ? { view } : {}) }, { theme });
+            const cells = Array.from(el.querySelectorAll('tbody td, tbody th, thead th'));
+            if (cells.length === 0) found.push(`${where}: nothing was drawn to measure`);
+            for (const cell of cells) found.push(...contrastFaults(cell, where));
+          }
         }
       }
     }
@@ -727,7 +748,14 @@ function channelsSurvive(el: HTMLElement, where: string, { paper }: { paper?: Rg
 
 /** Every reason code in force on a cell of its own, so a code added without its glyph fails here (ADR-0009, ADR-0029). */
 const EVERY_CODE = everyCode().analysis;
-const MEDIUM_CASES = [['missingness', relocation], ['missingness', EVERY_CODE], ['uncertainty-suppressed', confident], ['text-only', relocation]] as const;
+const BANDED = viewsOf(relocation)[1]!.view!;
+const MEDIUM_CASES: readonly (readonly [string, Analysis, ViewState?])[] = [
+  ['missingness', relocation], ['missingness', EVERY_CODE], ['uncertainty-suppressed', confident], ['text-only', relocation],
+  // Banded on both axes: the omitted block's glyph and words must survive too (#93).
+  ['missingness', relocation, BANDED], ['text-only', relocation, BANDED],
+];
+const caseName = (encoding: string, analysis: Analysis, view?: ViewState) =>
+  `${encoding}${analysis === EVERY_CODE ? ' / every code' : ''}${view ? ' / banded' : ''}`;
 
 const a15: Check<BrowserEnv> = {
   id: 'A15',
@@ -735,9 +763,9 @@ const a15: Check<BrowserEnv> = {
     await env.media({ forcedColors: 'active' });
     const found: string[] = [];
     if (!matchMedia('(forced-colors: active)').matches) return ['this browser does not honour forcedColors emulation, so the check cannot see what a forced-colors reader sees'];
-    for (const [encoding, analysis] of MEDIUM_CASES) {
-      const { el } = env.mount({ analysis, measure: 'score', encoding });
-      found.push(...channelsSurvive(el, `forced colors / ${encoding}${analysis === EVERY_CODE ? ' / every code' : ''}`));
+    for (const [encoding, analysis, view] of MEDIUM_CASES) {
+      const { el } = env.mount({ analysis, measure: 'score', encoding, ...(view ? { view } : {}) });
+      found.push(...channelsSurvive(el, `forced colors / ${caseName(encoding, analysis, view)}`));
       if (encoding !== 'text-only' && el.querySelector('td svg') === null) found.push(`forced colors / ${encoding}: no glyph or hatch was drawn at all`);
     }
     return cap(found);
@@ -759,9 +787,9 @@ const a18: Check<BrowserEnv> = {
     const found: string[] = [];
     if (!matchMedia('print').matches) return ['the print medium was not emulated'];
     for (const theme of THEMES) {
-      for (const [encoding, analysis] of MEDIUM_CASES) {
-        const where = `print / ${encoding}${analysis === EVERY_CODE ? ' / every code' : ''} / ${theme} on screen`;
-        const { el } = env.mount({ analysis, measure: 'score', encoding }, { theme });
+      for (const [encoding, analysis, view] of MEDIUM_CASES) {
+        const where = `print / ${caseName(encoding, analysis, view)} / ${theme} on screen`;
+        const { el } = env.mount({ analysis, measure: 'score', encoding, ...(view ? { view } : {}) }, { theme });
         // A printer may drop backgrounds: the ink and the marks must hold against paper, wherever the cells' own fills were.
         found.push(...channelsSurvive(el, where, { paper: PAPER }));
         for (const node of Array.from(el.querySelectorAll('th, td'))) {

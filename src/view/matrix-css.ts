@@ -253,6 +253,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 .comparanda-matrix .comparanda-menu [role="menuitem"]:focus { outline: 2px solid var(--cmp-focus); outline-offset: -2px; }
 .comparanda-matrix .comparanda-arrange p { margin: 0 0 0.25em; color: var(--cmp-muted); font-size: 0.9em; }
 .comparanda-matrix .comparanda-grouping label { margin-inline-end: 1.5em; }
+.comparanda-matrix .comparanda-block-note { font-size: 0.9em; }
 .comparanda-matrix .comparanda-arrange button {
   font: inherit; color: var(--cmp-ink); background: var(--cmp-header); border: 1px solid var(--cmp-rule); padding: 0.05em 0.45em;
 }

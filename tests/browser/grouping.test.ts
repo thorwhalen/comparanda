@@ -9,9 +9,9 @@ import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { startThread } from '../../src/core/threads.js';
-import { initialViewState, setFocus, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
+import { initialViewState, setEncoding, setFocus, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
 import { inMemoryAnalysisSource } from '../../src/store/index.js';
-import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
+import { createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
 const relocation = Analysis.parse(relocationJson);
@@ -19,8 +19,8 @@ const REASON = 'not an EU destination, so EU residency rules do not apply';
 
 let el: HTMLElement;
 const handles: MatrixHandle[] = [];
-const mount = (props: MountMatrixProps) => {
-  const handle = mountMatrix(el, props);
+const mount = (props: MountMatrixProps, encodings = createEncodingRegistry(SHIPPED_ENCODINGS)) => {
+  const handle = mountMatrix(el, props, { encodings });
   handles.push(handle);
   return handle;
 };
@@ -65,7 +65,22 @@ describe('the grouping control', () => {
   it('is not offered on an axis with no groups', () => {
     const plain = Analysis.parse({ ...relocationJson, groups: [], inapplicable: [], alternatives: relocationJson.alternatives.map((a) => ({ ...a, groupIds: [] })), criteria: relocationJson.criteria.map((c) => ({ ...c, groupIds: [] })) });
     mount({ analysis: plain, measure: 'score' });
-    expect(el.querySelector('.comparanda-grouping')!.querySelectorAll('input')).toHaveLength(0);
+    expect(el.querySelector('.comparanda-grouping')).toBeNull();
+  });
+
+  it('yields to a host that gives a new grouping, and keeps the reader\'s against the same view passed again', async () => {
+    const view = initialViewState(relocation);
+    const handle = mount({ analysis: relocation, measure: 'score', view });
+    await userEvent.click(toggle(/options/i));
+    handle.update({ view });
+    expect(el.querySelectorAll('tbody[data-group]')).toHaveLength(3);
+    handle.update({ view: setGrouping(view, 'alternatives', ['g-asia']) });
+    expect(Array.from(el.querySelectorAll('tbody[data-group]'), (b) => b.getAttribute('data-group'))).toEqual(['g-asia']);
+  });
+
+  it('shows the box unchecked when the view names only groups this document lacks', () => {
+    mount({ analysis: relocation, measure: 'score', view: setGrouping(initialViewState(relocation), 'alternatives', ['g-gone']) });
+    expect(toggle(/options/i).checked).toBe(false);
   });
 });
 
@@ -77,7 +92,7 @@ describe('an inapplicable block is omitted, not blank-filled', () => {
     expect(rest).toHaveLength(0);
     expect([block!.rowSpan, block!.colSpan, block!.getAttribute('data-block')]).toEqual([2, 1, '2']);
     expect(block!.textContent).toContain(`All 2 cells: ${REASON}.`);
-    expect(block!.querySelector('.comparanda-sr')!.textContent).toMatch(/^EU\b.*, Asia\b.*, all 2 cells: $/);
+    expect(block!.querySelector('.comparanda-sr')!.textContent).toMatch(/^EU\b.*, Asia\b.*, $/);
     expect(block!.getAttribute('data-state')).toBe('not-applicable');
     // Matched by attribute value: a NUL in a selector string matches nothing at all.
     const pairs = Array.from(el.querySelectorAll('td[data-pair]'), (td) => td.getAttribute('data-pair'));
@@ -89,6 +104,13 @@ describe('an inapplicable block is omitted, not blank-filled', () => {
     const cellsIn = (alt: string) => Array.from(el.querySelector(`th[data-entry="${alt}"]`)!.closest('tr')!.querySelectorAll('td'))
       .reduce((n, td) => n + td.colSpan, 0);
     expect([cellsIn('taipei'), cellsIn('seoul'), cellsIn('montreal')]).toEqual([width, width - 1, width]);
+  });
+
+  it('is painted as its cells would be: under the missingness encoding, the swatch of a not-applicable cell', () => {
+    mount({ analysis: relocation, measure: 'score', view: setEncoding(both(), 'missingness') });
+    const montreal = Array.from(el.querySelectorAll('td[data-pair]')).find((td) => td.getAttribute('data-pair') === 'montreal\u0000eu-residency-path')!;
+    expect(blockCells()[0]!.getAttribute('data-swatch')).toBeTruthy();
+    expect(blockCells()[0]!.getAttribute('data-swatch')).toBe(montreal.getAttribute('data-swatch'));
   });
 
   it('keeps a block drawn cell by cell when one of its cells has a thread', () => {
@@ -106,6 +128,20 @@ describe('an inapplicable block is omitted, not blank-filled', () => {
     handles.splice(0).forEach((h) => h.destroy());
     mount({ analysis: relocation, measure: 'score', view: transpose(both()) });
     expect(Array.from(blockCells(), (b) => [b.rowSpan, b.colSpan])).toEqual([[1, 2]]);
+  });
+
+  it('transposed, the arrows go into a two-wide block at its first cell and leave from its far side', async () => {
+    mount({ analysis: relocation, measure: 'score', view: setFocus(transpose(both()), { alternativeId: 'berlin', criterionId: 'eu-residency-path' }) });
+    const block = blockCells()[0]!;
+    el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')!.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(block);
+    await userEvent.keyboard('{ArrowRight}');
+    expect(document.activeElement!.getAttribute('data-pair')).toBe('montreal\u0000eu-residency-path');
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(block);
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(document.activeElement!.getAttribute('data-pair')).toBe('berlin\u0000eu-residency-path');
   });
 
   it('is one stop for the keyboard: arrows go in at its first cell and leave from its far edge', async () => {

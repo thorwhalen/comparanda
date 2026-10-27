@@ -20,9 +20,10 @@
  *   nesting level is rendered; a sub-group's members count as its parent's.
  *
  * And one for both axes banded: **a block with nothing in it to show is
- * omitted** (`omittedBlocks`, #93). A band-by-band block whose every cell is
- * declared structurally inapplicable, and shows nothing else, is drawn as one
- * cell saying so, never as a rectangle of the same blank repeated.
+ * omitted** (`omittedBlocks`, #93). A band-by-band block of two cells or more
+ * whose every cell is declared structurally inapplicable, and shows nothing
+ * else, is drawn as one cell saying so, never as a rectangle of the same blank
+ * repeated.
  */
 import type { Analysis } from './schema/analysis.js';
 import { axisGroups, membersOfGroup, type Axis } from './schema/groups.js';
@@ -111,8 +112,8 @@ function axisLayout(
 
 /**
  * A band-by-band block drawn as one cell (#93): its first and last row and
- * column as grid positions (1-based: row and column 0 are the headers), the
- * bands it lies in, how many cells it stands for, and their shared reason.
+ * column, as indices into the layout's `rows.entries` and `columns.entries`,
+ * the bands it lies in, how many cells it stands for, and their shared reason.
  */
 export interface OmittedBlock {
   rows: { first: number; last: number };
@@ -129,7 +130,8 @@ export interface OmittedBlock {
  * `omits(alternativeId, criterionId)` gives the declared block a cell is in
  * when the cell shows nothing but that (no value, no recorded absence of its
  * own, nothing anchored on it), and nothing otherwise. One cell that shows
- * anything keeps its whole block drawn cell by cell.
+ * anything keeps its whole block drawn cell by cell, and a block of one cell
+ * is that cell: there is nothing to gather.
  */
 export function omittedBlocks(
   layout: MatrixLayout,
@@ -138,14 +140,14 @@ export function omittedBlocks(
   const { rows, columns, transposed } = layout;
   if (!rows.bands || !columns.bands) return [];
   const spans = (bands: Band[]) => {
-    let next = 1;
+    let next = 0;
     return bands.map((band) => ({ band, first: next, last: (next += band.entries.length) - 1 }));
   };
   const blocks: OmittedBlock[] = [];
   for (const r of spans(rows.bands)) {
     for (const c of spans(columns.bands)) {
       const declared = r.band.entries.flatMap((re) => c.band.entries.map((ce) => (transposed ? omits(ce.id, re.id) : omits(re.id, ce.id))));
-      if (declared.some((d) => d === undefined)) continue;
+      if (declared.length < 2 || declared.some((d) => d === undefined)) continue;
       const reasons = new Set(declared.map((d) => d!.reason));
       blocks.push({
         rows: { first: r.first, last: r.last }, columns: { first: c.first, last: c.last }, rowBand: r.band, columnBand: c.band,

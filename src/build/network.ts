@@ -392,10 +392,10 @@ export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
   {
     name: 'grouping',
     async run(page, headers) {
-      const toggle = page.locator(`.comparanda-grouping input[data-axis="${await headers.first().getAttribute('data-axis')}"]`);
-      // Not offered: an axis with no groups has no control.
-      if ((await toggle.count()) === 0) return undefined;
-      const bands = page.locator(`th[scope="${await headers.first().getAttribute('scope')}group"]`);
+      // Not offered: a matrix with no groups has no control. With groups on the other axis only, any band will do.
+      if ((await page.locator('.comparanda-grouping input').count()) === 0) return undefined;
+      const own = await page.locator(`.comparanda-grouping input[data-axis="${await headers.first().getAttribute('data-axis')}"]`).count();
+      const bands = page.locator(own > 0 ? `th[scope="${await headers.first().getAttribute('scope')}group"]` : 'th[scope="rowgroup"], th[scope="colgroup"]');
       // Both axes, so a block with nothing in it to show is drawn, and driven, as the one cell it is.
       // Each found by its axis: a query on `:not(:checked)` changes under the clicks it is iterated by.
       const unchecked = await page.locator('.comparanda-grouping input:not(:checked)').evaluateAll((xs) => xs.map((x) => x.getAttribute('data-axis')));

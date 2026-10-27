@@ -113,28 +113,23 @@ describe('omittedBlocks (#93)', () => {
   const blockOf = makeInapplicableBlocks(relocation);
   const at = (b: ReturnType<typeof omittedBlocks>[number]) => [b.rowBand.groupId, b.columnBand.groupId, b.rows, b.columns, b.cells];
 
-  it('finds every band-by-band block whose every cell is declared inapplicable, with its grid span and reason', () => {
+  it('finds every band-by-band block of two cells or more whose every cell is declared inapplicable, with its span and reason', () => {
     const blocks = omittedBlocks(matrixLayout(relocation, both()), blockOf);
-    expect(blocks.map(at)).toEqual([
-      ['g-asia', 'g-eu', { first: 3, last: 4 }, { first: 1, last: 1 }, 2],
-      ['g-americas', 'g-eu', { first: 5, last: 5 }, { first: 1, last: 1 }, 1],
-    ]);
+    // Spans index the layout's entries. The Americas' block is one cell (Montreal): that cell, not a block.
+    expect(blocks.map(at)).toEqual([['g-asia', 'g-eu', { first: 2, last: 3 }, { first: 0, last: 0 }, 2]]);
     expect(blocks[0]!.reason).toBe('not an EU destination, so EU residency rules do not apply');
   });
 
   it('reads the same blocks, axes swapped, when transposed', () => {
     const blocks = omittedBlocks(matrixLayout(relocation, transpose(both())), blockOf);
-    expect(blocks.map(at)).toEqual([
-      ['g-eu', 'g-asia', { first: 1, last: 1 }, { first: 3, last: 4 }, 2],
-      ['g-eu', 'g-americas', { first: 1, last: 1 }, { first: 5, last: 5 }, 1],
-    ]);
+    expect(blocks.map(at)).toEqual([['g-eu', 'g-asia', { first: 0, last: 0 }, { first: 2, last: 3 }, 2]]);
   });
 
   it('omits nothing unless both axes are banded, or when one cell of a block shows anything', () => {
     expect(omittedBlocks(matrixLayout(relocation, setGrouping(initialViewState(relocation), 'alternatives', ['g-asia'])), blockOf)).toEqual([]);
     // Seoul's cell is kept (a value, a thread, its own absence): the whole Asia block is drawn cell by cell.
     const keepSeoul = (alt: string, crit: string) => (alt === 'seoul' ? undefined : blockOf(alt, crit));
-    expect(omittedBlocks(matrixLayout(relocation, both()), keepSeoul).map((b) => b.rowBand.groupId)).toEqual(['g-americas']);
+    expect(omittedBlocks(matrixLayout(relocation, both()), keepSeoul)).toEqual([]);
   });
 
   it('gives no reason when the declarations behind one block disagree', () => {
