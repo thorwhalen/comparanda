@@ -425,19 +425,22 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const [rowId, columnId] = [rows.entries[b.rows.first]!.id, columns.entries[b.columns.first]!.id];
     const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
     const { state, text, absence, terminal, glyph } = contentOf(altId, critId);
+    const mark = prepared.mark(altId, critId);
+    // What the encoding says of such a cell, and its standing, as on any cell (`cell` above).
+    const said = `${asSentence(mark.said ?? '')}${absence ? ` ${STANDING_SAID[absence]}` : ''}`.trim();
     const [rowBand, columnBand] = [bandLabel(b.rowBand, rows), bandLabel(b.columnBand, columns)];
     const [critBand, altBand] = transposed ? [rowBand, columnBand] : [columnBand, rowBand];
     return (
       <td
         key={`block:${columnId}`} rowSpan={b.rows.last - b.rows.first + 1} colSpan={b.columns.last - b.columns.first + 1}
         data-state={state} data-absence={absence} data-terminal={terminal === undefined ? undefined : String(terminal)} data-glyph={glyph}
-        data-swatch={prepared.mark(altId, critId).swatch} data-block={String(b.cells)} {...stop(r, c)}
+        data-swatch={mark.swatch} data-block={String(b.cells)} {...stop(r, c)}
       >
         <span class="comparanda-sr">{`${critBand}, ${altBand}, `}</span>
         {glyph && <Glyph reason={glyph} />}
         <span class="comparanda-shown">{text}</span>
         <span class="comparanda-block-note">{` All ${b.cells} cells${b.reason ? `: ${b.reason}` : ''}.`}</span>
-        {absence && <span class="comparanda-sr">{` ${STANDING_SAID[absence]}`}</span>}
+        {said && <span class="comparanda-sr">{` ${said}`}</span>}
       </td>
     );
   };

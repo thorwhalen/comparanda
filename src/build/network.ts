@@ -396,6 +396,8 @@ export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
       if ((await page.locator('.comparanda-grouping input').count()) === 0) return undefined;
       const own = await page.locator(`.comparanda-grouping input[data-axis="${await headers.first().getAttribute('data-axis')}"]`).count();
       const bands = page.locator(own > 0 ? `th[scope="${await headers.first().getAttribute('scope')}group"]` : 'th[scope="rowgroup"], th[scope="colgroup"]');
+      // Counted first: a page may open banded, and is left as it opened.
+      const opened = await bands.count();
       // Both axes, so a block with nothing in it to show is drawn, and driven, as the one cell it is.
       // Each found by its axis: a query on `:not(:checked)` changes under the clicks it is iterated by.
       const unchecked = await page.locator('.comparanda-grouping input:not(:checked)').evaluateAll((xs) => xs.map((x) => x.getAttribute('data-axis')));
@@ -407,7 +409,7 @@ export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
         await block.click();
       }
       for (const box of checked.reverse()) await box.uncheck();
-      return (await bands.count()) === 0 ? undefined : 'the bands stayed after the groups were put away';
+      return (await bands.count()) === opened ? undefined : 'putting the groups away did not take back the bands it drew';
     },
   },
 ]);

@@ -92,6 +92,8 @@ describe('an inapplicable block is omitted, not blank-filled', () => {
     expect(rest).toHaveLength(0);
     expect([block!.rowSpan, block!.colSpan, block!.getAttribute('data-block')]).toEqual([2, 1, '2']);
     expect(block!.textContent).toContain(`All 2 cells: ${REASON}.`);
+    // Its standing is said, as on any absent cell.
+    expect(block!.textContent).toContain('Nothing to record here.');
     expect(block!.querySelector('.comparanda-sr')!.textContent).toMatch(/^EU\b.*, Asia\b.*, $/);
     expect(block!.getAttribute('data-state')).toBe('not-applicable');
     // Matched by attribute value: a NUL in a selector string matches nothing at all.
@@ -111,6 +113,16 @@ describe('an inapplicable block is omitted, not blank-filled', () => {
     const montreal = Array.from(el.querySelectorAll('td[data-pair]')).find((td) => td.getAttribute('data-pair') === 'montreal\u0000eu-residency-path')!;
     expect(blockCells()[0]!.getAttribute('data-swatch')).toBeTruthy();
     expect(blockCells()[0]!.getAttribute('data-swatch')).toBe(montreal.getAttribute('data-swatch'));
+  });
+
+  it('says what the encoding says of its cells, and is not drawn where a cell carries a mark of its own (the datum)', () => {
+    // The datum is the first alternative shown. Europe first: Lisbon, outside the block, is the datum.
+    mount({ analysis: relocation, measure: 'score', view: setEncoding(both(), 'datum') });
+    expect(blockCells()[0]!.textContent).toMatch(/Not comparable with Lisbon\./);
+    handles.splice(0).forEach((h) => h.destroy());
+    // Asia first: Taipei is the datum, its cells carry the datum's badge, so the Asia block is drawn cell by cell.
+    mount({ analysis: relocation, measure: 'score', view: setEncoding(setGrouping(both(), 'alternatives', ['g-asia', 'g-europe']), 'datum') });
+    expect(blockCells()).toHaveLength(0);
   });
 
   it('keeps a block drawn cell by cell when one of its cells has a thread', () => {
