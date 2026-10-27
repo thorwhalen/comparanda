@@ -8,7 +8,7 @@
  * control that does nothing. The writes themselves are `ThreadWrites`, which
  * `mountMatrix` implements over the source; this file only collects words.
  */
-import { useRef, useState } from 'preact/hooks';
+import { useId, useRef, useState } from 'preact/hooks';
 
 import type { Affordances } from '../core/affordances.js';
 import type { Analysis } from '../core/schema/analysis.js';
@@ -110,6 +110,8 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   const mayReply = affordances.comment(target, 'reply', { threadId: thread.id });
   const mayToggle = affordances.comment(target, thread.resolved ? 'reopen' : 'resolve', { threadId: thread.id });
   const [error, setError] = useFailure();
+  // The reply form's ids from Preact, not from the thread's id: a thread id is a free string (spaces, "name", "new") and would collide or split.
+  const replyId = useId();
   const [busy, setBusy] = useState(false);
   // A ref, not `busy`: two activations in one task both see the same render.
   const sending = useRef(false);
@@ -147,7 +149,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
         <p class="comparanda-reason">{`Answering this thread is not available: ${mayReply.reason ?? 'not allowed here.'}`}</p>
       )}
       {writes && mayReply.enabled && (
-        <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />
+        <Compose label="Reply" action="Reply" idBase={replyId} send={(body) => writes.reply(thread.id, body)} />
       )}
       {writes && !mayToggle.enabled && (
         <p class="comparanda-reason">{`${thread.resolved ? 'Reopening' : 'Resolving'} this thread is not available: ${mayToggle.reason ?? 'not allowed here.'}`}</p>
@@ -195,6 +197,16 @@ function useSend(send: (text: string) => Promise<void>, empty: string) {
 }
 
 /**
+ * A field's refusal, on the field itself (#276): marked invalid, and described
+ * by the reason as well as by whatever else describes it, so a reader who
+ * comes back to it hears why. Cleared with the error, on the next send.
+ */
+function refusedField(error: unknown, errorId: string, ...describedBy: string[]) {
+  const ids = [...describedBy, ...(error ? [errorId] : [])].join(' ');
+  return { 'aria-invalid': error ? 'true' as const : undefined, 'aria-describedby': ids || undefined };
+}
+
+/**
  * The name a local identity writes under, asked for once (#193, ADR-0012
  * default 2). It says where the name is kept and that others see it as
  * unverified, because both are true and neither is obvious.
@@ -211,14 +223,14 @@ function NameForm({ name, idBase }: { name: (typed: string) => Promise<boolean>;
     <form ref={form} class="comparanda-compose" onSubmit={submit} data-detail="name">
       <label for={`${idBase}-name`}>Your name</label>
       <input
-        id={`${idBase}-name`} type="text" autocomplete="name" aria-describedby={`${idBase}-name-hint`} value={draft}
+        id={`${idBase}-name`} type="text" autocomplete="name" {...refusedField(error, `${idBase}-name-error`, `${idBase}-name-hint`)} value={draft}
         onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
       />
       <p id={`${idBase}-name-hint`} class="comparanda-panel-hint">
         Saved on this device, not in an account. It is shown beside what you write, marked unverified: nobody checks it.
       </p>
       <button type="submit" aria-disabled={busy}>Use this name</button>
-      {error && <p role="alert" key={error.attempt}>{`Name not kept: ${error.text}`}</p>}
+      {error && <p role="alert" id={`${idBase}-name-error`} key={error.attempt}>{`Name not kept: ${error.text}`}</p>}
     </form>
   );
 }
@@ -243,9 +255,12 @@ function Compose({ label, action, idBase, send, choices }: {
         </>
       )}
       <label for={`${idBase}-text`}>{choices && choices.length > 1 ? `Start a thread on ${choices[choice]!.here}` : label}</label>
-      <textarea id={`${idBase}-text`} rows={2} value={draft} onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)} />
+      <textarea
+        id={`${idBase}-text`} rows={2} value={draft} {...refusedField(error, `${idBase}-error`)}
+        onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)}
+      />
       <button type="submit" aria-disabled={busy}>{action}</button>
-      {error && <p role="alert" key={error.attempt}>{`Not sent: ${error.text}`}</p>}
+      {error && <p role="alert" id={`${idBase}-error`} key={error.attempt}>{`Not sent: ${error.text}`}</p>}
     </form>
   );
 }

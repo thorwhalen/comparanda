@@ -570,3 +570,53 @@ describe('naming a local identity before its first write (#193)', () => {
     expect(document.activeElement).not.toBe(panel().querySelector('[data-panel-heading]'));
   });
 });
+
+describe('a refusal is on the field it refuses (#276)', () => {
+  const memory = (): IdentityStorage => {
+    const m = new Map<string, string>();
+    return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v), removeItem: (k) => void m.delete(k) };
+  };
+  const where = at({ alternativeId: 'berlin', criterionId: 'winter-daylight' });
+
+  it('marks the comment box invalid and described by the reason, until a send succeeds', async () => {
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: dana, view: where });
+    const box = () => Array.from(threads().querySelectorAll('textarea')).at(-1)!;
+    expect(box().getAttribute('aria-invalid')).toBeNull();
+    await userEvent.click(Array.from(box().closest('form')!.querySelectorAll('button')).find((b) => b.textContent === 'Start thread')!);
+    const alert = box().closest('form')!.querySelector('[role="alert"]')!;
+    expect(box().getAttribute('aria-invalid')).toBe('true');
+    expect(box().getAttribute('aria-describedby')).toBe(alert.id);
+    await say(/Start a thread on this cell/, 'is the solstice figure right?', 'Start thread');
+    expect(box().getAttribute('aria-invalid')).toBeNull();
+    expect(box().getAttribute('aria-describedby')).toBeNull();
+  });
+
+  it('keeps each reply box pointing at its own reason, whatever its thread is called', async () => {
+    let doc = relocation;
+    for (const threadId of ['name', 'a b']) {
+      doc = startThread(doc, {
+        threadId, anchor: { scope: 'cell', alternativeId: 'berlin', criterionId: 'winter-daylight', measure: 'score' },
+        comment: { id: `c-${threadId}`, at: '2026-10-27', body: 'first', author: { id: 'dana', displayName: 'Dana', kind: 'human' } },
+      });
+    }
+    mount({ analysis: doc, measure: 'score', source: inMemoryAnalysisSource(doc), identity: dana, view: where });
+    for (const threadId of ['name', 'a b']) {
+      const form = threads().querySelector(`[data-thread="${threadId}"] form`)!;
+      await userEvent.click(Array.from(form.querySelectorAll('button')).find((b) => b.textContent === 'Reply')!);
+      const box = form.querySelector('textarea')!;
+      const ids = box.getAttribute('aria-describedby')!.split(' ');
+      expect(ids.map((id) => document.getElementById(id))).toEqual([form.querySelector('[role="alert"]')]);
+    }
+  });
+
+  it('marks the name field invalid, described by its hint and by the reason', async () => {
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }), view: where });
+    await settled();
+    const input = threads().querySelector<HTMLInputElement>('[data-detail="name"] input')!;
+    await userEvent.click(input);
+    await userEvent.keyboard('{Enter}');
+    const alert = threads().querySelector('[data-detail="name"] [role="alert"]')!;
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(input.getAttribute('aria-describedby')!.split(' ')).toEqual([`${input.id}-hint`, alert.id]);
+  });
+});
