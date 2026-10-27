@@ -410,8 +410,7 @@ export function mountMatrix(
       viewer,
     };
     const was = focused();
-    // Asked before the render: a control the render removes no longer has the panel above it.
-    const inPanel = was?.closest('aside.comparanda-panel') != null;
+    const inPanel = inPanelOf(was);
     render(h(component, resolved), el);
     // Kept only once drawn: a render that throws leaves the reader's focus where it was.
     if (focusSettled) moved = { ...moved, focus: settledFocus };
@@ -431,6 +430,12 @@ export function mountMatrix(
    * rollback) can drop focus, and a host that moved the stop leaves focus on a
    * cell that is no longer one -- two tab stops, where ADR-0027 allows one.
    */
+  /** Whether focus was in this matrix's details panel. Asked of the element as it was found: a removed control keeps its ancestors only until the render. */
+  const inPanelOf = (was: Element | null) => {
+    const panel = was?.closest('aside.comparanda-panel');
+    // This matrix's own panel, or one a failed render has already detached; never a host's panel around the matrix.
+    return panel != null && (!panel.isConnected || el.contains(panel));
+  };
   const settle = (was: Element | null, inPanel = false) => {
     if (was === null) return;
     const now = focused();
@@ -477,7 +482,7 @@ export function mountMatrix(
     // If the old props fail too, unmount again: an empty element and a clean
     // tree, so the next good render fills it rather than diffing against debris.
     try { draw(); } catch { render(null, el); }
-    settle(was);
+    settle(was, inPanelOf(was));
   };
 
   mounted.add(el);

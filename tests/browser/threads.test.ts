@@ -586,6 +586,22 @@ describe('focus that leaves the panel with its control lands on the heading, nev
     expect(seen.filter((x) => x.closest('[role="grid"]'))).toEqual([]);
     expect(document.activeElement).toBe(panel().querySelector('[data-panel-heading]'));
   });
+
+  it('after a write the matrix cannot render rolls back: still in the panel, on its heading', async () => {
+    const real = inMemoryAnalysisSource(relocation);
+    let deliver: ((e: unknown) => void) | undefined;
+    const source = { ...real, subscribe: (l: (e: unknown) => void) => { deliver = l; return real.subscribe!(l as never); } } as AnalysisSource;
+    mount({ analysis: relocation, measure: 'score', source, identity: dana, view: where });
+    Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Resolve thread')!.focus();
+    const seen: Element[] = [];
+    el.addEventListener('focusin', (e) => seen.push(e.target as Element));
+    const bad = structuredClone(relocation);
+    Object.defineProperty(bad.alternatives[0]!, 'label', { get() { throw new Error('boom'); } });
+    expect(() => deliver!({ type: 'updated', id: relocation.id, item: bad })).toThrow();
+    await settled();
+    expect(seen.filter((x) => x.closest('[role="grid"]'))).toEqual([]);
+    expect(document.activeElement).toBe(panel().querySelector('[data-panel-heading]'));
+  });
 });
 
 describe('a refusal is on the field it refuses (#276)', () => {
