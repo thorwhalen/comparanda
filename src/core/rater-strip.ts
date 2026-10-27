@@ -18,9 +18,9 @@ import { describeAssertionSet, type AssertionSetReading } from './assertion-set.
 import type { Author } from './schema/provenance.js';
 import type { Measurement } from './schema/measurement.js';
 import { isOrdered } from './schema/measurement.js';
-import { assertionVisibility, standingInSet, type ViewerContext } from './schema/redaction.js';
+import { sightingOf, standingInSet, standInIds, type ViewerContext } from './schema/redaction.js';
 import type { Analysis } from './schema/analysis.js';
-import { liveAssertions, type Assertion, type Cell, type ScalarValue } from './schema/values.js';
+import { liveAssertions, type Cell, type ScalarValue } from './schema/values.js';
 
 /** How many fixed slots a strip draws at most, unless told otherwise: past it the slots are too narrow to count. */
 export const DEFAULT_MAX_SLOTS = 9;
@@ -123,19 +123,11 @@ export function raterStripInView(
     levels: readonly ScalarValue[]; viewer?: ViewerContext | undefined; means?: ((code: string) => string | undefined) | undefined;
   },
 ): RaterStrip | undefined {
-  if (!viewer) return raterStrip(cell, { authors: analysis.authors, levels, means });
-  const taken = new Set(cell.assertions.map((s) => s.id));
-  let standIns = 0;
-  let unseen = 0;
-  const kept: Assertion[] = [];
-  for (const s of liveAssertions(cell.assertions)) {
-    const seen = assertionVisibility(analysis, s, viewer);
-    if (seen.value === 'hidden') { unseen += 1; continue; }
-    if (seen.author && seen.value === 'shown') { kept.push(s); continue; }
-    do standIns += 1; while (taken.has(`hidden-author:${standIns}`));
-    taken.add(`hidden-author:${standIns}`);
-    kept.push(standingInSet(s, `hidden-author:${standIns}`));
-  }
+  const live = liveAssertions(cell.assertions);
+  const sighting = new Map(live.map((s) => [s.id, sightingOf(analysis, s, viewer)]));
+  const standIns = standInIds(cell.assertions, (s) => sighting.get(s.id) === 'unnamed');
+  const unseen = live.filter((s) => sighting.get(s.id) === 'unseen').length;
+  const kept = live.filter((s) => sighting.get(s.id) !== 'unseen').map((s) => (standIns.has(s.id) ? standingInSet(s, standIns.get(s.id)!) : s));
   const strip = raterStrip({ assertions: kept }, { authors: analysis.authors, levels, means });
   if (!strip || unseen === 0) return strip;
   return { ...strip, unseen, label: `${strip.label} ${unseen} more not shown to you.` };

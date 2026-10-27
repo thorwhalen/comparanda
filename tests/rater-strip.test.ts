@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Analysis, cellIndex, cellKey, makeCellReader, vocabularyOf } from '../src/core/schema/analysis.js';
 import { isRaterStrip, raterStrip, raterStripInView, stripLevels } from '../src/core/rater-strip.js';
+import { sightingOf, standInIds } from '../src/core/schema/redaction.js';
 import { describeAssertionSet } from '../src/core/assertion-set.js';
 import { editAffordances, inMemoryAnalysisSource } from '../src/store/index.js';
 import { disagreement, STRIP_THRESHOLDS } from '../src/view/encodings/shipped.js';
@@ -159,5 +160,39 @@ describe('redaction (ADR-0023)', () => {
     expect(s.slots.map((x) => x.count)).toEqual([2, 0, 1, 0, 0]);
     expect(s.reading).not.toBe('raters');
     expect(s.label).not.toMatch(/Ana|Ben|Cleo/);
+  });
+});
+
+describe('one rule for what a viewer may see (#293)', () => {
+  const cellOf = (a: Analysis) => cellIndex(a).get(cellKey('berlin', 'winter-daylight', 'score'))!;
+
+  it('counts a value a projection withheld as not shown, never as an absence, with or without a viewer', () => {
+    const projected = Analysis.parse({
+      ...relocation,
+      cells: relocation.cells.map((c) => (c.alternativeId === 'berlin' && c.criterionId === 'winter-daylight'
+        ? { ...c, assertions: c.assertions.map((s, i) => (i === 0 ? { ...s, value: undefined, disclosure: { withheldFromReader: true } } : s)) } : c)),
+    });
+    const strip = raterStripInView(projected, cellOf(projected), { levels: LEVELS })!;
+    expect([strip.unseen, strip.absent]).toEqual([1, 0]);
+    expect(strip.slots.map((x) => x.count)).toEqual([1, 0, 1, 0, 0]);
+  });
+
+  it('sightingOf: unseen, unnamed or named, as the strip and the dot plots both read it', () => {
+    const a = Analysis.parse({
+      ...relocation,
+      rounds: [{ id: 'r1', index: 1, attribution: 'attributed', feedback: 'anonymous-summary' }],
+      cells: relocation.cells.map((c) => ({ ...c, assertions: c.assertions.map((s) => ({ ...s, roundId: 'r1' })) })),
+    });
+    const [ana] = cellOf(a).assertions;
+    expect(sightingOf(a, ana!, undefined)).toBe('named');
+    // Shown only as part of a distribution: drawn, but never with a name, though the round names authors.
+    expect(sightingOf(a, ana!, { viewerId: 'ben', now: '2026-01-01T00:00:00Z' })).toBe('unnamed');
+    expect(sightingOf(a, { ...ana!, value: undefined, disclosure: { withheldFromReader: true } }, undefined)).toBe('unseen');
+  });
+
+  it('standInIds: its own namespace, skipping ids already used', () => {
+    const [s1, s2] = cellOf(relocation).assertions;
+    const ids = standInIds([{ ...s1!, id: 'hidden-author:1' }, s2!], () => true);
+    expect([...ids.values()]).toEqual(['hidden-author:2', 'hidden-author:3']);
   });
 });

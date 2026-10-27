@@ -39,7 +39,7 @@
  * view must never display those keys.
  */
 import type { Analysis } from './analysis.js';
-import type { Assertion } from './values.js';
+import { isWithheldFromReader, type Assertion } from './values.js';
 import type { Round } from './provenance.js';
 
 export interface AssertionVisibility {
@@ -168,4 +168,46 @@ export function redactForViewer(s: Assertion, v: AssertionVisibility, shownId: s
 export function standingInSet(s: Assertion, standIn: string): Assertion {
   const { independence: _independence, ...rest } = withoutAuthor(s, standIn);
   return { ...rest, authorId: standIn };
+}
+
+/**
+ * How one assertion stands for a viewer, decided once for every reading that
+ * draws assertions one by one (the rater strip, the dot plots; #293):
+ *
+ * - `unseen`: its value may not be shown. The round hides it from this viewer,
+ *   or a disclosure projection withheld it from the reader. It is counted and
+ *   never drawn.
+ * - `unnamed`: shown, but as a hand of its own. The round hides its author, or
+ *   shows its value only as part of a distribution, which naming would undo.
+ * - `named`: shown, and attributed.
+ *
+ * Without a viewer no round hides anything; a projection still does.
+ */
+export type Sighting = 'unseen' | 'unnamed' | 'named';
+
+export function sightingOf(a: Analysis, s: Assertion, viewer: ViewerContext | undefined): Sighting {
+  if (isWithheldFromReader(s)) return 'unseen';
+  if (!viewer) return 'named';
+  const seen = assertionVisibility(a, s, viewer);
+  if (seen.value === 'hidden') return 'unseen';
+  return seen.author && seen.value === 'shown' ? 'named' : 'unnamed';
+}
+
+/**
+ * Stand-in ids for the assertions `hidden` picks, `hidden-author:1`, `:2`, ...
+ * in a namespace of their own and skipping any id the assertions already use,
+ * so a stand-in can never be taken for, or collide with, a real one. Keyed by
+ * assertion id.
+ */
+export function standInIds(assertions: readonly Assertion[], hidden: (s: Assertion) => boolean): Map<string, string> {
+  const taken = new Set(assertions.map((s) => s.id));
+  const ids = new Map<string, string>();
+  let n = 0;
+  for (const s of assertions) {
+    if (!hidden(s)) continue;
+    do n += 1; while (taken.has(`hidden-author:${n}`));
+    taken.add(`hidden-author:${n}`);
+    ids.set(s.id, `hidden-author:${n}`);
+  }
+  return ids;
 }
