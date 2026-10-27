@@ -37,9 +37,13 @@ afterAll(async () => {
  * budget.test.ts's to enforce.
  *
  * A standalone entry like the shipped one, whose `value` encoding calls
- * `reach` from inside its cell renderer. Everything else is the shipped view.
+ * `reach` from inside its cell renderer. It mounts the shipped view with
+ * `mountMatrix` and every shipped encoding, where the page mounts it
+ * persisted with text only.
+ * `setup` runs before the mount, with `hidden(url)` a fetch the scan cannot
+ * see, and `props` is spliced into the mount's props.
  */
-async function plantedEntry(name: string, reach: string): Promise<string> {
+async function plantedEntry(name: string, reach: string, { setup = '', props = '' }: { setup?: string; props?: string } = {}): Promise<string> {
   const entry = join(dir, `${name}.ts`);
   await writeFile(entry, `
 import { Analysis } from ${src('core/schema/analysis.ts')};
@@ -56,9 +60,13 @@ const planted = defineEncoding({
 const encodings = createEncodingRegistry([...SHIPPED_ENCODINGS.filter((e) => e.id !== 'value'), planted]);
 const read = (id) => document.getElementById(id).textContent;
 const settings = JSON.parse(read('comparanda-settings'));
+const analysis = Analysis.parse(JSON.parse(read('comparanda-analysis')));
+const hidden = (url) => globalThis[[...'hctef'].reverse().join('')](url).catch(() => {});
+${setup}
 mountMatrix(document.getElementById('comparanda-root'), {
-  analysis: Analysis.parse(JSON.parse(read('comparanda-analysis'))), measure: settings.measure,
+  analysis, measure: settings.measure,
   ...(settings.encoding ? { encoding: settings.encoding } : {}),
+  ${props}
 }, { encodings });
 `);
   return entry;
@@ -126,6 +134,61 @@ describe('a planted network call fails the build', () => {
     // Only when that renderer ran: a page merely loaded would have passed.
     expect(findings.every((f) => f.startsWith('encoding "value"'))).toBe(true);
     expect(findings.some((f) => /Content Security Policy|example\.invalid/i.test(f))).toBe(true);
+  });
+
+  // The acts ADR-0013 lists beyond cells and arrows (#237): a reach made only when the reader does one is caught too.
+  const actOnly = async (name: string, planted: { setup?: string; props?: string }) => {
+    const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(name, '', planted), budget: false }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(NetworkReached);
+    expect((failure as NetworkReached).findings.some((f) => /Content Security Policy|example\.invalid/i.test(f))).toBe(true);
+  };
+  for (const axis of ['alternatives', 'criteria'] as const) {
+    it(`a reach made only once the ${axis} are reordered fails it`, async () => {
+      const key = axis === 'alternatives' ? 'alternativeOrder' : 'criterionOrder';
+      await actOnly(`reorder-${axis}`, {
+        props: `onViewChange: (v) => { if (v.${key}.order.join() !== analysis.${axis}.map((x) => x.id).join()) hidden('https://example.invalid/reordered'); },`,
+      });
+    });
+  }
+  it('a reach made only inside the move menu fails it', async () => {
+    await actOnly('menu', { setup: "document.addEventListener('keydown', (e) => { if (e.target.closest?.('[role=\"menu\"]')) hidden('https://example.invalid/menu'); }, true);" });
+  });
+  it('a reach made only while a header is dragged fails it', async () => {
+    await actOnly('drag', { setup: "addEventListener('pointermove', () => { if (document.querySelector('[data-dragging]')) hidden('https://example.invalid/drag'); });" });
+  });
+  it('an act the page offers that moved nothing fails it: a pass that ran nothing is not a check', async () => {
+    // Every key that would pick a header up is swallowed before the matrix sees it.
+    const entry = await plantedEntry('inert-headers', '', {
+      setup: "document.addEventListener('keydown', (e) => { if ([' ', 'Enter'].includes(e.key) && e.target.matches?.('th[data-entry]')) e.stopPropagation(); }, true);",
+    });
+    const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(NetworkReached);
+    expect((failure as NetworkReached).findings).toEqual(expect.arrayContaining([
+      expect.stringMatching(/moving a header by keyboard on the alternatives: no header could be moved/),
+      expect.stringMatching(/moving a header by keyboard on the criteria: no header could be moved/),
+    ]));
+  });
+  it('a reach made only where the details panel draws an evidence excerpt fails it: the panel is drawn for every cell', async () => {
+    await actOnly('excerpt', {
+      setup: "new MutationObserver(() => { if (document.querySelector('aside.comparanda-panel blockquote')) hidden('https://example.invalid/excerpt'); }).observe(document.body, { subtree: true, childList: true });",
+    });
+  });
+  it('ids are data, never selectors: an id with a quote or a space, or shared across the axes, is driven like any other', async () => {
+    // Every reference renamed with the id: ids are whole JSON strings, so a replace on the quoted form is exact.
+    let text = JSON.stringify(relocationJson);
+    for (const [from, to] of [['lisbon', 'lis"bon'], ['berlin', 'old berlin'], ['rent', 'seoul']]) text = text.replaceAll(JSON.stringify(from), JSON.stringify(to));
+    const built = await buildStandalone(JSON.parse(text), { budget: false }).catch((e: unknown) => e);
+    expect(built).not.toBeInstanceOf(Error);
+  });
+  it('a right-to-left page is dragged on its own side', async () => {
+    await expect(buildStandalone(relocationJson, { entry: await plantedEntry('rtl', '', { setup: "document.documentElement.dir = 'rtl';" }), budget: false }))
+      .resolves.toBeDefined();
+  });
+  it('a details panel that never opens fails it: no reason or excerpt it shows was drawn', async () => {
+    const entry = await plantedEntry('no-panel', '', { setup: "document.addEventListener('click', (e) => e.stopPropagation(), true);" });
+    const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(NetworkReached);
+    expect((failure as NetworkReached).findings).toContainEqual(expect.stringMatching(/the details panel was drawn for no position/));
   });
 
   it('a plain fetch() fails it before any browser starts, naming the string', async () => {

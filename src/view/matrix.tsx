@@ -538,6 +538,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       // know what the page can draw without importing its registry.
       data-encodings={encodings.ids.join(' ')}
       data-orientation={transposed ? 'transposed' : 'standard'}
+      // Whether it offers the details panel: what the build's check asks before requiring one drawn.
+      data-details={onPanelChange ? '' : undefined}
     >
       <style>{MATRIX_CSS}</style>
       {/* After MATRIX_CSS: its swatch rules tie the muted-ink rules on specificity, and win by order. */}
