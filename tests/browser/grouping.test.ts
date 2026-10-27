@@ -9,8 +9,8 @@ import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { startThread } from '../../src/core/threads.js';
-import { initialViewState, setEncoding, setFocus, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
-import { inMemoryAnalysisSource } from '../../src/store/index.js';
+import { initialViewState, setDetailPanel, setEncoding, setFocus, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
+import { anonymousIdentity, inMemoryAnalysisSource } from '../../src/store/index.js';
 import { createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
@@ -283,5 +283,29 @@ describe('selection and filter by group (#93)', () => {
     // Several headers may be selected at once, and the grid says so.
     expect(el.querySelector('[role="grid"]')!.getAttribute('aria-multiselectable')).toBe('true');
     expect(el.querySelector(`label[for="${pick('criteria').id}"]`)!.textContent).toBe('Group of criteria');
+  });
+});
+
+describe('the details of an omitted block (#280)', () => {
+  it('describes the block, not its first cell, and starts a thread on the block itself', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    const view = setDetailPanel(setFocus(both(), { alternativeId: 'seoul', criterionId: 'eu-residency-path' }), true);
+    mount({ analysis: relocation, measure: 'score', source, identity: anonymousIdentity({ id: 'dana', displayName: 'Dana' }), view });
+    const panel = el.querySelector<HTMLElement>('aside.comparanda-panel')!;
+    expect(panel.getAttribute('data-panel')).toBe('block');
+    expect(panel.querySelector('[data-panel-heading]')!.textContent).toMatch(/^Block: EU\b.*, Asia\b/);
+    const block = panel.querySelector('[data-detail="block"]')!;
+    expect(block.textContent).toContain(`All 2 cells: This criterion does not apply to this alternative. ${REASON.charAt(0).toUpperCase()}${REASON.slice(1)}.`);
+    expect(block.textContent).toContain('Options: Taipei, Seoul.');
+    expect(block.textContent).toContain('Criteria: Path to EU residency.');
+    // A thread started here is about the block.
+    const threads = panel.querySelector<HTMLElement>('[data-detail="threads"]')!;
+    const box = threads.querySelector('textarea')!;
+    expect(threads.querySelector(`label[for="${box.id}"]`)!.textContent).toMatch(/^Start a thread on the block /);
+    await userEvent.click(box);
+    await userEvent.keyboard('does an EU path matter for Asia at all?');
+    await userEvent.click(Array.from(box.closest('form')!.querySelectorAll('button')).find((b) => b.textContent === 'Start thread')!);
+    await new Promise((r) => setTimeout(r, 0));
+    expect((await source.getOne(relocation.id))!.threads.at(-1)!.anchor).toMatchObject({ scope: 'group-pair', groupId: 'g-asia', otherGroupId: 'g-eu' });
   });
 });
