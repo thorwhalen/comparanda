@@ -71,14 +71,25 @@ const randomId = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Arr
 
 /** A stored view as it is handed out: a copy, its snapshot through the view-state migrations, the whole through the schema. */
 function fromStore(raw: SavedView): SavedView {
-  const { state } = parseViewState(JSON.stringify({ ...raw.snapshot, session: {} }));
-  return SavedView.parse({ ...structuredClone(raw), snapshot: snapshotOf(state) });
+  try {
+    const { state } = parseViewState(JSON.stringify({ ...raw.snapshot, session: {} }));
+    return SavedView.parse({ ...structuredClone(raw), snapshot: snapshotOf(state) });
+  } catch (error) {
+    throw new Error(`the stored view "${String((raw as { id?: unknown }).id)}" is not a saved view this version can read: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
-async function maybe<T>(p: DataProvider<T>, id: string): Promise<T | undefined> {
+/**
+ * One record, or `undefined` when the provider has none. Only "has none":
+ * a provider that fails for another reason (offline) is not taken for an
+ * empty one, so an id is never thought free nor a view thought gone.
+ */
+async function maybe<T extends { id: string }>(p: DataProvider<T>, id: string): Promise<T | undefined> {
   try {
     return await p.getOne(id);
-  } catch {
+  } catch (error) {
+    const listed = await p.getList({});
+    if (listed.data.some((x) => x.id === id)) throw error;
     return undefined;
   }
 }
@@ -100,8 +111,11 @@ export function savedViewStore({
     const raw = (await maybe(personal, id)) ?? (await maybe(shared, id));
     return raw && fromStore(raw);
   };
-  const existing = async (id: string) => {
-    const v = await found(id);
+  /** Who may be told a view exists: anyone, for a shared one; its owner only, for a personal one. */
+  const visible = (v: SavedView | undefined, actorId: string | undefined) => (v && (v.mode !== 'personal' || v.ownerId === actorId) ? v : undefined);
+  /** A view this actor may write to, or the same "no such view" an unknown id gets: another's personal view is not confirmed to exist. */
+  const existing = async (id: string, actorId: string) => {
+    const v = visible(await found(id), actorId);
     if (!v) throw new Error(`there is no saved view "${id}".`);
     return v;
   };
@@ -121,7 +135,7 @@ export function savedViewStore({
   };
   /** A change to one view, asked and written on the record as it stands now. Lock and unlock keep it beside the analysis. */
   const change = (act: SavedViewAct, apply: (v: SavedView, a: Act) => SavedView) => (id: string, a: Act) => serial(async () => {
-    const v = await existing(id);
+    const v = await existing(id, a.by);
     may(v, act, a.by);
     const after = apply(v, a);
     return fromStore(await home(after.mode).update(after.id, after));
@@ -131,11 +145,17 @@ export function savedViewStore({
     if ((await found(id)) ?? (await maybe(sequences, id))) throw new Error(`the new id "${id}" is already taken; nothing was saved.`);
     return id;
   };
-  /** A sequence names shared views only: a personal one is not the reader's to walk, nor its id theirs to see. */
-  const checkSteps = async (steps: readonly ViewStep[]) => {
+  /**
+   * The steps a change adds name shared views of the same analysis: a personal one is not the reader's to walk, nor
+   * its id theirs to see. Steps already there are not asked again: a view deleted since is a broken step, shown as
+   * one (`stepsOf`), never a reason the sequence cannot be renamed.
+   */
+  const checkSteps = async (analysisId: string, steps: readonly ViewStep[], already: readonly ViewStep[] = []) => {
     for (const { viewId } of steps) {
-      if (await maybe(shared, viewId)) continue;
-      throw new Error(`a sequence can name only shared views; "${viewId}" is not one.`);
+      if (already.some((s) => s.viewId === viewId)) continue;
+      const raw = await maybe(shared, viewId);
+      if (raw && fromStore(raw).analysisId === analysisId) continue;
+      throw new Error(`a sequence can name only this analysis's shared views; "${viewId}" is not one.`);
     }
   };
   const maySequence = (sequence: ViewSequence, by: string, action: EditAction) => {
@@ -151,10 +171,7 @@ export function savedViewStore({
       const mine = (await all(personal)).filter((v) => v.ownerId === actorId);
       return [...mine, ...(await all(shared))].filter((v) => v.analysisId === analysisId).map(fromStore);
     },
-    async get(id, actorId) {
-      const v = await found(id);
-      return v && (v.mode !== 'personal' || v.ownerId === actorId) ? v : undefined;
-    },
+    get: async (id, actorId) => visible(await found(id), actorId),
     create: (current, options) => serial(async () => {
       const v = createView(current, { id: await freshId(), ...options });
       const store = affordanceOf(home(v.mode), 'create', { what: 'a view' });
@@ -166,7 +183,7 @@ export function savedViewStore({
     update: (id, current, a) => change('update', (v, x) => updateView(v, current, x))(id, a),
     rename: (id, name, a) => change('rename', (v, x) => renameView(v, name, x))(id, a),
     delete: (id, a) => serial(async () => {
-      const v = await existing(id);
+      const v = await existing(id, a.by);
       may(v, 'delete', a.by);
       await home(v.mode).delete(id);
     }),
@@ -183,7 +200,7 @@ export function savedViewStore({
       create: ({ analysisId, name, steps }, a) => serial(async () => {
         const s = ViewSequence.parse({ id: await freshId(), analysisId, name, steps });
         maySequence(s, a.by, 'create');
-        await checkSteps(s.steps);
+        await checkSteps(s.analysisId, s.steps);
         return ViewSequence.parse(structuredClone(await sequences.create(s)));
       }),
       update: (id, changes, a) => serial(async () => {
@@ -191,7 +208,7 @@ export function savedViewStore({
         if (!before) throw new Error(`there is no view sequence "${id}".`);
         const s = ViewSequence.parse({ ...structuredClone(before), ...changes });
         maySequence(s, a.by, 'update');
-        await checkSteps(s.steps);
+        await checkSteps(s.analysisId, s.steps, before.steps);
         return ViewSequence.parse(structuredClone(await sequences.update(id, s)));
       }),
       delete: (id, a) => serial(async () => {

@@ -73,6 +73,10 @@ export type ViewSequence = z.infer<typeof ViewSequence>;
 /** Who acted, and when: every write is attributed. */
 export interface Act { by: string; at: string }
 
+/** The arrangement of a working state, or a copy of a snapshot: never the session. */
+const arrangementFrom = (current: ViewState | SavedViewState): SavedViewState =>
+  ('session' in current ? snapshotOf(current as ViewState) : structuredClone(current));
+
 /**
  * Save the working state as a new view: personal by default, which is always
  * allowed, the escape from a lock; shared where the host allows
@@ -84,8 +88,7 @@ export function createView(
   { id, analysisId, name, mode = 'personal', by, at }: { id: string; analysisId: string; name: string; mode?: SavedViewMode } & Act,
 ): SavedView {
   if (mode === 'locked') throw new Error('a view is locked after it is saved, as an act of its own: save it shared, then lock it.');
-  const snapshot = 'session' in current ? snapshotOf(current as ViewState) : structuredClone(current);
-  return SavedView.parse({ id, analysisId, name, mode, ownerId: by, snapshot, events: [{ act: 'created', by, at }] });
+  return SavedView.parse({ id, analysisId, name, mode, ownerId: by, snapshot: arrangementFrom(current), events: [{ act: 'created', by, at }] });
 }
 
 /** A saved view refused an in-place write: it is locked. The message says what to do instead. */
@@ -101,8 +104,7 @@ const withEvent = (v: SavedView, act: SavedViewEvent['act'], { by, at }: Act): S
 /** Save the working state over a view. A locked view refuses, however asked. */
 export function updateView(v: SavedView, current: ViewState | SavedViewState, act: Act): SavedView {
   if (v.mode === 'locked') throw new LockedViewError(v);
-  const snapshot = 'session' in current ? snapshotOf(current as ViewState) : structuredClone(current);
-  return SavedView.parse({ ...v, snapshot, events: withEvent(v, 'updated', act) });
+  return SavedView.parse({ ...v, snapshot: arrangementFrom(current), events: withEvent(v, 'updated', act) });
 }
 
 /** Rename a view. A locked view refuses: its name is part of what it says. */
@@ -165,11 +167,13 @@ export function viewAffordances(
   const locked = v.mode === 'locked';
   const personalOfAnother = v.mode === 'personal' && v.ownerId !== actorId;
   const lockedWhy = 'it is locked; save as a new view, or unlock it first.';
-  const ownerWhy = 'it is someone else\'s personal view.';
+  /** An in-place write: the owner's alone on a personal view, nobody's on a locked one. */
+  const inPlace = (act: SavedViewAct): Affordance =>
+    (personalOfAnother ? { enabled: false, reason: 'it is someone else\'s personal view.' } : ifMode(!locked, act, lockedWhy));
   return {
-    update: personalOfAnother ? { enabled: false, reason: ownerWhy } : ifMode(!locked, 'update', lockedWhy),
-    rename: personalOfAnother ? { enabled: false, reason: ownerWhy } : ifMode(!locked, 'rename', lockedWhy),
-    delete: personalOfAnother ? { enabled: false, reason: ownerWhy } : ifMode(!locked, 'delete', lockedWhy),
+    update: inPlace('update'),
+    rename: inPlace('rename'),
+    delete: inPlace('delete'),
     lock: ifMode(v.mode === 'shared', 'lock', v.mode === 'locked' ? 'it is locked already.' : 'only a shared view can be locked.'),
     unlock: ifMode(locked, 'unlock', 'it is not locked.'),
     // Never refused: a lock must not dead-end a reader (ADR-0007 clause 3). As a personal view, which needs nobody's leave.

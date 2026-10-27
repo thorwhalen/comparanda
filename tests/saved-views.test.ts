@@ -157,7 +157,8 @@ describe('the store keeps the lock and the owner, however it is called', () => {
     await expect(store.delete(v.id, ana)).rejects.toThrow(/locked/);
     const mine = await store.create(base, { analysisId: relocation.id, name: 'Mine', ...ana });
     for (const act of [() => store.update(mine.id, CHANGE.encoding(base), ben), () => store.delete(mine.id, ben), () => store.rename(mine.id, 'B', ben)]) {
-      await expect(act()).rejects.toThrow(/someone else's personal view/);
+      // Refused as an unknown id is: another's personal view is not even confirmed to exist.
+      await expect(act()).rejects.toThrow(`there is no saved view "${mine.id}".`);
     }
     // Nor is it handed to them by id.
     expect(await store.get(mine.id, 'ben')).toBeUndefined();
@@ -207,10 +208,81 @@ describe('the store keeps the lock and the owner, however it is called', () => {
     const store = savedViewStore({ newId: ids(), authorize: ({ act, actorId }) => act !== 'edit-sequence' || actorId === 'ana' || { enabled: false, reason: 'only the owner edits sequences.' } });
     const ours = await shared(store);
     const mine = await store.create(base, { analysisId: relocation.id, name: 'Mine', ...ana });
-    await expect(store.sequences.create({ analysisId: relocation.id, name: 'Walk', steps: [{ viewId: mine.id }] }, ana)).rejects.toThrow(/only shared views/);
+    await expect(store.sequences.create({ analysisId: relocation.id, name: 'Walk', steps: [{ viewId: mine.id }] }, ana)).rejects.toThrow(/only this analysis's shared views/);
     const walk = await store.sequences.create({ analysisId: relocation.id, name: 'Walk', steps: [{ viewId: ours.id }] }, ana);
     await expect(store.sequences.delete(walk.id, ben)).rejects.toThrow(/only the owner edits sequences/);
     expect((await store.sequences.list(relocation.id)).map((s) => s.name)).toEqual(['Walk']);
+  });
+});
+
+describe('the store, against its providers', () => {
+  const ids = () => { let n = 0; return () => `id-${(n += 1)}`; };
+  /** A provider that hands back its own objects, as a careless host's might. */
+  const leaky = <T extends { id: string }>() => {
+    const rows = new Map<string, T>();
+    const p = createInMemoryProvider<T>([], { idField: 'id' });
+    return {
+      ...p,
+      getList: async () => ({ data: [...rows.values()], total: rows.size }),
+      getOne: async (id: string) => { const r = rows.get(id); if (!r) throw new Error('not found'); return r; },
+      create: async (x: Partial<T>) => { rows.set(x.id!, x as T); return x as T; },
+      update: async (id: string, x: Partial<T>) => { rows.set(id, { ...rows.get(id)!, ...x } as T); return rows.get(id)!; },
+      delete: async (id: string) => void rows.delete(id),
+    };
+  };
+
+  it('hands out copies even from a provider that hands back its own objects', async () => {
+    const store = savedViewStore({ shared: leaky<SavedView>(), newId: ids() });
+    const v = await store.create(base, { analysisId: relocation.id, name: 'Ours', mode: 'shared', ...ana });
+    v.snapshot.encoding = 'tampered';
+    (await store.get(v.id, 'ana'))!.events.push({ act: 'locked', by: 'mallory', at: 'now' });
+    expect((await store.get(v.id, 'ana'))!).toMatchObject({ snapshot: { encoding: 'text-only' }, events: [{ act: 'created' }] });
+  });
+
+  it('refuses, naming it, a stored record this version cannot read', async () => {
+    const shared = leaky<SavedView>();
+    await shared.create({ ...view(), id: 'bad', snapshot: { nonsense: true } } as never);
+    await expect(savedViewStore({ shared }).list(relocation.id, 'ana')).rejects.toThrow(/the stored view "bad" is not a saved view/);
+    // The record itself, not only its snapshot: a mode this version does not know is refused too.
+    const odd = leaky<SavedView>();
+    await odd.create({ ...view(), id: 'odd', mode: 'public' } as never);
+    await expect(savedViewStore({ shared: odd }).get('odd', 'ana')).rejects.toThrow(/the stored view "odd" is not a saved view/);
+  });
+
+  it('refuses an update its provider does not accept, saying so', async () => {
+    const p = createInMemoryProvider<SavedView>([], { idField: 'id' });
+    let frozen = false;
+    const shared = { ...p, getCapabilities: () => ({ ...p.getCapabilities!(), canUpdate: !frozen }) };
+    const store = savedViewStore({ shared, newId: ids() });
+    const v = await store.create(base, { analysisId: relocation.id, name: 'Ours', mode: 'shared', ...ana });
+    frozen = true;
+    await expect(store.update(v.id, CHANGE.encoding(base), ana)).rejects.toThrow(/does not accept updates/);
+  });
+
+  it('does not take a provider that is down for one that is empty', async () => {
+    const p = createInMemoryProvider<SavedView>([], { idField: 'id' });
+    const down = { ...p, getOne: async () => { throw new Error('offline'); }, getList: async () => { throw new Error('offline'); } };
+    await expect(savedViewStore({ shared: down }).get('x', 'ana')).rejects.toThrow(/offline/);
+  });
+
+  it('keeps a sequence editable once one of its views is deleted: the step is broken, not blocking', async () => {
+    const store = savedViewStore({ newId: ids() });
+    const a = await store.create(base, { analysisId: relocation.id, name: 'A', mode: 'shared', ...ana });
+    const b = await store.create(base, { analysisId: relocation.id, name: 'B', mode: 'shared', ...ana });
+    const walk = await store.sequences.create({ analysisId: relocation.id, name: 'Walk', steps: [{ viewId: a.id }, { viewId: b.id }] }, ana);
+    await store.delete(a.id, ana);
+    await expect(store.sequences.update(walk.id, { name: 'The walk' }, ana)).resolves.toMatchObject({ name: 'The walk' });
+    // A step added now is still checked: another analysis's view, or none, is refused.
+    const other = await store.create(base, { analysisId: 'elsewhere', name: 'C', mode: 'shared', ...ana });
+    await expect(store.sequences.update(walk.id, { steps: [{ viewId: b.id }, { viewId: other.id }] }, ana)).rejects.toThrow(/this analysis's shared views/);
+  });
+
+  it('asks the host before a sequence is created or changed', async () => {
+    const store = savedViewStore({ newId: ids(), authorize: ({ act, actorId }) => act !== 'edit-sequence' || actorId === 'ana' || false });
+    const v = await store.create(base, { analysisId: relocation.id, name: 'A', mode: 'shared', ...ana });
+    await expect(store.sequences.create({ analysisId: relocation.id, name: 'W', steps: [{ viewId: v.id }] }, ben)).rejects.toThrow(/not authorised/);
+    const walk = await store.sequences.create({ analysisId: relocation.id, name: 'W', steps: [{ viewId: v.id }] }, ana);
+    await expect(store.sequences.update(walk.id, { name: 'X' }, ben)).rejects.toThrow(/not authorised/);
   });
 });
 
