@@ -124,7 +124,9 @@ jobs:
     # protection rule requires is named for what it protects and a red here
     # cannot be mistaken for a flaky unit test.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The job's ceiling is the install's and the tests' together: a slow apt mirror (10-17 minutes, #305) must not
+    # eat the tests' time. Each step below carries its own limit, so a stuck install fails as itself.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -164,9 +166,11 @@ jobs:
       - name: Install the system libraries the browsers need
         # A cached browser still needs the operating system's libraries, which are not cached.
         if: steps.playwright-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 20
         run: pnpm exec playwright install-deps $PW_ENGINES
 
       - name: A1-A20, and the broken fixture for each
+        timeout-minutes: 20
         run: pnpm test:a11y
 
   hygiene:
