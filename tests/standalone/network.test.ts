@@ -43,6 +43,13 @@ afterAll(async () => {
  * `setup` runs before the mount, with `hidden(url)` a fetch the scan cannot
  * see, and `props` is spliced into the mount's props.
  */
+/**
+ * The one encoding a planted test needs (#297): its reach is in the `value`
+ * renderer, or in an act the check does in every pass, so one encoding pass
+ * finds it, where ten would only run it ten times, near the test's timeout.
+ */
+const ONE = ['value'] as const;
+
 async function plantedEntry(name: string, reach: string, { setup = '', props = '' }: { setup?: string; props?: string } = {}): Promise<string> {
   const entry = join(dir, `${name}.ts`);
   await writeFile(entry, `
@@ -138,7 +145,7 @@ describe('a planted network call fails the build', () => {
 
   // The acts ADR-0013 lists beyond cells and arrows (#237): a reach made only when the reader does one is caught too.
   const actOnly = async (name: string, planted: { setup?: string; props?: string }) => {
-    const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(name, '', planted), budget: false }).catch((e: unknown) => e);
+    const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(name, '', planted), budget: false, checkEncodings: ONE }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(NetworkReached);
     expect((failure as NetworkReached).findings.some((f) => /Content Security Policy|example\.invalid/i.test(f))).toBe(true);
   };
@@ -173,7 +180,7 @@ describe('a planted network call fails the build', () => {
     const entry = await plantedEntry('inert-headers', '', {
       setup: "document.addEventListener('keydown', (e) => { if ([' ', 'Enter'].includes(e.key) && e.target.matches?.('th[data-entry]')) e.stopPropagation(); }, true);",
     });
-    const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
+    const failure = await buildStandalone(relocationJson, { entry, budget: false, checkEncodings: ONE }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(NetworkReached);
     expect((failure as NetworkReached).findings).toEqual(expect.arrayContaining([
       expect.stringMatching(/moving a header by keyboard on the alternatives: no header could be moved/),
@@ -193,12 +200,12 @@ describe('a planted network call fails the build', () => {
     expect(built).not.toBeInstanceOf(Error);
   });
   it('a right-to-left page is dragged on its own side', async () => {
-    await expect(buildStandalone(relocationJson, { entry: await plantedEntry('rtl', '', { setup: "document.documentElement.dir = 'rtl';" }), budget: false }))
+    await expect(buildStandalone(relocationJson, { entry: await plantedEntry('rtl', '', { setup: "document.documentElement.dir = 'rtl';" }), budget: false, checkEncodings: ONE }))
       .resolves.toBeDefined();
   });
   it('a details panel that never opens fails it: no reason or excerpt it shows was drawn', async () => {
     const entry = await plantedEntry('no-panel', '', { setup: "document.addEventListener('click', (e) => e.stopPropagation(), true);" });
-    const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
+    const failure = await buildStandalone(relocationJson, { entry, budget: false, checkEncodings: ONE }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(NetworkReached);
     expect((failure as NetworkReached).findings).toContainEqual(expect.stringMatching(/the details panel was drawn for no position/));
   });
@@ -220,7 +227,7 @@ describe('a planted network call fails the build', () => {
     ['a new window opened through an iframe', "try { const f = document.body.appendChild(document.createElement('iframe')); f.contentWindow[[...'nepo'].reverse().join('')]('https://example.invalid/'); } catch {}"],
   ] as const) {
     it(`${what} fails it`, async () => {
-      const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(what.replace(/\W+/g, '-'), reach), budget: false }).catch((e: unknown) => e);
+      const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(what.replace(/\W+/g, '-'), reach), budget: false, checkEncodings: ONE }).catch((e: unknown) => e);
       expect(failure, what).toBeInstanceOf(NetworkReached);
       const { findings } = failure as NetworkReached;
       expect(findings.some((f) => f.startsWith('encoding "value"')), what).toBe(true);
@@ -231,7 +238,7 @@ describe('a planted network call fails the build', () => {
 
   it('a sendBeacon hidden from the scan fails it too: the violation surfaces as a console error', async () => {
     const entry = await plantedEntry('beacon', "navigator[[...'nocaeBdnes'].reverse().join('')]('https://example.invalid/', alt)");
-    const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
+    const failure = await buildStandalone(relocationJson, { entry, budget: false, checkEncodings: ONE }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(NetworkReached);
     expect((failure as NetworkReached).findings.some((f) => f.startsWith('encoding "value"'))).toBe(true);
   });
