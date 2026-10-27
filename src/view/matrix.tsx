@@ -633,7 +633,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             return tops.length > 0 && (
               <label key={axis}>
                 <input
-                  type="checkbox" checked={view.grouping[axis].length > 0}
+                  type="checkbox" data-axis={axis} checked={view.grouping[axis].length > 0}
                   onChange={(event) => {
                     const on = (event.currentTarget as HTMLInputElement).checked;
                     onGroupingChange({ ...view.grouping, [axis]: on ? tops.map((g) => g.id) : [] }, on

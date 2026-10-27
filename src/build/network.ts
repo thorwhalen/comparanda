@@ -336,10 +336,12 @@ export interface ReaderAct {
 /**
  * The acts ADR-0013 lists beyond cells and arrows, as the standalone page
  * offers them (#237): an axis reordered by keyboard (moved and put down, then
- * moved and put back), by its move menu, and by a pointer drag. Grouping joins
- * when the page offers it (#93). The arrange buttons and the strip/ramp key are
- * not here: the page offers neither (it mounts no `arrange`, and registers one
- * encoding per pass).
+ * moved and put back), by its move menu, and by a pointer drag; then both
+ * axes banded by their groups, every omitted block focused and clicked, and
+ * the bands taken away again (#93). Last, so the moves run on an unbanded
+ * axis, which is how the page opens. The arrange buttons and the strip/ramp
+ * key are not here: the page offers neither (it mounts no `arrange`, and
+ * registers one encoding per pass).
  */
 export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
   {
@@ -385,6 +387,27 @@ export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
       await page.mouse.move(to.x + to.width * (to.x >= from.x ? 0.9 : 0.1), to.y + to.height * 0.9, { steps: 5 });
       await page.mouse.up();
       return !same(await orderOf(headers), before) ? undefined : 'the drop moved nothing';
+    },
+  },
+  {
+    name: 'grouping',
+    async run(page, headers) {
+      const toggle = page.locator(`.comparanda-grouping input[data-axis="${await headers.first().getAttribute('data-axis')}"]`);
+      // Not offered: an axis with no groups has no control.
+      if ((await toggle.count()) === 0) return undefined;
+      const bands = page.locator(`th[scope="${await headers.first().getAttribute('scope')}group"]`);
+      // Both axes, so a block with nothing in it to show is drawn, and driven, as the one cell it is.
+      // Each found by its axis: a query on `:not(:checked)` changes under the clicks it is iterated by.
+      const unchecked = await page.locator('.comparanda-grouping input:not(:checked)').evaluateAll((xs) => xs.map((x) => x.getAttribute('data-axis')));
+      const checked = unchecked.map((axis) => page.locator(`.comparanda-grouping input[data-axis="${axis}"]`));
+      for (const box of checked) await box.check();
+      if ((await bands.count()) === 0) return 'showing the groups drew no bands';
+      for (const block of await page.locator('td[data-block]').all()) {
+        await block.focus();
+        await block.click();
+      }
+      for (const box of checked.reverse()) await box.uncheck();
+      return (await bands.count()) === 0 ? undefined : 'the bands stayed after the groups were put away';
     },
   },
 ]);
