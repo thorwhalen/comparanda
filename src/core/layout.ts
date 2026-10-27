@@ -111,6 +111,21 @@ function axisLayout(
 }
 
 /**
+ * A focus as the layout can show it (#283): an id the layout does not show
+ * (hidden, tombstoned, gone) is dropped, so a focus on a hidden row's cell
+ * becomes its column's header, and one on nothing shown becomes the corner.
+ * Where the grid's roving stop actually is, in the terms `session.focus` keeps.
+ */
+export function focusInLayout(layout: MatrixLayout, focus: ViewState['session']['focus']): ViewState['session']['focus'] {
+  const shown = (axis: 'alternatives' | 'criteria', id: string | undefined) =>
+    id !== undefined && (layout.rows.axis === axis ? layout.rows : layout.columns).entries.some((e) => e.id === id);
+  const alternativeId = shown('alternatives', focus?.alternativeId) ? focus!.alternativeId : undefined;
+  const criterionId = shown('criteria', focus?.criterionId) ? focus!.criterionId : undefined;
+  if (alternativeId === undefined && criterionId === undefined) return undefined;
+  return { ...(alternativeId !== undefined ? { alternativeId } : {}), ...(criterionId !== undefined ? { criterionId } : {}) };
+}
+
+/**
  * A band-by-band block drawn as one cell (#93): its first and last row and
  * column, as indices into the layout's `rows.entries` and `columns.entries`,
  * the bands it lies in, how many cells it stands for, and their shared reason.

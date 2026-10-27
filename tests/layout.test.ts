@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { matrixLayout, omittedBlocks } from '../src/core/layout.js';
+import { focusInLayout, matrixLayout, omittedBlocks } from '../src/core/layout.js';
 import { makeInapplicableBlocks, makeInapplicability } from '../src/core/schema/groups.js';
 import { Analysis } from '../src/core/schema/analysis.js';
 import { initialViewState, setGrouping, transpose, type ViewState } from '../src/core/view-state.js';
@@ -148,5 +148,19 @@ describe('omittedBlocks (#93)', () => {
     for (const alt of relocation.alternatives) for (const crit of relocation.criteria) {
       expect(yes(alt.id, crit.id)).toBe(blockOf(alt.id, crit.id) !== undefined);
     }
+  });
+});
+
+describe('focusInLayout (#283)', () => {
+  const hidden: ViewState = { ...initialViewState(relocation), filter: { hiddenAlternatives: ['seoul'], hiddenCriteria: ['rent'] } };
+  const layout = matrixLayout(relocation, hidden);
+  it('keeps what is shown, and drops what is not: a hidden row\'s cell becomes its column\'s header', () => {
+    expect(focusInLayout(layout, { alternativeId: 'lisbon', criterionId: 'income-tax' })).toEqual({ alternativeId: 'lisbon', criterionId: 'income-tax' });
+    expect(focusInLayout(layout, { alternativeId: 'seoul', criterionId: 'income-tax' })).toEqual({ criterionId: 'income-tax' });
+    expect(focusInLayout(layout, { alternativeId: 'seoul', criterionId: 'rent' })).toBeUndefined();
+    expect(focusInLayout(layout, undefined)).toBeUndefined();
+  });
+  it('reads the axes the same way transposed', () => {
+    expect(focusInLayout(matrixLayout(relocation, transpose(hidden)), { alternativeId: 'seoul', criterionId: 'income-tax' })).toEqual({ criterionId: 'income-tax' });
   });
 });

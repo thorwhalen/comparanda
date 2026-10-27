@@ -15,6 +15,7 @@ import { assertionVisibility, type ViewerContext } from '../core/schema/redactio
 import { threadDoing, type Affordance, type Affordances, type ThreadAct } from '../core/affordances.js';
 import type { decideSuggestions as DecideSuggestions } from '../core/suggestions.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
+import { focusInLayout, matrixLayout } from '../core/layout.js';
 import {
   anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, isVersioned, takesName, type AnalysisSource, type DataChangeEvent, type DataProvider, type IdentityProvider,
 } from '../store/index.js';
@@ -209,6 +210,12 @@ export function mountMatrix(
   let givenFocus = sessionIn(props.view);
   /** The view state of the last render: what `onViewChange` reports. */
   let shown: ViewState;
+  /** Whether the last render moved the reader's focus off something it no longer shows (#283): reported once by whoever drew. */
+  let focusSettled = false;
+  /** After a render nobody else reports (a host's update, a source's write): report a focus it settled. */
+  const reportSettled = () => {
+    if (focusSettled) current.onViewChange?.(shown);
+  };
 
   /** Lay a session change over the host's view and render it; a render that throws changes nothing. */
   const moveSession = (change: NonNullable<typeof moved>) => {
@@ -373,6 +380,13 @@ export function mountMatrix(
     if (moved?.orders) shown = { ...shown, ...moved.orders };
     if (moved?.encoding) shown = { ...shown, encoding: moved.encoding };
     if (moved?.arranged) shown = { ...shown, ...moved.arranged };
+    // A focus on what is no longer shown (hidden, tombstoned) settles where the grid's stop is, and stays there.
+    const settledFocus = focusInLayout(matrixLayout(analysis, shown), shown.session.focus);
+    focusSettled = JSON.stringify(settledFocus ?? null) !== JSON.stringify(shown.session.focus ?? null);
+    if (focusSettled) {
+      moved = { ...moved, focus: settledFocus };
+      shown = setFocus(shown, settledFocus);
+    }
     const resolved: MatrixViewProps = {
       analysis,
       measure,
@@ -445,6 +459,7 @@ export function mountMatrix(
         redraw(was);
         throw error;
       }
+      reportSettled();
     });
   };
 
@@ -545,6 +560,7 @@ export function mountMatrix(
         throw error;
       }
       if (swapped) before.unsubscribe?.();
+      reportSettled();
       if (props.identity !== before.current.identity) learnActor();
     },
     destroy() {
