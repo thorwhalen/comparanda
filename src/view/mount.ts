@@ -344,19 +344,17 @@ export function mountMatrix(
   /**
    * The name a local identity writes under, taken from the panel (#193): once
    * it answers to it, the field is gone. Never a rename: an identity named
-   * meanwhile (another tab, the host) keeps the name it has. Resolves to
-   * whether the name counts: not for an identity the host has since replaced.
+   * meanwhile (another tab, the host) keeps the name it has.
    */
-  const takeName = async (typed: string): Promise<boolean> => {
+  const takeName = async (typed: string): Promise<void> => {
     const identity = inForce();
     if (destroyed || !takesName(identity)) throw new Error('this matrix\'s identity does not take a name.');
     const already = await identity.current();
     const author = already.id === DEFAULT_IDENTITY_ID ? await identity.name(typed) : already;
     // Only the identity still in force: one the host has since replaced keeps its own.
-    if (destroyed || inForce() !== identity) return false;
+    if (destroyed || inForce() !== identity) return;
     known = { identity, id: author.id };
     refreshViewer();
-    return true;
   };
   /** A thread's anchor in a document; absent, the thread's own write says there is no such thread. */
   const anchorIn = (threadId: string) => (a: Analysis) => a.threads.find((t) => t.id === threadId)?.anchor;
@@ -412,12 +410,13 @@ export function mountMatrix(
       viewer,
     };
     const was = focused();
+    const inPanel = inPanelOf(was);
     render(h(component, resolved), el);
     // Kept only once drawn: a render that throws leaves the reader's focus where it was.
     if (focusSettled) moved = { ...moved, focus: settledFocus };
     // Before focus moves: a focus that scrolls must already see the padding.
     sticky.measure();
-    settle(was);
+    settle(was, inPanel);
   };
 
   /** The focused element, if it is in the matrix; read from the root it lives in, a shadow root's own. */
@@ -431,10 +430,20 @@ export function mountMatrix(
    * rollback) can drop focus, and a host that moved the stop leaves focus on a
    * cell that is no longer one -- two tab stops, where ADR-0027 allows one.
    */
-  const settle = (was: Element | null) => {
+  /** Whether focus was in this matrix's details panel. Asked of the element as it was found: a removed control keeps its ancestors only until the render. */
+  const inPanelOf = (was: Element | null) => {
+    const panel = was?.closest('aside.comparanda-panel');
+    // This matrix's own panel, or one a failed render has already detached; never a host's panel around the matrix.
+    return panel != null && (!panel.isConnected || el.contains(panel));
+  };
+  const settle = (was: Element | null, inPanel = false) => {
     if (was === null) return;
-    const stop = el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]');
     const now = focused();
+    // Focus lost from inside the details panel (a control that left with its write) stays in the panel, on its heading,
+    // never passing through the grid (#275).
+    const heading = inPanel && now === null ? el.querySelector<HTMLElement>('[data-panel-heading]') : null;
+    if (heading) return heading.focus();
+    const stop = el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]');
     if (stop && (now === null || (now !== stop && now.matches('[data-cell]')))) stop.focus();
   };
 
@@ -473,7 +482,7 @@ export function mountMatrix(
     // If the old props fail too, unmount again: an empty element and a clean
     // tree, so the next good render fills it rather than diffing against debris.
     try { draw(); } catch { render(null, el); }
-    settle(was);
+    settle(was, inPanelOf(was));
   };
 
   mounted.add(el);

@@ -566,8 +566,41 @@ describe('naming a local identity before its first write (#193)', () => {
     release();
     await settled();
     expect(nameForm()).not.toBeNull();
-    // The name did not count, so the reader is not sent to the heading as though it had.
-    expect(document.activeElement).not.toBe(panel().querySelector('[data-panel-heading]'));
+    // The swapped identity's form is a new one: focus lost with the old form stays in the panel, on its heading (#275).
+    expect(document.activeElement).toBe(panel().querySelector('[data-panel-heading]'));
+  });
+});
+
+describe('focus that leaves the panel with its control lands on the heading, never on the grid (#275)', () => {
+  const where = at({ alternativeId: 'berlin', criterionId: 'winter-daylight' });
+  it('after resolving a thread: every focus on the way is in the panel', async () => {
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: dana, view: where });
+    const button = Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Resolve thread')!;
+    button.focus();
+    const seen: Element[] = [];
+    const record = (e: FocusEvent) => seen.push(e.target as Element);
+    el.addEventListener('focusin', record);
+    await userEvent.click(button);
+    await settled();
+    el.removeEventListener('focusin', record);
+    expect(seen.filter((x) => x.closest('[role="grid"]'))).toEqual([]);
+    expect(document.activeElement).toBe(panel().querySelector('[data-panel-heading]'));
+  });
+
+  it('after a write the matrix cannot render rolls back: still in the panel, on its heading', async () => {
+    const real = inMemoryAnalysisSource(relocation);
+    let deliver: ((e: unknown) => void) | undefined;
+    const source = { ...real, subscribe: (l: (e: unknown) => void) => { deliver = l; return real.subscribe!(l as never); } } as AnalysisSource;
+    mount({ analysis: relocation, measure: 'score', source, identity: dana, view: where });
+    Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Resolve thread')!.focus();
+    const seen: Element[] = [];
+    el.addEventListener('focusin', (e) => seen.push(e.target as Element));
+    const bad = structuredClone(relocation);
+    Object.defineProperty(bad.alternatives[0]!, 'label', { get() { throw new Error('boom'); } });
+    expect(() => deliver!({ type: 'updated', id: relocation.id, item: bad })).toThrow();
+    await settled();
+    expect(seen.filter((x) => x.closest('[role="grid"]'))).toEqual([]);
+    expect(document.activeElement).toBe(panel().querySelector('[data-panel-heading]'));
   });
 });
 

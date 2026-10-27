@@ -18,7 +18,6 @@ import { axisGroups, groupsOf } from '../core/schema/groups.js';
 import { commentTarget, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
 import { attributions, type Vouched } from '../core/identity.js';
 import { capitalise } from './words.js';
-import { treeOf } from './dom.js';
 
 /** The writes a thread takes, performed by whoever holds the source. Each settles when the source has it. */
 export interface ThreadWrites {
@@ -29,10 +28,9 @@ export interface ThreadWrites {
   /**
    * Give the writer a name before their first write (#193). Present only while
    * the identity is one that takes a typed name (`localIdentity()`) and has
-   * none; absent, the panel asks for no name. Resolves to whether the name
-   * counts: not when the host has replaced the identity meanwhile.
+   * none; absent, the panel asks for no name.
    */
-  name?(typed: string): Promise<boolean>;
+  name?(typed: string): Promise<void>;
 }
 
 export interface ThreadsProps {
@@ -117,17 +115,14 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   const sending = useRef(false);
   const who = (id: string | undefined) => (id === undefined ? 'someone' : names.get(id) ?? `an author this analysis does not describe (“${id}”)`);
   /** Resolve an open thread, or reopen a resolved one (#186). */
-  const toggle = async (event: Event) => {
+  const toggle = async () => {
     if (sending.current) return;
-    // Taken now: by the time the write lands the button may have left the tree.
-    const tree = treeOf(event.currentTarget as Node);
     sending.current = true;
     setBusy(true);
     setError(undefined);
     try {
+      // The thread changes list and focus leaves with it: the matrix puts it on the panel's heading (#275).
       await writes![thread.resolved ? 'reopen' : 'resolve'](thread.id);
-      // The thread changes list, and focus leaves with it: back to the panel's heading.
-      tree.getElementById(idBase)?.focus();
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -211,16 +206,11 @@ function refusedField(error: unknown, errorId: string, ...describedBy: string[])
  * default 2). It says where the name is kept and that others see it as
  * unverified, because both are true and neither is obvious.
  */
-function NameForm({ name, idBase }: { name: (typed: string) => Promise<boolean>; idBase: string }) {
-  const form = useRef<HTMLFormElement>(null);
-  const { draft, setDraft, error, busy, submit } = useSend(async (text) => {
-    // Taken now: once the name is taken the form leaves the tree, and focus goes back to the panel's heading.
-    const tree = treeOf(form.current!);
-    // Not counted (the host swapped the identity meanwhile): focus stays where the reader is.
-    if (await name(text)) tree.getElementById(idBase)?.focus();
-  }, 'type a name first.');
+function NameForm({ name, idBase }: { name: (typed: string) => Promise<void>; idBase: string }) {
+  // Once the name is taken the form leaves the tree, and the matrix puts focus on the panel's heading (#275).
+  const { draft, setDraft, error, busy, submit } = useSend(name, 'type a name first.');
   return (
-    <form ref={form} class="comparanda-compose" onSubmit={submit} data-detail="name">
+    <form class="comparanda-compose" onSubmit={submit} data-detail="name">
       <label for={`${idBase}-name`}>Your name</label>
       <input
         id={`${idBase}-name`} type="text" autocomplete="name" {...refusedField(error, `${idBase}-name-error`, `${idBase}-name-hint`)} value={draft}
