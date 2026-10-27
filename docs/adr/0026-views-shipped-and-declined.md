@@ -157,3 +157,20 @@ From #97. `scatterModel` (`core/analyses/scatter.ts`) runs `dominance` twice: ov
 4. **Nothing vanishes.** A table carries every alternative's two values and both tiers in words, with who dominates it here, and it names the measure. An alternative without a number on one of the two criteria is not placed. It is listed as unplaced, with why each value is absent (the reason's meaning, a refusal, a withholding, a declared block: ADR-0009, no bare nulls), and keeps its tiers. The caption names it too when it is on the front. Alternatives at the same place are drawn side by side under one label.
 5. **Both comparisons say what they are.** The notes of the comparison on the two criteria are shown, and so are those of the comparison across every criterion, which the second mark comes from. That second set includes ADR-0019 clause 9's count of cells withheld from the reader.
 6. **No line through the front.** Between two non-dominated alternatives there is nothing, and a line would draw a continuum the data does not have. The marks are the front.
+
+## Amendment, 2026-10-27: the small-multiple dot plots as shipped
+
+From #96. `dotPlot` (`core/dot-plot.ts`) gives, for one criterion:
+
+- its ticks: the declared `levels` (names and all, whatever the level of measurement), else the whole numbers of an **ordinal** range (on an interval or ratio scale 3.5 is as real as 3, so that is no level);
+- the dots at each level: the raters it may name, and a count of the hands it may not, never a list in the raters' order, so position cannot link a hand across cells;
+- a count of the values this viewer may not see, and of values off the levels;
+- each alternative's marks in a missing lane keyed by the core reason its code refines (`coreReasonOf`). A rater who recorded an absence leaves a mark there. A cell nobody asserted on is not-applicable inside a declared block, given with the block's own reason, and not-assessed otherwise.
+
+Redaction is decided there, as for the rater strip (ADR-0023). A hidden value is counted, never drawn. A hidden author's dot is drawn unnamed.
+
+`DotPlotsPanel` (`view/dot-plots.tsx`) is an analysis panel the composition root registers, so the standalone page never carries it. Its rules:
+
+1. **A table per criterion is the dot plot**, with its own scoped stylesheet so the matrix's grid rules (a rule on every cell, sticky headers) draw nothing through its rows. There is one alternative per row and one level per column, the dots sit in the cells, and the missing lanes come after the levels. The ticks stay discrete, with nothing drawn between them, and the table is its own text alternative: every count is said, with who put each dot there.
+2. **Shapes, not colours.** A filled dot is a rater named to the reader; a ring is a hand the round does not name. A lane carries its reason's glyph and words (ADR-0028).
+3. **A criterion on a continuous range has no dot plot here, and the panel says why.** Drawing it on levels would be wrong, and a continuous axis is a different component.

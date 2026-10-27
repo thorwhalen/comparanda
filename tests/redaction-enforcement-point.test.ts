@@ -26,6 +26,10 @@ const ALLOWED: Readonly<Record<string, { reads: number; because: string }>> = {
     reads: 5,
     because: 'the document\'s roster of principals, to name camps by; which values a camp gave is decided by core\'s groupInformedConsensus with the viewer, which leaves out every assertion whose author the round hides',
   },
+  'dot-plots.tsx': {
+    reads: 2,
+    because: 'the document\'s authors, through `attributions`, to say the names core\'s dotPlots already decided this viewer may see: a hand the round hides is only counted there, never named',
+  },
   'mount.ts': { reads: 1, because: '`.author` of a visibility verdict (may this viewer be told who), compared to decide whether a new reader needs a redraw' },
 };
 

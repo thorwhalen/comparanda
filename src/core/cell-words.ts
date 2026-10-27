@@ -20,8 +20,11 @@ export interface CellWords {
   refused?: true;
 }
 
+/** What `cellWords` reads of a reading: a full `Reduced`, or just an absence's code. */
+export type ReadingWords = Partial<Pick<Reduced, 'value' | 'missing' | 'refused' | 'refusedBecause' | 'withheldFromReader'>>;
+
 export function cellWords(
-  reduced: Reduced | undefined,
+  reduced: ReadingWords | undefined,
   { inapplicable, vocabulary, criterionId }: { inapplicable: boolean; vocabulary: MissingnessVocabulary; criterionId: string },
 ): CellWords {
   if (reduced?.refused !== undefined) {
