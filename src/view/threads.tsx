@@ -26,6 +26,12 @@ export interface ThreadWrites {
   reply(threadId: string, body: string): Promise<void>;
   resolve(threadId: string): Promise<void>;
   reopen(threadId: string): Promise<void>;
+  /**
+   * Give the writer a name before their first write (#193). Present only while
+   * the identity is one that takes a typed name (`localIdentity()`) and has
+   * none; absent, the panel asks for no name.
+   */
+  name?(typed: string): Promise<void>;
 }
 
 export interface ThreadsProps {
@@ -53,6 +59,8 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   return (
     <section class="comparanda-threads" aria-labelledby={`${idBase}-threads`} data-detail="threads">
       <h3 id={`${idBase}-threads`}>{`Discussion (${open.length} open${resolved.length ? `, ${resolved.length} resolved` : ''})`}</h3>
+      {/* Before every form it names the author of: the first write here is one of them. */}
+      {writes?.name && <NameForm name={writes.name} idBase={idBase} />}
       {open.length === 0 && <p class="comparanda-panel-hint">No open threads here.</p>}
       {open.length > 0 && (
         <ol class="comparanda-thread-list">
@@ -153,15 +161,12 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   );
 }
 
-/** A labelled text box and its button. The draft survives a failed send, which says why. */
-function Compose({ label, action, idBase, send, choices }: {
-  label: string; action: string; idBase: string; send: (body: string, choice?: number) => Promise<void>;
-  choices?: { key: string; here: string }[] | undefined;
-}) {
+/**
+ * A form's submission: the text typed, refused while empty, sent once at a
+ * time, kept when the send fails, and the failure said.
+ */
+function useSend(send: (text: string) => Promise<void>, empty: string) {
   const [draft, setDraft] = useState('');
-  // Kept by what it is about, not by index: another writer's group can shift the list under it (#209).
-  const [chosen, setChosen] = useState<string | undefined>(undefined);
-  const choice = Math.max(0, choices?.findIndex((c) => c.key === chosen) ?? 0);
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
@@ -169,14 +174,14 @@ function Compose({ label, action, idBase, send, choices }: {
     event.preventDefault();
     if (sending.current) return;
     if (draft.trim() === '') {
-      setError('write something first.');
+      setError(empty);
       return;
     }
     sending.current = true;
     setBusy(true);
     setError(undefined);
     try {
-      await send(draft, choice);
+      await send(draft);
       setDraft('');
     } catch (e) {
       setError(messageOf(e));
@@ -185,6 +190,47 @@ function Compose({ label, action, idBase, send, choices }: {
       setBusy(false);
     }
   };
+  return { draft, setDraft, error, busy, submit };
+}
+
+/**
+ * The name a local identity writes under, asked for once (#193, ADR-0012
+ * default 2). It says where the name is kept and that others see it as
+ * unverified, because both are true and neither is obvious.
+ */
+function NameForm({ name, idBase }: { name: (typed: string) => Promise<void>; idBase: string }) {
+  const form = useRef<HTMLFormElement>(null);
+  const { draft, setDraft, error, busy, submit } = useSend(async (text) => {
+    // Taken now: once the name is taken the form leaves the tree, and focus goes back to the panel's heading.
+    const tree = treeOf(form.current!);
+    await name(text);
+    tree.getElementById(idBase)?.focus();
+  }, 'type a name first.');
+  return (
+    <form ref={form} class="comparanda-compose" onSubmit={submit} data-detail="name">
+      <label for={`${idBase}-name`}>Your name</label>
+      <input
+        id={`${idBase}-name`} type="text" autocomplete="name" aria-describedby={`${idBase}-name-hint`} value={draft}
+        onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
+      />
+      <p id={`${idBase}-name-hint`} class="comparanda-panel-hint">
+        What you write here is signed with it. It is kept on this device only, and others see it marked unverified: nobody checks it.
+      </p>
+      <button type="submit" aria-disabled={busy}>Use this name</button>
+      {error && <p role="alert" key={error.attempt}>{`Name not kept: ${error.text}`}</p>}
+    </form>
+  );
+}
+
+/** A labelled text box and its button. The draft survives a failed send, which says why. */
+function Compose({ label, action, idBase, send, choices }: {
+  label: string; action: string; idBase: string; send: (body: string, choice?: number) => Promise<void>;
+  choices?: { key: string; here: string }[] | undefined;
+}) {
+  // Kept by what it is about, not by index: another writer's group can shift the list under it (#209).
+  const [chosen, setChosen] = useState<string | undefined>(undefined);
+  const choice = Math.max(0, choices?.findIndex((c) => c.key === chosen) ?? 0);
+  const { draft, setDraft, error, busy, submit } = useSend((body) => send(body, choice), 'write something first.');
   return (
     <form class="comparanda-compose" onSubmit={submit}>
       {choices && choices.length > 1 && (

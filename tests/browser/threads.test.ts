@@ -12,7 +12,7 @@ import { startThread } from '../../src/core/threads.js';
 import { tombstone } from '../../src/core/schema/anchors.js';
 import { reviseCriterion } from '../../src/core/criteria-revision.js';
 import { applyOrder, initialViewState, setDetailPanel, setFocus, type ViewState } from '../../src/core/view-state.js';
-import { agentIdentity, anonymousIdentity, inMemoryAnalysisSource, markVersioned, versionedAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
+import { agentIdentity, anonymousIdentity, inMemoryAnalysisSource, localIdentity, type IdentityStorage, markVersioned, versionedAnalysisSource, type AnalysisSource } from '../../src/store/index.js';
 import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
@@ -448,5 +448,89 @@ describe('the orphaned-annotations tray (#108)', () => {
     expect(tray.textContent).toMatch(/Orphaned annotations \(\d+\)/);
     expect(tray.textContent).toMatch(/the criterion Rent .*deleted \(tombstoned\)/);
     expect(tray.textContent).toContain('before or after utilities?');
+  });
+});
+
+describe('naming a local identity before its first write (#193)', () => {
+  const memory = (): IdentityStorage => {
+    const m = new Map<string, string>();
+    return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v), removeItem: (k) => void m.delete(k) };
+  };
+  const nameForm = () => threads().querySelector<HTMLFormElement>('[data-detail="name"]');
+  const nameBox = () => nameForm()!.querySelector('input')!;
+  const where = at({ alternativeId: 'berlin', criterionId: 'winter-daylight' });
+
+  it('asks for a name, says it is kept here and shown unverified, and signs the first write with it', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    mount({ analysis: relocation, measure: 'score', source, identity: localIdentity({ storage: memory(), newId: () => '1' }), view: where });
+    await settled();
+    const box = nameBox();
+    expect(threads().querySelector(`label[for="${box.id}"]`)!.textContent).toBe('Your name');
+    const hint = document.getElementById(box.getAttribute('aria-describedby')!)!.textContent!;
+    expect(hint).toMatch(/on this device/);
+    expect(hint).toMatch(/unverified/);
+    // Before every write it names the author of.
+    expect(nameForm()!.compareDocumentPosition(threads().querySelector('textarea')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await userEvent.click(box);
+    await userEvent.keyboard('Bob{Enter}');
+    await settled();
+    expect(nameForm()).toBeNull();
+    // The form left with focus in it: back to the panel's heading, never to the page.
+    expect(document.activeElement).toBe(panel().querySelector('[data-panel-heading]'));
+
+    await say(/Start a thread on this cell/, 'is the solstice figure right?', 'Start thread');
+    const doc = (await source.getOne(relocation.id))!;
+    expect(doc.threads.at(-1)!.comments[0]!.authorId).toBe('local-1');
+    expect(doc.authors.find((a) => a.id === 'local-1')).toMatchObject({ displayName: 'Bob', attestation: { method: 'unverified' } });
+    expect(threads().textContent).toContain('Bob (human, unverified)');
+  });
+
+  it('is reachable by keyboard, and an empty name is refused out loud with nothing kept', async () => {
+    const storage = memory();
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage }), view: where });
+    await settled();
+    panel().querySelector<HTMLElement>('[data-panel-heading]')!.focus();
+    for (let i = 0; i < 40 && document.activeElement !== nameBox(); i += 1) await userEvent.tab();
+    expect(document.activeElement).toBe(nameBox());
+    await userEvent.keyboard('   {Enter}');
+    expect(nameForm()!.querySelector('[role="alert"]')!.textContent).toBe('Name not kept: type a name first.');
+    expect(storage.getItem('comparanda.identity')).toBeNull();
+    expect(nameForm()).not.toBeNull();
+  });
+
+  it('is not asked of an identity that already has a name, takes none, or has nowhere to write', async () => {
+    const storage = memory();
+    await localIdentity({ storage }).name('Ada');
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage }), view: where });
+    await settled();
+    expect(nameForm()).toBeNull();
+    handles.splice(0).forEach((x) => x.destroy());
+
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: dana, view: where });
+    await settled();
+    expect(nameForm()).toBeNull();
+    handles.splice(0).forEach((x) => x.destroy());
+
+    // The standalone page's case: no source, so no writes, so no name.
+    mount({ analysis: relocation, measure: 'score', identity: localIdentity({ storage: memory() }), view: where });
+    await settled();
+    expect(nameForm()).toBeNull();
+  });
+
+  it('a name taken for an identity the host has since replaced does not count for the new one', async () => {
+    let release!: () => void;
+    const slow = localIdentity({ storage: memory(), newId: () => 'slow' });
+    const held = { ...slow, name: async (n: string) => { await new Promise<void>((r) => { release = r; }); return slow.name(n); } };
+    const handle = mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: held, view: where });
+    await settled();
+    await userEvent.click(nameBox());
+    await userEvent.keyboard('Bob{Enter}');
+    // The host swaps in another contributor, who has no name yet, while the first one's name is being kept.
+    handle.update({ identity: localIdentity({ storage: memory() }) });
+    await settled();
+    release();
+    await settled();
+    expect(nameForm()).not.toBeNull();
   });
 });

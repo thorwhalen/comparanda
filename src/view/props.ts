@@ -87,6 +87,8 @@ export interface MountMatrixProps extends MatrixProps {
    * Who is acting, for the threads the reader starts, answers and resolves
    * (#106, ADR-0012). Default: `anonymousIdentity()`, which says it is
    * unverified. Only consulted with a `source`; without one nothing is written.
+   * A `localIdentity()` with no name yet gets a field for one in the panel's
+   * discussion, before its first write (#193).
    */
   identity?: IdentityProvider;
   /** A message the reader must acknowledge before it goes away (#224); see `MatrixViewProps.notice`. */
