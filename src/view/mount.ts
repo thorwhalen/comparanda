@@ -228,15 +228,15 @@ export function mountMatrix(
     moveSession({ focus });
     current.onViewChange?.(shown);
   };
-  /**
-   * The reader rearranged an axis: laid over the host's order until the host
-   * gives a view with a different one, announced, and reported.
-   */
   /** Say a sentence in the live region. The same sentence twice is still news: a trailing no-break space alternates so the region changes. */
   const announce = (sentence: string) => {
     said += 1;
     announcement = said % 2 === 0 ? `${sentence}\u00a0` : sentence;
   };
+  /**
+   * The reader rearranged an axis: laid over the host's order until the host
+   * gives a view with a different one, announced, and reported.
+   */
   const reorder = (state: ViewState, sentence: string) => {
     if (destroyed) return;
     announce(sentence);

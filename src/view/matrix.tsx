@@ -716,7 +716,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       >
         <table
           // Several headers may be selected at once (#93).
-          role="grid" aria-multiselectable={onArrange ? 'true' : undefined} aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}
+          role="grid" aria-multiselectable="true" aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}
           onPointerDownCapture={(event: PointerEvent) => { pressed.current = event.target as Element | null; }}
           // A mouse focuses on press, before this; a touch focuses after it, so keeps the press.
           onPointerUpCapture={(event: PointerEvent) => { if (event.pointerType !== 'touch') pressed.current = null; }}

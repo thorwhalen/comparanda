@@ -189,6 +189,8 @@ describe('selection and filter by group (#93)', () => {
     await userEvent.selectOptions(pick('alternatives'), 'g-asia');
     await userEvent.click(button(/Select its options/));
     expect(selectedHeaders()).toEqual(['taipei', 'seoul']);
+    // Unselected headers say nothing about it: no "not selected" on every header.
+    expect(el.querySelector('th[aria-selected="false"]')).toBeNull();
     // A tick, not a colour: the mark survives forced colours and print.
     // Its alternative text is empty, so it is not read into the header's name.
     expect(getComputedStyle(el.querySelector('th[aria-selected="true"]')!, '::before').content).toMatch(/\u2713.*\/ ""/);
@@ -229,7 +231,8 @@ describe('selection and filter by group (#93)', () => {
     expect(last.grouping.alternatives).toEqual(['g-europe', 'g-asia', 'g-americas']);
     expect(last.selection).toMatchObject({ alternatives: ['taipei', 'seoul'], criteria: ['rent', 'income-tax'] });
     expect(last.filter).toEqual({ hiddenAlternatives: ['montreal'], hiddenCriteria: ['rent', 'income-tax', 'climate-type', 'winter-daylight'] });
-    expect(button(/Show the 5 hidden/)).toBeDefined();
+    await userEvent.click(button(/Show the 5 hidden/));
+    expect(views.at(-1)!.filter).toEqual({ hiddenAlternatives: [], hiddenCriteria: [] });
   });
 
   it('yields per part: a host that changes only the selection keeps the reader\'s grouping', async () => {
