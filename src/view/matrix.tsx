@@ -660,9 +660,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             const name = axis === 'alternatives' ? words.alternatives : words.criteria;
             const id = `${helpId}-g-${axis}`;
             const group = tops.find((g) => g.id === picked[axis]) ?? tops[0]!;
-            // Its live members by closure, as everywhere membership is read: the bridge from a group to a selection (ADR-0008).
-            const alive = axis === 'alternatives' ? liveAlternatives : liveCriteria;
-            const members = membersOfGroup(axisGroups(analysis, axis), group.id).filter((id) => alive.has(id));
+            // Its members by closure, as everywhere membership is read (a tombstoned entity is in none): the bridge from a group to a selection (ADR-0008).
+            const members = membersOfGroup(axisGroups(analysis, axis), group.id);
             const hidden = axis === 'alternatives' ? 'hiddenAlternatives' : 'hiddenCriteria';
             return (
               <p key={axis}>
