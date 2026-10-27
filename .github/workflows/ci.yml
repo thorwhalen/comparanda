@@ -100,12 +100,14 @@ jobs:
 
       - name: Install the browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 25
         run: pnpm exec playwright install --with-deps $PW_ENGINES
 
       - name: Install the system libraries the browsers need
         # A cached browser still needs the operating system's libraries, which are not cached.
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps $PW_ENGINES
+        timeout-minutes: 20
+        run: for i in 1 2 3; do timeout 5m pnpm exec playwright install-deps $PW_ENGINES && break; done
 
       - name: Browser tests
         run: pnpm test:browser
@@ -161,13 +163,15 @@ jobs:
 
       - name: Install the browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 25
         run: pnpm exec playwright install --with-deps $PW_ENGINES
 
       - name: Install the system libraries the browsers need
         # A cached browser still needs the operating system's libraries, which are not cached.
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         timeout-minutes: 20
-        run: pnpm exec playwright install-deps $PW_ENGINES
+        # A healthy install takes seconds; a throttled mirror took 17 minutes (#305). Short tries, retried, recover in minutes.
+        run: for i in 1 2 3; do timeout 5m pnpm exec playwright install-deps $PW_ENGINES && break; done
 
       - name: A1-A20, and the broken fixture for each
         timeout-minutes: 20
