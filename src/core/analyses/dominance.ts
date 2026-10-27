@@ -370,7 +370,8 @@ function possiblyDominates(p: Prepared, x: string, y: string): boolean {
   return strictPossible;
 }
 
-const EXCLUSION_WORDS: Record<ExcludedCriterion['reason'], string> = {
+/** Why a criterion left a dominance comparison, in words: "excluded: <criterion>, <words>". */
+export const EXCLUSION_WORDS: Readonly<Record<ExcludedCriterion['reason'], string>> = {
   nominal: 'nominal',
   'no-preference-direction': 'with no direction of preference',
   'target-preference': 'with a target preference (excluded from strict dominance in v1)',
