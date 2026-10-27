@@ -22,11 +22,11 @@
  */
 import type { Analysis } from './schema/analysis.js';
 import { vocabularyOf } from './schema/analysis.js';
-import { makeInapplicability } from './schema/groups.js';
+import { makeInapplicableBlocks } from './schema/groups.js';
 import type { AnchorScope } from './schema/annotations.js';
 import { CORE_MISSING_CODES } from './schema/missingness.js';
 import { valueRefusal, type Measurement, type Preference } from './schema/measurement.js';
-import { measurementFor } from './schema/structure.js';
+import { measurementFor, type InapplicableBlock } from './schema/structure.js';
 import type { Cell, ScalarValue } from './schema/values.js';
 import { resolveAnchor } from './schema/anchors.js';
 import { anchorOfTarget, commentTarget } from './threads.js';
@@ -229,6 +229,8 @@ export interface Affordances {
   missingCode(criterionId: string, code: string): Affordance;
   /** Whether the pair is structurally inapplicable (a declared group-pair block). */
   inapplicable(alternativeId: string, criterionId: string): boolean;
+  /** The declared group-pair block the pair is in, with its reason; absent where it applies (#93). */
+  inapplicableBlock(alternativeId: string, criterionId: string): InapplicableBlock | undefined;
   /** Every acceptability screen `screen()` applies for this measure. */
   screens(measure: string): Screen[];
   /**
@@ -282,7 +284,8 @@ export function makeAffordances(
   const alts = new Map(a.alternatives.map((x) => [x.id, x]));
   const crits = new Map(a.criteria.map((x) => [x.id, x]));
   const cells = new Map(a.cells.map((c) => [JSON.stringify([c.alternativeId, c.criterionId, c.measure]), c]));
-  const inapplicable = makeInapplicability(a);
+  const blockOf = makeInapplicableBlocks(a);
+  const inapplicable = (altId: string, critId: string) => blockOf(altId, critId) !== undefined;
   const vocabulary = vocabularyOf(a);
   const core = new Set(Object.keys(CORE_MISSING_CODES));
 
@@ -357,7 +360,8 @@ export function makeAffordances(
         ? refuse(`"${code}" is not a missingness code this analysis defines for this criterion.`)
         : ALLOWED;
     },
-    inapplicable: (alternativeId, criterionId) => inapplicable(alternativeId, criterionId),
+    inapplicable,
+    inapplicableBlock: blockOf,
     screens(measure) {
       // The rule `screen()` applies, and only that rule: a live criterion with
       // a criterion-level floor and a measurement for this measure. A view that

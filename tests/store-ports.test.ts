@@ -204,7 +204,7 @@ describe('editAffordances: what the view reads, every write gated on getCapabili
   it('classifies every member of the affordance layer as a write or not, so a new one cannot slip past the gate', () => {
     // A member added to Affordances must be added to one of these two lists;
     // only the first is gated on the provider.
-    const notWrites = ['value', 'missingCodes', 'missingCode', 'inapplicable', 'screens'];
+    const notWrites = ['value', 'missingCodes', 'missingCode', 'inapplicable', 'inapplicableBlock', 'screens'];
     const members = Object.keys(makeAffordances(relocation())).sort();
     expect(members).toEqual([...WRITE_AFFORDANCES, ...notWrites].sort());
   });

@@ -6,7 +6,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { matrixLayout } from '../src/core/layout.js';
+import { matrixLayout, omittedBlocks } from '../src/core/layout.js';
+import { makeInapplicableBlocks, makeInapplicability } from '../src/core/schema/groups.js';
 import { Analysis } from '../src/core/schema/analysis.js';
 import { initialViewState, setGrouping, transpose, type ViewState } from '../src/core/view-state.js';
 
@@ -103,5 +104,49 @@ describe('matrixLayout', () => {
     expect(childFirst.bands!.map((b) => [b.groupId, ids(b.entries)])).toEqual([
       ['g-iberia', ['lisbon']], ['g-europe', ['berlin']], [undefined, ['taipei', 'seoul', 'montreal']],
     ]);
+  });
+});
+
+describe('omittedBlocks (#93)', () => {
+  const both = (v = initialViewState(relocation)) =>
+    setGrouping(setGrouping(v, 'alternatives', ['g-europe', 'g-asia', 'g-americas']), 'criteria', ['g-eu', 'g-cost']);
+  const blockOf = makeInapplicableBlocks(relocation);
+  const at = (b: ReturnType<typeof omittedBlocks>[number]) => [b.rowBand.groupId, b.columnBand.groupId, b.rows, b.columns, b.cells];
+
+  it('finds every band-by-band block of two cells or more whose every cell is declared inapplicable, with its span and reason', () => {
+    const blocks = omittedBlocks(matrixLayout(relocation, both()), blockOf);
+    // Spans index the layout's entries. The Americas' block is one cell (Montreal): that cell, not a block.
+    expect(blocks.map(at)).toEqual([['g-asia', 'g-eu', { first: 2, last: 3 }, { first: 0, last: 0 }, 2]]);
+    expect(blocks[0]!.reason).toBe('not an EU destination, so EU residency rules do not apply');
+  });
+
+  it('reads the same blocks, axes swapped, when transposed', () => {
+    const blocks = omittedBlocks(matrixLayout(relocation, transpose(both())), blockOf);
+    expect(blocks.map(at)).toEqual([['g-eu', 'g-asia', { first: 0, last: 0 }, { first: 2, last: 3 }, 2]]);
+  });
+
+  it('omits nothing unless both axes are banded, or when one cell of a block shows anything', () => {
+    expect(omittedBlocks(matrixLayout(relocation, setGrouping(initialViewState(relocation), 'alternatives', ['g-asia'])), blockOf)).toEqual([]);
+    // Seoul's cell is kept (a value, a thread, its own absence): the whole Asia block is drawn cell by cell.
+    const keepSeoul = (alt: string, crit: string) => (alt === 'seoul' ? undefined : blockOf(alt, crit));
+    expect(omittedBlocks(matrixLayout(relocation, both()), keepSeoul)).toEqual([]);
+  });
+
+  it('gives no reason when the declarations behind one block disagree', () => {
+    // One band, "Far", holding Asia and the Americas, whose declarations give different reasons.
+    const doc = structuredClone(relocation);
+    doc.inapplicable[1]!.reason = 'another reason';
+    doc.groups.push({ ...structuredClone(doc.groups.find((g) => g.id === 'g-asia')!), id: 'g-far', label: 'Far' });
+    for (const alt of doc.alternatives) if (['taipei', 'seoul', 'montreal'].includes(alt.id)) alt.groupIds = [...alt.groupIds, 'g-far'];
+    const v = setGrouping(setGrouping(initialViewState(doc), 'alternatives', ['g-far']), 'criteria', ['g-eu']);
+    const [far] = omittedBlocks(matrixLayout(doc, v), makeInapplicableBlocks(doc));
+    expect([far!.rowBand.groupId, far!.cells, far!.reason]).toEqual(['g-far', 3, undefined]);
+  });
+
+  it('makeInapplicability is the blocks reader, asked yes or no', () => {
+    const yes = makeInapplicability(relocation);
+    for (const alt of relocation.alternatives) for (const crit of relocation.criteria) {
+      expect(yes(alt.id, crit.id)).toBe(blockOf(alt.id, crit.id) !== undefined);
+    }
   });
 });

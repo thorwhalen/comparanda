@@ -18,9 +18,16 @@
  *   other chosen groups it is also in, and keeps the axis order inside a band.
  *   Entities in none of the chosen groups form a last, unlabelled band. One
  *   nesting level is rendered; a sub-group's members count as its parent's.
+ *
+ * And one for both axes banded: **a block with nothing in it to show is
+ * omitted** (`omittedBlocks`, #93). A band-by-band block of two cells or more
+ * whose every cell is declared structurally inapplicable, and shows nothing
+ * else, is drawn as one cell saying so, never as a rectangle of the same blank
+ * repeated.
  */
 import type { Analysis } from './schema/analysis.js';
 import { axisGroups, membersOfGroup, type Axis } from './schema/groups.js';
+import type { InapplicableBlock } from './schema/structure.js';
 import type { ViewState } from './view-state.js';
 
 /** One alternative or criterion as laid out. */
@@ -101,4 +108,52 @@ function axisLayout(
   ].filter((b) => b.entries.length > 0);
   // Nothing shown: no bands either, so a view never draws an empty band row.
   return { axis, entries: bands.flatMap((b) => b.entries), bands: bands.length > 0 ? bands : undefined };
+}
+
+/**
+ * A band-by-band block drawn as one cell (#93): its first and last row and
+ * column, as indices into the layout's `rows.entries` and `columns.entries`,
+ * the bands it lies in, how many cells it stands for, and their shared reason.
+ */
+export interface OmittedBlock {
+  rows: { first: number; last: number };
+  columns: { first: number; last: number };
+  rowBand: Band;
+  columnBand: Band;
+  cells: number;
+  /** The declarations' reason, when every cell's declaration gives the same one. */
+  reason: string | undefined;
+}
+
+/**
+ * The blocks of a matrix banded on both axes in which every cell is omitted:
+ * `omits(alternativeId, criterionId)` gives the declared block a cell is in
+ * when the cell shows nothing but that (no value, no recorded absence of its
+ * own, nothing anchored on it), and nothing otherwise. One cell that shows
+ * anything keeps its whole block drawn cell by cell, and a block of one cell
+ * is that cell: there is nothing to gather.
+ */
+export function omittedBlocks(
+  layout: MatrixLayout,
+  omits: (alternativeId: string, criterionId: string) => InapplicableBlock | undefined,
+): OmittedBlock[] {
+  const { rows, columns, transposed } = layout;
+  if (!rows.bands || !columns.bands) return [];
+  const spans = (bands: Band[]) => {
+    let next = 0;
+    return bands.map((band) => ({ band, first: next, last: (next += band.entries.length) - 1 }));
+  };
+  const blocks: OmittedBlock[] = [];
+  for (const r of spans(rows.bands)) {
+    for (const c of spans(columns.bands)) {
+      const declared = r.band.entries.flatMap((re) => c.band.entries.map((ce) => (transposed ? omits(ce.id, re.id) : omits(re.id, ce.id))));
+      if (declared.length < 2 || declared.some((d) => d === undefined)) continue;
+      const reasons = new Set(declared.map((d) => d!.reason));
+      blocks.push({
+        rows: { first: r.first, last: r.last }, columns: { first: c.first, last: c.last }, rowBand: r.band, columnBand: c.band,
+        cells: declared.length, reason: reasons.size === 1 ? [...reasons][0] : undefined,
+      });
+    }
+  }
+  return blocks;
 }
