@@ -337,5 +337,10 @@ describe('a tombstoned alternative or criterion is in no group (#284)', () => {
   it('reaches every caller from that one rule: a scope by group, and a selection by group', () => {
     const a = doc();
     expect(alternativeScope(a, { groupId: 'g-europe' })).toEqual(['lisbon']);
+    // A declared block no longer covers a tombstoned member: its cells are out of scope, not structural.
+    const t = doc();
+    t.alternatives.find((x) => x.id === 'taipei')!.tombstoned = true;
+    expect(makeInapplicability(t)('taipei', 'eu-residency-path')).toBe(false);
+    expect(makeInapplicability(t)('seoul', 'eu-residency-path')).toBe(true);
   });
 });
