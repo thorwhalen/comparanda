@@ -110,6 +110,8 @@ export function axisGroups(a: Analysis, axis: Axis): AxisGroups {
   // Derived within-group rank: axis order. See the module docstring.
   const membersByGroup = new Map<string, string[]>();
   for (const e of entities) {
+    // A tombstoned entity is in no group, as a tombstoned group groups nothing (#51, #284): one rule, here, for every caller.
+    if (e.tombstoned) continue;
     for (const gid of new Set(e.groupIds)) {
       if (!known.has(gid)) continue;
       const list = membersByGroup.get(gid) ?? [];

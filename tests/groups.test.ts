@@ -17,6 +17,7 @@ import {
   axisGroups, groupsOf, groupScopeFilter, makeInapplicability, membersOfGroup,
 } from '../src/core/schema/groups.js';
 import { tombstone, reopenedByTombstone, tombstonedGroupProblems } from '../src/core/schema/anchors.js';
+import { alternativeScope } from '../src/core/analyses/scope.js';
 import { inMemoryAnalysisSource } from '../src/store/index.js';
 
 const ORDINAL = {
@@ -313,5 +314,28 @@ describe('a tombstoned group groups nothing (#51)', () => {
   it('refuses to scope completeness by it', () => {
     const gone = tombstone(base(), { kind: 'group', id: 'ga' }, { reopensInapplicable: true });
     expect(() => completeness(gone, { measure: 'score', alternativeGroupId: 'ga' })).toThrow(/tombstoned/);
+  });
+});
+
+describe('a tombstoned alternative or criterion is in no group (#284)', () => {
+  const doc = () => {
+    const a = structuredClone(Analysis.parse(JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'examples', 'relocation.json'), 'utf8'))));
+    a.alternatives.find((x) => x.id === 'berlin')!.tombstoned = true;
+    a.criteria.find((x) => x.id === 'rent')!.tombstoned = true;
+    return a;
+  };
+
+  it('is no member, and has no group, on either axis', () => {
+    const a = doc();
+    expect(membersOfGroup(axisGroups(a, 'alternatives'), 'g-europe')).toEqual(['lisbon']);
+    expect(groupsOf(axisGroups(a, 'alternatives'), 'berlin')).toEqual([]);
+    expect(membersOfGroup(axisGroups(a, 'criteria'), 'g-cost')).toEqual(['income-tax']);
+    // Its groupIds stay in the document, as history.
+    expect(a.alternatives.find((x) => x.id === 'berlin')!.groupIds).toEqual(['g-europe']);
+  });
+
+  it('reaches every caller from that one rule: a scope by group, and a selection by group', () => {
+    const a = doc();
+    expect(alternativeScope(a, { groupId: 'g-europe' })).toEqual(['lisbon']);
   });
 });

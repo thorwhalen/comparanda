@@ -25,6 +25,6 @@ export function alternativeScope(a: Analysis, opts: AlternativeScopeOptions): st
   if (!a.groups.some((g) => g.id === opts.groupId && g.axis === 'alternatives' && !g.tombstoned)) {
     throw new Error(`"${opts.groupId}" is not a live alternatives group`);
   }
-  const live = new Set(a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id));
-  return membersOfGroup(ag, opts.groupId).filter((id) => live.has(id));
+  // Live members only: a tombstoned alternative is in no group (axisGroups, #284).
+  return membersOfGroup(ag, opts.groupId);
 }
