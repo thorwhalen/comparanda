@@ -38,8 +38,10 @@ afterAll(async () => {
  *
  * A standalone entry like the shipped one, whose `value` encoding calls
  * `reach` from inside its cell renderer. Everything else is the shipped view.
+ * `setup` runs before the mount, with `hidden(url)` a fetch the scan cannot
+ * see, and `props` is spliced into the mount's props.
  */
-async function plantedEntry(name: string, reach: string): Promise<string> {
+async function plantedEntry(name: string, reach: string, { setup = '', props = '' }: { setup?: string; props?: string } = {}): Promise<string> {
   const entry = join(dir, `${name}.ts`);
   await writeFile(entry, `
 import { Analysis } from ${src('core/schema/analysis.ts')};
@@ -56,9 +58,13 @@ const planted = defineEncoding({
 const encodings = createEncodingRegistry([...SHIPPED_ENCODINGS.filter((e) => e.id !== 'value'), planted]);
 const read = (id) => document.getElementById(id).textContent;
 const settings = JSON.parse(read('comparanda-settings'));
+const analysis = Analysis.parse(JSON.parse(read('comparanda-analysis')));
+const hidden = (url) => globalThis[[...'hctef'].reverse().join('')](url).catch(() => {});
+${setup}
 mountMatrix(document.getElementById('comparanda-root'), {
-  analysis: Analysis.parse(JSON.parse(read('comparanda-analysis'))), measure: settings.measure,
+  analysis, measure: settings.measure,
   ...(settings.encoding ? { encoding: settings.encoding } : {}),
+  ${props}
 }, { encodings });
 `);
   return entry;
@@ -126,6 +132,42 @@ describe('a planted network call fails the build', () => {
     // Only when that renderer ran: a page merely loaded would have passed.
     expect(findings.every((f) => f.startsWith('encoding "value"'))).toBe(true);
     expect(findings.some((f) => /Content Security Policy|example\.invalid/i.test(f))).toBe(true);
+  });
+
+  // The acts ADR-0013 lists beyond cells and arrows (#237): a reach made only when the reader does one is caught too.
+  const actOnly = async (name: string, planted: { setup?: string; props?: string }) => {
+    const failure = await buildStandalone(relocationJson, { entry: await plantedEntry(name, '', planted), budget: false }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(NetworkReached);
+    expect((failure as NetworkReached).findings.some((f) => /Content Security Policy|example\.invalid/i.test(f))).toBe(true);
+  };
+  for (const axis of ['alternatives', 'criteria'] as const) {
+    it(`a reach made only once the ${axis} are reordered fails it`, async () => {
+      const key = axis === 'alternatives' ? 'alternativeOrder' : 'criterionOrder';
+      await actOnly(`reorder-${axis}`, {
+        props: `onViewChange: (v) => { if (v.${key}.order.join() !== analysis.${axis}.map((x) => x.id).join()) hidden('https://example.invalid/reordered'); },`,
+      });
+    });
+  }
+  it('a reach made only inside the move menu fails it', async () => {
+    await actOnly('menu', { setup: "document.addEventListener('keydown', (e) => { if (e.target.closest?.('[role=\"menu\"]')) hidden('https://example.invalid/menu'); }, true);" });
+  });
+  it('a reach made only while a header is dragged fails it', async () => {
+    await actOnly('drag', { setup: "addEventListener('pointermove', () => { if (document.querySelector('[data-dragging]')) hidden('https://example.invalid/drag'); });" });
+  });
+  it('an act the page offers that moved nothing fails it: a pass that ran nothing is not a check', async () => {
+    // Every key that would pick a header up is swallowed before the matrix sees it.
+    const entry = await plantedEntry('inert-headers', '', {
+      setup: "document.addEventListener('keydown', (e) => { if ([' ', 'Enter'].includes(e.key) && e.target.matches?.('th[data-entry]')) e.stopPropagation(); }, true);",
+    });
+    const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(NetworkReached);
+    expect((failure as NetworkReached).findings).toEqual(expect.arrayContaining([
+      expect.stringMatching(/no alternatives header could be moved by keyboard/),
+      expect.stringMatching(/no criteria header could be moved by keyboard/),
+    ]));
+  });
+  it('a reach made only once the details panel is open fails it', async () => {
+    await actOnly('panel', { props: "onViewChange: (v) => { if (v.session.detailPanelOpen) hidden('https://example.invalid/panel'); }," });
   });
 
   it('a plain fetch() fails it before any browser starts, naming the string', async () => {
