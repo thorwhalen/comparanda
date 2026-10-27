@@ -156,6 +156,12 @@ describe('a planted network call fails the build', () => {
   it('a reach made only when an omitted block is focused fails it: both axes are banded at once (#93)', async () => {
     await actOnly('block', { setup: "document.addEventListener('focusin', (e) => { if (e.target.matches?.('td[data-block]')) hidden('https://example.invalid/block'); });" });
   });
+  it('a reach made only once a group is selected fails it (#93)', async () => {
+    await actOnly('selected', { props: "onViewChange: (v) => { if (v.selection.alternatives.length > 0) hidden('https://example.invalid/selected'); }," });
+  });
+  it('a reach made only once a group is hidden fails it (#93)', async () => {
+    await actOnly('hidden', { props: "onViewChange: (v) => { if (v.filter.hiddenCriteria.length > 0) hidden('https://example.invalid/hidden'); }," });
+  });
   it('a reach made only inside the move menu fails it', async () => {
     await actOnly('menu', { setup: "document.addEventListener('keydown', (e) => { if (e.target.closest?.('[role=\"menu\"]')) hidden('https://example.invalid/menu'); }, true);" });
   });

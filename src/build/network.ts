@@ -338,8 +338,9 @@ export interface ReaderAct {
  * offers them (#237): an axis reordered by keyboard (moved and put down, then
  * moved and put back), by its move menu, and by a pointer drag; then both
  * axes banded by their groups, every omitted block focused and clicked, and
- * the bands taken away again (#93). Last, so the moves run on an unbanded
- * axis, which is how the page opens. The arrange buttons and the strip/ramp
+ * the bands taken away again, and a group selected, cleared, hidden and shown
+ * again (#93). Last, so the moves run on an unbanded axis with nothing hidden,
+ * which is how the page opens. The arrange buttons and the strip/ramp
  * key are not here: the page offers neither (it mounts no `arrange`, and
  * registers one encoding per pass).
  */
@@ -410,6 +411,26 @@ export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
       }
       for (const box of checked.reverse()) await box.uncheck();
       return (await bands.count()) === opened ? undefined : 'putting the groups away did not take back the bands it drew';
+    },
+  },
+  {
+    name: 'selecting and hiding a group',
+    async run(page, headers) {
+      const axis = await headers.first().getAttribute('data-axis');
+      const controls = page.locator(`.comparanda-grouping p:has(select[id$="-g-${axis}"]) button`);
+      // Not offered: an axis with no groups has no picker.
+      if ((await controls.count()) === 0) return undefined;
+      const shared = page.locator('.comparanda-grouping p:not(:has(select)) button');
+      const marked = page.locator('th[aria-selected="true"]');
+      await controls.nth(0).click();
+      if ((await marked.count()) === 0) return 'selecting a group marked no header';
+      await shared.filter({ hasText: /^Clear/ }).click();
+      if ((await marked.count()) > 0) return 'clearing the selection left headers marked';
+      const before = await headers.count();
+      await controls.nth(1).click();
+      if ((await headers.count()) >= before) return 'hiding a group hid nothing';
+      await shared.filter({ hasText: /hidden/ }).click();
+      return (await headers.count()) === before ? undefined : 'showing the hidden did not bring them all back';
     },
   },
 ]);

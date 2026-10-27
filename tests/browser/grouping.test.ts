@@ -35,7 +35,11 @@ afterEach(() => {
 
 const both = (v: ViewState = initialViewState(relocation)) =>
   setGrouping(setGrouping(v, 'alternatives', ['g-europe', 'g-asia', 'g-americas']), 'criteria', ['g-cost', 'g-climate', 'g-logistics', 'g-eu']);
-const toggle = (name: RegExp) => Array.from(el.querySelectorAll<HTMLLabelElement>('.comparanda-grouping label')).find((l) => name.test(l.textContent!))!.querySelector('input')!;
+const toggle = (name: RegExp) => el.querySelector<HTMLInputElement>(`.comparanda-grouping input[data-axis="${/options/.test(name.source) ? 'alternatives' : 'criteria'}"]`)!;
+const button = (name: RegExp) => Array.from(el.querySelectorAll<HTMLButtonElement>('.comparanda-grouping button')).find((b) => name.test(b.textContent!))!;
+const pick = (axis: 'alternatives' | 'criteria') => el.querySelector<HTMLSelectElement>(`.comparanda-grouping select[id$="-g-${axis}"]`)!;
+const selectedHeaders = () => Array.from(el.querySelectorAll('th[aria-selected="true"]'), (th) => th.getAttribute('data-entry'));
+const shownRows = () => Array.from(el.querySelectorAll('th[data-axis="alternatives"][data-entry]'), (th) => th.getAttribute('data-entry'));
 const said = () => el.querySelector('[data-announce]')!.textContent!.trim();
 const blockCells = () => el.querySelectorAll<HTMLTableCellElement>('td[data-block]');
 
@@ -174,5 +178,47 @@ describe('an inapplicable block is omitted, not blank-filled', () => {
     handles[0]!.update({ view: setFocus(both(), { alternativeId: 'seoul', criterionId: 'eu-residency-path' }) });
     expect(block.getAttribute('tabindex')).toBe('0');
     expect(el.querySelectorAll('[role="grid"] [tabindex="0"]')).toHaveLength(1);
+  });
+});
+
+describe('selection and filter by group (#93)', () => {
+  it('selects a group\'s members in one click: marked on their headers, said, reported, and the document untouched', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    const views: ViewState[] = [];
+    mount({ analysis: relocation, measure: 'score', source, onViewChange: (v) => views.push(v) });
+    await userEvent.selectOptions(pick('alternatives'), 'g-asia');
+    await userEvent.click(button(/Select its options/));
+    expect(selectedHeaders()).toEqual(['taipei', 'seoul']);
+    // A tick, not a colour: the mark survives forced colours and print.
+    expect(getComputedStyle(el.querySelector('th[aria-selected="true"]')!, '::before').content).toContain('\u2713');
+    expect(said()).toBe('Selected the 2 options in Asia.');
+    expect(views.at(-1)!.selection.alternatives).toEqual(['taipei', 'seoul']);
+    // Selection is view state; the bridge never writes the group into it, nor anything into the analysis (ADR-0008).
+    expect(await source.getOne(relocation.id)).toEqual(relocation);
+
+    await userEvent.click(button(/Clear the selection \(2\)/));
+    expect(selectedHeaders()).toEqual([]);
+    expect(said()).toBe('Nothing is selected now.');
+  });
+
+  it('hides a group\'s members and shows them again', async () => {
+    mount({ analysis: relocation, measure: 'score' });
+    await userEvent.selectOptions(pick('alternatives'), 'g-europe');
+    await userEvent.click(button(/Hide its options/));
+    expect(shownRows()).toEqual(['taipei', 'seoul', 'montreal']);
+    expect(said()).toBe('Hid the options in Europe.');
+    await userEvent.click(button(/Show the 2 hidden/));
+    expect(shownRows()).toEqual(['lisbon', 'berlin', 'taipei', 'seoul', 'montreal']);
+  });
+
+  it('every control is a native, labelled form control the keyboard reaches outside the grid\'s one stop', () => {
+    mount({ analysis: relocation, measure: 'score' });
+    const controls = Array.from(el.querySelectorAll<HTMLElement>('.comparanda-grouping input, .comparanda-grouping select, .comparanda-grouping button'));
+    expect(controls.length).toBeGreaterThan(0);
+    for (const c of controls) {
+      expect(c.tabIndex).toBe(0);
+      expect(c.closest('[role="grid"]')).toBeNull();
+    }
+    expect(el.querySelector(`label[for="${pick('criteria').id}"]`)!.textContent).toBe('Group of criteria');
   });
 });
