@@ -133,3 +133,7 @@ traps, is in `docs/research/findings-visualisation.md` §§ 4.1–4.4.
 9. [ARIA Authoring Practices Guide — Tooltip Pattern — W3C WAI](https://www.w3.org/WAI/ARIA/apg/patterns/tooltip/)
 10. [Understanding SC 1.4.13: Content on Hover or Focus (Level AA) — W3C WAI, WCAG 2.2](https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html)
 11. [CSS Table Module Level 3 — §6.2 Repeating headers across pages — W3C](https://www.w3.org/TR/css-tables-3/)
+
+## Amendment, 2026-10-27: "Group with…" as built
+
+From #279. After the positional entries, the move menu lists "Group with <group>" for each live group of the axis the entry is not in. Choosing one adds the group to the entry's `groupIds`, a document write: it goes through the source and is asked of `revise` on the latest document (`joinGroup` in `core/group-membership.ts`), and the result is announced either way. Where the write is not possible (no source, a read-only one, or the host refusing), the menu shows one disabled item that says why, "Group with… is not possible here: <reason>", rather than leaving the entries out. That is what the standalone page shows.

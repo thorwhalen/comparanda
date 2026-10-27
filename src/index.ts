@@ -24,6 +24,7 @@ export * from './core/suggestions.js';
 export * from './core/suggestion-list.js';
 export * from './core/identity.js';
 export * from './core/criteria-revision.js';
+export * from './core/group-membership.js';
 export * from './core/affordances.js';
 export * from './core/revision.js';
 export * from './core/annotation-history.js';

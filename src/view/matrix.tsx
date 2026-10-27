@@ -144,6 +144,8 @@ export interface MatrixViewProps {
    * Without it, no group controls.
    */
   onArrange?: (change: Arrangement, said: string) => void;
+  /** Add an entry to a group, through the source (#279): the move menu's "Group with…". Absent, the menu says why it cannot. */
+  onJoinGroup?: (axis: Axis, id: string, groupId: string) => void;
   /** The latest sentence for the polite live region: a move, a seriation, a refusal. */
   announcement?: string;
   /**
@@ -186,7 +188,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, reattachWrite, onReorder, onEncodingChange, onArrange, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, reattachWrite, onReorder, onEncodingChange, onArrange, onJoinGroup, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -317,7 +319,13 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   });
   const rowLabel = new Map(rows.entries.map((e) => [e.id, e.label]));
   const columnLabel = new Map(columns.entries.map((e) => [e.id, e.label]));
-  const reorder: ReorderContext | undefined = onReorder && { analysis, view, actor, onReorder };
+  // Joining a group writes the document: asked of the document's affordances, which a missing source refuses with its reason.
+  const mayGroup = affordances.revise('adding an entry to a group');
+  const reorder: ReorderContext | undefined = onReorder && {
+    analysis, view, actor, onReorder,
+    grouping: !mayGroup.enabled ? { refused: mayGroup.reason ?? 'not possible here.' }
+      : onJoinGroup ? { join: onJoinGroup } : { refused: 'this matrix was given no way to write a group.' },
+  };
   // The drop of a drag started before a host update must act on the view as it is now, not as it was.
   const latest = useRef(reorder);
   latest.current = reorder;

@@ -32,6 +32,8 @@ import type { ThreadWrites } from './threads.js';
 import type { SuggestionWrites } from './suggestions.js';
 import type { ReattachWrite } from './orphans.js';
 import { reattach } from '../core/orphans.js';
+import { joinGroup } from '../core/group-membership.js';
+import type { Axis } from '../core/schema/groups.js';
 import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type Arrangement, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
@@ -327,6 +329,16 @@ export function mountMatrix(
       const anchor = anchorOf(latest);
       return anchor && may.comment(commentTarget(anchor), act, threadId === undefined ? {} : { threadId });
     }, change, 'the comment');
+  /** "Group with…" (#279): the entry joins the group in the document, asked of `revise` on the latest one, and said either way. */
+  const joinGroupWrite = (axis: Axis, id: string, groupId: string) => {
+    const name = analysis[axis].find((e) => e.id === id)?.label ?? id;
+    const group = analysis.groups.find((g) => g.id === groupId)?.label ?? groupId;
+    const say = (sentence: string) => { announce(sentence); if (!destroyed) draw(); };
+    writeDocument((_latest, may) => may.revise('adding an entry to a group'), (a) => joinGroup(a, axis, id, groupId), 'the grouping').then(
+      () => say(`${name} is now in ${group}.`),
+      (e: unknown) => say(`${name} was not added to ${group}: ${e instanceof Error ? e.message : String(e)}`),
+    );
+  };
   /** Move an orphan to a live anchor (#249), asked of the new anchor's comment affordance on the latest document. */
   const reattachWrite: ReattachWrite = (which, anchor) => writeDocument(
     (_latest, may) => may.comment(commentTarget(anchor), 'reattach', which.kind === 'thread' ? { threadId: which.id } : {}),
@@ -398,6 +410,7 @@ export function mountMatrix(
       ...(arrange ? { arrange } : {}),
       ...(panels ? { panels } : {}),
       ...(announcement !== undefined ? { announcement } : {}),
+      ...(source ? { onJoinGroup: joinGroupWrite } : {}),
       ...(source ? { threadWrites: drawnAskingName ? { ...threadWrites, name: takeName } : threadWrites, reattachWrite } : {}),
       ...(source && suggestionWrites ? { suggestionWrites } : {}),
       encodings: registry,
