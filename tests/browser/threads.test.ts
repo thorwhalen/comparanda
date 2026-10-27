@@ -566,8 +566,25 @@ describe('naming a local identity before its first write (#193)', () => {
     release();
     await settled();
     expect(nameForm()).not.toBeNull();
-    // The name did not count, so the reader is not sent to the heading as though it had.
-    expect(document.activeElement).not.toBe(panel().querySelector('[data-panel-heading]'));
+    // The swapped identity's form is a new one: focus lost with the old form stays in the panel, on its heading (#275).
+    expect(document.activeElement).toBe(panel().querySelector('[data-panel-heading]'));
+  });
+});
+
+describe('focus that leaves the panel with its control lands on the heading, never on the grid (#275)', () => {
+  const where = at({ alternativeId: 'berlin', criterionId: 'winter-daylight' });
+  it('after resolving a thread: every focus on the way is in the panel', async () => {
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: dana, view: where });
+    const button = Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Resolve thread')!;
+    button.focus();
+    const seen: Element[] = [];
+    const record = (e: FocusEvent) => seen.push(e.target as Element);
+    el.addEventListener('focusin', record);
+    await userEvent.click(button);
+    await settled();
+    el.removeEventListener('focusin', record);
+    expect(seen.filter((x) => x.closest('[role="grid"]'))).toEqual([]);
+    expect(document.activeElement).toBe(panel().querySelector('[data-panel-heading]'));
   });
 });
 
