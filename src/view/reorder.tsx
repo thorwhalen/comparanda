@@ -25,6 +25,11 @@ export interface ReorderContext {
   actor: () => string;
   /** The new view state and the sentence to announce; an unchanged state with a sentence for a refusal. */
   onReorder(state: ViewState, said: string): void;
+  /**
+   * "Group with…" (#279): add the entry to a group, a write to the document; or why that is not possible here,
+   * which the menu says rather than leaving the entries out (the standalone page has no source).
+   */
+  grouping?: { join(axis: Axis, id: string, groupId: string): void } | { refused: string };
 }
 
 const ORDER_KEY = { alternatives: 'alternativeOrder', criteria: 'criterionOrder' } as const;
@@ -103,10 +108,18 @@ export function MoveMenu({ ctx, axis, id, scope, label, labelledBy, onClose }: {
   /** `refocus`: put focus back on the header -- after a choice, Escape or Tab, never when focus left for elsewhere. */
   onClose(refocus: boolean): void;
 }) {
-  const entries = entriesOf(scope, id, label);
-  const choose = (step: Step) => {
+  // The live groups of this axis the entry is not in: what "Group with…" may offer.
+  const others = ctx.grouping && ctx.analysis.groups.filter((g) => g.axis === axis && !g.tombstoned
+    && !(axis === 'alternatives' ? ctx.analysis.alternatives : ctx.analysis.criteria).find((e) => e.id === id)?.groupIds.includes(g.id));
+  const entries: { text: string; step?: Step; group?: string }[] = [
+    ...entriesOf(scope, id, label),
+    ...(others?.length ? ('refused' in ctx.grouping! ? [{ text: `Group with… is not possible here: ${ctx.grouping.refused}` }] : others.map((g) => ({ text: `Group with ${g.label}`, group: g.id }))) : []),
+  ];
+  const choose = ({ step, group }: (typeof entries)[number]) => {
+    if (!step && !group) return;
     onClose(true);
-    commitMove(ctx, axis, id, step, 'menu', scope);
+    if (step) commitMove(ctx, axis, id, step, 'menu', scope);
+    else if (ctx.grouping && 'join' in ctx.grouping) ctx.grouping.join(axis, id, group!);
   };
   const onKeyDown = (event: KeyboardEvent) => {
     event.stopPropagation();
@@ -118,7 +131,7 @@ export function MoveMenu({ ctx, axis, id, scope, label, labelledBy, onClose }: {
     else if (event.key === 'Home') go(0);
     else if (event.key === 'End') go(items.length - 1);
     else if (event.key === 'Enter' || event.key === ' ') {
-      if (i >= 0) choose(entries[i]!.step);
+      if (i >= 0) choose(entries[i]!);
     } else if (event.key === 'Escape' || event.key === 'Tab') onClose(true);
     else return;
     event.preventDefault();
@@ -133,7 +146,7 @@ export function MoveMenu({ ctx, axis, id, scope, label, labelledBy, onClose }: {
       }}
     >
       {entries.map((e) => (
-        <li key={e.text} role="menuitem" tabIndex={-1} onClick={() => choose(e.step)}>{e.text}</li>
+        <li key={e.text} role="menuitem" tabIndex={-1} aria-disabled={!e.step && !e.group ? 'true' : undefined} onClick={() => choose(e)}>{e.text}</li>
       ))}
     </ul>
   );
