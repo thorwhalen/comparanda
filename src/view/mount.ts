@@ -331,11 +331,12 @@ export function mountMatrix(
     }, change, 'the comment');
   /** "Group with…" (#279): the entry joins the group in the document, asked of `revise` on the latest one, and said either way. */
   const joinGroupWrite = (axis: Axis, id: string, groupId: string) => {
-    const name = (axis === 'alternatives' ? analysis.alternatives : analysis.criteria).find((e) => e.id === id)?.label ?? id;
+    const name = analysis[axis].find((e) => e.id === id)?.label ?? id;
     const group = analysis.groups.find((g) => g.id === groupId)?.label ?? groupId;
+    const say = (sentence: string) => { announce(sentence); if (!destroyed) draw(); };
     writeDocument((_latest, may) => may.revise('adding an entry to a group'), (a) => joinGroup(a, axis, id, groupId), 'the grouping').then(
-      () => { announce(`${name} is now in ${group}.`); if (!destroyed) draw(); },
-      (e: unknown) => { announce(`${name} was not added to ${group}: ${e instanceof Error ? e.message : String(e)}`); if (!destroyed) draw(); },
+      () => say(`${name} is now in ${group}.`),
+      (e: unknown) => say(`${name} was not added to ${group}: ${e instanceof Error ? e.message : String(e)}`),
     );
   };
   /** Move an orphan to a live anchor (#249), asked of the new anchor's comment affordance on the latest document. */

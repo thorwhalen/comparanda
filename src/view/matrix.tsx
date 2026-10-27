@@ -323,7 +323,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const mayGroup = affordances.revise('adding an entry to a group');
   const reorder: ReorderContext | undefined = onReorder && {
     analysis, view, actor, onReorder,
-    grouping: onJoinGroup && mayGroup.enabled ? { join: onJoinGroup } : { refused: mayGroup.reason ?? 'not possible here.' },
+    grouping: !mayGroup.enabled ? { refused: mayGroup.reason ?? 'not possible here.' }
+      : onJoinGroup ? { join: onJoinGroup } : { refused: 'this matrix was given no way to write a group.' },
   };
   // The drop of a drag started before a host update must act on the view as it is now, not as it was.
   const latest = useRef(reorder);

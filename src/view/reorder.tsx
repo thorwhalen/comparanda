@@ -9,7 +9,7 @@
  * `moveByMenu` -> `moveTo`, and says what happened with core's `describeMove`.
  * So the routes cannot differ in result or in words: there is one path.
  */
-import type { Axis } from '../core/schema/groups.js';
+import { axisGroups, groupsOf, type Axis } from '../core/schema/groups.js';
 import type { Analysis } from '../core/schema/analysis.js';
 import { describeMove, LockedRunError, moveByMenu, movingBlock, moveTo, reportOverShown, type MenuMove, type MoveRoute } from '../core/reorder.js';
 import { applyOrder, type ViewState } from '../core/view-state.js';
@@ -108,9 +108,9 @@ export function MoveMenu({ ctx, axis, id, scope, label, labelledBy, onClose }: {
   /** `refocus`: put focus back on the header -- after a choice, Escape or Tab, never when focus left for elsewhere. */
   onClose(refocus: boolean): void;
 }) {
-  // The live groups of this axis the entry is not in: what "Group with…" may offer.
-  const others = ctx.grouping && ctx.analysis.groups.filter((g) => g.axis === axis && !g.tombstoned
-    && !(axis === 'alternatives' ? ctx.analysis.alternatives : ctx.analysis.criteria).find((e) => e.id === id)?.groupIds.includes(g.id));
+  // The live groups of this axis the entry is not in, by closure (in a sub-group is in its parent): what "Group with…" may offer.
+  const inAlready = ctx.grouping ? groupsOf(axisGroups(ctx.analysis, axis), id) : [];
+  const others = ctx.grouping && ctx.analysis.groups.filter((g) => g.axis === axis && !g.tombstoned && !inAlready.includes(g.id));
   const entries: { text: string; step?: Step; group?: string }[] = [
     ...entriesOf(scope, id, label),
     ...(others?.length ? ('refused' in ctx.grouping! ? [{ text: `Group with… is not possible here: ${ctx.grouping.refused}` }] : others.map((g) => ({ text: `Group with ${g.label}`, group: g.id }))) : []),
@@ -146,7 +146,7 @@ export function MoveMenu({ ctx, axis, id, scope, label, labelledBy, onClose }: {
       }}
     >
       {entries.map((e) => (
-        <li key={e.text} role="menuitem" tabIndex={-1} aria-disabled={!e.step && !e.group ? 'true' : undefined} onClick={() => choose(e)}>{e.text}</li>
+        <li key={e.group ?? e.text} role="menuitem" tabIndex={-1} aria-disabled={!e.step && !e.group ? 'true' : undefined} onClick={() => choose(e)}>{e.text}</li>
       ))}
     </ul>
   );

@@ -20,8 +20,12 @@ describe('joinGroup', () => {
     expect(joinGroup(relocation, 'criteria', 'rent', 'g-climate').criteria.find((x) => x.id === 'rent')!.groupIds).toEqual(['g-cost', 'g-climate']);
   });
 
-  it('changes nothing for a group the entity is in already', () => {
+  it('changes nothing for a group the entity is in already, directly or through a sub-group', () => {
     expect(joinGroup(relocation, 'alternatives', 'lisbon', 'g-europe')).toBe(relocation);
+    const nested = structuredClone(relocation);
+    nested.groups.push({ ...structuredClone(nested.groups.find((g) => g.id === 'g-europe')!), id: 'g-iberia', label: 'Iberia', parentId: 'g-europe' });
+    nested.alternatives.find((x) => x.id === 'lisbon')!.groupIds = ['g-iberia'];
+    expect(joinGroup(nested, 'alternatives', 'lisbon', 'g-europe')).toBe(nested);
   });
 
   it('refuses what would be ignored or wrong, saying why', () => {

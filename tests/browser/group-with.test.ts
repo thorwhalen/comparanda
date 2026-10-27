@@ -49,6 +49,15 @@ describe('Group with…', () => {
     expect(el.querySelector('[data-announce]')!.textContent!.trim()).toBe('Montreal is now in Europe.');
   });
 
+  it('does not offer a group the entry is in through a sub-group', async () => {
+    const nested = structuredClone(relocation);
+    nested.groups.push({ ...structuredClone(nested.groups.find((g) => g.id === 'g-americas')!), id: 'g-canada', label: 'Canada', parentId: 'g-americas' });
+    nested.alternatives.find((x) => x.id === 'montreal')!.groupIds = ['g-canada'];
+    mount({ analysis: nested, source: inMemoryAnalysisSource(nested) });
+    const groups = (await openMenu()).map((i) => i.textContent).filter((t) => t!.startsWith('Group with'));
+    expect(groups).toEqual(['Group with Europe', 'Group with Asia']);
+  });
+
   it('without a source, says it is not possible here, and why, rather than leaving it out', async () => {
     mount();
     const items = await openMenu();
