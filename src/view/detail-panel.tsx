@@ -33,12 +33,14 @@ import { capitalise, outOf, STANDING_SAID } from './words.js';
 import { Threads, type ThreadWrites } from './threads.js';
 import type { Affordances } from '../core/affordances.js';
 
-/** An omitted block the reader is on (#280): its bands, how many cells, their members by name, why, and its group pair. */
+/** An omitted block the reader is on (#280): its bands, how many cells, their members by name, why, and the group pair declared on it. */
 export interface PanelBlock {
-  alternatives: { band: string; labels: string[]; groupId: string | undefined };
-  criteria: { band: string; labels: string[]; groupId: string | undefined };
+  alternatives: { band: string; labels: string[] };
+  criteria: { band: string; labels: string[] };
   cells: number;
   reason: string | undefined;
+  /** The declaration's group pair, a remainder band's block included: what a thread started here is about. */
+  pair: readonly [string, string] | undefined;
 }
 
 export interface DetailPanelProps {
@@ -134,7 +136,7 @@ export function DetailPanel(props: DetailPanelProps) {
       <Threads
         analysis={analysis} measure={props.measure} affordances={props.affordances} writes={props.writes} idBase={headingId} vouched={props.vouched}
         position={{ alternativeId: alternative?.id, criterionId: criterion?.id }}
-        pair={block?.alternatives.groupId && block.criteria.groupId ? [block.alternatives.groupId, block.criteria.groupId] : undefined}
+        pair={block?.pair}
       />
     </aside>
   );

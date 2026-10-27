@@ -308,4 +308,33 @@ describe('the details of an omitted block (#280)', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect((await source.getOne(relocation.id))!.threads.at(-1)!.anchor).toMatchObject({ scope: 'group-pair', groupId: 'g-asia', otherGroupId: 'g-eu' });
   });
+
+  const startOnBlock = async (view: ViewState, authorize?: MountMatrixProps['authorize']) => {
+    const source = inMemoryAnalysisSource(relocation);
+    mount({ analysis: relocation, measure: 'score', source, identity: anonymousIdentity({ id: 'dana', displayName: 'Dana' }), view: setDetailPanel(view, true), ...(authorize ? { authorize } : {}) });
+    const threads = el.querySelector<HTMLElement>('aside.comparanda-panel [data-detail="threads"]')!;
+    const box = threads.querySelector('textarea');
+    return { source, threads, box };
+  };
+
+  it('is about the block transposed too', async () => {
+    const { threads, box } = await startOnBlock(setFocus(transpose(both()), { alternativeId: 'taipei', criterionId: 'eu-residency-path' }));
+    expect(el.querySelector('aside.comparanda-panel')!.getAttribute('data-panel')).toBe('block');
+    expect(threads.querySelector(`label[for="${box!.id}"]`)!.textContent).toMatch(/^Start a thread on the block Asia \u00d7 EU/);
+  });
+
+  it('is about the declared block when a band is the remainder, which has no group of its own', async () => {
+    // Alternatives banded by Europe and the Americas: Asia falls in the remainder band.
+    const view = setFocus(setGrouping(both(), 'alternatives', ['g-europe', 'g-americas']), { alternativeId: 'taipei', criterionId: 'eu-residency-path' });
+    const { threads, box } = await startOnBlock(view);
+    expect(el.querySelector('aside.comparanda-panel')!.getAttribute('data-panel')).toBe('block');
+    expect(threads.querySelector(`label[for="${box!.id}"]`)!.textContent).toMatch(/^Start a thread on the block Asia \u00d7 EU/);
+  });
+
+  it('keeps the cell first when the host allows no thread on the block, rather than offering none', async () => {
+    const noBlocks: MountMatrixProps['authorize'] = (r) => !('target' in r && r.target?.kind === 'group-pair') || { enabled: false, reason: 'blocks are not discussed here.' };
+    const { threads, box } = await startOnBlock(setFocus(both(), { alternativeId: 'taipei', criterionId: 'eu-residency-path' }), noBlocks);
+    expect(box).not.toBeNull();
+    expect(threads.querySelector(`label[for="${box!.id}"]`)!.textContent).toMatch(/^Start a thread on this cell/);
+  });
 });

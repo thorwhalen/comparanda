@@ -55,8 +55,9 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   const open = all.filter((x) => !x.thread.resolved);
   const resolved = all.filter((x) => x.thread.resolved);
   const offered = anchorChoices(analysis, position, measure, words);
-  // On an omitted block, the block itself first: the cell under it is only its address (#280).
-  const first = pair ? offered.findIndex((c) => c.anchor.scope === 'group-pair' && c.anchor.groupId === pair[0] && c.anchor.otherGroupId === pair[1]) : -1;
+  // On an omitted block, the block itself first, where the host allows a thread on it: the cell under it is only its address (#280).
+  const first = pair ? offered.findIndex((c) => c.anchor.scope === 'group-pair' && c.anchor.groupId === pair[0] && c.anchor.otherGroupId === pair[1]
+    && affordances.comment(commentTarget(c.anchor), 'start').enabled) : -1;
   const choices = first > 0 ? [offered[first]!, ...offered.filter((_, i) => i !== first)] : offered;
   const allowed = affordances.comment(commentTarget(choices[0]!.anchor), 'start');
   const names = attributions(analysis.authors, { vouched });

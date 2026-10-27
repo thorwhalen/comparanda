@@ -302,10 +302,13 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const panelBlock = (): PanelBlock | undefined => {
     const b = grid.blockAt(at.r, at.c);
     if (!b) return undefined;
-    const side = (band: Band, axis: AxisLayout) => ({ band: bandLabel(band, axis), labels: band.entries.map((e) => e.label), groupId: band.groupId });
+    const side = (band: Band, axis: AxisLayout) => ({ band: bandLabel(band, axis), labels: band.entries.map((e) => e.label) });
     const [rowSide, columnSide] = [side(b.rowBand, rows), side(b.columnBand, columns)];
     const [criteria, alternatives] = transposed ? [rowSide, columnSide] : [columnSide, rowSide];
-    return { alternatives, criteria, cells: b.cells, reason: b.reason };
+    // The declaration on its first cell: a band may be the remainder, which has no group, but every omitted cell is declared.
+    const [rowId, columnId] = [rows.entries[b.rows.first]!.id, columns.entries[b.columns.first]!.id];
+    const declared = transposed ? affordances.inapplicableBlock(columnId, rowId) : affordances.inapplicableBlock(rowId, columnId);
+    return { alternatives, criteria, cells: b.cells, reason: b.reason, pair: declared && [declared.alternativeGroupId, declared.criterionGroupId] };
   };
   /** The roving `tabindex` and the address the keyboard handler moves by. */
   const stop = (r: number, c: number) => ({
