@@ -48,8 +48,10 @@ describe('the dot plots panel', () => {
     const lane = montreal.querySelector('td[data-lane="not-assessed"]')!;
     expect(lane.querySelector('svg')).not.toBeNull();
     expect(lane.textContent).toContain('1 mark: Nobody has looked yet.');
-    // Its column header names the lane, in words.
-    expect(tax.querySelector('th[data-lane="not-assessed"]')!.textContent).toBe(' Missing: not assessed');
+    // Its column header names the lane, in words, beside the reason's glyph.
+    const head = tax.querySelector('th[data-lane="not-assessed"]')!;
+    expect(head.textContent).toBe(' Missing: not assessed');
+    expect(head.querySelector('svg')).not.toBeNull();
     // No dot anywhere on Montreal's levels.
     expect(montreal.querySelectorAll('td[data-dots]')).toHaveLength(0);
   });
@@ -61,9 +63,25 @@ describe('the dot plots panel', () => {
     // The level columns only: the missing lane follows them in every row.
     const berlin = Array.from(daylight.querySelectorAll('tr[data-row="berlin"] td:not([data-lane])'));
     expect(berlin.map((td) => td.getAttribute('data-dots'))).toEqual(['2', null, '1', null, null]);
-    expect(berlin[0]!.textContent).toMatch(/^●●2 raters: /);
+    // Seen as two filled dots, which a screen reader skips for the words naming who put them there.
+    expect(berlin[0]!.querySelector('[aria-hidden="true"]')!.textContent).toBe('●●');
+    expect(berlin[0]!.querySelector('.comparanda-sr')!.textContent).toMatch(/^2 raters: Ana .*, Cleo /);
     // A nominal criterion's own level names are its columns.
     expect(Array.from(plot('climate-type').querySelectorAll('thead th[data-tick]'), (th) => th.textContent)).toEqual(['Mediterranean', 'Continental', 'Subtropical']);
+  });
+
+  it('draws nothing between the levels: no rule through a row, nothing sticky, whatever the matrix\'s grid does', async () => {
+    await open();
+    for (const cell of Array.from(plot('winter-daylight').querySelectorAll<HTMLElement>('th, td'))) {
+      const style = getComputedStyle(cell);
+      expect([style.boxShadow, style.position, style.borderTopWidth, style.borderBottomWidth]).toEqual(['none', 'static', '0px', '0px']);
+    }
+  });
+
+  it('gives a declared block\'s own reason in the lane', async () => {
+    await open();
+    const lane = plot('eu-residency-path').querySelector('tr[data-row="taipei"] td[data-lane="not-applicable"]')!;
+    expect(lane.textContent).toContain('1 mark: This criterion does not apply to this alternative. Not an EU destination, so EU residency rules do not apply.');
   });
 
   it('says why a criterion on a continuous range has no dot plot', async () => {
