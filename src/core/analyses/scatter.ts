@@ -21,7 +21,7 @@
 import type { Analysis } from '../schema/analysis.js';
 import { makeCellReader, vocabularyOf } from '../schema/analysis.js';
 import { makeInapplicability } from '../schema/groups.js';
-import { NOT_APPLICABLE, NOT_ASSESSED } from '../schema/missingness.js';
+import { cellWords } from '../cell-words.js';
 import { measurementFor } from '../schema/structure.js';
 import { dominance, EXCLUSION_WORDS, type DominanceResult, type ExcludedCriterion } from './dominance.js';
 
@@ -31,8 +31,8 @@ export type DominanceTier = 'non-dominated' | 'possibly-dominated' | 'dominated'
 export interface ScatterAxis {
   criterionId: string;
   label: string;
-  /** The declared range, when there is one: the axis's extent. */
-  range: { min: number; max: number } | undefined;
+  /** The declared range: the axis's extent. Every criterion a dominance comparison uses has one. */
+  range: { min: number; max: number };
   preference: string | undefined;
 }
 
@@ -43,9 +43,12 @@ export interface ScatterPoint {
   /** Its value on each axis, when that value is a number; otherwise it is listed, not placed. */
   x: number | undefined;
   y: number | undefined;
-  /** Why there is no number on an axis, in words, when there is none: the reason's meaning, a refusal, a withholding. */
-  xAbsent: string | undefined;
-  yAbsent: string | undefined;
+  /**
+   * Each cell in the matrix's own words (`cellWords`): the value, labelled when
+   * assertions beside it are withheld, or why there is no number.
+   */
+  xWords: string;
+  yWords: string;
   /** Its tier on these two criteria. */
   here: DominanceTier;
   /** Its tier across every criterion that admits a dominance comparison. */
@@ -80,7 +83,6 @@ export interface ScatterOptions {
   measure: string;
   /** The two criteria: horizontal, then vertical. */
   criteria: readonly [string, string];
-  usePracticalTolerance?: boolean;
 }
 
 /** The words the view puts on the front it draws (ADR-0026). */
@@ -102,24 +104,25 @@ function tierIn(result: DominanceResult, id: string): DominanceTier {
  * twice, an unknown one, or one that admits no dominance comparison (nominal,
  * no direction, a target, no range), named with its reason.
  */
-export function scatterModel(a: Analysis, { measure, criteria, usePracticalTolerance = false }: ScatterOptions): ScatterModel {
+export function scatterModel(a: Analysis, { measure, criteria }: ScatterOptions): ScatterModel {
   const [xId, yId] = criteria;
   if (xId === yId) return { usable: false, reason: 'a scatter needs two different criteria.' };
   const crit = (id: string) => a.criteria.find((c) => c.id === id && !c.tombstoned);
   const missing = criteria.find((id) => !crit(id));
   if (missing !== undefined) return { usable: false, reason: `"${missing}" is not a criterion of this analysis.` };
 
-  const here = dominance(a, { measure, criterionIds: criteria, usePracticalTolerance });
+  const here = dominance(a, { measure, criterionIds: criteria });
   const out = here.excluded.find((e: ExcludedCriterion) => criteria.includes(e.criterionId));
   if (out) {
     return { usable: false, reason: `${crit(out.criterionId)!.label} cannot be compared for dominance (${EXCLUSION_WORDS[out.reason]}).` };
   }
-  const overall = dominance(a, { measure, usePracticalTolerance });
+  const overall = dominance(a, { measure });
 
   const axis = (id: string): ScatterAxis => {
     const c = crit(id)!;
     const m = measurementFor(c, measure);
-    return { criterionId: id, label: c.label, range: m?.range && { min: m.range.min, max: m.range.max }, preference: m?.preference };
+    // In the basis, so it has a range and a direction (dominance's own rule, ADR-0019 clause 7).
+    return { criterionId: id, label: c.label, range: { min: m!.range!.min, max: m!.range!.max }, preference: m!.preference };
   };
   const reader = makeCellReader(a, measure);
   const vocabulary = vocabularyOf(a);
@@ -128,23 +131,19 @@ export function scatterModel(a: Analysis, { measure, criteria, usePracticalToler
     const v = reader.read(alt, id)?.value;
     return typeof v === 'number' ? v : undefined;
   };
-  /** Why a cell has no number, read as the matrix reads it: a refusal, a reason's meaning, a declared block, or nobody has looked. */
-  const absentAt = (alt: string, id: string): string | undefined => {
+  /** A cell in the matrix's own words; a value that is not a number says so, as it cannot be placed. */
+  const wordsAt = (alt: string, id: string): string => {
     const r = reader.read(alt, id);
-    const mean = (code: string) => vocabulary.means(code, id)?.trim() || `absent for a reason this analysis does not describe ("${code}")`;
-    if (typeof r?.value === 'number') return undefined;
-    if (r?.refused !== undefined) return `not shown: ${r.refused}`;
-    if (r?.value !== undefined) return `not a number (${String(r.value)})`;
-    if (r?.missing) return mean(r.missing.code);
-    return mean(inapplicable(alt, id) ? NOT_APPLICABLE : NOT_ASSESSED);
+    const { text, absentCode, refused } = cellWords(r, { inapplicable: inapplicable(alt, id), vocabulary, criterionId: id });
+    return refused || absentCode !== undefined || typeof r?.value === 'number' ? text : `Not a number: ${text}.`;
   };
   const points = a.alternatives.filter((x) => !x.tombstoned).map((alt): ScatterPoint => ({
     alternativeId: alt.id,
     label: alt.label,
     x: numberAt(alt.id, xId),
     y: numberAt(alt.id, yId),
-    xAbsent: absentAt(alt.id, xId),
-    yAbsent: absentAt(alt.id, yId),
+    xWords: wordsAt(alt.id, xId),
+    yWords: wordsAt(alt.id, yId),
     here: tierIn(here, alt.id),
     overall: tierIn(overall, alt.id),
     dominatedBy: here.edges.filter((e) => e.dominated === alt.id).map((e) => e.dominator),

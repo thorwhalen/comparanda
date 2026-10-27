@@ -47,6 +47,7 @@ import type { ComponentType } from 'preact';
 import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
 import { matrixLayout, omittedBlocks, type AxisLayout, type Band, type LayoutEntry, type OmittedBlock } from '../core/layout.js';
 import { cellIndex, cellKey, makeCellReader, unknownMeasure, type Analysis } from '../core/schema/analysis.js';
+import { cellWords } from '../core/cell-words.js';
 import type { Vouched } from '../core/identity.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { Measurement } from '../core/schema/measurement.js';
@@ -858,42 +859,19 @@ function cellContent(
   vocabulary: MissingnessVocabulary,
   criterionId: string,
 ): { state: CellState; text: string; absence?: CellAbsence; terminal?: boolean; glyph?: GlyphKey } {
-  const absent = (code: string, state: CellState) => {
-    const facts = vocabulary.resolve(code, criterionId).facts;
-    // Keyed on the core reason the code refines, never on the code itself (ADR-0028).
-    const glyph: GlyphKey = (facts && coreReasonOf(vocabulary, code, criterionId)) ?? 'undeclared';
-    // An undeclared code has no meaning to show, and a declared one may have an
-    // empty one: either way its id is worded, never shown bare or left blank.
-    const means = facts?.means.trim();
-    const worded = `Absent for a reason this analysis does not ${facts ? 'describe' : 'define'} (\u201c${code}\u201d).`;
-    return facts
-      // `terminal` is its own channel (border style, ADR-0028), read from the flag itself: a
-      // structural code declared non-terminal is still work outstanding. Undeclared counts as open.
-      ? { state, text: means || worded, absence: absenceStanding(facts), terminal: facts.terminal, glyph }
-      : { state, text: worded, absence: 'undeclared' as const, terminal: false, glyph };
-  };
-  if (reduced?.refused !== undefined) {
-    // A cell this reader sees only part of: the projection's gap (ADR-0021),
-    // which core reports as such (#171), not the raters' disagreement.
-    return {
-      state: 'refused',
-      text: reduced.refusedBecause === 'withheld-from-reader'
-        ? 'Partly withheld from you; what you can see does not settle this cell.'
-        : `Not shown: ${reduced.refused}`,
-    };
-  }
-  if (reduced?.value !== undefined) {
-    // A value shown beside withheld assertions (an owner's consensus, a provable
-    // `latest`) is labelled, never bare (ADR-0021).
-    const withheld = reduced.withheldFromReader;
-    return { state: 'value', text: withheld ? `${String(reduced.value)} (${withheld} withheld from you)` : String(reduced.value) };
-  }
-  if (reduced?.missing !== undefined) {
-    const code = reduced.missing.code;
-    return absent(code, code === NOT_APPLICABLE ? 'not-applicable' : code === NOT_ASSESSED ? 'not-assessed' : 'missing');
-  }
-  // No value and no recorded absence: a declared block says why; otherwise nobody has looked.
-  return inapplicable ? absent(NOT_APPLICABLE, 'not-applicable') : absent(NOT_ASSESSED, 'not-assessed');
+  // The words are core's, so every view says a cell the same way; the state and the channels are the matrix's.
+  const { text, absentCode: code, refused } = cellWords(reduced, { inapplicable, vocabulary, criterionId });
+  if (refused) return { state: 'refused', text };
+  if (code === undefined) return { state: 'value', text };
+  const state: CellState = code === NOT_APPLICABLE ? 'not-applicable' : code === NOT_ASSESSED ? 'not-assessed' : 'missing';
+  const facts = vocabulary.resolve(code, criterionId).facts;
+  // Keyed on the core reason the code refines, never on the code itself (ADR-0028).
+  const glyph: GlyphKey = (facts && coreReasonOf(vocabulary, code, criterionId)) ?? 'undeclared';
+  // `terminal` is its own channel (border style, ADR-0028), read from the flag itself: a
+  // structural code declared non-terminal is still work outstanding. Undeclared counts as open.
+  return facts
+    ? { state, text, absence: absenceStanding(facts), terminal: facts.terminal, glyph }
+    : { state, text, absence: 'undeclared', terminal: false, glyph };
 }
 
 /**

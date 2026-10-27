@@ -110,6 +110,37 @@ describe('the scatter panel', () => {
     expect(panel()!.querySelector('figcaption')!.textContent).toMatch(/^Non-dominated on these two criteria: Berlin \(not placed\)\./);
   });
 
+  it('runs the vertical axis so that better is up, flipping it where less is better', async () => {
+    await open(relocation);
+    await userEvent.selectOptions(Array.from(panel()!.querySelectorAll('select'))[1]!, 'flight-hours');
+    const cy = (id: string) => Number(point(id).querySelector('circle, path')!.getAttribute('cy') ?? point(id).querySelector('path')!.getAttribute('d')!.split(' ')[1]);
+    // Flight hours: less is better. Berlin (2 h) sits above Taipei (15.5 h): a smaller y is higher on screen.
+    expect(cy('berlin')).toBeLessThan(cy('taipei'));
+    expect(panel()!.querySelector('svg')!.getAttribute('aria-label')).toMatch(/^Rent across, Flight hours to family up, better toward the top right/);
+    expect(panel()!.querySelector('table caption')!.textContent).toMatch(/\(measure: score\)$/);
+  });
+
+  it('puts a label past the middle on the left of its mark, so the plot\'s edge never clips it', async () => {
+    await open(languages);
+    for (const text of Array.from(panel()!.querySelectorAll<SVGTextElement>('svg g > text'))) {
+      const box = text.getBBox();
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(360);
+    }
+  });
+
+  it('keeps what it can of a choice the document no longer allows', async () => {
+    await open(relocation);
+    await userEvent.selectOptions(Array.from(panel()!.querySelectorAll('select'))[1]!, 'flight-hours');
+    const doc = structuredClone(relocation);
+    doc.criteria.find((c) => c.id === 'rent')!.tombstoned = true;
+    handle!.update({ analysis: doc });
+    const [across, up] = Array.from(panel()!.querySelectorAll('select'));
+    expect(up!.value).toBe('flight-hours');
+    expect(across!.value).not.toBe('rent');
+    expect(panel()!.querySelector('figcaption')).not.toBeNull();
+  });
+
   it('lets the reader choose the two criteria, and swaps them rather than take the same one twice', async () => {
     await open(relocation);
     const [across, up] = Array.from(panel()!.querySelectorAll('select'));
@@ -117,6 +148,9 @@ describe('the scatter panel', () => {
     expect(panel()!.querySelector('figcaption')!.textContent).toMatch(/^Non-dominated on these two criteria: Lisbon, Berlin, Taipei, Montreal\./);
     await userEvent.selectOptions(across!, 'flight-hours');
     expect([across!.value, up!.value]).toEqual(['flight-hours', 'rent']);
+    // And from the other picker.
+    await userEvent.selectOptions(up!, 'flight-hours');
+    expect([across!.value, up!.value]).toEqual(['rent', 'flight-hours']);
     // Labelled controls, reachable by keyboard.
     for (const s of [across!, up!]) expect(panel()!.querySelector(`label[for="${s.id}"]`)).not.toBeNull();
   });

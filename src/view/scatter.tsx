@@ -23,7 +23,7 @@
  * presentation attributes in `currentColor`, so it adds nothing to the
  * matrix's stylesheet.
  */
-import { useId, useState } from 'preact/hooks';
+import { useId, useMemo, useState } from 'preact/hooks';
 
 import { scatterCriteria, scatterModel, type DominanceTier, type ScatterAxis, type ScatterPoint, type UsableScatterModel } from '../core/analyses/scatter.js';
 import { aliasesOf } from '../core/schema/structure.js';
@@ -41,7 +41,7 @@ const TIER_SAID: Readonly<Record<DominanceTier, string>> = {
 
 /** Where a value sits along an axis of `length`, with better always toward the far end. The schema keeps min below max. */
 function along(axis: ScatterAxis, value: number, length: number): number {
-  const { min, max } = axis.range!;
+  const { min, max } = axis.range;
   const t = (value - min) / (max - min);
   return (axis.preference === 'decreasing' ? 1 - t : t) * length;
 }
@@ -69,60 +69,65 @@ function OverallMark({ tier, x, y }: { tier: DominanceTier; x: number; y: number
 
 /** The ticks an axis is labelled with: its declared range's ends, and the whole levels between them when there are few. */
 function ticksOf(axis: ScatterAxis): number[] {
-  const { min, max } = axis.range!;
+  const { min, max } = axis.range;
   return Number.isInteger(min) && Number.isInteger(max) && max - min <= 10
     ? Array.from({ length: max - min + 1 }, (_, i) => min + i)
     : [min, max];
 }
 
 export function ScatterPanel({ analysis, measure }: AnalysisPanelProps) {
-  const id = useId();
   const [open, setOpen] = useState(false);
-  const [chosen, setChosen] = useState<[string, string] | undefined>(undefined);
-
-  const body = () => {
-    const usable = scatterCriteria(analysis, measure);
-    if (usable.length < 2) {
-      return <p role="note">{`A two-criterion scatter needs two criteria that admit a dominance comparison; this analysis has ${usable.length}.`}</p>;
-    }
-    // A choice the document no longer allows (a criterion removed, or no longer comparable) falls back to the first two.
-    const [xId, yId] = chosen && chosen.every((c) => usable.includes(c)) ? chosen : [usable[0]!, usable[1]!];
-    const label = (cid: string) => analysis.criteria.find((c) => c.id === cid)?.label ?? cid;
-    const picker = (which: 0 | 1, value: string) => (
-      <>
-        <label for={`${id}-${which}`}>{which === 0 ? 'Across' : 'Up'}</label>{' '}
-        <select
-          id={`${id}-${which}`} value={value}
-          onChange={(e) => {
-            const picked = (e.currentTarget as HTMLSelectElement).value;
-            const other = which === 0 ? yId : xId;
-            // Picking the other axis's criterion swaps the two, rather than asking for the same one twice.
-            const next: [string, string] = which === 0 ? [picked, picked === other ? xId : other] : [picked === other ? yId : other, picked];
-            setChosen(next);
-          }}
-        >
-          {usable.map((cid) => <option key={cid} value={cid}>{label(cid)}</option>)}
-        </select>{' '}
-      </>
-    );
-    const model = scatterModel(analysis, { measure, criteria: [xId, yId] });
-    return (
-      <>
-        <fieldset>
-          <legend>The two criteria</legend>
-          {picker(0, xId)}
-          {picker(1, yId)}
-        </fieldset>
-        {model.usable ? <Plot model={model} id={id} rowWord={capitalise(aliasesOf(analysis).alternative)} /> : <p role="note">{model.reason}</p>}
-      </>
-    );
-  };
-
   return (
     <details class="comparanda-analysis" data-analysis="scatter" open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>Two criteria against each other, with what is dominated on them</summary>
-      {open && body()}
+      {open && <ScatterBody analysis={analysis} measure={measure} />}
     </details>
+  );
+}
+
+/** The open panel: computed once per document, measure and pair, not on every render of the matrix around it. */
+function ScatterBody({ analysis, measure }: Pick<AnalysisPanelProps, 'analysis' | 'measure'>) {
+  const id = useId();
+  const [chosen, setChosen] = useState<[string, string] | undefined>(undefined);
+  const usable = useMemo(() => scatterCriteria(analysis, measure), [analysis, measure]);
+  // A choice the document no longer allows keeps what it still can: each axis falls back to the first criterion the other does not hold.
+  const [xId, yId] = useMemo((): [string, string] => {
+    const [x, y] = chosen ?? [];
+    const keepX = x !== undefined && usable.includes(x) ? x : undefined;
+    const keepY = y !== undefined && usable.includes(y) && y !== keepX ? y : undefined;
+    const nx = keepX ?? usable.find((c) => c !== keepY) ?? '';
+    return [nx, keepY ?? usable.find((c) => c !== nx) ?? ''];
+  }, [chosen, usable]);
+  const model = useMemo(() => (usable.length < 2 ? undefined : scatterModel(analysis, { measure, criteria: [xId, yId] })), [analysis, measure, xId, yId, usable]);
+  if (!model) {
+    return <p role="note">{`A two-criterion scatter needs two criteria that admit a dominance comparison; this analysis has ${usable.length}.`}</p>;
+  }
+  const label = (cid: string) => analysis.criteria.find((c) => c.id === cid)?.label ?? cid;
+  const picker = (which: 0 | 1, value: string) => (
+    <>
+      <label for={`${id}-${which}`}>{which === 0 ? 'Across' : 'Up'}</label>{' '}
+      <select
+        id={`${id}-${which}`} value={value}
+        onChange={(e) => {
+          const picked = (e.currentTarget as HTMLSelectElement).value;
+          const other = which === 0 ? yId : xId;
+          // Picking the other axis's criterion swaps the two, rather than asking for the same one twice.
+          setChosen(which === 0 ? [picked, picked === other ? xId : other] : [picked === other ? yId : other, picked]);
+        }}
+      >
+        {usable.map((cid) => <option key={cid} value={cid}>{label(cid)}</option>)}
+      </select>{' '}
+    </>
+  );
+  return (
+    <>
+      <fieldset>
+        <legend>The two criteria</legend>
+        {picker(0, xId)}
+        {picker(1, yId)}
+      </fieldset>
+      {model.usable ? <Plot model={model} id={id} rowWord={capitalise(aliasesOf(analysis).alternative)} /> : <p role="note">{model.reason}</p>}
+    </>
   );
 }
 
@@ -135,7 +140,6 @@ function Plot({ model, id, rowWord }: { model: UsableScatterModel; id: string; r
   const spots = new Map<string, (ScatterPoint & { x: number; y: number })[]>();
   for (const p of placed) spots.set(`${p.x}\u0000${p.y}`, [...(spots.get(`${p.x}\u0000${p.y}`) ?? []), p]);
   const front = points.filter((p) => p.here === 'non-dominated').map((p) => (p.x === undefined || p.y === undefined ? `${p.label} (not placed)` : p.label));
-  const said = (v: number | undefined, absent: string | undefined) => (v === undefined ? absent ?? '' : String(v));
   return (
     <figure aria-labelledby={`${id}-caption`}>
       <figcaption id={`${id}-caption`}>
@@ -169,7 +173,10 @@ function Plot({ model, id, rowWord }: { model: UsableScatterModel; id: string; r
                   </g>
                 );
               })}
-              <text x={cx + ((here.length - 1) / 2) * step + mark * 2 + 3} y={cy + 4} font-size="11" fill="currentColor">{here.map((p) => p.label).join(', ')}</text>
+              {/* Past the middle, the label goes on the left of its marks, so the plot's edge never clips it. */}
+              {cx > width / 2
+                ? <text x={cx - ((here.length - 1) / 2) * step - mark * 2 - 3} y={cy + 4} text-anchor="end" font-size="11" fill="currentColor">{here.map((p) => p.label).join(', ')}</text>
+                : <text x={cx + ((here.length - 1) / 2) * step + mark * 2 + 3} y={cy + 4} font-size="11" fill="currentColor">{here.map((p) => p.label).join(', ')}</text>}
             </g>
           );
         })}
@@ -191,8 +198,8 @@ function Plot({ model, id, rowWord }: { model: UsableScatterModel; id: string; r
           {points.map((p) => (
             <tr key={p.alternativeId} data-row={p.alternativeId}>
               <th scope="row">{p.label}</th>
-              <td>{said(p.x, p.xAbsent)}</td>
-              <td>{said(p.y, p.yAbsent)}</td>
+              <td>{p.xWords}</td>
+              <td>{p.yWords}</td>
               <td>{`${TIER_SAID[p.here]}${p.dominatedBy.length > 0 ? ` by ${p.dominatedBy.map((d) => points.find((q) => q.alternativeId === d)?.label ?? d).join(', ')}` : ''}`}</td>
               <td>{TIER_SAID[p.overall]}</td>
             </tr>
@@ -201,11 +208,12 @@ function Plot({ model, id, rowWord }: { model: UsableScatterModel; id: string; r
       </table>
       {unplaced.length > 0 && (
         <p class="comparanda-panel-hint">
-          {`Not on the plot: ${unplaced.map((p) => `${p.label} (${[p.x === undefined && `${ax.label}: ${p.xAbsent}`, p.y === undefined && `${ay.label}: ${p.yAbsent}`].filter(Boolean).join('; ')})`).join(', ')}. Their tiers are in the table.`}
+          {`Not on the plot: ${unplaced.map((p) => `${p.label} (${[p.x === undefined && `${ax.label}: ${p.xWords}`, p.y === undefined && `${ay.label}: ${p.yWords}`].filter(Boolean).join('; ')})`).join(', ')}. Their tiers are in the table.`}
         </p>
       )}
-      {notes.map((n) => <p key={`h${n}`} class="comparanda-panel-hint">{`On these two criteria: ${n}`}</p>)}
-      {overallNotes.map((n) => <p key={`o${n}`} class="comparanda-panel-hint">{`Across every criterion: ${n}`}</p>)}
+      {/* A note both comparisons make is said once. */}
+      {notes.filter((n) => !overallNotes.includes(n)).map((n) => <p key={`h${n}`} class="comparanda-panel-hint">{`On these two criteria: ${n}`}</p>)}
+      {overallNotes.map((n) => <p key={`o${n}`} class="comparanda-panel-hint">{`${notes.includes(n) ? 'On both' : 'Across every criterion'}: ${n}`}</p>)}
     </figure>
   );
 }

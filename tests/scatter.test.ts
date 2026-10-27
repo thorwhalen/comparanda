@@ -55,8 +55,7 @@ describe('scatterModel', () => {
   it('says why a value is absent, as the matrix does, and leaves a tombstoned alternative out', () => {
     const m = usable(scatterModel(relocation, { measure: 'score', criteria: ['flight-hours', 'eu-residency-path'] }));
     const taipei = m.points.find((p) => p.alternativeId === 'taipei')!;
-    expect([taipei.x, taipei.yAbsent]).toEqual([15.5, 'This criterion does not apply to this alternative.']);
-    expect(taipei.xAbsent).toBeUndefined();
+    expect([taipei.x, taipei.y, taipei.xWords, taipei.yWords]).toEqual([15.5, undefined, '15.5', 'This criterion does not apply to this alternative.']);
     const doc = structuredClone(relocation);
     doc.alternatives.find((a) => a.id === 'seoul')!.tombstoned = true;
     expect(usable(scatterModel(doc, { measure: 'score', criteria: ['rent', 'flight-hours'] })).points.map((p) => p.alternativeId)).not.toContain('seoul');
@@ -71,5 +70,9 @@ describe('scatterModel', () => {
     expect(refused(['rent', 'climate-type'])).toBe('Climate type cannot be compared for dominance (nominal).');
     expect(refused(['rent', 'rent'])).toMatch(/two different criteria/);
     expect(refused(['rent', 'nope'])).toMatch(/"nope" is not a criterion/);
+    // A tombstoned criterion is gone, though dominance given its id would still compare it.
+    const doc = structuredClone(relocation);
+    doc.criteria.find((c) => c.id === 'flight-hours')!.tombstoned = true;
+    expect(scatterModel(doc, { measure: 'score', criteria: ['rent', 'flight-hours'] })).toEqual({ usable: false, reason: '"flight-hours" is not a criterion of this analysis.' });
   });
 });
