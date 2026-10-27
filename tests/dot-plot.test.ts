@@ -77,6 +77,29 @@ describe('dotPlot', () => {
     expect(dotPlot(relocation, 'winter-daylight', { measure: 'score', maxLevels: 3 })).toMatchObject({ usable: false, reason: 'Winter daylight has 5 levels, more than 3 can be read as ticks.' });
   });
 
+  it('says why a range that is not whole numbers has no levels to draw', () => {
+    const half = Analysis.parse({ ...relocation, criteria: relocation.criteria.map((c) => (c.id === 'winter-daylight' ? { ...c, defaultMeasurement: { level: 'ordinal' as const, preference: 'increasing' as const, range: { min: 0.5, max: 4.5 } } } : c)) });
+    expect(dotPlot(half, 'winter-daylight', { measure: 'score' })).toMatchObject({ usable: false, reason: "Winter daylight's range (0.5 to 4.5) has no whole-number levels to draw." });
+    const interval = Analysis.parse({ ...relocation, criteria: relocation.criteria.map((c) => (c.id === 'flight-hours' ? { ...c, defaultMeasurement: { ...c.defaultMeasurement!, level: 'interval', range: { min: 0, max: 10 } } } : c)) });
+    expect(dotPlot(interval, 'flight-hours', { measure: 'score' }).usable).toBe(false);
+  });
+
+  it('keys an undeclared code to the undeclared lane, and counts repeated absences once each', () => {
+    const odd = Analysis.parse({
+      ...relocation,
+      cells: relocation.cells.map((c) => (c.alternativeId === 'berlin' && c.criterionId === 'winter-daylight'
+        ? { ...c, assertions: c.assertions.map((s) => ({ ...s, value: undefined, missing: { code: 'made-up' } })) } : c)),
+    });
+    const berlin = row(dotPlot(odd, 'winter-daylight', { measure: 'score' }), 'berlin');
+    expect(berlin.missing).toEqual([{ lane: 'undeclared', means: 'Absent for a reason this analysis does not define (\u201cmade-up\u201d).', count: 3 }]);
+  });
+
+  it('leaves a tombstoned alternative out', () => {
+    const doc = structuredClone(relocation);
+    doc.alternatives.find((a) => a.id === 'seoul')!.tombstoned = true;
+    expect(usable(dotPlot(doc, 'winter-daylight', { measure: 'score' })).rows.map((r) => r.alternativeId)).not.toContain('seoul');
+  });
+
   it('reads the analysis once for every criterion, in document order', () => {
     expect(dotPlots(relocation, { measure: 'score' }).map((p) => p.criterionId)).toEqual(relocation.criteria.filter((c) => !c.tombstoned).map((c) => c.id));
     expect(dotPlots(relocation, { measure: 'score' })).toEqual(relocation.criteria.filter((c) => !c.tombstoned).map((c) => dotPlot(relocation, c.id, { measure: 'score' })));

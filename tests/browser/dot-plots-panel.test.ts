@@ -4,7 +4,7 @@
  * levels as columns, one dot per rater, and a missing lane keyed by reason.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { userEvent } from '@vitest/browser/context';
+import { commands, userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { DotPlotsPanel, mountMatrix, type MatrixHandle } from '../../src/view/index.js';
@@ -18,7 +18,8 @@ beforeEach(() => {
   el = document.createElement('div');
   document.body.append(el);
 });
-afterEach(() => {
+afterEach(async () => {
+  await commands.emulateMedia({ forcedColors: 'none', media: null });
   handle?.destroy();
   handle = undefined;
   el.remove();
@@ -70,18 +71,44 @@ describe('the dot plots panel', () => {
     expect(Array.from(plot('climate-type').querySelectorAll('thead th[data-tick]'), (th) => th.textContent)).toEqual(['Mediterranean', 'Continental', 'Subtropical']);
   });
 
-  it('draws nothing between the levels: no rule through a row, nothing sticky, whatever the matrix\'s grid does', async () => {
-    await open();
-    for (const cell of Array.from(plot('winter-daylight').querySelectorAll<HTMLElement>('th, td'))) {
-      const style = getComputedStyle(cell);
-      expect([style.boxShadow, style.position, style.borderTopWidth, style.borderBottomWidth]).toEqual(['none', 'static', '0px', '0px']);
-    }
+  for (const medium of [{}, { forcedColors: 'active' as const }, { media: 'print' as const }]) {
+    it(`draws nothing between the levels, on screen, in forced colours and in print: no rule through a row, nothing sticky (${JSON.stringify(medium)})`, async () => {
+      await commands.emulateMedia({ forcedColors: 'none', media: null, ...medium });
+      await open();
+      for (const cell of Array.from(plot('winter-daylight').querySelectorAll<HTMLElement>('th, td'))) {
+        const style = getComputedStyle(cell);
+        expect([style.boxShadow, style.position, style.borderTopWidth, style.borderBottomWidth]).toEqual(['none', 'static', '0px', '0px']);
+      }
+      // A row's name reads from its start, the levels are centred under their ticks.
+      expect(getComputedStyle(plot('winter-daylight').querySelector('tbody th')!).textAlign).toBe('start');
+    });
+  }
+
+  it('draws an unnamed hand as a ring, says so, and counts what it may not show', async () => {
+    const rounds = (feedback: string) => Analysis.parse({
+      ...relocationJson,
+      rounds: [{ id: 'r1', index: 1, attribution: 'anonymous', feedback }],
+      cells: relocation.cells.map((c) => ({ ...c, assertions: c.assertions.map((s) => ({ ...s, roundId: 'r1' })) })),
+    });
+    const viewer = { viewerId: 'ben', now: '2026-01-01T00:00:00Z' };
+    handle = mountMatrix(el, { analysis: rounds('anonymous-summary'), measure: 'score', viewer }, { panels: [DotPlotsPanel] });
+    await userEvent.click(panel()!.querySelector('summary')!);
+    const first = plot('winter-daylight').querySelector('tr[data-row="berlin"] td[data-dots]')!;
+    expect(first.querySelector('[aria-hidden="true"]')!.textContent).toBe('○○');
+    expect(first.querySelector('.comparanda-sr')!.textContent).toBe('2 raters: 2 raters not named to you');
+    handle.destroy();
+    handle = mountMatrix(el, { analysis: rounds('none'), measure: 'score', viewer }, { panels: [DotPlotsPanel] });
+    await userEvent.click(panel()!.querySelector('summary')!);
+    const daylight = plot('winter-daylight');
+    expect(Array.from(daylight.querySelectorAll('thead th')).at(-1)!.textContent).toBe('Not drawn');
+    expect(Array.from(daylight.querySelectorAll('tr[data-row="berlin"] td')).at(-1)!.textContent).toBe('2 not shown to you');
   });
 
   it('gives a declared block\'s own reason in the lane', async () => {
     await open();
     const lane = plot('eu-residency-path').querySelector('tr[data-row="taipei"] td[data-lane="not-applicable"]')!;
     expect(lane.textContent).toContain('1 mark: This criterion does not apply to this alternative. Not an EU destination, so EU residency rules do not apply.');
+    expect(plot('eu-residency-path').querySelector('caption')!.textContent).toBe('Path to EU residency: one dot per rater, by level, then the missing lane');
   });
 
   it('says why a criterion on a continuous range has no dot plot', async () => {

@@ -94,7 +94,11 @@ function ticksFor(c: Criterion, measure: string, maxLevels: number): ScalarValue
   if (m.level !== 'ordinal') {
     return `${c.label} is measured on a continuous range (${m.range.min} to ${m.range.max}), not on levels; a dot plot draws only levels, with nothing between them.`;
   }
-  return stripLevels(m, { maxSlots: maxLevels }) ?? many(m.range.max - m.range.min + 1);
+  const { min, max } = m.range;
+  return stripLevels(m, { maxSlots: maxLevels })
+    ?? (Number.isInteger(min) && Number.isInteger(max) && max > min
+      ? many(max - min + 1)
+      : `${c.label}'s range (${min} to ${max}) has no whole-number levels to draw.`);
 }
 
 /** Every live criterion's dot plot, or why it has none, in document order: the analysis read once for all of them. */
