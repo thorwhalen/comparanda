@@ -18,9 +18,9 @@ import { describeAssertionSet, type AssertionSetReading } from './assertion-set.
 import type { Author } from './schema/provenance.js';
 import type { Measurement } from './schema/measurement.js';
 import { isOrdered } from './schema/measurement.js';
-import { assertionVisibility, standingInSet, type ViewerContext } from './schema/redaction.js';
+import { sightingOf, standingInSet, standInIds, type ViewerContext } from './schema/redaction.js';
 import type { Analysis } from './schema/analysis.js';
-import { liveAssertions, type Assertion, type Cell, type ScalarValue } from './schema/values.js';
+import { liveAssertions, type Cell, type ScalarValue } from './schema/values.js';
 
 /** How many fixed slots a strip draws at most, unless told otherwise: past it the slots are too narrow to count. */
 export const DEFAULT_MAX_SLOTS = 9;
@@ -46,7 +46,7 @@ export interface RaterStrip {
   readonly absent: number;
   /** The tallest stack, so a drawing can size itself without recounting. */
   readonly tallest: number;
-  /** Live assertions whose value the round hides from this viewer: counted in `label`, never drawn. */
+  /** Live assertions whose value this viewer may not see (the round hides it, or a projection withheld it): counted in `label`, never drawn. */
   readonly unseen: number;
   /** The exact multiset, in words (`describeAssertionSet(...).label`). */
   readonly label: string;
@@ -110,12 +110,14 @@ export function isRaterStrip(value: unknown): value is RaterStrip {
 }
 
 /**
- * The strip as one viewer may see it (ADR-0023): the round's redaction decided
- * here, through `assertionVisibility`, never in the view. An assertion whose
- * value the round hides is not drawn and is counted in the label; one whose
- * author is hidden, or that the viewer may see only as part of a distribution,
- * is drawn as an unknown hand of its own with no independence claimed, so the
- * strip cannot say who rated alike. Without a viewer nothing is hidden.
+ * The strip as one viewer may see it (ADR-0021, ADR-0023): what is hidden
+ * decided here, through `sightingOf`, never in the view. An assertion whose
+ * value the round hides, or a projection withheld, is not drawn and is counted
+ * in the label; one whose author is hidden, or that the viewer may see only as
+ * part of a distribution, is drawn as an unknown hand of its own with no
+ * independence claimed, so the strip cannot say who rated alike. Without a
+ * viewer no round hides anything; a projection still does. Fewer than two
+ * assertions left to draw is no set, so no strip.
  */
 export function raterStripInView(
   analysis: Analysis, cell: Pick<Cell, 'assertions'>,
@@ -123,19 +125,11 @@ export function raterStripInView(
     levels: readonly ScalarValue[]; viewer?: ViewerContext | undefined; means?: ((code: string) => string | undefined) | undefined;
   },
 ): RaterStrip | undefined {
-  if (!viewer) return raterStrip(cell, { authors: analysis.authors, levels, means });
-  const taken = new Set(cell.assertions.map((s) => s.id));
-  let standIns = 0;
-  let unseen = 0;
-  const kept: Assertion[] = [];
-  for (const s of liveAssertions(cell.assertions)) {
-    const seen = assertionVisibility(analysis, s, viewer);
-    if (seen.value === 'hidden') { unseen += 1; continue; }
-    if (seen.author && seen.value === 'shown') { kept.push(s); continue; }
-    do standIns += 1; while (taken.has(`hidden-author:${standIns}`));
-    taken.add(`hidden-author:${standIns}`);
-    kept.push(standingInSet(s, `hidden-author:${standIns}`));
-  }
+  const live = liveAssertions(cell.assertions);
+  const sighting = new Map(live.map((s) => [s.id, sightingOf(analysis, s, viewer)]));
+  const standIns = standInIds(cell.assertions, (s) => sighting.get(s.id) === 'unnamed');
+  const unseen = live.filter((s) => sighting.get(s.id) === 'unseen').length;
+  const kept = live.filter((s) => sighting.get(s.id) !== 'unseen').map((s) => (standIns.has(s.id) ? standingInSet(s, standIns.get(s.id)!) : s));
   const strip = raterStrip({ assertions: kept }, { authors: analysis.authors, levels, means });
   if (!strip || unseen === 0) return strip;
   return { ...strip, unseen, label: `${strip.label} ${unseen} more not shown to you.` };

@@ -30,9 +30,9 @@ import type { Analysis } from './schema/analysis.js';
 import { cellIndex, cellKey, vocabularyOf } from './schema/analysis.js';
 import { makeInapplicableBlocks } from './schema/groups.js';
 import { CORE_MISSING_CODES, coreReasonOf, NOT_APPLICABLE, NOT_ASSESSED, type MissingCode } from './schema/missingness.js';
-import { assertionVisibility, type ViewerContext } from './schema/redaction.js';
+import { sightingOf, type ViewerContext } from './schema/redaction.js';
 import { measurementFor, type Criterion } from './schema/structure.js';
-import { isWithheldFromReader, liveAssertions, type ScalarValue } from './schema/values.js';
+import { liveAssertions, type ScalarValue } from './schema/values.js';
 import { stripLevels } from './rater-strip.js';
 import { cellWords } from './cell-words.js';
 
@@ -146,13 +146,13 @@ function plotOf(
     };
     const assertions = liveAssertions(cells.get(cellKey(alt.id, criterionId, measure))?.assertions ?? []);
     for (const s of assertions) {
-      const seen = viewer ? assertionVisibility(a, s, viewer) : undefined;
-      if (seen?.value === 'hidden' || isWithheldFromReader(s)) { row.unseen += 1; continue; }
+      const sighting = sightingOf(a, s, viewer);
+      if (sighting === 'unseen') { row.unseen += 1; continue; }
       if (s.missing) { absent(s.missing.code); continue; }
       const tick = s.value === undefined ? -1 : tickOf(s.value);
       if (tick < 0) { row.offTicks += 1; continue; }
       // Named only where the round shows both who and what (ADR-0023); a distribution-only value is a hand with no name.
-      if (seen && !(seen.author && seen.value === 'shown')) row.levels[tick]!.unnamed += 1;
+      if (sighting === 'unnamed') row.levels[tick]!.unnamed += 1;
       else row.levels[tick]!.named.push(s.authorId);
     }
     // Nothing asserted: the cell's own absence, so the row is never empty. A declared block gives its own reason.
