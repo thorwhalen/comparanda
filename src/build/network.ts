@@ -420,6 +420,8 @@ export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
       const controls = page.locator(`.comparanda-grouping p:has(select[id$="-g-${axis}"]) button`);
       // Not offered: an axis with no groups has no picker.
       if ((await controls.count()) === 0) return undefined;
+      // The axis's buttons in the order the matrix draws them: Select, then Hide. The check assumes the page
+      // opens with nothing hidden (as the standalone page does), or "Show the n hidden" brings back more than it hid.
       const shared = page.locator('.comparanda-grouping p:not(:has(select)) button');
       const marked = page.locator('th[aria-selected="true"]');
       await controls.nth(0).click();

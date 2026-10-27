@@ -190,7 +190,8 @@ describe('selection and filter by group (#93)', () => {
     await userEvent.click(button(/Select its options/));
     expect(selectedHeaders()).toEqual(['taipei', 'seoul']);
     // A tick, not a colour: the mark survives forced colours and print.
-    expect(getComputedStyle(el.querySelector('th[aria-selected="true"]')!, '::before').content).toContain('\u2713');
+    // Its alternative text is empty, so it is not read into the header's name.
+    expect(getComputedStyle(el.querySelector('th[aria-selected="true"]')!, '::before').content).toMatch(/\u2713.*\/ ""/);
     expect(said()).toBe('Selected the 2 options in Asia.');
     expect(views.at(-1)!.selection.alternatives).toEqual(['taipei', 'seoul']);
     // Selection is view state; the bridge never writes the group into it, nor anything into the analysis (ADR-0008).
@@ -211,6 +212,63 @@ describe('selection and filter by group (#93)', () => {
     expect(shownRows()).toEqual(['lisbon', 'berlin', 'taipei', 'seoul', 'montreal']);
   });
 
+  it('each part and each axis keeps the others: group then select, two hides, both axes, with no host echoing them', async () => {
+    const views: ViewState[] = [];
+    mount({ analysis: relocation, measure: 'score', onViewChange: (v) => views.push(v) });
+    await userEvent.click(toggle(/options/i));
+    await userEvent.selectOptions(pick('alternatives'), 'g-asia');
+    await userEvent.click(button(/Select its options/));
+    await userEvent.selectOptions(pick('criteria'), 'g-cost');
+    await userEvent.click(button(/Select its criteria/));
+    await userEvent.click(button(/Hide its criteria/));
+    await userEvent.selectOptions(pick('criteria'), 'g-climate');
+    await userEvent.click(button(/Hide its criteria/));
+    await userEvent.selectOptions(pick('alternatives'), 'g-americas');
+    await userEvent.click(button(/Hide its options/));
+    const last = views.at(-1)!;
+    expect(last.grouping.alternatives).toEqual(['g-europe', 'g-asia', 'g-americas']);
+    expect(last.selection).toMatchObject({ alternatives: ['taipei', 'seoul'], criteria: ['rent', 'income-tax'] });
+    expect(last.filter).toEqual({ hiddenAlternatives: ['montreal'], hiddenCriteria: ['rent', 'income-tax', 'climate-type', 'winter-daylight'] });
+    expect(button(/Show the 5 hidden/)).toBeDefined();
+  });
+
+  it('yields per part: a host that changes only the selection keeps the reader\'s grouping', async () => {
+    const view = initialViewState(relocation);
+    const handle = mount({ analysis: relocation, measure: 'score', view });
+    await userEvent.click(toggle(/options/i));
+    handle.update({ view: { ...view, selection: { alternatives: ['lisbon'], criteria: [], cells: [] } } });
+    expect(el.querySelectorAll('tbody[data-group]')).toHaveLength(3);
+    expect(selectedHeaders()).toEqual(['lisbon']);
+  });
+
+  it('takes members by closure, and counts only what the document holds alive', async () => {
+    // Lisbon moved into a sub-group of Europe; Berlin tombstoned; the host's view names ids the document lacks.
+    const doc = structuredClone(relocationJson);
+    doc.groups.push({ id: 'g-iberia', axis: 'alternatives', label: 'Iberia', parentId: 'g-europe' } as (typeof doc.groups)[number]);
+    for (const a of doc.alternatives) {
+      if (a.id === 'lisbon') a.groupIds = ['g-iberia'];
+      if (a.id === 'berlin') (a as { tombstoned?: boolean }).tombstoned = true;
+    }
+    const nested = Analysis.parse(doc);
+    const view = { ...initialViewState(nested), filter: { hiddenAlternatives: ['ghost'], hiddenCriteria: [] }, selection: { alternatives: ['ghost2'], criteria: [], cells: [] } };
+    mount({ analysis: nested, measure: 'score', view });
+    // Nothing alive is hidden or selected, so neither undo is offered.
+    expect(el.querySelectorAll('.comparanda-grouping p:not(:has(select)) button')).toHaveLength(0);
+    await userEvent.click(button(/Select its options/));
+    expect(selectedHeaders()).toEqual(['lisbon']);
+    expect(said()).toBe('Selected the 1 options in Europe.');
+    expect(button(/Clear the selection \(1\)/)).toBeDefined();
+  });
+
+  it('clears the headers\' selection only, leaving a host\'s cell selection', async () => {
+    const cells = [{ alternativeId: 'lisbon', criterionId: 'rent' }];
+    const views: ViewState[] = [];
+    const view = { ...initialViewState(relocation), selection: { alternatives: ['lisbon'], criteria: [], cells } };
+    mount({ analysis: relocation, measure: 'score', view, onViewChange: (v) => views.push(v) });
+    await userEvent.click(button(/Clear the selection/));
+    expect(views.at(-1)!.selection).toEqual({ alternatives: [], criteria: [], cells });
+  });
+
   it('every control is a native, labelled form control the keyboard reaches outside the grid\'s one stop', () => {
     mount({ analysis: relocation, measure: 'score' });
     const controls = Array.from(el.querySelectorAll<HTMLElement>('.comparanda-grouping input, .comparanda-grouping select, .comparanda-grouping button'));
@@ -219,6 +277,8 @@ describe('selection and filter by group (#93)', () => {
       expect(c.tabIndex).toBe(0);
       expect(c.closest('[role="grid"]')).toBeNull();
     }
+    // Several headers may be selected at once, and the grid says so.
+    expect(el.querySelector('[role="grid"]')!.getAttribute('aria-multiselectable')).toBe('true');
     expect(el.querySelector(`label[for="${pick('criteria').id}"]`)!.textContent).toBe('Group of criteria');
   });
 });

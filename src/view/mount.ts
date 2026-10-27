@@ -607,10 +607,10 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   return props;
 }
 
-/** What a given `view` says about the reader's position (comparable by value, blind to key order) and the panel. */
 /** The parts of the view the reader rearranges from the matrix's own controls (#93). */
 const ARRANGED = ['grouping', 'selection', 'filter'] as const;
 
+/** What a given `view` says about the reader's position (comparable by value, blind to key order) and the panel. */
 function sessionIn(view: unknown): { focus: string; panel: boolean; orders: string; encoding: string } & Record<typeof ARRANGED[number], string> {
   const v = view as ViewState | undefined;
   const focus = v?.session?.focus;

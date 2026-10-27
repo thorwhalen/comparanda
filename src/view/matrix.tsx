@@ -88,10 +88,10 @@ export const TEXT_ONLY = textOnly.id;
 const STRIP = 'disagreement';
 const SPREAD = 'disagreement-spread';
 
-/** What the component renders from: `MatrixProps` resolved, plus the edits the source allows. */
 /** The parts of the view state the matrix's own group controls change (#93). */
 export type Arrangement = Partial<Pick<ViewState, 'grouping' | 'selection' | 'filter'>>;
 
+/** What the component renders from: `MatrixProps` resolved, plus the edits the source allows. */
 export interface MatrixViewProps {
   analysis: Analysis;
   measure: string;
@@ -280,11 +280,19 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       ? affordances.inapplicableBlock(alt, crit) : undefined;
   });
   const grid = gridOf(rows.entries, columns.entries, transposed, blocks);
-  // The axes the reader can band, by their top-level groups: one nesting level is rendered (ADR-0008).
   /** The group each axis's picker shows, until the reader picks another. */
   const [picked, setPicked] = useState<Partial<Record<Axis, string>>>({});
-  const selected = view.selection.alternatives.length + view.selection.criteria.length;
-  const hiddenNow = view.filter.hiddenAlternatives.length + view.filter.hiddenCriteria.length;
+  /** The ids each axis holds alive: what a selection or a hide is counted, and made, over. */
+  const live = (axis: Axis) => new Set((axis === 'alternatives' ? analysis.alternatives : analysis.criteria).filter((x) => !x.tombstoned).map((x) => x.id));
+  const [liveAlternatives, liveCriteria] = [live('alternatives'), live('criteria')];
+  const count = (ids: readonly string[], among: Set<string>) => ids.filter((id) => among.has(id)).length;
+  const selected = count(view.selection.alternatives, liveAlternatives) + count(view.selection.criteria, liveCriteria);
+  const hiddenNow = count(view.filter.hiddenAlternatives, liveAlternatives) + count(view.filter.hiddenCriteria, liveCriteria);
+  /** One of the group controls' buttons: what it changes, and what it says (#93). */
+  const act = (label: string, change: Arrangement, said: string) => (
+    <button type="button" onClick={() => onArrange!(change, said)}>{label}</button>
+  );
+  // The axes the reader can band, by their top-level groups: one nesting level is rendered (ADR-0008).
   const groupable = (['alternatives', 'criteria'] as const)
     .map((axis) => ({ axis, tops: analysis.groups.filter((g) => g.axis === axis && !g.tombstoned && g.parentId === undefined) }))
     .filter((x) => x.tops.length > 0);
@@ -375,7 +383,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     <th
       scope={scope} key={e.id} {...stop(r, c)} data-axis={axis} data-entry={e.id}
       // Selected (#93): said by the grid, and marked with a tick, never by colour alone.
-      aria-selected={view.selection[axis].includes(e.id) ? 'true' : undefined}
+      aria-selected={view.selection[axis].includes(e.id) || undefined}
       data-grabbed={grab?.axis === axis && grab.id === e.id ? 'true' : undefined}
       data-menu-open={menu === menuKey ? 'true' : undefined}
     >
@@ -651,8 +659,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             const name = axis === 'alternatives' ? words.alternatives : words.criteria;
             const id = `${helpId}-g-${axis}`;
             const group = tops.find((g) => g.id === picked[axis]) ?? tops[0]!;
-            // Its members by closure, as everywhere membership is read: the bridge from a group to a selection (ADR-0008).
-            const members = membersOfGroup(axisGroups(analysis, axis), group.id);
+            // Its live members by closure, as everywhere membership is read: the bridge from a group to a selection (ADR-0008).
+            const alive = axis === 'alternatives' ? liveAlternatives : liveCriteria;
+            const members = membersOfGroup(axisGroups(analysis, axis), group.id).filter((id) => alive.has(id));
             const hidden = axis === 'alternatives' ? 'hiddenAlternatives' : 'hiddenCriteria';
             return (
               <p key={axis}>
@@ -673,30 +682,16 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
                 <select id={id} value={group.id} onChange={(e) => setPicked({ ...picked, [axis]: (e.currentTarget as HTMLSelectElement).value })}>
                   {tops.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                 </select>{' '}
-                <button type="button" onClick={() => onArrange({ selection: { ...view.selection, [axis]: members } }, `Selected the ${members.length} ${name} in ${group.label}.`)}>
-                  {`Select its ${name}`}
-                </button>{' '}
-                <button
-                  type="button"
-                  onClick={() => onArrange({ filter: { ...view.filter, [hidden]: [...new Set([...view.filter[hidden], ...members])] } }, `Hid the ${name} in ${group.label}.`)}
-                >
-                  {`Hide its ${name}`}
-                </button>
+                {act(`Select its ${name}`, { selection: { ...view.selection, [axis]: members } }, `Selected the ${members.length} ${name} in ${group.label}.`)}{' '}
+                {act(`Hide its ${name}`, { filter: { ...view.filter, [hidden]: [...new Set([...view.filter[hidden], ...members])] } }, `Hid the ${name} in ${group.label}.`)}
               </p>
             );
           })}
           {(selected > 0 || hiddenNow > 0) && (
             <p>
-              {selected > 0 && (
-                <button type="button" onClick={() => onArrange({ selection: { alternatives: [], criteria: [], cells: [] } }, 'Nothing is selected now.')}>
-                  {`Clear the selection (${selected})`}
-                </button>
-              )}{' '}
-              {hiddenNow > 0 && (
-                <button type="button" onClick={() => onArrange({ filter: { hiddenAlternatives: [], hiddenCriteria: [] } }, 'Showing everything that was hidden.')}>
-                  {`Show the ${hiddenNow} hidden`}
-                </button>
-              )}
+              {/* The headers' selection only: a host's cell selection is not these controls' to clear. */}
+              {selected > 0 && act(`Clear the selection (${selected})`, { selection: { ...view.selection, alternatives: [], criteria: [] } }, 'Nothing is selected now.')}{' '}
+              {hiddenNow > 0 && act(`Show the ${hiddenNow} hidden`, { filter: { hiddenAlternatives: [], hiddenCriteria: [] } }, 'Showing everything that was hidden.')}
             </p>
           )}
         </div>
@@ -720,7 +715,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         }}
       >
         <table
-          role="grid" aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}
+          // Several headers may be selected at once (#93).
+          role="grid" aria-multiselectable={onArrange ? 'true' : undefined} aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}
           onPointerDownCapture={(event: PointerEvent) => { pressed.current = event.target as Element | null; }}
           // A mouse focuses on press, before this; a touch focuses after it, so keeps the press.
           onPointerUpCapture={(event: PointerEvent) => { if (event.pointerType !== 'touch') pressed.current = null; }}
