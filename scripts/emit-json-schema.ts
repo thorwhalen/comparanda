@@ -41,7 +41,13 @@ import { CitationVerdict, SourceType, Stance } from '../src/core/schema/evidence
 import { AuthorKind, AttestationMethod, Independence } from '../src/core/schema/provenance.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = join(here, '..', 'schema');
+/**
+ * Where the artifacts go: `schema/` by default, or `--out <dir>`, so a test can
+ * emit beside the committed files rather than over them while another test
+ * reads them (#289).
+ */
+const outFlag = process.argv.indexOf('--out');
+const outDir = outFlag >= 0 && process.argv[outFlag + 1] ? process.argv[outFlag + 1]! : join(here, '..', 'schema');
 
 /** Members of a zod enum, as a plain array. */
 function membersOf(e: { options: readonly string[] }): string[] {
@@ -183,7 +189,7 @@ function main(): void {
     // indent: the artifact is committed, so a diff should show what changed
     // rather than a reformat.
     writeFileSync(path, `${JSON.stringify(content, null, 2)}\n`, 'utf8');
-    console.log(`wrote schema/${name}`);
+    console.log(`wrote ${path}`);
   }
 }
 
