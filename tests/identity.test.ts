@@ -11,7 +11,7 @@ import { attribution, attributions } from '../src/core/identity.js';
 import { startThread } from '../src/core/threads.js';
 import { activityRecord } from '../src/core/activity.js';
 import { describeOrphans } from '../src/core/orphans.js';
-import { agentIdentity, localIdentity, type IdentityStorage } from '../src/store/index.js';
+import { agentIdentity, anonymousIdentity, localIdentity, takesName, type IdentityStorage } from '../src/store/index.js';
 import relocationJson from '../examples/relocation.json';
 
 const relocation = () => Analysis.parse(relocationJson);
@@ -128,6 +128,26 @@ describe('the local identity: a name typed once, under a stable id', () => {
     const fallback = localIdentity();
     expect((await fallback.name('Ada')).displayName).toBe('Ada');
     expect((await fallback.current()).id).toMatch(/^local-[0-9a-f]{32}$/);
+  });
+});
+
+describe('a rename and the document (#193)', () => {
+  it('only a local identity takes a name, which is what the view asks before offering a field', () => {
+    expect(takesName(localIdentity({ storage: memory() }))).toBe(true);
+    expect(takesName(anonymousIdentity())).toBe(false);
+    expect(takesName(agentIdentity({ name: 'rubricator', model: 'm-1' }))).toBe(false);
+  });
+
+  it('does not relabel what the document already signed: its record keeps the name it was written under', async () => {
+    const me = localIdentity({ storage: memory(), newId: () => '1' });
+    const note = async (id: string) => ({ id, at: '2026-10-27', body: id, author: await me.current() });
+    await me.name('Bob');
+    let a = startThread(relocation(), { threadId: 't1', anchor: { scope: 'analysis' }, comment: await note('c1') });
+    await me.name('Robert');
+    a = startThread(a, { threadId: 't2', anchor: { scope: 'analysis' }, comment: await note('c2') });
+    // One author, one record: the id is who they are, and the record is not rewritten by whoever holds the id (ADR-0012, amendment 2026-10-27).
+    expect(a.authors.filter((x) => x.id === 'local-1')).toEqual([expect.objectContaining({ displayName: 'Bob' })]);
+    expect(a.threads.slice(-2).map((t) => t.comments[0]!.authorId)).toEqual(['local-1', 'local-1']);
   });
 });
 

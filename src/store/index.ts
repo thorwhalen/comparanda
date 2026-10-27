@@ -435,11 +435,17 @@ export interface LocalIdentity extends IdentityProvider {
   /**
    * Take a name. The id is generated on the first call and kept on every
    * later one, so a renamed contributor stays one author. An empty name throws.
+   * A rename reaches this device only: a document that already describes the
+   * id keeps the name it first wrote under (ADR-0012, amendment 2026-10-27).
    */
   name(displayName: string): Promise<Author>;
   /** Forget the name and the id; the next contributor here starts again as anonymous. */
   forget(): Promise<void>;
 }
+
+/** Whether an identity takes a typed name, as a `LocalIdentity` does: what the view asks before offering a name field (#193). */
+export const takesName = (identity: IdentityProvider): identity is LocalIdentity =>
+  typeof (identity as Partial<LocalIdentity>).name === 'function';
 
 /**
  * ADR-0012's second default: until a name is typed it is the anonymous
