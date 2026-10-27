@@ -154,6 +154,19 @@ set. Clause 2's "a dimension added later gets its revert for free" stands for ar
 is exactly what must not happen to the other two; defaulting is how this contradiction would arrive
 a second time.
 
+### 2026-10-27 — Saved views as built (#71)
+
+- **Status:** accepted
+- **Date:** 2026-10-27
+
+The clauses above as code, and the choices they left open:
+
+1. **The record.** A `SavedView` (`core/saved-views.ts`) holds an id, the analysis it arranges, a name, a mode, an owner and the arrangement. The arrangement is `snapshot`, the view state without `session`, so a cursor position cannot reach it. It also holds an attributed `events` log of `created`, `renamed`, `updated`, `locked` and `unlocked`. The log is how an unlock is "recorded like any other change": the record carries who unlocked it and when.
+2. **Mode and host, composed in one place.** `viewAffordances(view, { actorId, authorize })` asks the mode first, then the host's `authorize` (ADR-0012). A locked view refuses update, rename and delete for everybody. Unlock is offered on a locked view only, and only to whoever the host authorises. A personal view refuses every write by anyone but its owner. `saveAsNew` is never refused, so a lock never dead-ends a reader. The store asks this before every write and rejects with the refusal's reason. The pure writes (`updateView`, `renameView`) refuse a locked view on their own as well.
+3. **Where each mode lives.** `savedViewStore` (`store/saved-views.ts`) keeps personal views in the owner's provider, and shared and locked ones in the analysis's. A lock or unlock keeps the view where it is. A personal view is listed to its owner only. Every provider is injected and is in memory by default.
+4. **A sequence step** is `{ viewId, caption? }` in a strict schema. "An ordered list of view ids, nothing more" is read with clause 4's optional caption, which is words about the step, not state. Any other field is refused. `stepsOf` gives a broken step that names the missing view, in its place.
+5. **The fragment** is `#view=<id>`, or `#sequence=<id>&step=<n>` with `n` counted from 1, both URI-encoded (`viewFragment`, `parseViewFragment`). It is the same in the standalone file and on a host's link. Wiring it into the standalone page, and the "Modified" marker's UI, are view work outside this record.
+
 ## References
 1. [Getting started with Airtable views — Airtable Support](https://support.airtable.com/docs/getting-started-with-airtable-views)
 2. [Database views, filters, sorts & groups — Notion Help Center](https://www.notion.com/help/views-filters-and-sorts)
