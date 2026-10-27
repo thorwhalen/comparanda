@@ -45,7 +45,8 @@ import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentType } from 'preact';
 
 import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
-import { matrixLayout, type AxisLayout, type Band, type LayoutEntry } from '../core/layout.js';
+import { matrixLayout, omittedBlocks, type AxisLayout, type Band, type LayoutEntry, type OmittedBlock } from '../core/layout.js';
+import { makeInapplicableBlocks } from '../core/schema/groups.js';
 import { cellIndex, cellKey, makeCellReader, unknownMeasure, type Analysis } from '../core/schema/analysis.js';
 import type { Vouched } from '../core/identity.js';
 import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
@@ -134,6 +135,11 @@ export interface MatrixViewProps {
    * "S"): the encoding's id, and the sentence to announce. Without it, no switch.
    */
   onEncodingChange?: (encoding: string, said: string) => void;
+  /**
+   * The reader banded an axis by its groups, or stopped (#93): the new
+   * grouping, and the sentence to announce. Without it, no grouping control.
+   */
+  onGroupingChange?: (grouping: ViewState['grouping'], said: string) => void;
   /** The latest sentence for the polite live region: a move, a seriation, a refusal. */
   announcement?: string;
   /**
@@ -176,7 +182,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, reattachWrite, onReorder, onEncodingChange, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, reattachWrite, onReorder, onEncodingChange, onGroupingChange, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -263,7 +269,11 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const shownGlyphs = new Set([...contents.values()].flatMap((c) => (c.glyph ? [c.glyph] : [])));
   const shownHatches = new Set([...contents.values()].flatMap((c) => (c.hatch ? [c.hatch] : [])));
 
-  const grid = gridOf(rows.entries, columns.entries, transposed);
+  // A block with nothing in it to show is one cell (#93): every cell structurally absent, with no reading and no thread of its own.
+  const blockOf = makeInapplicableBlocks(analysis);
+  const blocks = omittedBlocks(layout, (alt, crit) =>
+    (read(alt, crit) === undefined && !openHere.has(`${alt}\u0000${crit}`) ? blockOf(alt, crit) : undefined));
+  const grid = gridOf(rows.entries, columns.entries, transposed, blocks);
   const at = grid.positionOf(view.session.focus);
   /** The roving `tabindex` and the address the keyboard handler moves by. */
   const stop = (r: number, c: number) => ({
@@ -404,13 +414,37 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     </th>
     );
   };
+  /** An omitted block, drawn once at its first position and spanning the rest (#93): its bands, how many cells, and why. */
+  const blockCell = (b: OmittedBlock) => {
+    const [rowId, columnId] = [rows.entries[b.rows.first - 1]!.id, columns.entries[b.columns.first - 1]!.id];
+    const [altId, critId] = transposed ? [columnId, rowId] : [rowId, columnId];
+    const { text, absence, terminal, glyph } = contentOf(altId, critId);
+    const [rowBand, columnBand] = [bandLabel(b.rowBand, rows), bandLabel(b.columnBand, columns)];
+    const [critBand, altBand] = transposed ? [rowBand, columnBand] : [columnBand, rowBand];
+    return (
+      <td
+        key={`block:${columnId}`} rowSpan={b.rows.last - b.rows.first + 1} colSpan={b.columns.last - b.columns.first + 1}
+        data-state="not-applicable" data-absence={absence} data-terminal={terminal === undefined ? undefined : String(terminal)} data-glyph={glyph}
+        data-block={String(b.cells)} {...stop(b.rows.first, b.columns.first)}
+      >
+        <span class="comparanda-sr">{`${critBand}, ${altBand}, all ${b.cells} cells: `}</span>
+        {glyph && <Glyph reason={glyph} />}
+        <span class="comparanda-shown">{text}</span>
+        <span class="comparanda-panel-hint">{` ${b.cells === 1 ? 'One cell' : `All ${b.cells} cells`}${b.reason ? `: ${b.reason}` : ''}.`}</span>
+      </td>
+    );
+  };
   const rowIndex = new Map(rows.entries.map((e, i) => [e.id, i + 1]));
   const row = (e: LayoutEntry) => {
     const r = rowIndex.get(e.id)!;
     return (
       <tr key={e.id}>
         {header(e, 'row', r, 0)}
-        {columns.entries.map((c, i) => cell(e.id, c.id, r, i + 1))}
+        {columns.entries.map((c, i) => {
+          const b = grid.blockAt(r, i + 1);
+          if (!b) return cell(e.id, c.id, r, i + 1);
+          return b.rows.first === r && b.columns.first === i + 1 ? blockCell(b) : null;
+        })}
       </tr>
     );
   };
@@ -590,9 +624,32 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           ))}
         </div>
       )}
+      {onGroupingChange && (
+        <p class="comparanda-grouping">
+          {(['alternatives', 'criteria'] as const).map((axis) => {
+            // One nesting level is rendered (ADR-0008): a band per top-level group.
+            const tops = analysis.groups.filter((g) => g.axis === axis && !g.tombstoned && g.parentId === undefined);
+            const name = axis === 'alternatives' ? words.alternatives : words.criteria;
+            return tops.length > 0 && (
+              <label key={axis}>
+                <input
+                  type="checkbox" checked={view.grouping[axis].length > 0}
+                  onChange={(event) => {
+                    const on = (event.currentTarget as HTMLInputElement).checked;
+                    onGroupingChange({ ...view.grouping, [axis]: on ? tops.map((g) => g.id) : [] }, on
+                      ? `Showing the ${name} in their groups: ${tops.map((g) => g.label).join(', ')}.`
+                      : `Showing the ${name} ungrouped.`);
+                  }}
+                />
+                {` Show the ${name} in their groups`}
+              </label>
+            );
+          })}
+        </p>
+      )}
       {onReorder && <span id={`${helpId}-move`} hidden>Move</span>}
       {/* Polite, and present before anything is said into it, so the first sentence is heard. */}
-      {onReorder && <p class="comparanda-sr" role="status" aria-live="polite" data-announce="">{announcement ?? ''}</p>}
+      {(onReorder || onGroupingChange) && <p class="comparanda-sr" role="status" aria-live="polite" data-announce="">{announcement ?? ''}</p>}
       <Legend definition={active} legend={prepared.legend} glyphs={shownGlyphs} hatches={shownHatches} />
       {openHere.size > 0 && (
         <p class="comparanda-legend-note"><ThreadMark count={1} quiet />{' A speech bubble and a number: open discussion threads anchored on that cell or header, or at the corner on the analysis. Threads on groups and blocks are listed in the details of their members.'}</p>
@@ -930,9 +987,16 @@ function Legend({ definition, legend, glyphs, hatches }: {
  * (0, 0) is the corner. Positions are indices within one render; what persists
  * is `focusAt`'s ids, which survive a reorder.
  */
-function gridOf(rows: LayoutEntry[], columns: LayoutEntry[], transposed: boolean) {
+function gridOf(rows: LayoutEntry[], columns: LayoutEntry[], transposed: boolean, blocks: readonly OmittedBlock[] = []) {
   const height = rows.length + 1;
   const width = columns.length + 1;
+  /** The omitted block a position falls in: one cell, addressed by its first position (#93). */
+  const blockAt = (r: number, c: number) =>
+    blocks.find((b) => r >= b.rows.first && r <= b.rows.last && c >= b.columns.first && c <= b.columns.last);
+  const anchor = (p: { r: number; c: number }) => {
+    const b = blockAt(p.r, p.c);
+    return b ? { r: b.rows.first, c: b.columns.first } : p;
+  };
   const focusAt = (r: number, c: number): Session['focus'] => {
     const rowId = r > 0 ? rows[r - 1]?.id : undefined;
     const columnId = c > 0 ? columns[c - 1]?.id : undefined;
@@ -948,24 +1012,29 @@ function gridOf(rows: LayoutEntry[], columns: LayoutEntry[], transposed: boolean
     const [rowId, columnId] = transposed
       ? [focus?.criterionId, focus?.alternativeId]
       : [focus?.alternativeId, focus?.criterionId];
-    return {
+    return anchor({
       r: rowId === undefined ? 0 : rows.findIndex((e) => e.id === rowId) + 1,
       c: columnId === undefined ? 0 : columns.findIndex((e) => e.id === columnId) + 1,
-    };
+    });
   };
+  /** Where a key moves from (r, c): out of a block from its far edge, and into one at its first position. */
   const step = (r: number, c: number, key: string, { ctrl, rtl }: { ctrl: boolean; rtl: boolean }) => {
     const [back, forth] = rtl ? ['ArrowRight', 'ArrowLeft'] : ['ArrowLeft', 'ArrowRight'];
+    const here = blockAt(r, c);
+    const [top, bottom, start, end] = here ? [here.rows.first, here.rows.last, here.columns.first, here.columns.last] : [r, r, c, c];
     // At an edge the key still lands (on the same cell), so the page does not scroll under the reader.
-    if (key === 'Home') return ctrl ? { r: 0, c: 0 } : { r, c: 0 };
-    if (key === 'End') return ctrl ? { r: height - 1, c: width - 1 } : { r, c: width - 1 };
-    if (ctrl) return undefined; // Ctrl+Arrow belongs to the screen reader and the browser.
-    if (key === 'ArrowUp') return { r: Math.max(0, r - 1), c };
-    if (key === 'ArrowDown') return { r: Math.min(height - 1, r + 1), c };
-    if (key === back) return { r, c: Math.max(0, c - 1) };
-    if (key === forth) return { r, c: Math.min(width - 1, c + 1) };
-    return undefined;
+    const to = key === 'Home' ? (ctrl ? { r: 0, c: 0 } : { r, c: 0 })
+      : key === 'End' ? (ctrl ? { r: height - 1, c: width - 1 } : { r, c: width - 1 })
+        // Ctrl+Arrow belongs to the screen reader and the browser.
+        : ctrl ? undefined
+          : key === 'ArrowUp' ? { r: Math.max(0, top - 1), c }
+            : key === 'ArrowDown' ? { r: Math.min(height - 1, bottom + 1), c }
+              : key === back ? { r, c: Math.max(0, start - 1) }
+                : key === forth ? { r, c: Math.min(width - 1, end + 1) }
+                  : undefined;
+    return to && anchor(to);
   };
-  return { focusAt, positionOf, step };
+  return { focusAt, positionOf, step, blockAt };
 }
 
 function bandKey(b: Band): string {

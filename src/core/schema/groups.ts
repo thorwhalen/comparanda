@@ -40,7 +40,7 @@ import {
 } from '@zodal/groups-core';
 
 import type { Analysis } from './analysis.js';
-import type { Group } from './structure.js';
+import type { Group, InapplicableBlock } from './structure.js';
 
 export type Axis = Group['axis'];
 
@@ -204,7 +204,17 @@ export function groupScopeFilter(
  * completeness, dominance -- ask this for every cell.
  */
 export function makeInapplicability(a: Analysis): (alternativeId: string, criterionId: string) => boolean {
-  if (a.inapplicable.length === 0) return () => false;
+  const blockOf = makeInapplicableBlocks(a);
+  return (alternativeId, criterionId) => blockOf(alternativeId, criterionId) !== undefined;
+}
+
+/**
+ * The declared block a cell is inside, if any (the first, in declaration
+ * order): what `makeInapplicability` asks, with the declaration and its
+ * reason kept, for a view that says why (#93).
+ */
+export function makeInapplicableBlocks(a: Analysis): (alternativeId: string, criterionId: string) => InapplicableBlock | undefined {
+  if (a.inapplicable.length === 0) return () => undefined;
   const alts = axisGroups(a, 'alternatives');
   const crits = axisGroups(a, 'criteria');
   const altCache = new Map<string, Set<string>>();
@@ -216,8 +226,8 @@ export function makeInapplicability(a: Analysis): (alternativeId: string, criter
   };
   return (alternativeId, criterionId) => {
     const ag = memo(altCache, alts, alternativeId);
-    if (ag.size === 0) return false;
+    if (ag.size === 0) return undefined;
     const cg = memo(critCache, crits, criterionId);
-    return a.inapplicable.some((b) => ag.has(b.alternativeGroupId) && cg.has(b.criterionGroupId));
+    return a.inapplicable.find((b) => ag.has(b.alternativeGroupId) && cg.has(b.criterionGroupId));
   };
 }
