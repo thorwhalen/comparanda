@@ -13,10 +13,10 @@
  *   happen;
  * - **a browser check that exercises the view**: the file is opened from
  *   `file://` in Chromium as built and once per encoding the page registers;
- *   every cell is focused, pressed and clicked, the keyboard is used, each
- *   axis is reordered by keyboard, move menu and pointer drag, the details
- *   panel follows the reader onto every cell (a missing cell's reason, an
- *   evidence excerpt), and a simulated minute is run on. Any console error, uncaught error, policy
+ *   every cell is focused, pressed and clicked, with the details panel
+ *   following onto each (a missing cell's reason, an evidence excerpt), the
+ *   keyboard is used, each axis is reordered by keyboard, move menu and
+ *   pointer drag, and a simulated minute is run on. Any console error, uncaught error, policy
  *   violation, request, navigation, new window or WebRTC connection fails the
  *   build -- the last two because no CSP governs them. Loading the page
  *   alone would miss the bug ADR-0013 names: a `fetch()` inside a cell
@@ -199,8 +199,9 @@ const WATCH = `(() => {
 
 /**
  * Open the page from `file://` in Chromium, as built and then once per
- * encoding; in each, focus, press and click every cell and header, use the
- * keyboard, and run the clock on. Any console error (how a CSP violation
+ * encoding; in each, focus, press and click every cell and header (the
+ * details panel drawn for each), use the keyboard, do the reader's other acts
+ * (`READER_ACTS`), and run the clock on. Any console error (how a CSP violation
  * surfaces), uncaught error, policy violation, request, navigation, new
  * window or WebRTC connection is a problem, prefixed with its pass.
  */
@@ -240,17 +241,35 @@ export async function exerciseInBrowser(options: BrowserCheckOptions): Promise<B
         await page.waitForSelector('.comparanda-matrix, [role="alert"]', { timeout: renderTimeoutMs });
         const alert = await page.locator('[role="alert"]').allTextContents();
         if (alert.length > 0) said(`the page could not show the comparison: ${alert.join(' ')}`);
-        // Every cell and header is focused, pressed and clicked: each one's handlers run.
-        await page.evaluate(() => {
+        // Every cell and header is focused, pressed and clicked: each one's handlers run. The first click
+        // opens the details panel, which follows; a task between cells lets it draw each one, not only the last.
+        const panels = await page.evaluate(async () => {
+          const headings = new Set<string>();
           for (const cell of Array.from(document.querySelectorAll<HTMLElement>('[data-cell]'))) {
             cell.focus();
             for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
               cell.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, { bubbles: true, cancelable: true }));
             }
+            // A message, not a timer: the clock is simulated, and its timers do not run until told. Inline, not
+            // a named helper: a bundler that keeps function names would wrap it in a helper the page lacks.
+            await new Promise<void>((resolve) => { const c = new MessageChannel(); c.port1.onmessage = () => resolve(); c.port2.postMessage(0); });
+            const heading = document.querySelector('aside.comparanda-panel [data-panel-heading]')?.textContent;
+            if (heading) headings.add(heading);
           }
+          return headings.size;
         });
+        // A pass that drew one panel drew no other cell's reason or excerpt.
+        if (panels < 2) said(`the details panel was drawn for ${panels === 0 ? 'no position' : 'one position only'}, so no other cell's reason or excerpt was`);
         for (const key of ['Control+Home', 'ArrowRight', 'ArrowDown', 'End', 'Home', 'Control+End']) await page.keyboard.press(key);
-        for (const problem of await driveActs(page)) said(problem);
+        for (const axis of AXES) {
+          const headers = page.locator(`th[data-axis="${axis}"][data-entry]`);
+          // Not offered: one entry cannot move, and a page without reordering draws no handles.
+          if ((await headers.count()) < 2 || (await headers.locator(HANDLE).count()) === 0) continue;
+          for (const act of READER_ACTS) {
+            const problem = await act.run(page, headers);
+            if (problem !== undefined) said(`${act.name} on the ${axis}: ${problem}`);
+          }
+        }
         await page.clock.runFor(settleMs);
         // Awaited here, inside the try: the context closes in the finally.
         return await page.evaluate(() => {
@@ -286,62 +305,87 @@ export async function exerciseInBrowser(options: BrowserCheckOptions): Promise<B
 }
 
 type Page = Awaited<ReturnType<Awaited<ReturnType<Playwright['chromium']['launch']>>['newPage']>>;
+type Locator = ReturnType<Page['locator']>;
+
+const AXES = ['criteria', 'alternatives'] as const;
+/** A header's move handle, as the matrix draws it. */
+const HANDLE = '.comparanda-handle';
+
+/** A header row or column's order, as drawn. */
+const orderOf = (headers: Locator) => headers.evaluateAll((ths) => ths.map((th) => th.getAttribute('data-entry')).join(' '));
+
+/** Focus a header and press keys on it. */
+async function press(page: Page, header: Locator, keys: readonly string[]): Promise<void> {
+  await header.focus();
+  for (const key of keys) await page.keyboard.press(key);
+}
 
 /**
- * The reader's acts beyond cells and arrows, as the page offers them
- * (ADR-0013; #237), so their handlers run inside the check too: each axis
- * reordered by keyboard (picked up, moved, put down; then moved and put back),
- * by its move menu and by a pointer drag on a handle; the encoding key; and
- * the arrange buttons. The details panel needs no act of its own: the first
- * click opened it, and it followed the reader onto every cell since, drawing
- * each one's reason and evidence excerpts. An act the page offers that
- * happened to nothing is a problem: a pass that ran nothing is not a check.
- * Grouping joins here when the page offers it (#93).
+ * One of the reader's acts on an axis of at least two headers. It returns what
+ * went wrong, if anything: an act that moved nothing is a problem, because a
+ * pass that ran nothing is not a check.
  */
-async function driveActs(page: Page): Promise<string[]> {
-  const problems: string[] = [];
-  if (await page.locator('aside.comparanda-panel').count() === 0) {
-    problems.push('the details panel never opened, so no reason or excerpt it shows was drawn');
-  }
-  for (const axis of ['criteria', 'alternatives'] as const) {
-    const headers = page.locator(`th[data-axis="${axis}"][data-entry]`);
-    const count = await headers.count();
-    // Not offered: one entry cannot move, and a page without reordering draws no handles.
-    if (count < 2 || (await headers.locator('.comparanda-handle').count()) === 0) continue;
-    const order = () => headers.evaluateAll((ths) => ths.map((th) => th.getAttribute('data-entry')).join(' '));
-    const keys = async (at: number, sequence: readonly string[]) => {
-      await headers.nth(at).focus();
-      for (const key of sequence) await page.keyboard.press(key);
-    };
-    // A header moves within its band only: the first one whose band has room to move it.
-    let moved = false;
-    for (let at = 0; at < count && !moved; at += 1) {
-      const before = await order();
-      await keys(at, ['Space', 'End', 'Enter']);
-      moved = (await order()) !== before;
-    }
-    if (!moved) problems.push(`no ${axis} header could be moved by keyboard`);
-    await keys(0, ['Space', 'End', 'Escape']);
-    await keys(0, ['Shift+F10']);
-    if (await page.locator('[role="menu"]').count() === 0) problems.push(`the move menu of a ${axis} header did not open`);
-    else await page.keyboard.press('Enter');
-    const from = await headers.first().locator('.comparanda-handle').boundingBox();
-    const to = await headers.last().boundingBox();
-    if (!from || !to) {
-      problems.push(`a ${axis} header's handle could not be found to drag`);
-      continue;
-    }
-    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 5 });
-    if (await page.locator('[data-dragging]').count() === 0) problems.push(`dragging a ${axis} header's handle did not start a drag`);
-    await page.mouse.up();
-  }
-  await page.locator('td[data-cell]').first().focus();
-  await page.keyboard.press('s');
-  for (const button of await page.locator('.comparanda-arrange button').all()) await button.click();
-  return problems;
+export interface ReaderAct {
+  readonly name: string;
+  run(page: Page, headers: Locator): Promise<string | undefined>;
 }
+
+/**
+ * The acts ADR-0013 lists beyond cells and arrows, as the standalone page
+ * offers them (#237): an axis reordered by keyboard (moved and put down, then
+ * moved and put back), by its move menu, and by a pointer drag. Grouping joins
+ * when the page offers it (#93). The arrange buttons and the strip/ramp key are
+ * not here: the page offers neither (it mounts no `arrange`, and registers one
+ * encoding per pass).
+ */
+export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
+  {
+    name: 'moving a header by keyboard',
+    async run(page, headers) {
+      const count = await headers.count();
+      // A header moves within its band only: the first one whose band has room to move it.
+      for (let at = 0; at < count; at += 1) {
+        const before = await orderOf(headers);
+        await press(page, headers.nth(at), ['Space', 'End', 'Enter']);
+        const after = await orderOf(headers);
+        if (after === before) continue;
+        // Moved again, and put back with Escape: it is where it was.
+        const moved = page.locator(`th[data-entry="${after.split(' ').at(-1)}"]`).first();
+        await press(page, moved, ['Space', 'Home', 'Escape']);
+        return (await orderOf(headers)) === after ? undefined : 'a move cancelled with Escape did not put the header back';
+      }
+      return 'no header could be moved';
+    },
+  },
+  {
+    name: 'the move menu',
+    async run(page, headers) {
+      const before = await orderOf(headers);
+      await press(page, headers.first(), ['Shift+F10']);
+      const later = page.locator('[role="menu"] [role="menuitem"]', { hasText: /later/i });
+      if ((await later.count()) === 0) return 'it did not open, or offered no later place';
+      await later.first().focus();
+      await page.keyboard.press('Enter');
+      return (await orderOf(headers)) !== before ? undefined : 'choosing a later place moved nothing';
+    },
+  },
+  {
+    name: 'dragging a header',
+    async run(page, headers) {
+      const before = await orderOf(headers);
+      await headers.nth(1).scrollIntoViewIfNeeded();
+      const from = await headers.first().locator(HANDLE).boundingBox();
+      const to = await headers.nth(1).boundingBox();
+      if (!from || !to) return 'a header or its handle is not on screen';
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+      await page.mouse.down();
+      // Past the far edge of the next header: dropped after it.
+      await page.mouse.move(to.x + to.width * 0.9, to.y + to.height * 0.9, { steps: 5 });
+      await page.mouse.up();
+      return (await orderOf(headers)) !== before ? undefined : 'the drop moved nothing';
+    },
+  },
+]);
 
 const INSTALL_HINT =
   'Install it beside comparanda (npm install --save-dev playwright && npx playwright install chromium), ' +

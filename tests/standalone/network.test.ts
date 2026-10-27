@@ -37,7 +37,9 @@ afterAll(async () => {
  * budget.test.ts's to enforce.
  *
  * A standalone entry like the shipped one, whose `value` encoding calls
- * `reach` from inside its cell renderer. Everything else is the shipped view.
+ * `reach` from inside its cell renderer. It mounts the shipped view with
+ * `mountMatrix` and every shipped encoding, where the page mounts it
+ * persisted with text only.
  * `setup` runs before the mount, with `hidden(url)` a fetch the scan cannot
  * see, and `props` is spliced into the mount's props.
  */
@@ -162,12 +164,20 @@ describe('a planted network call fails the build', () => {
     const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(NetworkReached);
     expect((failure as NetworkReached).findings).toEqual(expect.arrayContaining([
-      expect.stringMatching(/no alternatives header could be moved by keyboard/),
-      expect.stringMatching(/no criteria header could be moved by keyboard/),
+      expect.stringMatching(/moving a header by keyboard on the alternatives: no header could be moved/),
+      expect.stringMatching(/moving a header by keyboard on the criteria: no header could be moved/),
     ]));
   });
-  it('a reach made only once the details panel is open fails it', async () => {
-    await actOnly('panel', { props: "onViewChange: (v) => { if (v.session.detailPanelOpen) hidden('https://example.invalid/panel'); }," });
+  it('a reach made only where the details panel draws an evidence excerpt fails it: the panel is drawn for every cell', async () => {
+    await actOnly('excerpt', {
+      setup: "new MutationObserver(() => { if (document.querySelector('aside.comparanda-panel blockquote')) hidden('https://example.invalid/excerpt'); }).observe(document.body, { subtree: true, childList: true });",
+    });
+  });
+  it('a details panel that never opens fails it: no reason or excerpt it shows was drawn', async () => {
+    const entry = await plantedEntry('no-panel', '', { setup: "document.addEventListener('click', (e) => e.stopPropagation(), true);" });
+    const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(NetworkReached);
+    expect((failure as NetworkReached).findings).toContainEqual(expect.stringMatching(/the details panel was drawn for no position/));
   });
 
   it('a plain fetch() fails it before any browser starts, naming the string', async () => {
