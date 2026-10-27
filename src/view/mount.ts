@@ -382,11 +382,8 @@ export function mountMatrix(
     if (moved?.arranged) shown = { ...shown, ...moved.arranged };
     // A focus on what is no longer shown (hidden, tombstoned) settles where the grid's stop is, and stays there.
     const settledFocus = focusInLayout(matrixLayout(analysis, shown), shown.session.focus);
-    focusSettled = JSON.stringify(settledFocus ?? null) !== JSON.stringify(shown.session.focus ?? null);
-    if (focusSettled) {
-      moved = { ...moved, focus: settledFocus };
-      shown = setFocus(shown, settledFocus);
-    }
+    focusSettled = settledFocus !== shown.session.focus;
+    if (focusSettled) shown = setFocus(shown, settledFocus);
     const resolved: MatrixViewProps = {
       analysis,
       measure,
@@ -416,6 +413,8 @@ export function mountMatrix(
     };
     const was = focused();
     render(h(component, resolved), el);
+    // Kept only once drawn: a render that throws leaves the reader's focus where it was.
+    if (focusSettled) moved = { ...moved, focus: settledFocus };
     // Before focus moves: a focus that scrolls must already see the padding.
     sticky.measure();
     settle(was);

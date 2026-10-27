@@ -10,7 +10,8 @@ import { userEvent } from '@vitest/browser/context';
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, setFilter, setFocus, type ViewState } from '../../src/core/view-state.js';
 import { inMemoryAnalysisSource } from '../../src/store/index.js';
-import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
+import { h } from 'preact';
+import { mountMatrix, type MatrixHandle, type MatrixViewProps, type MountMatrixProps } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
 const relocation = Analysis.parse(relocationJson);
@@ -64,6 +65,25 @@ describe('focus that loses its place settles where the stop is', () => {
     expect(views).toHaveLength(1);
     expect(views[0]!.session.focus).toBeUndefined();
     expect(stop().classList.contains('comparanda-corner')).toBe(true);
+  });
+
+  it('keeps no settled focus from a render that failed: the document and the focus roll back together', async () => {
+    const seen: unknown[] = [];
+    const component = (p: MatrixViewProps) => {
+      seen.push(p.view.session.focus);
+      if (p.analysis.alternatives.find((a) => a.id === 'seoul')?.tombstoned) throw new Error('render failed');
+      return h('p', null, 'ok');
+    };
+    // The render's error is the test's to expect, not an unhandled one.
+    const errors: unknown[] = [];
+    const source = inMemoryAnalysisSource(relocation, { onSubscriberError: (e) => errors.push(e) });
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', source, view: focusAt({ alternativeId: 'seoul' }) }, { component });
+    const doc = structuredClone(relocation);
+    doc.alternatives.find((a) => a.id === 'seoul')!.tombstoned = true;
+    await source.update(relocation.id, doc).catch(() => undefined);
+    expect(errors).toHaveLength(1);
+    handle.update({ encoding: 'text-only' });
+    expect(seen.at(-1)).toEqual({ alternativeId: 'seoul' });
   });
 
   it('reports nothing when the focus is still shown', () => {

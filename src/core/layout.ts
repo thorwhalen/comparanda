@@ -114,15 +114,17 @@ function axisLayout(
  * A focus as the layout can show it (#283): an id the layout does not show
  * (hidden, tombstoned, gone) is dropped, so a focus on a hidden row's cell
  * becomes its column's header, and one on nothing shown becomes the corner.
- * Where the grid's roving stop actually is, in the terms `session.focus` keeps.
+ * The same focus, unchanged, when everything it names is shown. (Inside an
+ * omitted block the grid's stop is the block's first cell, which only the view
+ * can say: this keeps the ids the layout shows.)
  */
 export function focusInLayout(layout: MatrixLayout, focus: ViewState['session']['focus']): ViewState['session']['focus'] {
-  const shown = (axis: 'alternatives' | 'criteria', id: string | undefined) =>
-    id !== undefined && (layout.rows.axis === axis ? layout.rows : layout.columns).entries.some((e) => e.id === id);
-  const alternativeId = shown('alternatives', focus?.alternativeId) ? focus!.alternativeId : undefined;
-  const criterionId = shown('criteria', focus?.criterionId) ? focus!.criterionId : undefined;
-  if (alternativeId === undefined && criterionId === undefined) return undefined;
-  return { ...(alternativeId !== undefined ? { alternativeId } : {}), ...(criterionId !== undefined ? { criterionId } : {}) };
+  const on = (axis: 'alternatives' | 'criteria', id: string | undefined) =>
+    id === undefined || (layout.rows.axis === axis ? layout.rows : layout.columns).entries.some((e) => e.id === id);
+  const a = on('alternatives', focus?.alternativeId), c = on('criteria', focus?.criterionId);
+  if (a && c) return focus;
+  const { alternativeId, criterionId } = focus!;
+  return a && alternativeId !== undefined ? { alternativeId } : c && criterionId !== undefined ? { criterionId } : undefined;
 }
 
 /**
