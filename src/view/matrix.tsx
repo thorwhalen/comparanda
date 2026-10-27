@@ -77,7 +77,7 @@ import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.
 import { startPointerDrag } from './pointer-reorder.js';
 import { activeElementOf } from './dom.js';
 import { describeOrder, describePlace } from '../core/reorder.js';
-import type { Axis } from '../core/schema/groups.js';
+import { axisGroups, membersOfGroup, type Axis } from '../core/schema/groups.js';
 import { resolveAnchor } from '../core/schema/anchors.js';
 
 const anonymous = () => 'anonymous';
@@ -87,6 +87,9 @@ export const TEXT_ONLY = textOnly.id;
 /** The two forms ADR-0024 asks to be one keystroke apart. */
 const STRIP = 'disagreement';
 const SPREAD = 'disagreement-spread';
+
+/** The parts of the view state the matrix's own group controls change (#93). */
+export type Arrangement = Partial<Pick<ViewState, 'grouping' | 'selection' | 'filter'>>;
 
 /** What the component renders from: `MatrixProps` resolved, plus the edits the source allows. */
 export interface MatrixViewProps {
@@ -135,10 +138,11 @@ export interface MatrixViewProps {
    */
   onEncodingChange?: (encoding: string, said: string) => void;
   /**
-   * The reader banded an axis by its groups, or stopped (#93): the new
-   * grouping, and the sentence to announce. Without it, no grouping control.
+   * The reader grouped, selected or hid from the matrix's group controls
+   * (#93): the parts of the view state changed, and the sentence to announce.
+   * Without it, no group controls.
    */
-  onGroupingChange?: (grouping: ViewState['grouping'], said: string) => void;
+  onArrange?: (change: Arrangement, said: string) => void;
   /** The latest sentence for the polite live region: a move, a seriation, a refusal. */
   announcement?: string;
   /**
@@ -181,7 +185,7 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
  */
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
-export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, reattachWrite, onReorder, onEncodingChange, onGroupingChange, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
+export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, reattachWrite, onReorder, onEncodingChange, onArrange, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -276,6 +280,18 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       ? affordances.inapplicableBlock(alt, crit) : undefined;
   });
   const grid = gridOf(rows.entries, columns.entries, transposed, blocks);
+  /** The group each axis's picker shows, until the reader picks another. */
+  const [picked, setPicked] = useState<Partial<Record<Axis, string>>>({});
+  /** The ids each axis holds alive: what a selection or a hide is counted, and made, over. */
+  const live = (axis: Axis) => new Set((axis === 'alternatives' ? analysis.alternatives : analysis.criteria).filter((x) => !x.tombstoned).map((x) => x.id));
+  const [liveAlternatives, liveCriteria] = [live('alternatives'), live('criteria')];
+  const count = (ids: readonly string[], among: Set<string>) => ids.filter((id) => among.has(id)).length;
+  const selected = count(view.selection.alternatives, liveAlternatives) + count(view.selection.criteria, liveCriteria);
+  const hiddenNow = count(view.filter.hiddenAlternatives, liveAlternatives) + count(view.filter.hiddenCriteria, liveCriteria);
+  /** One of the group controls' buttons: what it changes, and what it says (#93). */
+  const act = (label: string, change: Arrangement, said: string) => (
+    <button type="button" onClick={() => onArrange!(change, said)}>{label}</button>
+  );
   // The axes the reader can band, by their top-level groups: one nesting level is rendered (ADR-0008).
   const groupable = (['alternatives', 'criteria'] as const)
     .map((axis) => ({ axis, tops: analysis.groups.filter((g) => g.axis === axis && !g.tombstoned && g.parentId === undefined) }))
@@ -366,6 +382,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     return (
     <th
       scope={scope} key={e.id} {...stop(r, c)} data-axis={axis} data-entry={e.id}
+      // Selected (#93): said by the grid, and marked with a tick, never by colour alone.
+      aria-selected={view.selection[axis].includes(e.id) || undefined}
       data-grabbed={grab?.axis === axis && grab.id === e.id ? 'true' : undefined}
       data-menu-open={menu === menuKey ? 'true' : undefined}
     >
@@ -635,31 +653,52 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           ))}
         </div>
       )}
-      {onGroupingChange && groupable.length > 0 && (
-        <p class="comparanda-grouping">
+      {onArrange && groupable.length > 0 && (
+        <div class="comparanda-grouping">
           {groupable.map(({ axis, tops }) => {
             const name = axis === 'alternatives' ? words.alternatives : words.criteria;
+            const id = `${helpId}-g-${axis}`;
+            const group = tops.find((g) => g.id === picked[axis]) ?? tops[0]!;
+            // Its live members by closure, as everywhere membership is read: the bridge from a group to a selection (ADR-0008).
+            const alive = axis === 'alternatives' ? liveAlternatives : liveCriteria;
+            const members = membersOfGroup(axisGroups(analysis, axis), group.id).filter((id) => alive.has(id));
+            const hidden = axis === 'alternatives' ? 'hiddenAlternatives' : 'hiddenCriteria';
             return (
-              <label key={axis}>
-                <input
-                  // Checked when the axis is drawn in bands, not when the view names groups this document lacks.
-                  type="checkbox" data-axis={axis} checked={(rows.axis === axis ? rows : columns).bands !== undefined}
-                  onChange={(event) => {
-                    const on = (event.currentTarget as HTMLInputElement).checked;
-                    onGroupingChange({ ...view.grouping, [axis]: on ? tops.map((g) => g.id) : [] }, on
-                      ? `Showing the ${name} in their groups: ${tops.map((g) => g.label).join(', ')}.`
-                      : `Showing the ${name} ungrouped.`);
-                  }}
-                />
-                {` Show the ${name} in their groups`}
-              </label>
+              <p key={axis}>
+                <label>
+                  <input
+                    // Checked when the axis is drawn in bands, not when the view names groups this document lacks.
+                    type="checkbox" data-axis={axis} checked={(rows.axis === axis ? rows : columns).bands !== undefined}
+                    onChange={(event) => {
+                      const on = (event.currentTarget as HTMLInputElement).checked;
+                      onArrange({ grouping: { ...view.grouping, [axis]: on ? tops.map((g) => g.id) : [] } }, on
+                        ? `Showing the ${name} in their groups: ${tops.map((g) => g.label).join(', ')}.`
+                        : `Showing the ${name} ungrouped.`);
+                    }}
+                  />
+                  {` Show the ${name} in their groups`}
+                </label>
+                {' '}<label for={id}>{`Group of ${name}`}</label>{' '}
+                <select id={id} value={group.id} onChange={(e) => setPicked({ ...picked, [axis]: (e.currentTarget as HTMLSelectElement).value })}>
+                  {tops.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                </select>{' '}
+                {act(`Select its ${name}`, { selection: { ...view.selection, [axis]: members } }, `Selected the ${members.length} ${name} in ${group.label}.`)}{' '}
+                {act(`Hide its ${name}`, { filter: { ...view.filter, [hidden]: [...new Set([...view.filter[hidden], ...members])] } }, `Hid the ${name} in ${group.label}.`)}
+              </p>
             );
           })}
-        </p>
+          {(selected > 0 || hiddenNow > 0) && (
+            <p>
+              {/* The headers' selection only: a host's cell selection is not these controls' to clear. */}
+              {selected > 0 && act(`Clear the selection (${selected})`, { selection: { ...view.selection, alternatives: [], criteria: [] } }, 'Nothing is selected now.')}{' '}
+              {hiddenNow > 0 && act(`Show the ${hiddenNow} hidden`, { filter: { hiddenAlternatives: [], hiddenCriteria: [] } }, 'Showing everything that was hidden.')}
+            </p>
+          )}
+        </div>
       )}
       {onReorder && <span id={`${helpId}-move`} hidden>Move</span>}
       {/* Polite, and present before anything is said into it, so the first sentence is heard. */}
-      {(onReorder || onGroupingChange) && <p class="comparanda-sr" role="status" aria-live="polite" data-announce="">{announcement ?? ''}</p>}
+      {(onReorder || onArrange) && <p class="comparanda-sr" role="status" aria-live="polite" data-announce="">{announcement ?? ''}</p>}
       <Legend definition={active} legend={prepared.legend} glyphs={shownGlyphs} hatches={shownHatches} />
       {openHere.size > 0 && (
         <p class="comparanda-legend-note"><ThreadMark count={1} quiet />{' A speech bubble and a number: open discussion threads anchored on that cell or header, or at the corner on the analysis. Threads on groups and blocks are listed in the details of their members.'}</p>
@@ -676,7 +715,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         }}
       >
         <table
-          role="grid" aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}
+          // Several headers may be selected at once (#93).
+          role="grid" aria-multiselectable="true" aria-describedby={helpId} onKeyDown={onKeyDown} onFocusCapture={onFocusCapture}
           onPointerDownCapture={(event: PointerEvent) => { pressed.current = event.target as Element | null; }}
           // A mouse focuses on press, before this; a touch focuses after it, so keeps the press.
           onPointerUpCapture={(event: PointerEvent) => { if (event.pointerType !== 'touch') pressed.current = null; }}

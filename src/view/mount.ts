@@ -32,7 +32,7 @@ import type { SuggestionWrites } from './suggestions.js';
 import type { ReattachWrite } from './orphans.js';
 import { reattach } from '../core/orphans.js';
 import { textOnly } from './encodings/shipped.js';
-import { Matrix, TEXT_ONLY, type MatrixViewProps } from './matrix.js';
+import { Matrix, TEXT_ONLY, type Arrangement, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
 import { trackStickyExtents } from './sticky.js';
 import { activeElementOf } from './dom.js';
@@ -164,7 +164,7 @@ export function mountMatrix(
    * about that part: a host that keeps only focus does not close the panel.
    */
   let moved: {
-    focus?: Session['focus']; panel?: boolean; orders?: Pick<ViewState, 'alternativeOrder' | 'criterionOrder'>; encoding?: string; grouping?: ViewState['grouping'];
+    focus?: Session['focus']; panel?: boolean; orders?: Pick<ViewState, 'alternativeOrder' | 'criterionOrder'>; encoding?: string; arranged?: Arrangement;
   } | undefined;
   /** The last sentence for the live region, and how many have been said, so a repeat is heard again. */
   let announcement: string | undefined;
@@ -228,15 +228,15 @@ export function mountMatrix(
     moveSession({ focus });
     current.onViewChange?.(shown);
   };
-  /**
-   * The reader rearranged an axis: laid over the host's order until the host
-   * gives a view with a different one, announced, and reported.
-   */
   /** Say a sentence in the live region. The same sentence twice is still news: a trailing no-break space alternates so the region changes. */
   const announce = (sentence: string) => {
     said += 1;
     announcement = said % 2 === 0 ? `${sentence}\u00a0` : sentence;
   };
+  /**
+   * The reader rearranged an axis: laid over the host's order until the host
+   * gives a view with a different one, announced, and reported.
+   */
   const reorder = (state: ViewState, sentence: string) => {
     if (destroyed) return;
     announce(sentence);
@@ -253,11 +253,14 @@ export function mountMatrix(
     moveSession({ encoding: id });
     current.onViewChange?.(shown);
   };
-  /** The reader banded an axis by its groups, or stopped (#93): laid over the host's grouping until the host says something new about it. */
-  const changeGrouping = (grouping: ViewState['grouping'], sentence: string) => {
+  /**
+   * The reader grouped, selected or hid (#93): each part laid over the host's
+   * until the host says something new about that part, announced, and reported.
+   */
+  const rearrange = (change: Arrangement, sentence: string) => {
     if (destroyed) return;
     announce(sentence);
-    moveSession({ grouping });
+    moveSession({ arranged: { ...moved?.arranged, ...change } });
     current.onViewChange?.(shown);
   };
   /** Open or close the detail panel; `into` moves focus to its heading once it is drawn. */
@@ -369,7 +372,7 @@ export function mountMatrix(
     if (moved?.panel !== undefined) shown = setDetailPanel(shown, moved.panel);
     if (moved?.orders) shown = { ...shown, ...moved.orders };
     if (moved?.encoding) shown = { ...shown, encoding: moved.encoding };
-    if (moved?.grouping) shown = { ...shown, grouping: moved.grouping };
+    if (moved?.arranged) shown = { ...shown, ...moved.arranged };
     const resolved: MatrixViewProps = {
       analysis,
       measure,
@@ -380,7 +383,7 @@ export function mountMatrix(
       onPanelChange: changePanel,
       onReorder: reorder,
       onEncodingChange: changeEncoding,
-      onGroupingChange: changeGrouping,
+      onArrange: rearrange,
       ...(current.notice ? { notice: current.notice } : {}),
       actor: () => actor() ?? DEFAULT_IDENTITY_ID,
       ...(arrange ? { arrange } : {}),
@@ -523,7 +526,11 @@ export function mountMatrix(
         if (nextFocus.panel !== givenFocus.panel) delete kept.panel;
         if (nextFocus.orders !== givenFocus.orders) delete kept.orders;
         if (nextFocus.encoding !== givenFocus.encoding || 'encoding' in next) delete kept.encoding;
-        if (nextFocus.grouping !== givenFocus.grouping) delete kept.grouping;
+        if (kept.arranged) {
+          const arranged = { ...kept.arranged };
+          for (const part of ARRANGED) if (nextFocus[part] !== givenFocus[part]) delete arranged[part];
+          kept.arranged = arranged;
+        }
         moved = kept;
       }
       givenFocus = nextFocus;
@@ -600,8 +607,11 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   return props;
 }
 
+/** The parts of the view the reader rearranges from the matrix's own controls (#93). */
+const ARRANGED = ['grouping', 'selection', 'filter'] as const;
+
 /** What a given `view` says about the reader's position (comparable by value, blind to key order) and the panel. */
-function sessionIn(view: unknown): { focus: string; panel: boolean; orders: string; encoding: string; grouping: string } {
+function sessionIn(view: unknown): { focus: string; panel: boolean; orders: string; encoding: string } & Record<typeof ARRANGED[number], string> {
   const v = view as ViewState | undefined;
   const focus = v?.session?.focus;
   return {
@@ -611,6 +621,8 @@ function sessionIn(view: unknown): { focus: string; panel: boolean; orders: stri
     orders: JSON.stringify([v?.alternativeOrder ?? null, v?.criterionOrder ?? null]),
     encoding: v?.encoding ?? '',
     grouping: JSON.stringify(v?.grouping ?? null),
+    selection: JSON.stringify(v?.selection ?? null),
+    filter: JSON.stringify(v?.filter ?? null),
   };
 }
 
