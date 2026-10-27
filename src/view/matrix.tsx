@@ -69,7 +69,7 @@ import { derivedPaletteCss, MATRIX_CSS, stripCss } from './matrix-css.js';
 import { PALETTE } from './encodings/palette.js';
 import { revealClear } from './sticky.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
-import { DetailPanel } from './detail-panel.js';
+import { DetailPanel, type PanelBlock } from './detail-panel.js';
 import { OrphanTray, type ReattachWrite } from './orphans.js';
 import type { AnalysisPanelProps } from './agreement.js';
 import type { ThreadWrites } from './threads.js';
@@ -298,6 +298,18 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     .map((axis) => ({ axis, tops: analysis.groups.filter((g) => g.axis === axis && !g.tombstoned && g.parentId === undefined) }))
     .filter((x) => x.tops.length > 0);
   const at = grid.positionOf(view.session.focus);
+  /** The omitted block the reader is on, for the details panel (#280): its two bands, by axis, with their members and reason. */
+  const panelBlock = (): PanelBlock | undefined => {
+    const b = grid.blockAt(at.r, at.c);
+    if (!b) return undefined;
+    const side = (band: Band, axis: AxisLayout) => ({ band: bandLabel(band, axis), labels: band.entries.map((e) => e.label) });
+    const [rowSide, columnSide] = [side(b.rowBand, rows), side(b.columnBand, columns)];
+    const [criteria, alternatives] = transposed ? [rowSide, columnSide] : [columnSide, rowSide];
+    // The declaration on its first cell: a band may be the remainder, which has no group, but every omitted cell is declared.
+    const [rowId, columnId] = [rows.entries[b.rows.first]!.id, columns.entries[b.columns.first]!.id];
+    const declared = transposed ? affordances.inapplicableBlock(columnId, rowId) : affordances.inapplicableBlock(rowId, columnId);
+    return { alternatives, criteria, cells: b.cells, reason: b.reason, pair: declared && [declared.alternativeGroupId, declared.criterionGroupId] };
+  };
   /** The roving `tabindex` and the address the keyboard handler moves by. */
   const stop = (r: number, c: number) => ({
     'data-cell': `${r}:${c}`,
@@ -775,7 +787,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           analysis={analysis} measure={measure} vocabulary={vocabulary} standing={standing} viewer={viewer} vouched={vouched}
           // Where the grid's stop actually is: a hidden or removed id has fallen back to its header.
           focus={grid.focusAt(at.r, at.c)}
-          headingId={`${helpId}-panel`} affordances={affordances} writes={threadWrites}
+          headingId={`${helpId}-panel`} affordances={affordances} writes={threadWrites} block={panelBlock()}
           onClose={() => onPanelChange(false)}
           onReturn={() => root.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus()}
         />

@@ -44,15 +44,21 @@ export interface ThreadsProps {
   idBase: string;
   /** Which authors' attestations the host performed (#263). */
   vouched?: Vouched | undefined;
+  /** The group pair a new thread is about first: the omitted block the reader is on (#280). */
+  pair?: readonly [string, string] | undefined;
 }
 
-export function Threads({ analysis, measure, position, affordances, writes, idBase, vouched }: ThreadsProps) {
+export function Threads({ analysis, measure, position, affordances, writes, idBase, vouched, pair }: ThreadsProps) {
   const [showResolved, setShowResolved] = useState(false);
   const words = aliasesOf(analysis);
   const all = threadsAt(analysis, position);
   const open = all.filter((x) => !x.thread.resolved);
   const resolved = all.filter((x) => x.thread.resolved);
-  const choices = anchorChoices(analysis, position, measure, words);
+  const offered = anchorChoices(analysis, position, measure, words);
+  // On an omitted block, the block itself first, where the host allows a thread on it: the cell under it is only its address (#280).
+  const first = pair ? offered.findIndex((c) => c.anchor.scope === 'group-pair' && c.anchor.groupId === pair[0] && c.anchor.otherGroupId === pair[1]
+    && affordances.comment(commentTarget(c.anchor), 'start').enabled) : -1;
+  const choices = first > 0 ? [offered[first]!, ...offered.filter((_, i) => i !== first)] : offered;
   const allowed = affordances.comment(commentTarget(choices[0]!.anchor), 'start');
   const names = attributions(analysis.authors, { vouched });
   return (

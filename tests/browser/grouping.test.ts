@@ -9,8 +9,8 @@ import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { startThread } from '../../src/core/threads.js';
-import { initialViewState, setEncoding, setFocus, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
-import { inMemoryAnalysisSource } from '../../src/store/index.js';
+import { initialViewState, setDetailPanel, setEncoding, setFocus, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
+import { anonymousIdentity, inMemoryAnalysisSource } from '../../src/store/index.js';
 import { createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
 
@@ -283,5 +283,58 @@ describe('selection and filter by group (#93)', () => {
     // Several headers may be selected at once, and the grid says so.
     expect(el.querySelector('[role="grid"]')!.getAttribute('aria-multiselectable')).toBe('true');
     expect(el.querySelector(`label[for="${pick('criteria').id}"]`)!.textContent).toBe('Group of criteria');
+  });
+});
+
+describe('the details of an omitted block (#280)', () => {
+  it('describes the block, not its first cell, and starts a thread on the block itself', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    const view = setDetailPanel(setFocus(both(), { alternativeId: 'seoul', criterionId: 'eu-residency-path' }), true);
+    mount({ analysis: relocation, measure: 'score', source, identity: anonymousIdentity({ id: 'dana', displayName: 'Dana' }), view });
+    const panel = el.querySelector<HTMLElement>('aside.comparanda-panel')!;
+    expect(panel.getAttribute('data-panel')).toBe('block');
+    expect(panel.querySelector('[data-panel-heading]')!.textContent).toMatch(/^Block: EU\b.*, Asia\b/);
+    const block = panel.querySelector('[data-detail="block"]')!;
+    expect(block.textContent).toContain(`All 2 cells: This criterion does not apply to this alternative. ${REASON.charAt(0).toUpperCase()}${REASON.slice(1)}.`);
+    expect(block.textContent).toContain('Options: Taipei, Seoul.');
+    expect(block.textContent).toContain('Criteria: Path to EU residency.');
+    // A thread started here is about the block.
+    const threads = panel.querySelector<HTMLElement>('[data-detail="threads"]')!;
+    const box = threads.querySelector('textarea')!;
+    expect(threads.querySelector(`label[for="${box.id}"]`)!.textContent).toMatch(/^Start a thread on the block /);
+    await userEvent.click(box);
+    await userEvent.keyboard('does an EU path matter for Asia at all?');
+    await userEvent.click(Array.from(box.closest('form')!.querySelectorAll('button')).find((b) => b.textContent === 'Start thread')!);
+    await new Promise((r) => setTimeout(r, 0));
+    expect((await source.getOne(relocation.id))!.threads.at(-1)!.anchor).toMatchObject({ scope: 'group-pair', groupId: 'g-asia', otherGroupId: 'g-eu' });
+  });
+
+  const startOnBlock = async (view: ViewState, authorize?: MountMatrixProps['authorize']) => {
+    const source = inMemoryAnalysisSource(relocation);
+    mount({ analysis: relocation, measure: 'score', source, identity: anonymousIdentity({ id: 'dana', displayName: 'Dana' }), view: setDetailPanel(view, true), ...(authorize ? { authorize } : {}) });
+    const threads = el.querySelector<HTMLElement>('aside.comparanda-panel [data-detail="threads"]')!;
+    const box = threads.querySelector('textarea');
+    return { source, threads, box };
+  };
+
+  it('is about the block transposed too', async () => {
+    const { threads, box } = await startOnBlock(setFocus(transpose(both()), { alternativeId: 'taipei', criterionId: 'eu-residency-path' }));
+    expect(el.querySelector('aside.comparanda-panel')!.getAttribute('data-panel')).toBe('block');
+    expect(threads.querySelector(`label[for="${box!.id}"]`)!.textContent).toMatch(/^Start a thread on the block Asia \u00d7 EU/);
+  });
+
+  it('is about the declared block when a band is the remainder, which has no group of its own', async () => {
+    // Alternatives banded by Europe and the Americas: Asia falls in the remainder band.
+    const view = setFocus(setGrouping(both(), 'alternatives', ['g-europe', 'g-americas']), { alternativeId: 'taipei', criterionId: 'eu-residency-path' });
+    const { threads, box } = await startOnBlock(view);
+    expect(el.querySelector('aside.comparanda-panel')!.getAttribute('data-panel')).toBe('block');
+    expect(threads.querySelector(`label[for="${box!.id}"]`)!.textContent).toMatch(/^Start a thread on the block Asia \u00d7 EU/);
+  });
+
+  it('keeps the cell first when the host allows no thread on the block, rather than offering none', async () => {
+    const noBlocks: MountMatrixProps['authorize'] = (r) => !('target' in r && r.target?.kind === 'group-pair') || { enabled: false, reason: 'blocks are not discussed here.' };
+    const { threads, box } = await startOnBlock(setFocus(both(), { alternativeId: 'taipei', criterionId: 'eu-residency-path' }), noBlocks);
+    expect(box).not.toBeNull();
+    expect(threads.querySelector(`label[for="${box!.id}"]`)!.textContent).toMatch(/^Start a thread on this cell/);
   });
 });

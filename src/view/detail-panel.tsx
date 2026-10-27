@@ -27,10 +27,21 @@ import { attribution, type Vouched } from '../core/identity.js';
 import type { Author, Independence } from '../core/schema/provenance.js';
 import type { ViewerContext } from '../core/schema/redaction.js';
 import { aliasesOf, measurementFor } from '../core/schema/structure.js';
+import { cellWords } from '../core/cell-words.js';
 import type { Session } from '../core/view-state.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
 import { Threads, type ThreadWrites } from './threads.js';
 import type { Affordances } from '../core/affordances.js';
+
+/** An omitted block the reader is on (#280): its bands, how many cells, their members by name, why, and the group pair declared on it. */
+export interface PanelBlock {
+  alternatives: { band: string; labels: string[] };
+  criteria: { band: string; labels: string[] };
+  cells: number;
+  reason: string | undefined;
+  /** The declaration's group pair, a remainder band's block included: what a thread started here is about. */
+  pair: readonly [string, string] | undefined;
+}
 
 export interface DetailPanelProps {
   analysis: Analysis;
@@ -55,6 +66,8 @@ export interface DetailPanelProps {
   /** Asked before any thread write is offered. */
   affordances: Affordances;
   writes?: ThreadWrites | undefined;
+  /** The omitted block at the reader's position, when they are on one (#280): the panel describes it, not its first cell. */
+  block?: PanelBlock | undefined;
 }
 
 const INDEPENDENCE_SAID: Readonly<Record<Independence, string>> = {
@@ -87,7 +100,8 @@ export function DetailPanel(props: DetailPanelProps) {
   const title = alternative && criterion
     ? `${criterion.label}, ${alternative.label}`
     : alternative?.label ?? criterion?.label ?? analysis.title ?? analysis.subject.question;
-  const kind = alternative && criterion ? 'cell' : alternative ? words.alternative : criterion ? words.criterion : 'analysis';
+  const block = props.block;
+  const kind = block ? 'block' : alternative && criterion ? 'cell' : alternative ? words.alternative : criterion ? words.criterion : 'analysis';
   return (
     <aside
       class="comparanda-panel" role="complementary" aria-labelledby={headingId} data-panel={kind}
@@ -99,12 +113,20 @@ export function DetailPanel(props: DetailPanelProps) {
     >
       <div class="comparanda-panel-head">
         <h2 id={headingId} tabIndex={-1} data-panel-heading="">
-          <span class="comparanda-panel-kind">{`${capitalise(kind)}: `}</span>{title}
+          <span class="comparanda-panel-kind">{`${capitalise(kind)}: `}</span>{block ? `${block.criteria.band}, ${block.alternatives.band}` : title}
         </h2>
         <button type="button" class="comparanda-panel-close" onClick={onClose}>Close details</button>
       </div>
       <p class="comparanda-panel-hint">Escape returns to the matrix; the details stay open and follow your position.</p>
-      {alternative && criterion
+      {block
+        ? (
+          <section data-detail="block">
+            <p>{`All ${block.cells} cells: ${cellWords(undefined, { inapplicable: true, vocabulary: props.vocabulary, criterionId: criterion!.id }).text}${block.reason ? ` ${capitalise(block.reason)}.` : ''}`}</p>
+            <p>{`${capitalise(words.alternatives)}: ${block.alternatives.labels.join(', ')}.`}</p>
+            <p>{`${capitalise(words.criteria)}: ${block.criteria.labels.join(', ')}.`}</p>
+          </section>
+        )
+        : alternative && criterion
         ? <CellSection {...props} alternativeId={alternative.id} criterionId={criterion.id} />
         : alternative
           ? <AlternativeSection {...props} alternativeId={alternative.id} />
@@ -114,6 +136,7 @@ export function DetailPanel(props: DetailPanelProps) {
       <Threads
         analysis={analysis} measure={props.measure} affordances={props.affordances} writes={props.writes} idBase={headingId} vouched={props.vouched}
         position={{ alternativeId: alternative?.id, criterionId: criterion?.id }}
+        pair={block?.pair}
       />
     </aside>
   );
