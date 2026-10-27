@@ -566,5 +566,7 @@ describe('naming a local identity before its first write (#193)', () => {
     release();
     await settled();
     expect(nameForm()).not.toBeNull();
+    // The name did not count, so the reader is not sent to the heading as though it had.
+    expect(document.activeElement).not.toBe(panel().querySelector('[data-panel-heading]'));
   });
 });

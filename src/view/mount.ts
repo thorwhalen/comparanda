@@ -16,7 +16,7 @@ import { threadDoing, type Affordance, type Affordances, type ThreadAct } from '
 import type { decideSuggestions as DecideSuggestions } from '../core/suggestions.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
-  anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, isVersioned, takesName, type AnalysisSource, type IdentityProvider, type DataChangeEvent, type DataProvider,
+  anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, isVersioned, takesName, type AnalysisSource, type DataChangeEvent, type DataProvider, type IdentityProvider,
 } from '../store/index.js';
 
 /** Who writes when the host names no one: usable, not a stub (ADR-0012). */
@@ -323,17 +323,19 @@ export function mountMatrix(
   /**
    * The name a local identity writes under, taken from the panel (#193): once
    * it answers to it, the field is gone. Never a rename: an identity named
-   * meanwhile (another tab, the host) keeps the name it has.
+   * meanwhile (another tab, the host) keeps the name it has. Resolves to
+   * whether the name counts: not for an identity the host has since replaced.
    */
-  const takeName = async (typed: string) => {
+  const takeName = async (typed: string): Promise<boolean> => {
     const identity = inForce();
     if (destroyed || !takesName(identity)) throw new Error('this matrix\'s identity does not take a name.');
     const already = await identity.current();
     const author = already.id === DEFAULT_IDENTITY_ID ? await identity.name(typed) : already;
     // Only the identity still in force: one the host has since replaced keeps its own.
-    if (destroyed || inForce() !== identity) return;
+    if (destroyed || inForce() !== identity) return false;
     known = { identity, id: author.id };
     refreshViewer();
+    return true;
   };
   /** A thread's anchor in a document; absent, the thread's own write says there is no such thread. */
   const anchorIn = (threadId: string) => (a: Analysis) => a.threads.find((t) => t.id === threadId)?.anchor;

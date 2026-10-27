@@ -29,9 +29,10 @@ export interface ThreadWrites {
   /**
    * Give the writer a name before their first write (#193). Present only while
    * the identity is one that takes a typed name (`localIdentity()`) and has
-   * none; absent, the panel asks for no name.
+   * none; absent, the panel asks for no name. Resolves to whether the name
+   * counts: not when the host has replaced the identity meanwhile.
    */
-  name?(typed: string): Promise<void>;
+  name?(typed: string): Promise<boolean>;
 }
 
 export interface ThreadsProps {
@@ -198,14 +199,13 @@ function useSend(send: (text: string) => Promise<void>, empty: string) {
  * default 2). It says where the name is kept and that others see it as
  * unverified, because both are true and neither is obvious.
  */
-function NameForm({ name, idBase }: { name: (typed: string) => Promise<void>; idBase: string }) {
+function NameForm({ name, idBase }: { name: (typed: string) => Promise<boolean>; idBase: string }) {
   const form = useRef<HTMLFormElement>(null);
   const { draft, setDraft, error, busy, submit } = useSend(async (text) => {
     // Taken now: once the name is taken the form leaves the tree, and focus goes back to the panel's heading.
     const tree = treeOf(form.current!);
-    await name(text);
-    // Still here (the host swapped the identity meanwhile): focus stays where the reader is.
-    if (!form.current) tree.getElementById(idBase)?.focus();
+    // Not counted (the host swapped the identity meanwhile): focus stays where the reader is.
+    if (await name(text)) tree.getElementById(idBase)?.focus();
   }, 'type a name first.');
   return (
     <form ref={form} class="comparanda-compose" onSubmit={submit} data-detail="name">
