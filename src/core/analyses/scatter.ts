@@ -15,10 +15,13 @@
  * values itself.
  *
  * No DOM. A point is placed only where both of its values are numbers; one
- * that is not is listed, with the tiers it still has, so it never vanishes.
+ * that is not is listed, with the tiers it still has and why each value is
+ * absent (ADR-0009: no bare nulls), so it never vanishes.
  */
 import type { Analysis } from '../schema/analysis.js';
-import { makeCellReader } from '../schema/analysis.js';
+import { makeCellReader, vocabularyOf } from '../schema/analysis.js';
+import { makeInapplicability } from '../schema/groups.js';
+import { NOT_APPLICABLE, NOT_ASSESSED } from '../schema/missingness.js';
 import { measurementFor } from '../schema/structure.js';
 import { dominance, EXCLUSION_WORDS, type DominanceResult, type ExcludedCriterion } from './dominance.js';
 
@@ -40,6 +43,9 @@ export interface ScatterPoint {
   /** Its value on each axis, when that value is a number; otherwise it is listed, not placed. */
   x: number | undefined;
   y: number | undefined;
+  /** Why there is no number on an axis, in words, when there is none: the reason's meaning, a refusal, a withholding. */
+  xAbsent: string | undefined;
+  yAbsent: string | undefined;
   /** Its tier on these two criteria. */
   here: DominanceTier;
   /** Its tier across every criterion that admits a dominance comparison. */
@@ -48,22 +54,27 @@ export interface ScatterPoint {
   dominatedBy: string[];
 }
 
-export type ScatterModel =
-  | {
-    usable: true;
-    axes: readonly [ScatterAxis, ScatterAxis];
-    points: ScatterPoint[];
-    /** What the view must call the front it draws: on these two criteria, not overall. */
-    caption: string;
-    /** The full-criteria comparison's basis, in words (ADR-0019: a result that does not name its basis is not interpretable). */
-    overallBasis: string;
-    notes: string[];
-  }
-  | {
-    usable: false;
-    /** Why there is no scatter for this pair, in words. */
-    reason: string;
-  };
+/** A scatter that can be drawn. */
+export interface UsableScatterModel {
+  usable: true;
+  measure: string;
+  axes: readonly [ScatterAxis, ScatterAxis];
+  points: ScatterPoint[];
+  /** What the view must call the front it draws: on these two criteria, not overall. */
+  caption: string;
+  /** The full-criteria comparison's basis, in words (ADR-0019: a result that does not name its basis is not interpretable). */
+  overallBasis: string;
+  /** What the comparison on the two criteria says of itself: what was withheld, excluded, compared over a range. */
+  notes: string[];
+  /** The same, of the comparison across every criterion, which the second mark comes from (ADR-0019 clause 9). */
+  overallNotes: string[];
+}
+
+export type ScatterModel = UsableScatterModel | {
+  usable: false;
+  /** Why there is no scatter for this pair, in words. */
+  reason: string;
+};
 
 export interface ScatterOptions {
   measure: string;
@@ -74,6 +85,11 @@ export interface ScatterOptions {
 
 /** The words the view puts on the front it draws (ADR-0026). */
 export const SCATTER_CAPTION = 'non-dominated on these two criteria';
+
+/** The criteria a scatter can be drawn over: those a dominance comparison can use, in document order. */
+export function scatterCriteria(a: Analysis, measure: string): string[] {
+  return dominance(a, { measure }).basis;
+}
 
 /** Which tier `dominance` put an alternative in. */
 function tierIn(result: DominanceResult, id: string): DominanceTier {
@@ -106,25 +122,41 @@ export function scatterModel(a: Analysis, { measure, criteria, usePracticalToler
     return { criterionId: id, label: c.label, range: m?.range && { min: m.range.min, max: m.range.max }, preference: m?.preference };
   };
   const reader = makeCellReader(a, measure);
+  const vocabulary = vocabularyOf(a);
+  const inapplicable = makeInapplicability(a);
   const numberAt = (alt: string, id: string) => {
     const v = reader.read(alt, id)?.value;
     return typeof v === 'number' ? v : undefined;
+  };
+  /** Why a cell has no number, read as the matrix reads it: a refusal, a reason's meaning, a declared block, or nobody has looked. */
+  const absentAt = (alt: string, id: string): string | undefined => {
+    const r = reader.read(alt, id);
+    const mean = (code: string) => vocabulary.means(code, id)?.trim() || `absent for a reason this analysis does not describe ("${code}")`;
+    if (typeof r?.value === 'number') return undefined;
+    if (r?.refused !== undefined) return `not shown: ${r.refused}`;
+    if (r?.value !== undefined) return `not a number (${String(r.value)})`;
+    if (r?.missing) return mean(r.missing.code);
+    return mean(inapplicable(alt, id) ? NOT_APPLICABLE : NOT_ASSESSED);
   };
   const points = a.alternatives.filter((x) => !x.tombstoned).map((alt): ScatterPoint => ({
     alternativeId: alt.id,
     label: alt.label,
     x: numberAt(alt.id, xId),
     y: numberAt(alt.id, yId),
+    xAbsent: absentAt(alt.id, xId),
+    yAbsent: absentAt(alt.id, yId),
     here: tierIn(here, alt.id),
     overall: tierIn(overall, alt.id),
     dominatedBy: here.edges.filter((e) => e.dominated === alt.id).map((e) => e.dominator),
   }));
   return {
     usable: true,
+    measure,
     axes: [axis(xId), axis(yId)],
     points,
     caption: SCATTER_CAPTION,
     overallBasis: overall.basisDescription,
     notes: here.notes,
+    overallNotes: overall.notes,
   };
 }

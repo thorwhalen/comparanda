@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Analysis } from '../src/core/schema/analysis.js';
 import { dominance } from '../src/core/analyses/dominance.js';
-import { SCATTER_CAPTION, scatterModel, type ScatterModel } from '../src/core/analyses/scatter.js';
+import { SCATTER_CAPTION, scatterCriteria, scatterModel, type ScatterModel } from '../src/core/analyses/scatter.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
 const example = (name: string) => Analysis.parse(JSON.parse(readFileSync(join(examples, `${name}.json`), 'utf8')));
@@ -50,6 +50,17 @@ describe('scatterModel', () => {
     expect(m.axes.map((a) => [a.criterionId, a.range, a.preference])).toEqual([
       ['rent', { min: 0, max: 6000 }, 'decreasing'], ['flight-hours', { min: 0, max: 24 }, 'decreasing'],
     ]);
+  });
+
+  it('says why a value is absent, as the matrix does, and leaves a tombstoned alternative out', () => {
+    const m = usable(scatterModel(relocation, { measure: 'score', criteria: ['flight-hours', 'eu-residency-path'] }));
+    const taipei = m.points.find((p) => p.alternativeId === 'taipei')!;
+    expect([taipei.x, taipei.yAbsent]).toEqual([15.5, 'This criterion does not apply to this alternative.']);
+    expect(taipei.xAbsent).toBeUndefined();
+    const doc = structuredClone(relocation);
+    doc.alternatives.find((a) => a.id === 'seoul')!.tombstoned = true;
+    expect(usable(scatterModel(doc, { measure: 'score', criteria: ['rent', 'flight-hours'] })).points.map((p) => p.alternativeId)).not.toContain('seoul');
+    expect(scatterCriteria(relocation, 'score')).toEqual(dominance(relocation, { measure: 'score' }).basis);
   });
 
   it('refuses, saying why, a pair that admits no dominance comparison', () => {
