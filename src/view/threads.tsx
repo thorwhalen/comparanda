@@ -8,7 +8,7 @@
  * control that does nothing. The writes themselves are `ThreadWrites`, which
  * `mountMatrix` implements over the source; this file only collects words.
  */
-import { useRef, useState } from 'preact/hooks';
+import { useId, useRef, useState } from 'preact/hooks';
 
 import type { Affordances } from '../core/affordances.js';
 import type { Analysis } from '../core/schema/analysis.js';
@@ -110,6 +110,8 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   const mayReply = affordances.comment(target, 'reply', { threadId: thread.id });
   const mayToggle = affordances.comment(target, thread.resolved ? 'reopen' : 'resolve', { threadId: thread.id });
   const [error, setError] = useFailure();
+  // The reply form's ids from Preact, not from the thread's id: a thread id is a free string (spaces, "name", "new") and would collide or split.
+  const replyId = useId();
   const [busy, setBusy] = useState(false);
   // A ref, not `busy`: two activations in one task both see the same render.
   const sending = useRef(false);
@@ -147,7 +149,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
         <p class="comparanda-reason">{`Answering this thread is not available: ${mayReply.reason ?? 'not allowed here.'}`}</p>
       )}
       {writes && mayReply.enabled && (
-        <Compose label="Reply" action="Reply" idBase={`${idBase}-${thread.id}`} send={(body) => writes.reply(thread.id, body)} />
+        <Compose label="Reply" action="Reply" idBase={replyId} send={(body) => writes.reply(thread.id, body)} />
       )}
       {writes && !mayToggle.enabled && (
         <p class="comparanda-reason">{`${thread.resolved ? 'Reopening' : 'Resolving'} this thread is not available: ${mayToggle.reason ?? 'not allowed here.'}`}</p>

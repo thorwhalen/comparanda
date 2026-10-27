@@ -591,6 +591,24 @@ describe('a refusal is on the field it refuses (#276)', () => {
     expect(box().getAttribute('aria-describedby')).toBeNull();
   });
 
+  it('keeps each reply box pointing at its own reason, whatever its thread is called', async () => {
+    let doc = relocation;
+    for (const threadId of ['name', 'a b']) {
+      doc = startThread(doc, {
+        threadId, anchor: { scope: 'cell', alternativeId: 'berlin', criterionId: 'winter-daylight', measure: 'score' },
+        comment: { id: `c-${threadId}`, at: '2026-10-27', body: 'first', author: { id: 'dana', displayName: 'Dana', kind: 'human' } },
+      });
+    }
+    mount({ analysis: doc, measure: 'score', source: inMemoryAnalysisSource(doc), identity: dana, view: where });
+    for (const threadId of ['name', 'a b']) {
+      const form = threads().querySelector(`[data-thread="${threadId}"] form`)!;
+      await userEvent.click(Array.from(form.querySelectorAll('button')).find((b) => b.textContent === 'Reply')!);
+      const box = form.querySelector('textarea')!;
+      const ids = box.getAttribute('aria-describedby')!.split(' ');
+      expect(ids.map((id) => document.getElementById(id))).toEqual([form.querySelector('[role="alert"]')]);
+    }
+  });
+
   it('marks the name field invalid, described by its hint and by the reason', async () => {
     mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }), view: where });
     await settled();
