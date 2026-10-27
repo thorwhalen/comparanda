@@ -14,6 +14,7 @@ export * from './core/layout.js';
 export * from './core/assertion-set.js';
 export * from './core/rater-strip.js';
 export * from './core/cell-words.js';
+export * from './core/dot-plot.js';
 export * from './core/detail.js';
 export * from './core/activity.js';
 export * from './core/threads.js';
