@@ -142,6 +142,25 @@ export type EditRequest = CellEditRequest | DocumentEditRequest;
 export type Authorize = (request: EditRequest) => Affordance | boolean;
 
 /**
+ * What a host's answer allows, failing closed: only an explicit yes from the
+ * host allows. A host that throws, answers late (a promise), or answers
+ * anything but `true` or an enabled `Affordance` has not said yes, and is never
+ * overruled into one. The one reading of a host's answer, for the analysis and
+ * its saved views alike (#71).
+ */
+export function hostAnswer(ask: () => unknown): Affordance {
+  try {
+    const host = ask();
+    if (host instanceof Promise) return refuse('the host answered later than asked: `authorize` must answer at once, with true, false or an Affordance.');
+    if (host === true) return ALLOWED;
+    const { enabled, reason } = ((typeof host === 'object' && host) || {}) as Partial<Affordance>;
+    return enabled === true ? ALLOWED : refuse(typeof reason === 'string' && reason ? reason : NOT_AUTHORISED);
+  } catch (error) {
+    return refuse(`the host could not decide whether you may do this (${error instanceof Error ? error.message : String(error)}).`);
+  }
+}
+
+/**
  * The document's own policy on writing to one cell: `Analysis.locked` and
  * `Cell.readOnly`. The one place their refusal reasons are written; the store's
  * `cellAffordanceOf` composes it with the provider's capability.
@@ -306,21 +325,8 @@ export function makeAffordances(
     return ALLOWED;
   };
 
-  const withHost = (request: EditRequest, ownPolicy: Affordance): Affordance => {
-    if (!ownPolicy.enabled || !authorize) return ownPolicy;
-    // The intersection fails closed: only an explicit yes from the host allows.
-    // A host that throws, or answers anything but `true` or an enabled
-    // `Affordance`, has not said yes -- and is never overruled into one.
-    try {
-      const host: unknown = authorize(request);
-      if (host instanceof Promise) return refuse('the host answered later than asked: `authorize` must answer at once, with true, false or an Affordance.');
-      if (host === true) return ALLOWED;
-      const { enabled, reason } = ((typeof host === 'object' && host) || {}) as Partial<Affordance>;
-      return enabled === true ? ALLOWED : refuse(typeof reason === 'string' && reason ? reason : NOT_AUTHORISED);
-    } catch (error) {
-      return refuse(`the host could not decide whether you may do this (${error instanceof Error ? error.message : String(error)}).`);
-    }
-  };
+  const withHost = (request: EditRequest, ownPolicy: Affordance): Affordance =>
+    (!ownPolicy.enabled || !authorize ? ownPolicy : hostAnswer(() => authorize(request)));
 
   const documentRequest = (
     action: DocumentEditRequest['action'], doing: string, target: EditTarget | undefined, thread?: ThreadAct,

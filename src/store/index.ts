@@ -565,3 +565,4 @@ export function writeSafety(
 
 export * from './view-state-store.js';
 export * from './versioned-source.js';
+export * from './saved-views.js';
