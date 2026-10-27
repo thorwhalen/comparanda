@@ -144,3 +144,14 @@ The reasoning, the numerical verification of the radar figures, and the wider li
 6. [Evaluating Reordering Strategies for Cluster Identification in Parallel Coordinates — Blumenschein et al., *Computer Graphics Forum* 39(3), EuroVis (2020)](https://onlinelibrary.wiley.com/doi/10.1111/cgf.14000) — axis ordering optimises for dissimilar neighbours; over 30 strategies, no consensus default.
 7. [Multidimensional mechanics: Performance mapping of natural biological systems using permutated radar charts — Porter & Niksiar, *PLOS ONE* 13(9) (2018)](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0204309)
 8. [Off the Radar: Comparative Evaluation of Radial Visualization Solutions for Composite Indicators — Y. Albo, J. Lanir, P. Bak & S. Rafaeli, *IEEE TVCG* 22(1) (2016)](https://pubmed.ncbi.nlm.nih.gov/26529525/) — radar against other radial designs only.
+
+## Amendment, 2026-10-27: the two-criterion scatter as shipped
+
+From #97. `scatterModel` (`core/analyses/scatter.ts`) runs `dominance` twice: over the two chosen criteria, and over every criterion that admits the comparison. It takes each alternative's ADR-0019 tier from each run and compares no values itself. A pair that admits no dominance comparison (a nominal criterion, no direction, a target preference, no range), or the same criterion twice, is refused with its reason.
+
+`ScatterPanel` (`view/scatter.tsx`) is an analysis panel the composition root registers, like `AgreementPanel`, so the standalone page never carries it. Its rules:
+
+1. **The front is captioned "Non-dominated on these two criteria"**, and the caption names the alternatives on it and says it is not the frontier across every criterion.
+2. **The tiers are shapes.** On the two criteria: a filled dot (non-dominated), a ring (possibly dominated: it depends on blanks) and a cross (dominated). Across every criterion, as a second mark around the first: no square, a dashed square or a square. Every mark is drawn in the text colour, so no distinction rests on a hue.
+3. **Better is up and to the right**, whichever way each criterion's preference points. Each axis says so.
+4. **Nothing vanishes.** A table carries every alternative's two values and both tiers in words, with who dominates it here. An alternative without a number on one of the two criteria is not placed, but it is listed as unplaced and keeps its tiers in the table.
