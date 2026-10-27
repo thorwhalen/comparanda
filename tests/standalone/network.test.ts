@@ -173,6 +173,17 @@ describe('a planted network call fails the build', () => {
       setup: "new MutationObserver(() => { if (document.querySelector('aside.comparanda-panel blockquote')) hidden('https://example.invalid/excerpt'); }).observe(document.body, { subtree: true, childList: true });",
     });
   });
+  it('ids are data, never selectors: an id with a quote or a space, or shared across the axes, is driven like any other', async () => {
+    // Every reference renamed with the id: ids are whole JSON strings, so a replace on the quoted form is exact.
+    let text = JSON.stringify(relocationJson);
+    for (const [from, to] of [['lisbon', 'lis"bon'], ['berlin', 'old berlin'], ['rent', 'seoul']]) text = text.replaceAll(JSON.stringify(from), JSON.stringify(to));
+    const built = await buildStandalone(JSON.parse(text), { budget: false }).catch((e: unknown) => e);
+    expect(built).not.toBeInstanceOf(Error);
+  });
+  it('a right-to-left page is dragged on its own side', async () => {
+    await expect(buildStandalone(relocationJson, { entry: await plantedEntry('rtl', '', { setup: "document.documentElement.dir = 'rtl';" }), budget: false }))
+      .resolves.toBeDefined();
+  });
   it('a details panel that never opens fails it: no reason or excerpt it shows was drawn', async () => {
     const entry = await plantedEntry('no-panel', '', { setup: "document.addEventListener('click', (e) => e.stopPropagation(), true);" });
     const failure = await buildStandalone(relocationJson, { entry, budget: false }).catch((e: unknown) => e);

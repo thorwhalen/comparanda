@@ -242,7 +242,7 @@ export async function exerciseInBrowser(options: BrowserCheckOptions): Promise<B
         const alert = await page.locator('[role="alert"]').allTextContents();
         if (alert.length > 0) said(`the page could not show the comparison: ${alert.join(' ')}`);
         // Every cell and header is focused, pressed and clicked: each one's handlers run. The first click
-        // opens the details panel, which follows; a task between cells lets it draw each one, not only the last.
+        // opens the details panel, which follows the reader onto each one.
         const panels = await page.evaluate(async () => {
           const headings = new Set<string>();
           for (const cell of Array.from(document.querySelectorAll<HTMLElement>('[data-cell]'))) {
@@ -250,6 +250,7 @@ export async function exerciseInBrowser(options: BrowserCheckOptions): Promise<B
             for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
               cell.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, { bubbles: true, cancelable: true }));
             }
+            // A task between cells, so whatever watches the page in microtasks sees each cell's panel, not only the last.
             // A message, not a timer: the clock is simulated, and its timers do not run until told. Inline, not
             // a named helper: a bundler that keeps function names would wrap it in a helper the page lacks.
             await new Promise<void>((resolve) => { const c = new MessageChannel(); c.port1.onmessage = () => resolve(); c.port2.postMessage(0); });
@@ -258,8 +259,9 @@ export async function exerciseInBrowser(options: BrowserCheckOptions): Promise<B
           }
           return headings.size;
         });
-        // A pass that drew one panel drew no other cell's reason or excerpt.
-        if (panels < 2) said(`the details panel was drawn for ${panels === 0 ? 'no position' : 'one position only'}, so no other cell's reason or excerpt was`);
+        // A pass that drew one panel drew no other cell's reason or excerpt. Only asked of a matrix that offers details.
+        const offersDetails = (await page.locator('.comparanda-matrix[data-details]').count()) > 0;
+        if (offersDetails && panels < 2) said(`the details panel was drawn for ${panels === 0 ? 'no position' : 'one position only'}, so no other cell's reason or excerpt was`);
         for (const key of ['Control+Home', 'ArrowRight', 'ArrowDown', 'End', 'Home', 'Control+End']) await page.keyboard.press(key);
         for (const axis of AXES) {
           const headers = page.locator(`th[data-axis="${axis}"][data-entry]`);
@@ -311,8 +313,9 @@ const AXES = ['criteria', 'alternatives'] as const;
 /** A header's move handle, as the matrix draws it. */
 const HANDLE = '.comparanda-handle';
 
-/** A header row or column's order, as drawn. */
-const orderOf = (headers: Locator) => headers.evaluateAll((ths) => ths.map((th) => th.getAttribute('data-entry')).join(' '));
+/** A header row or column's order, as drawn: ids, which may hold any character, so never spliced into a selector. */
+const orderOf = (headers: Locator) => headers.evaluateAll((ths) => ths.map((th) => th.getAttribute('data-entry') ?? ''));
+const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /** Focus a header and press keys on it. */
 async function press(page: Page, header: Locator, keys: readonly string[]): Promise<void> {
@@ -348,11 +351,10 @@ export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
         const before = await orderOf(headers);
         await press(page, headers.nth(at), ['Space', 'End', 'Enter']);
         const after = await orderOf(headers);
-        if (after === before) continue;
-        // Moved again, and put back with Escape: it is where it was.
-        const moved = page.locator(`th[data-entry="${after.split(' ').at(-1)}"]`).first();
-        await press(page, moved, ['Space', 'Home', 'Escape']);
-        return (await orderOf(headers)) === after ? undefined : 'a move cancelled with Escape did not put the header back';
+        if (same(after, before)) continue;
+        // Moved again, and put back with Escape: it is where it was. Found by position on this axis, not by id.
+        await press(page, headers.nth(after.indexOf(before[at]!)), ['Space', 'Home', 'Escape']);
+        return same(await orderOf(headers), after) ? undefined : 'a move cancelled with Escape did not put the header back';
       }
       return 'no header could be moved';
     },
@@ -366,7 +368,7 @@ export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
       if ((await later.count()) === 0) return 'it did not open, or offered no later place';
       await later.first().focus();
       await page.keyboard.press('Enter');
-      return (await orderOf(headers)) !== before ? undefined : 'choosing a later place moved nothing';
+      return !same(await orderOf(headers), before) ? undefined : 'choosing a later place moved nothing';
     },
   },
   {
@@ -379,10 +381,10 @@ export const READER_ACTS: readonly ReaderAct[] = Object.freeze([
       if (!from || !to) return 'a header or its handle is not on screen';
       await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
       await page.mouse.down();
-      // Past the far edge of the next header: dropped after it.
-      await page.mouse.move(to.x + to.width * 0.9, to.y + to.height * 0.9, { steps: 5 });
+      // Near the next header's far side, so it is dropped after it: right of its middle, or left of it under RTL.
+      await page.mouse.move(to.x + to.width * (to.x >= from.x ? 0.9 : 0.1), to.y + to.height * 0.9, { steps: 5 });
       await page.mouse.up();
-      return (await orderOf(headers)) !== before ? undefined : 'the drop moved nothing';
+      return !same(await orderOf(headers), before) ? undefined : 'the drop moved nothing';
     },
   },
 ]);
