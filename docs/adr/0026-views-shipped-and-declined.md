@@ -157,6 +157,7 @@ From #97. `scatterModel` (`core/analyses/scatter.ts`) runs `dominance` twice: ov
 4. **Nothing vanishes.** A table carries every alternative's two values and both tiers in words, with who dominates it here, and it names the measure. An alternative without a number on one of the two criteria is not placed. It is listed as unplaced, with why each value is absent (the reason's meaning, a refusal, a withholding, a declared block: ADR-0009, no bare nulls), and keeps its tiers. The caption names it too when it is on the front. Alternatives at the same place are drawn side by side under one label.
 5. **Both comparisons say what they are.** The notes of the comparison on the two criteria are shown, and so are those of the comparison across every criterion, which the second mark comes from. That second set includes ADR-0019 clause 9's count of cells withheld from the reader.
 6. **No line through the front.** Between two non-dominated alternatives there is nothing, and a line would draw a continuum the data does not have. The marks are the front.
+
 ## Amendment, 2026-10-27: the small-multiple dot plots as shipped
 
 From #96. `dotPlot` (`core/dot-plot.ts`) gives, for one criterion:

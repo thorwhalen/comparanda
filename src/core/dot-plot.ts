@@ -34,6 +34,7 @@ import { assertionVisibility, type ViewerContext } from './schema/redaction.js';
 import { measurementFor, type Criterion } from './schema/structure.js';
 import { isWithheldFromReader, liveAssertions, type ScalarValue } from './schema/values.js';
 import { stripLevels } from './rater-strip.js';
+import { cellWords } from './cell-words.js';
 
 /** What the missing lane is keyed by: a core reason, or `undeclared` for a code the analysis does not define. */
 export type MissingLane = MissingCode | 'undeclared';
@@ -124,8 +125,8 @@ function plotOf(
   const ticks = ticksFor(c, measure, maxLevels);
   if (typeof ticks === 'string') return { usable: false, criterionId, label: c.label, reason: ticks };
   const lanes = new Set<MissingLane>();
-  const meansOf = (code: string) => vocabulary.means(code, criterionId)?.trim()
-    || `Absent for a reason this analysis does not ${vocabulary.resolve(code, criterionId).facts ? 'describe' : 'define'} (\u201c${code}\u201d).`;
+  // An absence in the matrix's own words (`cellWords`), so a panel never says a reason otherwise.
+  const meansOf = (code: string) => cellWords({ missing: { code } }, { inapplicable: false, vocabulary, criterionId }).text;
   // By value and by type: a "3" is not the level 3.
   const tickOf = (v: ScalarValue) => ticks.findIndex((t) => t === v);
 
