@@ -494,7 +494,11 @@ describe('naming a local identity before its first write (#193)', () => {
     for (let i = 0; i < 40 && document.activeElement !== nameBox(); i += 1) await userEvent.tab();
     expect(document.activeElement).toBe(nameBox());
     await userEvent.keyboard('   {Enter}');
-    expect(nameForm()!.querySelector('[role="alert"]')!.textContent).toBe('Name not kept: type a name first.');
+    const first = nameForm()!.querySelector('[role="alert"]')!;
+    expect(first.textContent).toBe('Name not kept: type a name first.');
+    // The same refusal twice is a new alert, so it is heard again.
+    await userEvent.keyboard('{Enter}');
+    expect(nameForm()!.querySelector('[role="alert"]')).not.toBe(first);
     expect(storage.getItem('comparanda.identity')).toBeNull();
     expect(nameForm()).not.toBeNull();
   });
@@ -507,15 +511,45 @@ describe('naming a local identity before its first write (#193)', () => {
     expect(nameForm()).toBeNull();
     handles.splice(0).forEach((x) => x.destroy());
 
-    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: dana, view: where });
-    await settled();
-    expect(nameForm()).toBeNull();
-    handles.splice(0).forEach((x) => x.destroy());
+    // Anonymous, given or by default, is an identity that takes no name: it is not asked for one.
+    for (const identity of [dana, anonymousIdentity(), undefined]) {
+      mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), ...(identity ? { identity } : {}), view: where });
+      await settled();
+      expect(nameForm()).toBeNull();
+      expect(threads().querySelector('textarea')).not.toBeNull();
+      handles.splice(0).forEach((x) => x.destroy());
+    }
 
     // The standalone page's case: no source, so no writes, so no name.
     mount({ analysis: relocation, measure: 'score', identity: localIdentity({ storage: memory() }), view: where });
     await settled();
     expect(nameForm()).toBeNull();
+  });
+
+  it('is not shown, even for a moment, to a named identity that has yet to say so', async () => {
+    const storage = memory();
+    await localIdentity({ storage }).name('Ada');
+    const named = localIdentity({ storage });
+    let release!: () => void;
+    const held = { ...named, current: async () => { await new Promise<void>((r) => { release = r; }); return named.current(); } };
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: held, view: where });
+    await settled();
+    expect(nameForm()).toBeNull();
+    release();
+    await settled();
+    expect(nameForm()).toBeNull();
+  });
+
+  it('never renames: an identity named meanwhile, in another tab, keeps the name it has', async () => {
+    const storage = memory();
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage }), view: where });
+    await settled();
+    await localIdentity({ storage }).name('Ada');
+    await userEvent.click(nameBox());
+    await userEvent.keyboard('Bob{Enter}');
+    await settled();
+    expect(nameForm()).toBeNull();
+    expect(JSON.parse(storage.getItem('comparanda.identity')!).displayName).toBe('Ada');
   });
 
   it('a name taken for an identity the host has since replaced does not count for the new one', async () => {

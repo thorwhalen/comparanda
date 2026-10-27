@@ -204,7 +204,8 @@ function NameForm({ name, idBase }: { name: (typed: string) => Promise<void>; id
     // Taken now: once the name is taken the form leaves the tree, and focus goes back to the panel's heading.
     const tree = treeOf(form.current!);
     await name(text);
-    tree.getElementById(idBase)?.focus();
+    // Still here (the host swapped the identity meanwhile): focus stays where the reader is.
+    if (!form.current) tree.getElementById(idBase)?.focus();
   }, 'type a name first.');
   return (
     <form ref={form} class="comparanda-compose" onSubmit={submit} data-detail="name">
@@ -214,7 +215,7 @@ function NameForm({ name, idBase }: { name: (typed: string) => Promise<void>; id
         onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
       />
       <p id={`${idBase}-name-hint`} class="comparanda-panel-hint">
-        What you write here is signed with it. It is kept on this device only, and others see it marked unverified: nobody checks it.
+        Saved on this device, not in an account. It is shown beside what you write, marked unverified: nobody checks it.
       </p>
       <button type="submit" aria-disabled={busy}>Use this name</button>
       {error && <p role="alert" key={error.attempt}>{`Name not kept: ${error.text}`}</p>}

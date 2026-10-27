@@ -16,7 +16,7 @@ import { threadDoing, type Affordance, type Affordances, type ThreadAct } from '
 import type { decideSuggestions as DecideSuggestions } from '../core/suggestions.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import {
-  anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, isVersioned, takesName, type AnalysisSource, type DataChangeEvent, type DataProvider,
+  anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, isVersioned, takesName, type AnalysisSource, type IdentityProvider, type DataChangeEvent, type DataProvider,
 } from '../store/index.js';
 
 /** Who writes when the host names no one: usable, not a stub (ADR-0012). */
@@ -167,18 +167,19 @@ export function mountMatrix(
   /** The last sentence for the live region, and how many have been said, so a repeat is heard again. */
   let announcement: string | undefined;
   let said = 0;
-  /** Who moves things, for the order's provenance: the identity's id once known (ADR-0012). */
-  let actor = DEFAULT_IDENTITY_ID;
-  /** Whether the identity has said who it is yet: until it has, it is not known to lack a name. */
-  let actorKnown = false;
+  /** Who the identity said it is, and which identity said it (ADR-0012). */
+  let known: { identity: IdentityProvider; id: string } | undefined;
+  const inForce = () => current.identity ?? DEFAULT_IDENTITY;
+  /** Who is acting, for the order's provenance and as the viewer: the id the identity in force gave; until it answers, nobody known. */
+  const actor = () => (known?.identity === inForce() ? known.id : undefined);
   /** Who the last render was drawn for, to tell whether a new reader changes what it shows. */
   let drawnFor: string | undefined;
   /** Whether the last render asked for a name (#193). */
   let drawnAskingName = false;
   /** The identity's id as a viewer: the anonymous identity is nobody in particular, and must not be taken for an author who happens to be called that. */
-  const viewerIdOf = (id: string) => (id === DEFAULT_IDENTITY_ID ? undefined : id);
+  const viewerIdOf = (id: string | undefined) => (id === DEFAULT_IDENTITY_ID ? undefined : id);
   /** A name is asked for while the source takes writes and the identity is one that takes a name, known to have none (#193). */
-  const asksName = () => !!current.source && takesName(current.identity ?? DEFAULT_IDENTITY) && actorKnown && actor === DEFAULT_IDENTITY_ID;
+  const asksName = () => !!current.source && takesName(inForce()) && actor() === DEFAULT_IDENTITY_ID;
   /**
    * Redraw if, and only if, the reader now known sees something different from
    * the render drawn for the last one: other authors hidden, or a name asked for
@@ -188,19 +189,17 @@ export function mountMatrix(
     if (destroyed) return;
     const at = now().toISOString();
     const othersHidden = !current.viewer
-      && hiddenAuthors(analysis, { viewerId: drawnFor, now: at }) !== hiddenAuthors(analysis, { viewerId: viewerIdOf(actor), now: at });
+      && hiddenAuthors(analysis, { viewerId: drawnFor, now: at }) !== hiddenAuthors(analysis, { viewerId: viewerIdOf(actor()), now: at });
     if (othersHidden || drawnAskingName !== asksName()) draw();
   };
-  const learnActor = (identity = current.identity ?? DEFAULT_IDENTITY) => {
+  const learnActor = (identity = inForce()) => {
     // Until the new identity answers, nobody known: the previous one must not sign moves made in the gap, or see what only they may.
-    actor = DEFAULT_IDENTITY_ID;
-    actorKnown = false;
+    known = undefined;
     refreshViewer();
     // Only the identity still in force: a slow one the host has since replaced, or cleared, never signs a move.
     identity.current().then((a) => {
-      if ((current.identity ?? DEFAULT_IDENTITY) !== identity) return;
-      actor = a.id;
-      actorKnown = true;
+      if (inForce() !== identity) return;
+      known = { identity, id: a.id };
       refreshViewer();
     }, () => undefined);
   };
@@ -321,15 +320,19 @@ export function mountMatrix(
       'the decisions',
     ),
   };
-  /** The name a local identity writes under, taken from the panel (#193): once it answers to it, the field is gone. */
+  /**
+   * The name a local identity writes under, taken from the panel (#193): once
+   * it answers to it, the field is gone. Never a rename: an identity named
+   * meanwhile (another tab, the host) keeps the name it has.
+   */
   const takeName = async (typed: string) => {
-    const identity = current.identity ?? DEFAULT_IDENTITY;
+    const identity = inForce();
     if (destroyed || !takesName(identity)) throw new Error('this matrix\'s identity does not take a name.');
-    const author = await identity.name(typed);
-    // Only the identity still in force signs as the name: one the host has since replaced keeps its own.
-    if (destroyed || (current.identity ?? DEFAULT_IDENTITY) !== identity) return;
-    actor = author.id;
-    actorKnown = true;
+    const already = await identity.current();
+    const author = already.id === DEFAULT_IDENTITY_ID ? await identity.name(typed) : already;
+    // Only the identity still in force: one the host has since replaced keeps its own.
+    if (destroyed || inForce() !== identity) return;
+    known = { identity, id: author.id };
     refreshViewer();
   };
   /** A thread's anchor in a document; absent, the thread's own write says there is no such thread. */
@@ -344,7 +347,7 @@ export function mountMatrix(
 
   const draw = () => {
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
-    const viewer = current.viewer ?? { viewerId: viewerIdOf(actor), now: now().toISOString() };
+    const viewer = current.viewer ?? { viewerId: viewerIdOf(actor()), now: now().toISOString() };
     drawnFor = viewer.viewerId;
     drawnAskingName = asksName();
     // Without one, the document's own order, so a source's added alternative shows.
@@ -364,7 +367,7 @@ export function mountMatrix(
       onReorder: reorder,
       onEncodingChange: changeEncoding,
       ...(current.notice ? { notice: current.notice } : {}),
-      actor: () => actor,
+      actor: () => actor() ?? DEFAULT_IDENTITY_ID,
       ...(arrange ? { arrange } : {}),
       ...(panels ? { panels } : {}),
       ...(announcement !== undefined ? { announcement } : {}),
