@@ -175,6 +175,14 @@ describe('one rule for what a viewer may see (#293)', () => {
     const strip = raterStripInView(projected, cellOf(projected), { levels: LEVELS })!;
     expect([strip.unseen, strip.absent]).toEqual([1, 0]);
     expect(strip.slots.map((x) => x.count)).toEqual([1, 0, 1, 0, 0]);
+    // With a viewer, in a round that hides nothing: only the projection hides it, and the same holds.
+    const open = Analysis.parse({
+      ...projected,
+      rounds: [{ id: 'r1', index: 1, attribution: 'attributed', feedback: 'full' }],
+      cells: projected.cells.map((c) => ({ ...c, assertions: c.assertions.map((s) => ({ ...s, roundId: 'r1' })) })),
+    });
+    const seen = raterStripInView(open, cellOf(open), { levels: LEVELS, viewer: { viewerId: 'ben', now: '2026-01-01T00:00:00Z' } })!;
+    expect([seen.unseen, seen.absent]).toEqual([1, 0]);
   });
 
   it('sightingOf: unseen, unnamed or named, as the strip and the dot plots both read it', () => {

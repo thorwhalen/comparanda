@@ -27,7 +27,7 @@ import { makeReadings } from './analyses/readings.js';
 import { cellIndex, cellKey, isInapplicable, reducedValue, type Analysis } from './schema/analysis.js';
 import type { CheckStanding, CitationCheck, EvidenceRef } from './schema/evidence.js';
 import { isOrdered, type Measurement } from './schema/measurement.js';
-import { assertionVisibility, standInIds, withoutAuthor, type ViewerContext } from './schema/redaction.js';
+import { assertionVisibility, standingInSet, standInIds, withoutAuthor, type ViewerContext } from './schema/redaction.js';
 import { absenceStanding, NOT_APPLICABLE, NOT_ASSESSED, type AbsenceStanding, type MissingnessVocabulary } from './schema/missingness.js';
 import type { Author } from './schema/provenance.js';
 import { measurementFor } from './schema/structure.js';
@@ -215,11 +215,7 @@ export function cellDetail(
   // The set's description counts people and reads their kind from the authors: for a hidden author that is the author. Each hidden
   // assertion stands as an unknown hand of its own, with no independence claimed: the count is still of assertions, never of raters.
   const inSet = (c: { assertions: Assertion[] }) => (hiddenIds.size === 0 ? c : {
-    assertions: c.assertions.map((s) => {
-      if (!hiddenIds.has(s.id)) return s;
-      const { independence: _independence, ...rest } = withoutAuthor(s, hiddenIds.get(s.id)!);
-      return { ...rest, authorId: hiddenIds.get(s.id)! };
-    }),
+    assertions: c.assertions.map((s) => (hiddenIds.has(s.id) ? standingInSet(s, hiddenIds.get(s.id)!) : s)),
   });
 
   return {

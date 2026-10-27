@@ -46,7 +46,7 @@ export interface RaterStrip {
   readonly absent: number;
   /** The tallest stack, so a drawing can size itself without recounting. */
   readonly tallest: number;
-  /** Live assertions whose value the round hides from this viewer: counted in `label`, never drawn. */
+  /** Live assertions whose value this viewer may not see (the round hides it, or a projection withheld it): counted in `label`, never drawn. */
   readonly unseen: number;
   /** The exact multiset, in words (`describeAssertionSet(...).label`). */
   readonly label: string;
@@ -110,12 +110,14 @@ export function isRaterStrip(value: unknown): value is RaterStrip {
 }
 
 /**
- * The strip as one viewer may see it (ADR-0023): the round's redaction decided
- * here, through `assertionVisibility`, never in the view. An assertion whose
- * value the round hides is not drawn and is counted in the label; one whose
- * author is hidden, or that the viewer may see only as part of a distribution,
- * is drawn as an unknown hand of its own with no independence claimed, so the
- * strip cannot say who rated alike. Without a viewer nothing is hidden.
+ * The strip as one viewer may see it (ADR-0021, ADR-0023): what is hidden
+ * decided here, through `sightingOf`, never in the view. An assertion whose
+ * value the round hides, or a projection withheld, is not drawn and is counted
+ * in the label; one whose author is hidden, or that the viewer may see only as
+ * part of a distribution, is drawn as an unknown hand of its own with no
+ * independence claimed, so the strip cannot say who rated alike. Without a
+ * viewer no round hides anything; a projection still does. Fewer than two
+ * assertions left to draw is no set, so no strip.
  */
 export function raterStripInView(
   analysis: Analysis, cell: Pick<Cell, 'assertions'>,
