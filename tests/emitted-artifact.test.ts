@@ -15,8 +15,9 @@
  */
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { SCHEMA_VERSION } from '../src/core/schema/analysis.js';
@@ -57,11 +58,17 @@ describe('the artifacts exist', () => {
 
 describe('the artifacts are not stale', () => {
   it('re-emitting produces byte-identical files', () => {
-    const before = [readFileSync(documentPath, 'utf8'), readFileSync(vocabPath, 'utf8')];
-    execFileSync('npx', ['tsx', 'scripts/emit-json-schema.ts'], { cwd: root, stdio: 'pipe' });
-    const after = [readFileSync(documentPath, 'utf8'), readFileSync(vocabPath, 'utf8')];
-    expect(after[0], 'schema/comparanda.v1.json is stale; run pnpm emit-schema').toBe(before[0]);
-    expect(after[1], 'schema/vocabularies.v1.json is stale; run pnpm emit-schema').toBe(before[1]);
+    // Emitted beside the committed files, never over them: another test file reads them in parallel (#289).
+    const out = mkdtempSync(join(tmpdir(), 'comparanda-schema-'));
+    try {
+      execFileSync('npx', ['tsx', 'scripts/emit-json-schema.ts', '--out', out], { cwd: root, stdio: 'pipe' });
+      for (const path of [documentPath, vocabPath]) {
+        const name = basename(path);
+        expect(readFileSync(join(out, name), 'utf8'), `schema/${name} is stale; run pnpm emit-schema`).toBe(readFileSync(path, 'utf8'));
+      }
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
   }, 60_000);
 });
 

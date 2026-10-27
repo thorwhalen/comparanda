@@ -29,7 +29,7 @@
  */
 import * as z from 'zod/mini';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Analysis, SCHEMA_VERSION } from '../src/core/schema/analysis.js';
@@ -41,7 +41,16 @@ import { CitationVerdict, SourceType, Stance } from '../src/core/schema/evidence
 import { AuthorKind, AttestationMethod, Independence } from '../src/core/schema/provenance.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = join(here, '..', 'schema');
+/**
+ * Where the artifacts go: `schema/` by default, or `--out <dir>`, so a test can
+ * emit beside the committed files rather than over them while another test
+ * reads them (#289).
+ */
+const outFlag = process.argv.indexOf('--out');
+const outValue = outFlag >= 0 ? process.argv[outFlag + 1] : undefined;
+// A bare `--out` is a mistake, never a request for the default: falling back would overwrite the committed files.
+if (outFlag >= 0 && (outValue === undefined || outValue.startsWith('--'))) throw new Error('--out needs a directory after it.');
+const outDir = outValue ?? join(here, '..', 'schema');
 
 /** Members of a zod enum, as a plain array. */
 function membersOf(e: { options: readonly string[] }): string[] {
@@ -183,7 +192,7 @@ function main(): void {
     // indent: the artifact is committed, so a diff should show what changed
     // rather than a reformat.
     writeFileSync(path, `${JSON.stringify(content, null, 2)}\n`, 'utf8');
-    console.log(`wrote schema/${name}`);
+    console.log(`wrote ${relative(process.cwd(), path) || path}`);
   }
 }
 
