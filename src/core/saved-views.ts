@@ -28,7 +28,7 @@
  */
 import * as z from 'zod/mini';
 
-import type { Affordance } from './affordances.js';
+import { hostAnswer, type Affordance } from './affordances.js';
 import { dirtyDimensions, snapshotOf, ViewState, type Dimension, type SavedViewState } from './view-state.js';
 
 export const SAVED_VIEW_MODES = ['personal', 'shared', 'locked'] as const;
@@ -73,11 +73,17 @@ export type ViewSequence = z.infer<typeof ViewSequence>;
 /** Who acted, and when: every write is attributed. */
 export interface Act { by: string; at: string }
 
-/** Save the working state as a new view. Always offered, whatever is loaded: the escape from a lock. */
+/**
+ * Save the working state as a new view: personal by default, which is always
+ * allowed, the escape from a lock; shared where the host allows
+ * (`createAffordance`). Never born locked: a lock is an act of its own,
+ * recorded as one (`lockView`).
+ */
 export function createView(
   current: ViewState | SavedViewState,
   { id, analysisId, name, mode = 'personal', by, at }: { id: string; analysisId: string; name: string; mode?: SavedViewMode } & Act,
 ): SavedView {
+  if (mode === 'locked') throw new Error('a view is locked after it is saved, as an act of its own: save it shared, then lock it.');
   const snapshot = 'session' in current ? snapshotOf(current as ViewState) : structuredClone(current);
   return SavedView.parse({ id, analysisId, name, mode, ownerId: by, snapshot, events: [{ act: 'created', by, at }] });
 }
@@ -131,18 +137,30 @@ export function viewMarker(current: ViewState, loaded: SavedView | undefined): {
 /** A write to a saved view, as the host is asked about it. */
 export type SavedViewAct = 'update' | 'rename' | 'delete' | 'lock' | 'unlock';
 
-/** The host's say over each write to a saved view (ADR-0012): `false`, or a reason, refuses. Absent, everything the mode allows. */
-export type AuthorizeView = (request: { act: SavedViewAct; view: SavedView; actorId: string | undefined }) => boolean | string;
+/** What the host is asked about: a write to a saved view, saving a new shared one, or a change to a sequence. */
+export type SavedViewRequest =
+  | { act: SavedViewAct | 'create'; view: SavedView; actorId: string | undefined }
+  | { act: 'edit-sequence'; sequence: ViewSequence; actorId: string | undefined };
+
+/**
+ * The host's say over each write (ADR-0012), answered as `Authorize` answers
+ * for the analysis: `true` or an enabled `Affordance` allows; anything else,
+ * a throw included, refuses (`hostAnswer`). Absent, whatever the mode allows.
+ */
+export type AuthorizeView = (request: SavedViewRequest) => Affordance | boolean;
+
+/** Whether this actor may save `view` as new: a personal view always; a shared one where the host allows. */
+export function createAffordance(view: SavedView, { actorId, authorize }: { actorId: string | undefined; authorize?: AuthorizeView | undefined }): Affordance {
+  if (view.mode === 'personal' || !authorize) return { enabled: true };
+  return hostAnswer(() => authorize({ act: 'create', view, actorId }));
+}
 
 /** What may be done to a saved view by this actor: the mode's rule, then the host's, each refusal with its reason. */
 export function viewAffordances(
   v: SavedView,
-  { actorId, authorize = () => true }: { actorId: string | undefined; authorize?: AuthorizeView },
+  { actorId, authorize }: { actorId: string | undefined; authorize?: AuthorizeView | undefined },
 ): Record<SavedViewAct | 'saveAsNew', Affordance> {
-  const host = (act: SavedViewAct): Affordance => {
-    const said = authorize({ act, view: v, actorId });
-    return said === true ? { enabled: true } : { enabled: false, reason: typeof said === 'string' ? said : `you may not ${act} this view.` };
-  };
+  const host = (act: SavedViewAct): Affordance => (authorize ? hostAnswer(() => authorize({ act, view: v, actorId })) : { enabled: true });
   const ifMode = (allowed: boolean, act: SavedViewAct, why: string): Affordance => (allowed ? host(act) : { enabled: false, reason: why });
   const locked = v.mode === 'locked';
   const personalOfAnother = v.mode === 'personal' && v.ownerId !== actorId;
@@ -154,7 +172,7 @@ export function viewAffordances(
     delete: personalOfAnother ? { enabled: false, reason: ownerWhy } : ifMode(!locked, 'delete', lockedWhy),
     lock: ifMode(v.mode === 'shared', 'lock', v.mode === 'locked' ? 'it is locked already.' : 'only a shared view can be locked.'),
     unlock: ifMode(locked, 'unlock', 'it is not locked.'),
-    // Never refused: a lock must not dead-end a reader (ADR-0007 clause 3).
+    // Never refused: a lock must not dead-end a reader (ADR-0007 clause 3). As a personal view, which needs nobody's leave.
     saveAsNew: { enabled: true },
   };
 }
