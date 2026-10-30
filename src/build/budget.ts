@@ -12,10 +12,10 @@
  * found by bisecting.
  *
  * A dependency the design has committed to but not yet added is charged now,
- * as a *reservation*: ADR-0008 adopts `@atlaskit/pragmatic-drag-and-drop` for
- * the pointer path and says to charge it against the budget explicitly. Until
- * the package is in the bundle, its reservation counts against the limit; once
- * it is, its measured bytes count instead and the reservation lapses.
+ * as a *reservation*. Until the package is in the bundle, its reservation
+ * counts against the limit; once it is, its measured bytes count instead and
+ * the reservation lapses. (ADR-0008's drag-and-drop reservation was released
+ * in #190: the pointer path is native.)
  */
 
 /** Bytes, written as kB the way `comparanda build` prints them (1 kB = 1024 bytes). */
@@ -36,18 +36,15 @@ export interface ByteBudget {
   reserved: readonly Reservation[];
 }
 
-/** The default, and the one CI enforces. Change it here, with a reason in the commit. */
+/**
+ * The default, and the one CI enforces. Change it here, with a reason in the commit.
+ *
+ * No reservation is held: the pointer reorder path is native (ADR-0008 amendment, #190), so nothing is
+ * committed to and not yet bundled. A future dependency is charged by adding a `Reservation` here.
+ */
 export const STANDALONE_BUDGET: ByteBudget = Object.freeze({
   limit: 213 * kB,
-  reserved: Object.freeze([
-    Object.freeze({
-      package: '@atlaskit/pragmatic-drag-and-drop',
-      bytes: 24 * kB,
-      why:
-        'ADR-0008: the pointer reorder path, for its auto-scroll. An estimate (core and auto-scroll, minified), ' +
-        'replaced by the measured bytes the moment the package is in the bundle.',
-    }),
-  ]),
+  reserved: Object.freeze([]) as readonly Reservation[],
 });
 
 /** Bytes the page spends on one package (or on comparanda's own code, or the page around it). */
