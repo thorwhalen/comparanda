@@ -200,7 +200,7 @@ describe('nothing about rendering or storage is expressible', () => {
       { action: 'comment', doing: 'answering a thread', target, thread: 'reply' },
       { action: 'comment', doing: 'resolving a thread', target, thread: 'resolve' },
       { action: 'comment', doing: 'reopening a thread', target, thread: 'reopen' },
-      { action: 'comment', doing: 'editing a comment', target: commentTarget(th.anchor), thread: 'edit', comment: { threadId: th.id, id: th.comments[0]!.id, authorId: th.comments[0]!.authorId } },
+      { action: 'comment', doing: 'editing a comment', target: commentTarget(th.anchor), thread: 'edit', threadId: th.id, comment: { threadId: th.id, id: th.comments[0]!.id, authorId: th.comments[0]!.authorId } },
       { action: 'comment', doing: 'commenting' },
     ]);
     // The host is told the document's facts about the comment, and an edit is asked about one comment only.

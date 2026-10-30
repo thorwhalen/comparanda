@@ -398,7 +398,8 @@ export function makeAffordances(
       const { threadId, commentId } = options;
       requireCommentFor(act, options);
       const thread = threadId === undefined ? undefined : a.threads.find((t) => t.id === threadId);
-      const about = target ?? (thread && commentTarget(thread.anchor));
+      // An edit is asked about the thread's own anchor, whatever target the caller passed.
+      const about = act === 'edit' && thread ? commentTarget(thread.anchor) : target ?? (thread && commentTarget(thread.anchor));
       const own = (): Affordance => {
         if (threadId !== undefined) {
           if (act === 'start') return refuse('a thread being started has no id yet; ask about its anchor instead.');
@@ -408,7 +409,7 @@ export function makeAffordances(
           }
           // Compared as the anchors they name, so a target spelled in another key order, or a block in the other order, is the same one.
           const asked = target === undefined ? undefined : anchorOfTarget(target);
-          if (act !== 'reattach' && target !== undefined && (!asked || JSON.stringify(commentTarget(asked)) !== JSON.stringify(commentTarget(thread.anchor)))) {
+          if (act !== 'reattach' && act !== 'edit' && target !== undefined && (!asked || JSON.stringify(commentTarget(asked)) !== JSON.stringify(commentTarget(thread.anchor)))) {
             return refuse(`thread "${threadId}" is not anchored on the target asked about.`);
           }
           if (act === 'edit') {
