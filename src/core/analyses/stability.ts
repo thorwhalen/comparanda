@@ -53,15 +53,19 @@ export interface CriterionStep {
 }
 
 export interface StabilityStep {
+  /** The first round entry of the earlier pass; a pass is every entry sharing one `index` (see `stabilityTrace`). */
   fromRoundId: string;
+  /** The first round entry of the later pass. */
   toRoundId: string;
+  fromIndex: number;
+  toIndex: number;
   quantity: StabilityQuantity;
   criteria: CriterionStep[];
 }
 
 export interface StabilityResult extends AnalysisResult {
   measure: string;
-  /** Rounds in index order, each step from one to the next. */
+  /** Passes in index order, each step from one to the next. */
   steps: StabilityStep[];
   /** Assertions left out because the viewer may not see their value (ADR-0023). */
   unseen: number;
@@ -74,10 +78,21 @@ export interface StabilityOptions extends AlternativeScopeOptions {
   viewer?: ViewerContext;
 }
 
-/** The trace, round step by round step, criterion by criterion. */
+/**
+ * The trace, pass step by pass step, criterion by criterion.
+ *
+ * A pass is every round entry with one `index`. A companion that scores some
+ * cells of a sweep with the earlier score in view and others without records
+ * them as two entries of one number (`round-2`, `round-2-withheld`), because a
+ * round holds one `feedback`; they are one sweep, so a cell's answer in a pass is
+ * its rater's latest across the entries, and the step into a pass is test-retest
+ * only when no entry of it was given feedback.
+ */
 export function stabilityTrace(a: Analysis, opts: StabilityOptions): StabilityResult {
   const { measure, viewer } = opts;
-  const rounds = [...a.rounds].sort((x, y) => x.index - y.index);
+  const indexOfRound = new Map(a.rounds.map((r) => [r.id, r.index]));
+  const passes = [...new Set(a.rounds.map((r) => r.index))].sort((x, y) => x - y)
+    .map((index) => ({ index, entries: a.rounds.filter((r) => r.index === index) }));
   const alts = alternativeScope(a, opts);
   const crits = opts.criterionIds ?? a.criteria.filter((x) => !x.tombstoned).map((x) => x.id);
   const principalOf = new Map(a.authors.map((x) => [x.id, x.principalId ?? x.id]));
@@ -85,25 +100,26 @@ export function stabilityTrace(a: Analysis, opts: StabilityOptions): StabilityRe
   let unseen = 0;
   let widenedByDisclosure = 0;
 
-  // For each cell: round id -> principal -> that rater's latest valued assertion in the round.
-  const answers = new Map<string, Map<string, Map<string, Assertion>>>();
+  // For each cell: pass index -> principal -> that rater's latest valued assertion in the pass.
+  const answers = new Map<string, Map<number, Map<string, Assertion>>>();
   for (const critId of crits) {
     for (const altId of alts) {
       const cell = index.get(cellKey(altId, critId, measure));
       if (!cell) continue;
       if (isWidenedByDisclosure(cell)) widenedByDisclosure += 1;
-      const byRound = new Map<string, Map<string, Assertion>>();
+      const byRound = new Map<number, Map<string, Assertion>>();
       const byId = new Map(cell.assertions.map((s) => [s.id, s]));
       for (const s of cell.assertions) {
-        if (s.roundId === undefined || s.independence === 'consensus') continue;
-        // Revised within its own round, it is not that round's answer; superseded by the next round's, it still is.
-        if (s.supersededBy !== undefined && byId.get(s.supersededBy)?.roundId === s.roundId) continue;
+        const pass = s.roundId === undefined ? undefined : indexOfRound.get(s.roundId);
+        if (pass === undefined || s.independence === 'consensus') continue;
+        // Revised within its own pass, it is not that pass's answer; superseded by the next pass's, it still is.
+        if (s.supersededBy !== undefined && indexOfRound.get(byId.get(s.supersededBy)?.roundId ?? '') === pass) continue;
         if (viewer && s.value !== undefined && assertionVisibility(a, s, viewer).value === 'hidden') { unseen += 1; continue; }
         const who = principalOf.get(s.authorId) ?? s.authorId;
-        const round = byRound.get(s.roundId) ?? new Map<string, Assertion>();
+        const round = byRound.get(pass) ?? new Map<string, Assertion>();
         const was = round.get(who);
         if (!was || was.at <= s.at) round.set(who, s);
-        byRound.set(s.roundId, round);
+        byRound.set(pass, round);
       }
       // A rater whose last word in a round is an absence gave no answer there.
       for (const round of byRound.values()) for (const [who, s] of round) if (s.value === undefined) round.delete(who);
@@ -112,8 +128,8 @@ export function stabilityTrace(a: Analysis, opts: StabilityOptions): StabilityRe
   }
 
   const steps: StabilityStep[] = [];
-  for (let k = 1; k < rounds.length; k += 1) {
-    const [from, to] = [rounds[k - 1]!, rounds[k]!];
+  for (let k = 1; k < passes.length; k += 1) {
+    const [from, to] = [passes[k - 1]!, passes[k]!];
     const criteria: CriterionStep[] = [];
     for (const critId of crits) {
       const crit = a.criteria.find((c) => c.id === critId);
@@ -122,8 +138,8 @@ export function stabilityTrace(a: Analysis, opts: StabilityOptions): StabilityRe
       const step: CriterionStep = { criterionId: critId, compared: 0, changed: 0, spread: { narrowed: 0, widened: 0, unchanged: 0 } };
       for (const altId of alts) {
         const byRound = answers.get(cellKey(altId, critId, measure));
-        const before = byRound?.get(from.id);
-        const after = byRound?.get(to.id);
+        const before = byRound?.get(from.index);
+        const after = byRound?.get(to.index);
         if (!before || !after) continue;
         // Spread over the raters in both rounds: one who dropped out is not a convergence.
         const pairs: [Assertion, Assertion][] = [];
@@ -145,7 +161,8 @@ export function stabilityTrace(a: Analysis, opts: StabilityOptions): StabilityRe
       step.fraction = step.compared === 0 ? undefined : step.changed / step.compared;
       criteria.push(step);
     }
-    steps.push({ fromRoundId: from.id, toRoundId: to.id, quantity: (to.feedback ?? 'none') === 'none' ? 'test-retest' : 'churn', criteria });
+    const fed = to.entries.some((r) => (r.feedback ?? 'none') !== 'none');
+    steps.push({ fromRoundId: from.entries[0]!.id, toRoundId: to.entries[0]!.id, fromIndex: from.index, toIndex: to.index, quantity: fed ? 'churn' : 'test-retest', criteria });
   }
   return { measure, steps, unseen, widenedByDisclosure, assumptions: STABILITY_ASSUMPTIONS };
 }
