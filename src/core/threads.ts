@@ -1,7 +1,7 @@
 /**
  * Annotation threads at every scope (#106, ADR-0011 clauses 1-2): which threads
- * bear on a position in the matrix, and the four writes a thread takes --
- * start, reply, resolve, reopen.
+ * bear on a position in the matrix, and the five writes a thread takes --
+ * start, reply, edit, resolve, reopen.
  *
  * A thread is anchored by ids only (`anchors.ts`), so renaming a criterion or
  * reordering the matrix never moves it; this module only ever compares ids.
@@ -198,10 +198,65 @@ export function reopenThread(a: Analysis, threadId: string, { id, by, at }: { id
   };
 }
 
+/**
+ * The comment an edit leaves has the shape `Edited comment "<id>" by ...`: it
+ * names the comment it is about, so notes are told apart and paired with their
+ * comments by id, not by date. The id the note names, or none when this is not
+ * such a note.
+ */
+export function editNoteOf(body: string): string | undefined {
+  const named = /^Edited comment ("(?:[^"\\]|\\.)*") by /.exec(body);
+  try {
+    return named ? (JSON.parse(named[1]!) as string) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether this comment is the note an edit left for another comment of the thread. */
+export function isEditNote(thread: Thread, c: Comment): boolean {
+  const named = editNoteOf(c.body);
+  return named !== undefined && named !== c.id && thread.comments.some((x) => x.id === named);
+}
+
+/**
+ * Edit a comment without losing its earlier wording (#195, option (c) of #219).
+ * The comment takes the new body and an `editedAt`; a comment by the editor
+ * follows it in the thread, naming whose comment it was, when, and quoting the
+ * wording it had, as `reopenThread` records a reopening. The record needs no
+ * field the v1 schema lacks and survives any store; a second edit quotes the
+ * first's result, so the whole chain stays readable.
+ *
+ * Known limits of keeping it as a comment (#219): anyone who may reply may write
+ * a comment that looks like such a note, signed by themselves, so a note is
+ * evidence of what its signer says, not of what the comment said; and the note
+ * is itself a comment, editable. A v2 `edits` field would close both.
+ */
+export function editComment(
+  a: Analysis, threadId: string, commentId: string, { body, id, by, at }: { body: string; id: string; by: Author; at: string },
+): Analysis {
+  const thread = openThread(a, threadId, 'edit');
+  const was = thread.comments.find((c) => c.id === commentId);
+  if (!was) throw new Error(`there is no comment "${commentId}" in the thread "${threadId}" to edit.`);
+  if (thread.comments.some((c) => c.id === id)) throw new Error(`comment id "${id}" is already used in this thread.`);
+  if (isEditNote(thread, was)) throw new Error('this comment is the record of an earlier edit; it is kept as it was written.');
+  const text = body.trim();
+  if (text === '') throw new Error('a comment needs words: the body is empty.');
+  if (text === was.body.trim()) throw new Error('the new wording is the same as the old; nothing to edit.');
+  const author = attributions(a.authors).get(was.authorId) ?? 'an author this analysis does not describe';
+  const note = `Edited comment ${JSON.stringify(was.id)} by ${author} [${was.authorId}], as it read since ${was.editedAt ?? was.at}. Its earlier wording: ${JSON.stringify(was.body)}`;
+  return {
+    ...withAuthor(a, by),
+    threads: a.threads.map((t) => (t === thread
+      ? { ...t, comments: [...t.comments.map((c) => (c === was ? { ...c, body: text, editedAt: at } : c)), commentOf({ id, at, body: note, author: by })] }
+      : t)),
+  };
+}
+
 function openThread(a: Analysis, threadId: string, doing: string): Thread {
   const thread = a.threads.find((t) => t.id === threadId);
   if (!thread) throw new Error(`there is no thread "${threadId}" to ${doing} in this analysis.`);
-  if (thread.resolved) throw new Error(`the thread "${threadId}" is resolved; it is kept as it was resolved, and takes no further ${doing === 'answer' ? 'reply' : 'resolution'} unless it is reopened.`);
+  if (thread.resolved) throw new Error(`the thread "${threadId}" is resolved; it is kept as it was resolved, and takes no further ${doing === 'answer' ? 'reply' : doing === 'edit' ? 'edit' : 'resolution'} unless it is reopened.`);
   return thread;
 }
 
