@@ -69,4 +69,29 @@ describe('stabilityTrace', () => {
       { measure: 'score', viewer: { viewerId: 'bo', now: '2026-10-07T00:00:00Z' } });
     expect(r.unseen).toBeGreaterThan(0);
   });
+
+  it('reads round entries that share an index as one pass (a sweep that mixes the prior is two entries of one number)', () => {
+    const base = delphi('none');
+    // Pass 2 is two entries: x scored with the earlier score in view (r2), y without (r2-w). Ana moves on x, Bo moves on y.
+    const a = Analysis.parse({
+      ...base,
+      rounds: [
+        { id: 'r1', index: 1, feedback: 'none', attribution: 'anonymous' },
+        { id: 'r2', index: 2, feedback: 'full', attribution: 'anonymous' },
+        { id: 'r2-w', index: 2, feedback: 'none', attribution: 'anonymous' },
+      ],
+      cells: [
+        { alternativeId: 'x', criterionId: 'c', measure: 'score', assertions: [s('1', 'ana', 1, 'r1'), s('2', 'bo', 4, 'r1'), s('3', 'ana', 3, 'r2'), s('4', 'bo', 4, 'r2')] },
+        { alternativeId: 'y', criterionId: 'c', measure: 'score', assertions: [s('5', 'ana', 2, 'r1'), s('6', 'bo', 5, 'r1'), s('7', 'ana', 2, 'r2-w'), s('8', 'bo', 3, 'r2-w')] },
+      ],
+    });
+    const r = stabilityTrace(a, { measure: 'score' });
+    // One step 1 -> 2, not three: both cells are compared across it, and the pass was partly fed back, so it is churn.
+    expect(r.steps).toHaveLength(1);
+    expect(r.steps[0]).toMatchObject({ fromRoundId: 'r1', toRoundId: 'r2', fromIndex: 1, toIndex: 2, quantity: 'churn' });
+    expect(r.steps[0]!.criteria[0]).toMatchObject({ compared: 4, changed: 2 });
+    // The same two entries with no feedback anywhere are test-retest.
+    const none = stabilityTrace(Analysis.parse({ ...a, rounds: a.rounds.map((x) => ({ ...x, feedback: 'none' as const })) }), { measure: 'score' });
+    expect(none.steps[0]!.quantity).toBe('test-retest');
+  });
 });
