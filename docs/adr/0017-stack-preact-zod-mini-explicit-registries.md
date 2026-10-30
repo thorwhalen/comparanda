@@ -203,3 +203,7 @@ The strip (its data, the redaction-aware reader, the encoding with its legend, t
 ### 2026-10-20 — clause 8 measures the production page, whatever NODE_ENV the build runs under
 
 The budget was charged against a development build whenever the process had a non-production `NODE_ENV`, which is every CI run: vitest sets `test`, Vite keeps an inherited `NODE_ENV`, and with it compiles the TSX through the development JSX transform. That transform writes each element's absolute source path and line number into the page. It added about 23 kB to the measured shell (186 kB, not 163 kB, on the example fixtures) and put the builder's local file paths into a file meant to be mailed. The build now pins `mode: 'production'`, `process.env.NODE_ENV` and `jsxDev: false`, so the page is byte-identical under any `NODE_ENV`. The limit is unchanged at 213 kB. The two raises above were sized against the inflated figure; whether either should be revisited is the decision in #226 and #234.
+
+### 2026-10-30 — the drag-and-drop reservation is released (#190, #188)
+
+The 24 kB charged for `@atlaskit/pragmatic-drag-and-drop` is dropped: the pointer path is native (ADR-0008 amendment), so the package is not coming. The limit stays at 213 kB, so the page gains about 24 kB of headroom, which the comment-edit write and panel (#195, #221) spend first. Whether the limit should now fall back is the open question in #226 and #234; this change does not take it. Reversible: a library that returns is charged again as a reservation.

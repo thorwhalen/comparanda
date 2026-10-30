@@ -17,7 +17,7 @@ const examples = join(repo, 'examples');
 const fixtures = (await readdir(examples)).filter((f) => f.endsWith('.json')).sort();
 const relocationJson = JSON.parse(await readFile(join(examples, 'relocation.json'), 'utf8'));
 const realEntry = join(repo, 'src', 'standalone', 'main.ts');
-const DND = STANDALONE_BUDGET.reserved[0]!.package;
+const RESERVED = 'reserved-example-lib';
 
 let dir: string;
 beforeAll(async () => {
@@ -71,9 +71,9 @@ describe('every example fixture builds within the budget', () => {
       // Attribution accounts for every byte of the shell, and the code is ours and our dependencies'.
       expect(budget.contributions.reduce((a, c) => a + c.bytes, 0)).toBe(budget.shellBytes);
       expect(budget.contributions.map((c) => c.package)).toEqual(expect.arrayContaining(['comparanda', 'preact']));
-      // The drag-and-drop dependency is charged before it lands (ADR-0008).
-      expect(budget.reserved.map((r) => r.package)).toContain(DND);
-      expect(budget.charged).toBe(budget.shellBytes + budget.reserved.reduce((a, r) => a + r.bytes, 0));
+      // No reservation is held (ADR-0008 amendment, #190): the page is charged for what it carries.
+      expect(budget.reserved).toEqual([]);
+      expect(budget.charged).toBe(budget.shellBytes);
     });
   }
 });
@@ -109,11 +109,19 @@ describe('over budget, the build fails and says why', () => {
 });
 
 describe('a reservation', () => {
+  const held = { limit: STANDALONE_BUDGET.limit, reserved: [{ package: RESERVED, bytes: 24 * 1024, why: 'a test reservation' }] };
+
+  it('is charged until its package is bundled', async () => {
+    const { budget } = await buildStandalone(relocationJson, { budget: held, check: 'static' });
+    expect(budget.reserved.map((r) => r.package)).toEqual([RESERVED]);
+    expect(budget.charged).toBe(budget.shellBytes + 24 * 1024);
+  });
+
   it('lapses once its package is bundled, which is then charged by measurement', async () => {
-    const entry = await entryWith(DND, `export default function draggable(el) { return () => el; }\n`);
-    const { budget } = await buildStandalone(relocationJson, { entry, check: 'static' });
-    expect(budget.reserved.map((r) => r.package)).not.toContain(DND);
-    expect(budget.contributions.map((c) => c.package)).toContain(DND);
+    const entry = await entryWith(RESERVED, `export default function draggable(el) { return () => el; }\n`);
+    const { budget } = await buildStandalone(relocationJson, { entry, budget: held, check: 'static' });
+    expect(budget.reserved.map((r) => r.package)).not.toContain(RESERVED);
+    expect(budget.contributions.map((c) => c.package)).toContain(RESERVED);
     expect(budget.charged).toBe(budget.shellBytes);
   });
 });
