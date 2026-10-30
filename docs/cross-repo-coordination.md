@@ -653,7 +653,7 @@ issue reusing that key makes every `{{comparanda:schema-criterion-preference}}` 
 `request-criterion-preference`, `request-assertion-independence`, and so on — and make the
 `rubricator` side's `{{comparanda:…}}` placeholders match, exactly.
 
-### 7.3 Requests 8–16, filed 2026-08-22, and request 17, filed 2026-10-30
+### 7.3 Requests 8–16, filed 2026-08-22, and requests 17 and 18, filed 2026-10-30
 
 Nine further requests follow from the nine decisions settled on 2026-08-22. Same protocol, same
 disposition vocabulary. Six of them **block before the freeze**, which is the whole reason they are
@@ -671,6 +671,7 @@ filed as a batch rather than discovered during implementation.
 | 15 | `validateAnalysis` takes injected rule families; `ValidationProblem` gains `family`, `fix`, `ruleId` | yes |
 | 16 | `Suggestion.proposed` typed as a partial `Assertion` — it is `z.unknown()` today, so no honesty rule can reach suggestion mode | no — before suggestions ship |
 | 17 | `Assertion.confidence`: optional, a closed ordinal enum `high \| medium \| low` carrying the evidence-quality glosses as its description; never numeric, never named or modelled as `certainty` | no — additive, optional, so v1 documents stay valid |
+| 18 | `Measurement.neutral`: optional `ScalarValue`, one of `levels` or inside `range`, ordinal only, so the detail panel's diverging bar can be centred on a declared neutral (ADR-0010) | no — additive, queued for the next schema version |
 
 **On request 17.** Filed after the other sixteen, on the owner's decision of 2026-10-30
 (`rubricator#258`, resolving `rubricator#126`). `confidence` was prescribed by `rubricator`'s
@@ -685,6 +686,8 @@ shipped schema can already store `confidence` as a *measure*; the mirror issue
 ([#307](https://github.com/thorwhalen/comparanda/issues/307), key `request-assertion-confidence`)
 carries the question of how the field and the measure relate. Disposition: `accept-later` (v1 is frozen; the migration cost is one additive, no-op step), pending
 that issue.
+
+**On request 18.** Decided in #184 (2026-10-30): schema v1 is not bumped for the neutral level alone. It is queued for the next schema version, as an additive optional field with a no-op migration step, mirrored by [#311](https://github.com/thorwhalen/comparanda/issues/311) (key `request-measurement-neutral`). `target` is not a neutral and a range midpoint is the undeclared midpoint ADR-0010 forbids, so the panel keeps drawing an uncentred bar, and says so, until a measurement declares one. Disposition: `accept-later`.
 
 **On request 13's "never defaulted".** A default of `'ordinal-1-5-anchored'` would silently stamp a
 criterion authored today as ratio-decreasing-with-a-range — which validates with zero problems on
