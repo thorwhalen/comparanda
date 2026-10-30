@@ -25,3 +25,8 @@ export function treeOf(node: Node): Document | ShadowRoot {
 export function activeElementOf(node: Node): Element | null {
   return treeOf(node).activeElement ?? null;
 }
+
+/** What a thrown value says: an `Error`'s message, else the value as text. */
+export function messageOf(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}

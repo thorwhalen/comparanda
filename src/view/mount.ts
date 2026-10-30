@@ -38,7 +38,7 @@ import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type Arrangement, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
 import { trackStickyExtents } from './sticky.js';
-import { activeElementOf } from './dom.js';
+import { activeElementOf, messageOf } from './dom.js';
 
 /** What `mountMatrix` returns. */
 export interface MatrixHandle {
@@ -336,7 +336,7 @@ export function mountMatrix(
     const say = (sentence: string) => { announce(sentence); if (!destroyed) draw(); };
     writeDocument((_latest, may) => may.revise('adding an entry to a group'), (a) => joinGroup(a, axis, id, groupId), 'the grouping').then(
       () => say(`${name} is now in ${group}.`),
-      (e: unknown) => say(`${name} was not added to ${group}: ${e instanceof Error ? e.message : String(e)}`),
+      (e: unknown) => say(`${name} was not added to ${group}: ${messageOf(e)}`),
     );
   };
   /** Move an orphan to a live anchor (#249), asked of the new anchor's comment affordance on the latest document. */

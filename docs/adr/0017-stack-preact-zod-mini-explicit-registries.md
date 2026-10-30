@@ -207,3 +207,11 @@ The budget was charged against a development build whenever the process had a no
 ### 2026-10-30 — the drag-and-drop reservation is released (#190, #188)
 
 The 24 kB charged for `@atlaskit/pragmatic-drag-and-drop` is dropped: the pointer path is native (ADR-0008 amendment), so the package is not coming. The limit stays at 213 kB, so the page gains about 24 kB of headroom, which the comment-edit write and panel (#195, #221) spend first. Whether the limit should now fall back is the open question in #226 and #234; this change does not take it. Reversible: a library that returns is charged again as a reservation.
+
+### 2026-10-30 — how the budget is kept (#188): hold the limit, keep the diet, revisit past about 195 kB
+
+The owner accepted #188's recommendation. Against today's figures (the shipped page charges 191.2 kB of the 213.0 kB limit, with the reservation gone) it reads:
+
+1. **Hold the limit (option 1).** A host that registers every shipped encoding in a standalone build passes `budget: false` or drops some; the shipped page is what `tests/standalone/budget.test.ts` enforces. Unchanged.
+2. **Keep the diet as ongoing hygiene (option 3).** Shared helpers over copies, and shorter strings where the README says the same. The first measured cut is a shared `messageOf` in `src/view/dom.ts` replacing eight copies of `e instanceof Error ? e.message : String(e)`, about 0.1 kB. Look for the next one before asking for bytes.
+3. **The trigger for option 2 is about 195 kB charged.** Raising the limit (or releasing a feature) is decided only if the shipped page, as CI's step summary reports it, passes about 195 kB. It is 191.2 kB now, so about 4 kB of work remains before that question is asked. The limit itself, and whether it should fall back after the reservation's release, is #226 and #234.
