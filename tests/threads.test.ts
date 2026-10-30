@@ -130,7 +130,7 @@ describe('reopening a resolved thread (#186)', () => {
     const bot: Author = { id: 'dana-bot', displayName: 'Dana', kind: 'agent', agent: { name: 'scorer' } };
     let a = startThread(relocation, { threadId: 't1', anchor: { scope: 'analysis' }, comment: note('c1') });
     a = reopenThread(resolveThread(a, 't1', { by: bot, at: 'T1' }), 't1', { id: 'c2', by: dana, at: 'T2' });
-    expect(a.threads.find((x) => x.id === 't1')!.comments.at(-1)!.body).toBe('Reopened. It had been resolved by Dana (agent scorer, unverified) [dana-bot], T1.');
+    expect(a.threads.find((x) => x.id === 't1')!.comments.at(-1)!.body).toBe('Reopened. It had been resolved by Dana [dana-bot] (agent scorer, unverified), T1.');
     const ghost = { ...a, threads: a.threads.map((t) => (t.id === 't1' ? { ...t, resolved: true, resolvedBy: 'ghost', resolvedAt: 'T3' } : t)) };
     expect(reopenThread(ghost, 't1', { id: 'c3', by: dana, at: 'T4' }).threads.find((x) => x.id === 't1')!.comments.at(-1)!.body)
       .toBe('Reopened. It had been resolved by an author this analysis does not describe [ghost], T3.');

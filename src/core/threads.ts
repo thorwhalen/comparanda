@@ -190,7 +190,9 @@ export function reopenThread(a: Analysis, threadId: string, { id, by, at }: { id
   if (thread.comments.some((c) => c.id === id)) throw new Error(`comment id "${id}" is already used in this thread.`);
   // The resolver as the panel names them, kind and all, plus the id: a display name alone loses who it was.
   const was = thread.resolvedBy;
-  const resolver = was && `${attributions(a.authors).get(was) ?? 'an author this analysis does not describe'} [${was}]`;
+  // A name shared with another author already carries its id (#265): not said twice.
+  const named = was && attributions(a.authors).get(was);
+  const resolver = was && (named?.includes(`[${was}]`) ? named : `${named ?? 'an author this analysis does not describe'} [${was}]`);
   const body = `Reopened. It had been resolved${resolver ? ` by ${resolver}` : ''}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}.`;
   return {
     ...withAuthor(a, by),

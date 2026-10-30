@@ -51,6 +51,29 @@ describe('attribution says what kind of author, and how well it is known', () =>
   });
 });
 
+describe('two authors of one name are told apart by id, persona or not (#265)', () => {
+  const ana = (id: string, displayName = 'Ana') => ({ id, displayName, kind: 'human' as const });
+
+  it('tags every author whose name another bears, and leaves a unique name alone', () => {
+    const map = attributions([ana('aaa'), ana('bbb'), ana('ada', 'Ada')]);
+    expect(map.get('aaa')).toBe('Ana [aaa] (human, unverified)');
+    expect(map.get('bbb')).toBe('Ana [bbb] (human, unverified)');
+    expect(map.get('ada')).toBe('Ada (human, unverified)');
+  });
+
+  it('folds case, accents, spacing and look-alike letters before comparing', () => {
+    const map = attributions([ana('a', 'Ana'), ana('b', 'ANA'), ana('c', 'Aná'), ana('d', ' Ana '), ana('e', '\u0410na'), ana('f', 'Anna')]);
+    for (const id of 'abcde') expect(map.get(id)).toContain(`[${id}]`);
+    expect(map.get('f')).toBe('Anna (human, unverified)');
+  });
+
+  it('a name that is alone is not tagged, and `attribution` alone never tags', () => {
+    expect(attributions([ana('aaa')]).get('aaa')).toBe('Ana (human, unverified)');
+    expect(attribution(ana('aaa'))).toBe('Ana (human, unverified)');
+    expect(attribution(ana('aaa'), { tagged: true })).toBe('Ana [aaa] (human, unverified)');
+  });
+});
+
 describe('a look-alike persona never shows only a display name (#243)', () => {
   it('names the principal id beside a display name that copies another author', () => {
     const map = attributions([
@@ -59,9 +82,9 @@ describe('a look-alike persona never shows only a display name (#243)', () => {
       { id: 'aaa:Ana', displayName: 'Ana', kind: 'human', principalId: 'aaa', actingAs: 'ana' },
       { id: 'aaa:\u0430na', displayName: 'Ana', kind: 'human', principalId: 'aaa', actingAs: 'ana' },
     ]);
-    expect(map.get('ana')).toBe('Ana (human, unverified)');
-    expect(map.get('aaa:Ana')).toBe('Ana (human, acting as ana, for Ana [aaa], unverified)');
-    expect(map.get('aaa:\u0430na')).toBe('Ana (human, acting as ana, for Ana [aaa], unverified)');
+    expect(map.get('ana')).toBe('Ana [ana] (human, unverified)');
+    expect(map.get('aaa:Ana')).toBe('Ana [aaa:Ana] (human, acting as ana, for Ana [aaa], unverified)');
+    expect(map.get('aaa:\u0430na')).toBe('Ana [aaa:\u0430na] (human, acting as ana, for Ana [aaa], unverified)');
     // Without the principal's display name, the id alone; never dropped.
     expect(attribution({ id: 'aaa:Ana', displayName: 'Ana', kind: 'human', principalId: 'aaa' })).toBe('Ana (human, for aaa, unverified)');
   });
