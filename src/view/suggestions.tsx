@@ -20,6 +20,7 @@ import type { ViewerContext } from '../core/schema/redaction.js';
 import type { Vouched } from '../core/identity.js';
 import { describeOpenSuggestions, type OpenSuggestion } from '../core/suggestion-list.js';
 import { capitalise } from './words.js';
+import { messageOf } from './dom.js';
 
 export interface SuggestionChoice { suggestionId: string; decision: SuggestionDecision }
 
@@ -72,7 +73,7 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
     setBusy(true);
     writes.decide(live).then(
       () => { setStaged([]); setSaid(`Wrote ${plural(n, 'decision')}.`); },
-      (e: unknown) => setSaid(`Nothing was written: ${e instanceof Error ? e.message : String(e)}`),
+      (e: unknown) => setSaid(`Nothing was written: ${messageOf(e)}`),
     ).finally(() => setBusy(false));
   };
 

@@ -18,6 +18,7 @@ import { axisGroups, groupsOf } from '../core/schema/groups.js';
 import { commentTarget, isEditNote, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
 import { attributions, type Vouched } from '../core/identity.js';
 import { capitalise } from './words.js';
+import { messageOf } from './dom.js';
 
 /** The writes a thread takes, performed by whoever holds the source. Each settles when the source has it. */
 export interface ThreadWrites {
@@ -132,7 +133,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
       // The thread changes list and focus leaves with it: the matrix puts it on the panel's heading (#275).
       await writes![thread.resolved ? 'reopen' : 'resolve'](thread.id);
     } catch (e) {
-      setError(messageOf(e));
+      setError(sentenceOf(e));
     } finally {
       sending.current = false;
       setBusy(false);
@@ -222,7 +223,7 @@ function useSend(send: (text: string) => Promise<void>, empty: string, initial =
       if (done) done();
       else setDraft('');
     } catch (e) {
-      setError(messageOf(e));
+      setError(sentenceOf(e));
     } finally {
       sending.current = false;
       setBusy(false);
@@ -371,6 +372,6 @@ function useFailure(): [{ text: string; attempt: number } | undefined, (text: st
   return [failure, set];
 }
 
-function messageOf(e: unknown): string {
-  return (e instanceof Error ? e.message : String(e)).replace(/\.?$/, '.');
+function sentenceOf(e: unknown): string {
+  return messageOf(e).replace(/\.?$/, '.');
 }

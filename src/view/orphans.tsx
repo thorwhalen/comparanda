@@ -19,6 +19,7 @@ import type { Vouched } from '../core/identity.js';
 import { describeOrphans, reattachChoices, type OrphanEntry } from '../core/orphans.js';
 import { commentTarget } from '../core/threads.js';
 import { capitalise } from './words.js';
+import { messageOf } from './dom.js';
 
 /** Move an orphaned thread or suggestion to `anchor`, through the source; rejects with the reason. */
 export type ReattachWrite = (which: { kind: 'thread' | 'suggestion'; id: string }, anchor: Anchor) => Promise<void>;
@@ -67,7 +68,7 @@ function Reattach({ analysis, entry, affordances, reattach, idBase }: {
         e.preventDefault();
         if (!may.enabled) return;
         setSaid('');
-        reattach(which, choice.anchor).catch((error: unknown) => setSaid(`Not re-attached: ${error instanceof Error ? error.message : String(error)}`));
+        reattach(which, choice.anchor).catch((error: unknown) => setSaid(`Not re-attached: ${messageOf(error)}`));
       }}
     >
       <label for={`${idBase}-to`}>Re-attach to</label>{' '}

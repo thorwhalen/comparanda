@@ -76,7 +76,7 @@ import type { ThreadWrites } from './threads.js';
 import { SuggestionsPanel, type SuggestionWrites } from './suggestions.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
 import { startPointerDrag } from './pointer-reorder.js';
-import { activeElementOf } from './dom.js';
+import { activeElementOf, messageOf } from './dom.js';
 import { describeOrder, describePlace } from '../core/reorder.js';
 import { axisGroups, membersOfGroup, type Axis } from '../core/schema/groups.js';
 import { resolveAnchor } from '../core/schema/anchors.js';
@@ -663,7 +663,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
                     const { state, said } = arrange(analysis, view, axis, measure);
                     reorder.onReorder(state, said);
                   } catch (error) {
-                    reorder.onReorder(view, `Not arranged: ${error instanceof Error ? error.message : String(error)}`);
+                    reorder.onReorder(view, `Not arranged: ${messageOf(error)}`);
                   }
                 }}
               >
@@ -946,7 +946,7 @@ function chooseEncoding(
       prepared: { legend, ...(palette && { palette }), ...(strip && { strip }), mark: (alt, crit) => marks.get(`${alt}\u0000${crit}`) ?? {} },
     };
   } catch (error) {
-    const message = (error instanceof Error ? error.message : String(error)).replace(/[.\s]+$/, '');
+    const message = messageOf(error).replace(/[.\s]+$/, '');
     return cannot(`it failed (${message}).`);
   }
 }

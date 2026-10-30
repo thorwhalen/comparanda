@@ -27,6 +27,7 @@ import type { Analysis } from '../core/schema/analysis.js';
 import { agreement, type CriterionAgreement } from '../core/analyses/agreement.js';
 import { groupInformedConsensus, type Camp, type CellConsensus, type ConsensusResult } from '../core/analyses/consensus.js';
 import { attributions, type Vouched } from '../core/identity.js';
+import { messageOf } from './dom.js';
 import type { ViewerContext } from '../core/schema/redaction.js';
 
 /** What every analysis panel is drawn from: the document and measure shown. */
@@ -75,7 +76,7 @@ export function AgreementPanel({ analysis, measure, vouched, viewer }: AnalysisP
       .filter((c) => c.authorIds.length > 0);
     let consensus: ConsensusResult | string | undefined;
     if (camps.length >= 2) {
-      try { consensus = groupInformedConsensus(analysis, { measure, camps, viewer }); } catch (error) { consensus = error instanceof Error ? error.message : String(error); }
+      try { consensus = groupInformedConsensus(analysis, { measure, camps, viewer }); } catch (error) { consensus = messageOf(error); }
     }
     const campLabel = (cid: string) => camps.find((c) => c.id === cid)?.label ?? cid;
     const cellSaid = (c: CellConsensus) => c.status === 'shared'
