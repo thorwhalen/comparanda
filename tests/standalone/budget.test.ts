@@ -109,12 +109,12 @@ describe('over budget, the build fails and says why', () => {
 });
 
 describe('a reservation', () => {
-  const held = { limit: STANDALONE_BUDGET.limit, reserved: [{ package: RESERVED, bytes: 24 * 1024, why: 'a test reservation' }] };
+  const held = { limit: STANDALONE_BUDGET.limit, reserved: [{ package: RESERVED, bytes: 4 * 1024, why: 'a test reservation' }] };
 
   it('is charged until its package is bundled', async () => {
     const { budget } = await buildStandalone(relocationJson, { budget: held, check: 'static' });
     expect(budget.reserved.map((r) => r.package)).toEqual([RESERVED]);
-    expect(budget.charged).toBe(budget.shellBytes + 24 * 1024);
+    expect(budget.charged).toBe(budget.shellBytes + 4 * 1024);
   });
 
   it('lapses once its package is bundled, which is then charged by measurement', async () => {
