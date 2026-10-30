@@ -30,7 +30,10 @@ const ALLOWED: Readonly<Record<string, { reads: number; because: string }>> = {
     reads: 2,
     because: 'the document\'s authors, through `attributions`, to say the names core\'s dotPlots already decided this viewer may see: a hand the round hides is only counted there, never named',
   },
-  'mount.ts': { reads: 1, because: '`.author` of a visibility verdict (may this viewer be told who), compared to decide whether a new reader needs a redraw' },
+  'mount.ts': {
+    reads: 2,
+    because: '`.author` of a visibility verdict (may this viewer be told who), compared to decide whether a new reader needs a redraw; and a comment\'s `authorId` against the writer, for the default that only its author edits it (#195): comments belong to no round, so their authors are always shown',
+  },
 };
 
 const NAMES_AN_AUTHOR = /\bauthorId\b|\bprincipalId\b|\bdisplayName\b|\bprocedureId\b|\.authors\b|\.author\b|\.principal\b|\battributions?\(/g;

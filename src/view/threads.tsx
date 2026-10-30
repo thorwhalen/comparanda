@@ -1,21 +1,21 @@
 /**
  * The detail panel's discussion (#106): every thread bearing on the reader's
  * position, open ones first, resolved ones one button away and never gone, and
- * the forms that start, answer, resolve and reopen a thread.
+ * the forms that start, answer, edit, resolve and reopen a thread.
  *
  * Whether a write is offered is asked of `affordances.comment` and nowhere
  * else (ADR-0006 clause 3); a refused one is shown with its reason, never as a
  * control that does nothing. The writes themselves are `ThreadWrites`, which
  * `mountMatrix` implements over the source; this file only collects words.
  */
-import { useId, useRef, useState } from 'preact/hooks';
+import { useEffect, useId, useRef, useState } from 'preact/hooks';
 
 import type { Affordances } from '../core/affordances.js';
 import type { Analysis } from '../core/schema/analysis.js';
-import type { Anchor, Thread } from '../core/schema/annotations.js';
+import type { Anchor, Comment, Thread } from '../core/schema/annotations.js';
 import { aliasesOf } from '../core/schema/structure.js';
 import { axisGroups, groupsOf } from '../core/schema/groups.js';
-import { commentTarget, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
+import { commentTarget, isEditNote, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
 import { attributions, type Vouched } from '../core/identity.js';
 import { capitalise } from './words.js';
 
@@ -23,6 +23,8 @@ import { capitalise } from './words.js';
 export interface ThreadWrites {
   start(anchor: Anchor, body: string): Promise<void>;
   reply(threadId: string, body: string): Promise<void>;
+  /** Rewrite a comment; its earlier wording stays in the thread (#195). */
+  edit(threadId: string, commentId: string, body: string): Promise<void>;
   resolve(threadId: string): Promise<void>;
   reopen(threadId: string): Promise<void>;
   /**
@@ -141,7 +143,7 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
       {relation !== 'here' && <p class="comparanda-panel-hint">{onWhat(analysis, thread)}</p>}
       <ol class="comparanda-comments">
         {thread.comments.map((c) => (
-          <li key={c.id}><strong>{who(c.authorId)}</strong>{`, ${c.at}: `}{c.body}</li>
+          <CommentItem key={c.id} thread={thread} comment={c} author={who(c.authorId)} target={target} writes={writes} affordances={affordances} idBase={replyId} />
         ))}
       </ol>
       {thread.resolved && <p class="comparanda-panel-hint">{`Resolved by ${who(thread.resolvedBy)}${thread.resolvedAt ? `, ${thread.resolvedAt}` : ''}. Kept for the record.`}</p>}
@@ -165,12 +167,43 @@ function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   );
 }
 
+/** One comment, marked as edited with when, and, where the host allows, an Edit form that rewrites it (#195). */
+function CommentItem({ thread, comment: c, author, target, writes, affordances, idBase }: {
+  thread: Thread; comment: Comment; author: string; target: ReturnType<typeof commentTarget>; writes?: ThreadWrites | undefined;
+  affordances: Affordances; idBase: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  // Focus follows the form: into it when it opens (Compose), back to the button when it closes, never lost with the control pressed.
+  const button = useRef<HTMLButtonElement>(null);
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!editing && opened.current) button.current?.focus();
+    opened.current = editing;
+  }, [editing]);
+  const may = writes ? affordances.comment(target, 'edit', { threadId: thread.id, commentId: c.id }) : undefined;
+  return (
+    <li>
+      <strong>{author}</strong>{`, ${c.at}: `}{c.body}
+      {c.editedAt !== undefined && <em>{` (edited ${c.editedAt})`}</em>}
+      {/* A resolved thread says so itself, and an edit's own note is kept as written: neither needs a refusal per comment. */}
+      {may && !may.enabled && !thread.resolved && !isEditNote(thread, c) && (
+        <span class="comparanda-reason">{` Editing this comment is not available: ${may.reason ?? 'not allowed here.'}`}</span>
+      )}
+      {may?.enabled && !editing && <button type="button" ref={button} onClick={() => setEditing(true)}>Edit</button>}
+      {may?.enabled && editing && (
+        <Compose label="Edit comment" action="Save edit" idBase={`${idBase}-${c.id}`} initial={c.body}
+          send={(body) => writes!.edit(thread.id, c.id, body)} done={() => setEditing(false)} />
+      )}
+    </li>
+  );
+}
+
 /**
  * A form's submission: the text typed, refused while empty, sent once at a
  * time, kept when the send fails, and the failure said.
  */
-function useSend(send: (text: string) => Promise<void>, empty: string) {
-  const [draft, setDraft] = useState('');
+function useSend(send: (text: string) => Promise<void>, empty: string, initial = '', done?: () => void) {
+  const [draft, setDraft] = useState(initial);
   const [error, setError] = useFailure();
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
@@ -186,7 +219,8 @@ function useSend(send: (text: string) => Promise<void>, empty: string) {
     setError(undefined);
     try {
       await send(draft);
-      setDraft('');
+      if (done) done();
+      else setDraft('');
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -232,14 +266,18 @@ function NameForm({ name, idBase }: { name: (typed: string) => Promise<void>; id
 }
 
 /** A labelled text box and its button. The draft survives a failed send, which says why. */
-function Compose({ label, action, idBase, send, choices }: {
+function Compose({ label, action, idBase, send, choices, initial, done }: {
   label: string; action: string; idBase: string; send: (body: string, choice?: number) => Promise<void>;
   choices?: { key: string; here: string }[] | undefined;
+  /** The text to begin from, and what to do once it is sent: an edit starts from the comment and closes. */
+  initial?: string; done?: () => void;
 }) {
   // Kept by what it is about, not by index: another writer's group can shift the list under it (#209).
   const [chosen, setChosen] = useState<string | undefined>(undefined);
   const choice = Math.max(0, choices?.findIndex((c) => c.key === chosen) ?? 0);
-  const { draft, setDraft, error, busy, submit } = useSend((body) => send(body, choice), 'write something first.');
+  const { draft, setDraft, error, busy, submit } = useSend((body) => send(body, choice), 'write something first.', initial, done);
+  const area = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { if (done) area.current?.focus(); }, []);
   return (
     <form class="comparanda-compose" onSubmit={submit}>
       {choices && choices.length > 1 && (
@@ -252,10 +290,11 @@ function Compose({ label, action, idBase, send, choices }: {
       )}
       <label for={`${idBase}-text`}>{choices && choices.length > 1 ? `Start a thread on ${choices[choice]!.here}` : label}</label>
       <textarea
-        id={`${idBase}-text`} rows={2} value={draft} {...refusedField(error, `${idBase}-error`)}
+        id={`${idBase}-text`} ref={area} rows={2} value={draft} {...refusedField(error, `${idBase}-error`)}
         onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)}
       />
       <button type="submit" aria-disabled={busy}>{action}</button>
+      {done && <button type="button" onClick={done}>Cancel</button>}
       {error && <p role="alert" id={`${idBase}-error`} key={error.attempt}>{`Not sent: ${error.text}`}</p>}
     </form>
   );

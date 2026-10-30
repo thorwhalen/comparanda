@@ -29,7 +29,7 @@ import { valueRefusal, type Measurement, type Preference } from './schema/measur
 import { measurementFor, type InapplicableBlock } from './schema/structure.js';
 import type { Cell, ScalarValue } from './schema/values.js';
 import { resolveAnchor } from './schema/anchors.js';
-import { anchorOfTarget, commentTarget } from './threads.js';
+import { anchorOfTarget, commentTarget, isEditNote } from './threads.js';
 
 /** Whether an action is offered, and -- when it is not -- why not, in words. */
 export interface Affordance {
@@ -75,7 +75,7 @@ export interface EditTarget {
 /**
  * A write to the analysis outside any one cell.
  *
- * - `comment` starts, answers, resolves or reopens a thread; `thread` says
+ * - `comment` starts, answers, edits, resolves or reopens a thread; `thread` says
  *   which (#194), so a host whose rule is "reviewers comment, only the owner
  *   resolves" can tell them apart. Absent, the question is the general one:
  *   may this reader take part in discussion here at all.
@@ -92,7 +92,7 @@ export interface DocumentEditRequest {
   action: 'comment' | 'revise' | 'change-lock' | 'decide-suggestion';
   doing: string;
   target?: EditTarget;
-  /** On `comment` only: which of the four it is. */
+  /** On `comment` only: which of the five it is. */
   thread?: ThreadAct;
   /**
    * On `comment` only, when the act is on an existing thread: which one (#206).
@@ -100,6 +100,8 @@ export interface DocumentEditRequest {
    * resolve it" needs to know which was started by whom.
    */
   threadId?: string;
+  /** On editing a comment only: which comment, and who wrote it, read from the document and not from the caller, so a host can let only its author edit it (ADR-0012). */
+  comment?: { threadId: string; id: string; authorId: string };
   /** On `decide-suggestion` only: which way. */
   decision?: SuggestionDecision;
   /**
@@ -110,13 +112,21 @@ export interface DocumentEditRequest {
   cell?: Omit<CellEditRequest, 'action'>;
 }
 
-/** The four things a thread write can be. */
-export const THREAD_ACTS = ['start', 'reply', 'resolve', 'reopen', 'reattach'] as const;
+/** The five things a thread write can be, and re-attaching an orphan. */
+export const THREAD_ACTS = ['start', 'reply', 'edit', 'resolve', 'reopen', 'reattach'] as const;
 export type ThreadAct = typeof THREAD_ACTS[number];
+
+/** An edit is asked about one comment of one thread, and only an edit is: anything else is a mistake in the caller, not a refusal. */
+export function requireCommentFor(act: ThreadAct | undefined, options: { threadId?: string; commentId?: string } = {}): void {
+  const isEdit = act === 'edit';
+  if (isEdit ? options.threadId === undefined || options.commentId === undefined : options.commentId !== undefined) {
+    throw new TypeError('an edit is asked about one comment, and only an edit: pass the threadId and commentId with "edit", and no commentId with the other acts.');
+  }
+}
 
 /** What each act is called to the host (`DocumentEditRequest.doing`) and in a refusal. */
 const THREAD_DOING: Readonly<Record<ThreadAct, string>> = {
-  start: 'starting a thread', reply: 'answering a thread', resolve: 'resolving a thread', reopen: 'reopening a thread',
+  start: 'starting a thread', reply: 'answering a thread', edit: 'editing a comment', resolve: 'resolving a thread', reopen: 'reopening a thread',
   reattach: 'moving an orphaned annotation to a new anchor',
 };
 
@@ -253,7 +263,7 @@ export interface Affordances {
   /** Every acceptability screen `screen()` applies for this measure. */
   screens(measure: string): Screen[];
   /**
-   * Whether a thread may be started, answered, resolved or reopened here, or --
+   * Whether a thread may be started, answered, edited, resolved or reopened here, or --
    * with no `act` -- whether discussion is open to this reader at all. The host
    * is asked with the act named (#194). A lock does not refuse any of them
    * (`documentPolicy`).
@@ -264,7 +274,7 @@ export interface Affordances {
    * defaults to the thread's anchor. A `start` is refused on a target that is
    * tombstoned or not in the document (#206).
    */
-  comment(target?: EditTarget, act?: ThreadAct, options?: { threadId?: string }): Affordance;
+  comment(target?: EditTarget, act?: ThreadAct, options?: { threadId?: string; commentId?: string }): Affordance;
   /**
    * Whether the analysis may be revised outside its cells: alternatives,
    * criteria, groups, definitions, declarations. `doing` names the edit as a
@@ -329,8 +339,10 @@ export function makeAffordances(
     (!ownPolicy.enabled || !authorize ? ownPolicy : hostAnswer(() => authorize(request)));
 
   const documentRequest = (
-    action: DocumentEditRequest['action'], doing: string, target: EditTarget | undefined, thread?: ThreadAct,
-  ): DocumentEditRequest => ({ action, doing, ...(target === undefined ? {} : { target }), ...(thread === undefined ? {} : { thread }) });
+    action: DocumentEditRequest['action'], doing: string, target: EditTarget | undefined, thread?: ThreadAct, comment?: DocumentEditRequest['comment'],
+  ): DocumentEditRequest => ({
+    action, doing, ...(target === undefined ? {} : { target }), ...(thread === undefined ? {} : { thread }), ...(comment === undefined ? {} : { comment }),
+  });
 
   const cellAt = (altId: string, critId: string, measure: string) => cells.get(JSON.stringify([altId, critId, measure]));
 
@@ -381,10 +393,13 @@ export function makeAffordances(
         }];
       });
     },
-    comment(target, act, { threadId } = {}) {
+    comment(target, act, options = {}) {
       const doing = threadDoing(act);
+      const { threadId, commentId } = options;
+      requireCommentFor(act, options);
       const thread = threadId === undefined ? undefined : a.threads.find((t) => t.id === threadId);
-      const about = target ?? (thread && commentTarget(thread.anchor));
+      // An edit is asked about the thread's own anchor, whatever target the caller passed.
+      const about = act === 'edit' && thread ? commentTarget(thread.anchor) : target ?? (thread && commentTarget(thread.anchor));
       const own = (): Affordance => {
         if (threadId !== undefined) {
           if (act === 'start') return refuse('a thread being started has no id yet; ask about its anchor instead.');
@@ -394,8 +409,14 @@ export function makeAffordances(
           }
           // Compared as the anchors they name, so a target spelled in another key order, or a block in the other order, is the same one.
           const asked = target === undefined ? undefined : anchorOfTarget(target);
-          if (act !== 'reattach' && target !== undefined && (!asked || JSON.stringify(commentTarget(asked)) !== JSON.stringify(commentTarget(thread.anchor)))) {
+          if (act !== 'reattach' && act !== 'edit' && target !== undefined && (!asked || JSON.stringify(commentTarget(asked)) !== JSON.stringify(commentTarget(thread.anchor)))) {
             return refuse(`thread "${threadId}" is not anchored on the target asked about.`);
+          }
+          if (act === 'edit') {
+            const was = thread.comments.find((c) => c.id === commentId);
+            if (!was) return refuse(`there is no comment "${commentId}" in the thread "${thread.id}" in this analysis.`);
+            if (thread.resolved) return refuse(`the thread "${thread.id}" is resolved; its comments are kept as they were unless it is reopened.`);
+            if (isEditNote(thread, was)) return refuse('this comment is the record of an earlier edit; it is kept as it was written.');
           }
           if (thread.resolved && (act === 'reply' || act === 'resolve')) {
             return refuse(`this thread is resolved; it takes no further ${act === 'reply' ? 'reply' : 'resolution'} unless it is reopened.`);
@@ -419,7 +440,10 @@ export function makeAffordances(
         return documentPolicy(a, 'comment');
       };
       const request = documentRequest('comment', doing, about, act);
-      return withHost(threadId === undefined ? request : { ...request, threadId }, own());
+      // Everything the host is told is read from the document, never from the caller.
+      const was = act === 'edit' ? thread?.comments.find((c) => c.id === commentId) : undefined;
+      const ofComment = thread && was ? { comment: { threadId: thread.id, id: was.id, authorId: was.authorId } } : {};
+      return withHost(threadId === undefined ? request : { ...request, threadId, ...ofComment }, own());
     },
     revise(doing, target) {
       return withHost(documentRequest('revise', requireDoing(doing), target), documentPolicy(a, 'revise'));

@@ -4,7 +4,7 @@
  * survives a rename and a reorder; a resolved thread is hidden by default and
  * one button away; a refused write is shown with its reason.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
@@ -651,5 +651,68 @@ describe('a refusal is on the field it refuses (#276)', () => {
     const alert = threads().querySelector('[data-detail="name"] [role="alert"]')!;
     expect(input.getAttribute('aria-invalid')).toBe('true');
     expect(input.getAttribute('aria-describedby')!.split(' ')).toEqual([`${input.id}-hint`, alert.id]);
+  });
+});
+
+describe('editing a comment (#195)', () => {
+  const danaAuthor = { id: 'dana', displayName: 'Dana', kind: 'human' } as const;
+  const argued = () => startThread(relocation, {
+    threadId: 'edit-me', anchor: { scope: 'criterion', criterionId: 'rent' }, comment: { id: 'c1', at: '2026-10-12T09:00:00Z', body: 'rent excludes utilities', author: danaAuthor },
+  });
+  const edit = () => Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Edit')!;
+
+  it('rewrites the comment as its author, keeps the earlier wording, marks it edited, and returns focus to Edit', async () => {
+    const doc = argued();
+    const source = inMemoryAnalysisSource(doc);
+    mount({ analysis: doc, measure: 'score', source, identity: dana, view: at({ criterionId: 'rent' }) });
+    await userEvent.click(edit());
+    const box = threads().querySelector<HTMLTextAreaElement>('textarea[id$="-text"]')!;
+    expect(box.value).toBe('rent excludes utilities');
+    await vi.waitFor(() => expect(document.activeElement).toBe(box));
+    await userEvent.click(box);
+    await userEvent.keyboard(' and parking');
+    await userEvent.click(Array.from(box.closest('form')!.querySelectorAll('button')).find((b) => b.textContent === 'Save edit')!);
+    await settled();
+    const thread = (await source.getOne(doc.id))!.threads.find((t) => t.id === 'edit-me')!;
+    expect(thread.comments[0]).toMatchObject({ id: 'c1', body: 'rent excludes utilities and parking', editedAt: '2026-10-13T12:00:00.000Z' });
+    // The earlier wording is still readable, as the note the edit left.
+    expect(thread.comments[1]!.body).toContain('rent excludes utilities');
+    expect(threads().textContent).toContain('(edited 2026-10-13T12:00:00.000Z)');
+    expect(threads().querySelector('textarea[id$="-text"][id*="c1"]')).toBeNull();
+    await vi.waitFor(() => expect(document.activeElement).toBe(edit()));
+  });
+
+  it('cancels without writing', async () => {
+    const doc = argued();
+    const source = inMemoryAnalysisSource(doc);
+    mount({ analysis: doc, measure: 'score', source, identity: dana, view: at({ criterionId: 'rent' }) });
+    await userEvent.click(edit());
+    await userEvent.click(Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Cancel')!);
+    await settled();
+    expect((await source.getOne(doc.id))!.threads.find((t) => t.id === 'edit-me')!.comments).toHaveLength(1);
+    await vi.waitFor(() => expect(document.activeElement).toBe(edit()));
+  });
+
+  it('is its author\'s alone when no host decides: someone else is told so, and keeps the draft', async () => {
+    const doc = argued();
+    const source = inMemoryAnalysisSource(doc);
+    mount({ analysis: doc, measure: 'score', source, identity: anonymousIdentity({ id: 'eli', displayName: 'Eli' }), view: at({ criterionId: 'rent' }) });
+    await userEvent.click(edit());
+    await userEvent.click(Array.from(threads().querySelectorAll('button')).find((b) => b.textContent === 'Save edit')!);
+    await settled();
+    expect(threads().querySelector('[role="alert"]')!.textContent).toContain('only the comment’s author');
+    expect((await source.getOne(doc.id))!.threads.find((t) => t.id === 'edit-me')!.comments).toHaveLength(1);
+  });
+
+  it('a host that refuses editing gets no button, and the reason is shown; the host is told whose comment it is', async () => {
+    const doc = argued();
+    const seen: unknown[] = [];
+    mount({
+      analysis: doc, measure: 'score', source: inMemoryAnalysisSource(doc), identity: dana, view: at({ criterionId: 'rent' }),
+      authorize: (r) => (seen.push(r), r.action === 'comment' && r.thread === 'edit' ? { enabled: false, reason: 'comments are final' } : true),
+    });
+    expect(Array.from(threads().querySelectorAll('button')).some((b) => b.textContent === 'Edit')).toBe(false);
+    expect(threads().textContent).toContain('comments are final');
+    expect(seen).toContainEqual(expect.objectContaining({ thread: 'edit', comment: { threadId: 'edit-me', id: 'c1', authorId: 'dana' } }));
   });
 });

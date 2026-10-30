@@ -26,7 +26,7 @@ const DEFAULT_IDENTITY = anonymousIdentity();
 const DEFAULT_IDENTITY_ID = 'anonymous';
 import { createEncodingRegistry, type EncodingRegistry } from './encodings/registry.js';
 import type { Author } from '../core/schema/provenance.js';
-import { commentTarget, reopenThread, replyToThread, resolveThread, startThread } from '../core/threads.js';
+import { commentTarget, editComment, reopenThread, replyToThread, resolveThread, startThread } from '../core/threads.js';
 import type { Anchor } from '../core/schema/annotations.js';
 import type { ThreadWrites } from './threads.js';
 import type { SuggestionWrites } from './suggestions.js';
@@ -324,10 +324,10 @@ export function mountMatrix(
     writes = next.catch(() => undefined);
     return next;
   };
-  const writeThread = (act: ThreadAct, anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis, threadId?: string): Promise<void> =>
+  const writeThread = (act: ThreadAct, anchorOf: (a: Analysis) => Anchor | undefined, change: (a: Analysis, author: Author, at: string) => Analysis, threadId?: string, commentId?: string): Promise<void> =>
     writeDocument((latest, may) => {
       const anchor = anchorOf(latest);
-      return anchor && may.comment(commentTarget(anchor), act, threadId === undefined ? {} : { threadId });
+      return anchor && may.comment(commentTarget(anchor), act, threadId === undefined ? {} : { threadId, ...(commentId === undefined ? {} : { commentId }) });
     }, change, 'the comment');
   /** "Group with…" (#279): the entry joins the group in the document, asked of `revise` on the latest one, and said either way. */
   const joinGroupWrite = (axis: Axis, id: string, groupId: string) => {
@@ -374,6 +374,12 @@ export function mountMatrix(
     start: (anchor, body) => writeThread('start', () => anchor, (a, author, at) =>
       startThread(a, { threadId: newId(), anchor, comment: { id: newId(), at, body, author } })),
     reply: (threadId, body) => writeThread('reply', anchorIn(threadId), (a, author, at) => replyToThread(a, threadId, { id: newId(), at, body, author }), threadId),
+    edit: (threadId, commentId, body) => writeThread('edit', anchorIn(threadId), (a, by, at) => {
+      // With no host to decide, a comment is its author's to edit; a host that authorises is asked, with the author named, and decides (ADR-0012).
+      const was = a.threads.find((t) => t.id === threadId)?.comments.find((c) => c.id === commentId);
+      if (was && !current.authorize && was.authorId !== by.id) throw new Error('only the comment\u2019s author may edit it unless the host says otherwise.');
+      return editComment(a, threadId, commentId, { body, id: newId(), by, at });
+    }, threadId, commentId),
     resolve: (threadId) => writeThread('resolve', anchorIn(threadId), (a, by, at) => resolveThread(a, threadId, { by, at }), threadId),
     reopen: (threadId) => writeThread('reopen', anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at }), threadId),
   };

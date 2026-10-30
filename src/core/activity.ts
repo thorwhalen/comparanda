@@ -16,10 +16,13 @@
  * procedure). A presentation policy, not a security boundary (ADR-0023).
  *
  * Comments are not assertions and belong to no round, so their authors are
- * shown. A comment edit is recorded only as `editedAt`: the document keeps no
- * earlier wording and no editor, which this record cannot invent (#195).
+ * shown. A comment edit made through `editComment` leaves a comment by the
+ * editor quoting the earlier wording, and is reported as the editor's edit; an
+ * older one has only `editedAt`, with no earlier wording and no editor, which
+ * this record cannot invent (#195).
  */
 import { attributions, type Vouched } from './identity.js';
+import { editNoteOf } from './threads.js';
 import type { Analysis } from './schema/analysis.js';
 import { assertionVisibility, redactForViewer, type AssertionVisibility, type ViewerContext } from './schema/redaction.js';
 import type { ScalarValue } from './schema/values.js';
@@ -118,12 +121,24 @@ export function activityRecord(a: Analysis, viewer: ViewerContext, { since, vouc
   }
 
   for (const thread of a.threads) {
+    // A note counts when it names a comment this thread has; a reply that merely sounds like one is a reply.
+    // It must also name a comment that was edited, no later than that edit, and not itself.
+    const noteFor = (n: (typeof thread.comments)[number]) => {
+      const named = thread.comments.find((c) => c.id === editNoteOf(n.body));
+      return named !== undefined && named !== n && named.editedAt !== undefined && n.at <= named.editedAt ? named.id : undefined;
+    };
+    const noted = new Set(thread.comments.flatMap((n, j) => (j > 0 ? [noteFor(n)] : [])).filter((x): x is string => x !== undefined));
     thread.comments.forEach((c, i) => {
       const who = names.get(c.authorId) ?? c.authorId;
       const base = { threadId: thread.id, whoHidden: false, who, because: 'discussion' as const };
+      // The comment `editComment` leaves is the editor's edit, not a reply; the edited comment's own `editedAt` is then already said.
+      if (i > 0 && noteFor(c) !== undefined) {
+        entries.push({ ...base, at: c.at, kind: 'edited-comment', said: `${who} edited a comment, ${c.at}; its earlier wording is quoted in the thread.` });
+        return;
+      }
       entries.push({ ...base, at: c.at, kind: i === 0 ? 'started-thread' : 'replied', said: `${who} ${i === 0 ? 'started a thread' : 'replied in a thread'}, ${c.at}.` });
-      if (c.editedAt !== undefined) {
-        entries.push({ ...base, at: c.editedAt, kind: 'edited-comment', said: `A comment by ${who} was edited, ${c.editedAt}; the earlier wording is not kept.` });
+      if (c.editedAt !== undefined && !noted.has(c.id)) {
+        entries.push({ ...base, at: c.editedAt, kind: 'edited-comment', said: `A comment by ${who} was edited, ${c.editedAt}; the earlier wording and the editor are not recorded.` });
       }
     });
     if (thread.resolved && thread.resolvedAt !== undefined) {

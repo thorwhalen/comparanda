@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { activityRecord } from '../src/core/activity.js';
+import { editComment, reopenThread, replyToThread } from '../src/core/threads.js';
 import { cellDetail } from '../src/core/detail.js';
 import { vocabularyOf } from '../src/core/schema/analysis.js';
 import { BLIND_SECRETS, blindRound, NOW_CLOSED, NOW_OPEN } from './fixtures/blind-round.js';
@@ -76,7 +77,7 @@ describe('the activity record', () => {
   it('lists the discussion with its authors, edits as edits that keep no earlier wording, and the resolution', () => {
     const entries = activityRecord(a, { viewerId: 'cy', now: NOW_OPEN });
     expect(entries.filter((e) => e.threadId === 't1').map((e) => e.kind)).toEqual(['started-thread', 'replied', 'edited-comment', 'resolved']);
-    expect(entries.find((e) => e.kind === 'edited-comment')!.said).toMatch(/the earlier wording is not kept/);
+    expect(entries.find((e) => e.kind === 'edited-comment')!.said).toMatch(/the earlier wording and the editor are not recorded/);
     expect(entries.find((e) => e.kind === 'resolved')!.who).toMatch(/^Ana Lopez/);
   });
 
@@ -197,5 +198,34 @@ describe('what the review of #218 found', () => {
     const withAnon = with1('a-rent-scorer', { authorId: 'anonymous' });
     const d = detail(withAnon, undefined);
     expect(d.assertions.filter((x) => x.authorHidden)).toHaveLength(3);
+  });
+});
+
+describe('an edit made through editComment (#195)', () => {
+  it('is the editor\u2019s edit, once each, and not a reply; an unnoted editedAt stays as the old kind of edit', () => {
+    const base = blindRound();
+    const editor = base.authors[0]!;
+    const a = reopenThread(base, 't1', { id: 'reopen-1', by: editor, at: '2026-09-29T00:00:00Z' });
+    const first = a.threads.find((x) => x.id === 't1')!.comments[0]!;
+    const edited = editComment(a, 't1', first.id, { body: 'rephrased', id: 'edit-note-1', by: editor, at: '2026-09-30T00:00:00Z' });
+    const mine = activityRecord(edited, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'edited-comment');
+    const noted = mine.find((e) => e.at === '2026-09-30T00:00:00Z')!;
+    expect(noted.said).toMatch(/edited a comment.*quoted in the thread/);
+    // A reply that only sounds like a note, or names a comment the thread lacks, is a reply.
+    const sounds = replyToThread(a, 't1', { id: 'r2', at: '2026-09-30T00:00:00Z', body: 'Edited comment by mistake, sorry', author: editor });
+    const forged = replyToThread(a, 't1', { id: 'r3', at: '2026-09-30T00:00:00Z', body: 'Edited comment "nope" by Dana', author: editor });
+    // Nor does a note count where nothing was edited, or one that names itself, or one for an empty id.
+    const unedited = replyToThread(a, 't1', { id: 'r4', at: '2026-09-30T00:00:00Z', body: `Edited comment ${JSON.stringify(first.id)} by Dana`, author: editor });
+    const selfish = replyToThread(a, 't1', { id: 'r5', at: '2026-09-30T00:00:00Z', body: 'Edited comment "r5" by Dana', author: editor });
+    for (const d of [sounds, forged, unedited, selfish]) {
+      const kinds = activityRecord(d, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.at === '2026-09-30T00:00:00Z').map((e) => e.kind);
+      expect(kinds).toEqual(['replied']);
+    }
+    // An id of "" works like any other.
+    const blank = { ...a, threads: a.threads.map((t) => (t.id === 't1' ? { ...t, comments: t.comments.map((c, k) => (k === 0 ? { ...c, id: '' } : c)) } : t)) };
+    const blanked = editComment(blank, 't1', '', { body: 'rephrased', id: 'edit-note-2', by: editor, at: '2026-09-30T00:00:00Z' });
+    expect(activityRecord(blanked, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.at === '2026-09-30T00:00:00Z').map((e) => e.kind)).toEqual(['edited-comment']);
+    expect(activityRecord(edited, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'replied').length)
+      .toBe(activityRecord(a, { viewerId: 'cy', now: NOW_OPEN }).filter((e) => e.threadId === 't1' && e.kind === 'replied').length);
   });
 });

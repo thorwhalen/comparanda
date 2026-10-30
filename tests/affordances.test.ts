@@ -16,6 +16,7 @@ import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
 import { screen } from '../src/core/analyses/screening.js';
 import { tombstone } from '../src/core/schema/anchors.js';
 import { makeAffordances, cellPolicy, valueAffordance, type EditRequest } from '../src/core/affordances.js';
+import { commentTarget, editComment } from '../src/core/threads.js';
 import { makeAffordances as fromRoot } from '../src/index.js';
 import { cellAffordanceOf, inMemoryAnalysisSource } from '../src/store/index.js';
 
@@ -184,21 +185,37 @@ describe('nothing about rendering or storage is expressible', () => {
 
   it('tells the host which thread act it is asked about (#194), and the general question when none is named', () => {
     const seen: EditRequest[] = [];
-    const aff = makeAffordances(relocation(), { authorize: (r) => (seen.push(r), r.action === 'comment' && r.thread === 'resolve' ? { enabled: false, reason: 'only the owner resolves' } : true) });
+    const doc = relocation();
+    const th = doc.threads.find((t) => !t.resolved)!;
+    const aff = makeAffordances(doc, { authorize: (r) => (seen.push(r), r.action === 'comment' && r.thread === 'resolve' ? { enabled: false, reason: 'only the owner resolves' } : true) });
     const target = { kind: 'analysis' } as const;
     expect(aff.comment(target, 'start')).toEqual({ enabled: true });
     expect(aff.comment(target, 'reply')).toEqual({ enabled: true });
     expect(aff.comment(target, 'resolve')).toEqual({ enabled: false, reason: 'only the owner resolves' });
     expect(aff.comment(target, 'reopen')).toEqual({ enabled: true });
+    expect(aff.comment(target, 'edit', { threadId: th.id, commentId: th.comments[0]!.id })).toEqual({ enabled: true });
     expect(aff.comment()).toEqual({ enabled: true });
     expect(seen).toEqual([
       { action: 'comment', doing: 'starting a thread', target, thread: 'start' },
       { action: 'comment', doing: 'answering a thread', target, thread: 'reply' },
       { action: 'comment', doing: 'resolving a thread', target, thread: 'resolve' },
       { action: 'comment', doing: 'reopening a thread', target, thread: 'reopen' },
+      { action: 'comment', doing: 'editing a comment', target: commentTarget(th.anchor), thread: 'edit', threadId: th.id, comment: { threadId: th.id, id: th.comments[0]!.id, authorId: th.comments[0]!.authorId } },
       { action: 'comment', doing: 'commenting' },
     ]);
-    expect(() => aff.comment(target, 'delete' as never)).toThrow(/start.*reply.*resolve.*reopen/);
+    // The host is told the document's facts about the comment, and an edit is asked about one comment only.
+    expect(aff.comment(target, 'edit', { threadId: th.id, commentId: 'nope' })).toMatchObject({ enabled: false, reason: expect.stringMatching(/no comment "nope"/) });
+    expect(() => aff.comment(target, 'edit')).toThrow(/one comment/);
+    // The target the host is told is the thread's own anchor, whatever the caller passed; a resolved thread refuses.
+    seen.length = 0;
+    aff.comment({ kind: 'cell', id: 'x/y' }, 'edit', { threadId: th.id, commentId: th.comments[0]!.id });
+    expect(seen[0]!.action === 'comment' && seen[0]!.target).toEqual(commentTarget(th.anchor));
+    const edited = editComment(doc, th.id, th.comments[0]!.id, { body: 'edited wording', id: 'note-x', by: { id: 'ana', displayName: 'Ana', kind: 'human' }, at: 'z' });
+    expect(makeAffordances(edited).comment(target, 'edit', { threadId: th.id, commentId: 'note-x' })).toMatchObject({ enabled: false, reason: expect.stringMatching(/earlier edit/) });
+    const closed = doc.threads.find((t) => t.resolved)!;
+    expect(makeAffordances(doc).comment(target, 'edit', { threadId: closed.id, commentId: closed.comments[0]!.id })).toMatchObject({ enabled: false, reason: expect.stringMatching(/resolved/) });
+    expect(() => aff.comment(target, 'reply', { threadId: th.id, commentId: th.comments[0]!.id })).toThrow(/one comment/);
+    expect(() => aff.comment(target, 'delete' as never)).toThrow(/start.*reply.*edit.*resolve.*reopen/);
   });
 
   it('names the thread an act is on, and refuses what its state rules out (#206)', () => {

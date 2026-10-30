@@ -843,7 +843,7 @@ function RefusedEdits({ analysis, measure, affordances, rows, columns, transpose
   const controls: { key: string; label: string; refused: string | undefined | null }[] = [
     { key: 'assert', label: 'Record a value', refused: overCells((a, c) => affordances.assert(a, c, measure)) },
     { key: 'suggest', label: 'Suggest a value', refused: overCells((a, c) => affordances.suggest(a, c, measure)) },
-    { key: 'comment', label: 'Comment', refused: overAll(THREAD_ACTS.map((act) => affordances.comment(undefined, act))) },
+    { key: 'comment', label: 'Comment', refused: overAll(THREAD_ACTS.filter((act) => act !== 'edit').map((act) => affordances.comment(undefined, act))) },
     { key: 'revise', label: 'Revise the analysis', refused: overAll([affordances.revise('revising the analysis')]) },
     { key: 'change-lock', label: 'Lock or unlock the analysis', refused: overAll([affordances.changeLock()]) },
     {
