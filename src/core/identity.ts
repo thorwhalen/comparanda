@@ -46,6 +46,8 @@ function attested(a: Attestation | undefined, vouched: boolean): string {
  * A persona (an author whose `principalId` differs from its `id`) always names
  * its principal's id, beside the principal's display name when one is given:
  * a display name alone is not an identity, since `aaa:Ana` can look like `ana`.
+ * `tagged` adds the author's own id after the display name; `attributions` sets
+ * it for every author whose name another author in the document also bears.
  *
  *     attribution(ada)              // 'Ada (human, unverified)'
  *     attribution(scorer)           // 'Scorer (agent rubricator, model m-1, prompt v3, run r9, unverified)'
@@ -57,7 +59,7 @@ function attested(a: Attestation | undefined, vouched: boolean): string {
 export function attribution(
   author: Pick<Author, 'displayName' | 'kind' | 'role' | 'actingAs' | 'attestation' | 'agent'>
     & Partial<Pick<Author, 'id' | 'principalId'>>,
-  { principal, vouched = false }: { principal?: string | undefined; vouched?: boolean } = {},
+  { principal, vouched = false, tagged = false }: { principal?: string | undefined; vouched?: boolean; tagged?: boolean } = {},
 ): string {
   const run = author.agent;
   const principalId = author.principalId !== undefined && author.principalId !== author.id ? author.principalId : undefined;
@@ -71,15 +73,10 @@ export function attribution(
     principalId && `for ${principal !== undefined && principal !== principalId ? `${principal} [${principalId}]` : principalId}`,
     attested(author.attestation, vouched),
   ];
-  return `${author.displayName} (${parts.filter(Boolean).join(', ')})`;
+  // A name another author shares is told apart by id (#265): `tagged`, set by `attributions` where names collide.
+  return `${author.displayName}${tagged && author.id !== undefined ? ` [${author.id}]` : ''} (${parts.filter(Boolean).join(', ')})`;
 }
 
-/**
- * Every author of a document, attributed, by id: what a view looks a name up
- * in. A persona's principal is named by display name and id when the document
- * describes it, and by its id when it does not -- never dropped. `vouched`
- * says which authors' attestations the host itself performed; none by default.
- */
 /**
  * Whether the host itself performed `author`'s attestation (a host-session
  * sign-in, say), so it reads as attested rather than as a claim (#243, #263).
@@ -87,13 +84,41 @@ export function attribution(
  */
 export type Vouched = (author: Author) => boolean;
 
+/** Letters that read as a Latin one, so `Ana` and `Аna` (Cyrillic A) are the same name to a reader. */
+const LOOK_ALIKES: Readonly<Record<string, string>> = {
+  а: 'a', в: 'b', е: 'e', к: 'k', м: 'm', н: 'h', о: 'o', р: 'p', с: 'c', т: 't', у: 'y', х: 'x', і: 'i', ј: 'j', ѕ: 's',
+  α: 'a', β: 'b', ε: 'e', ι: 'i', κ: 'k', ν: 'v', ο: 'o', ρ: 'p', τ: 't', υ: 'u', χ: 'x', ζ: 'z',
+};
+
+/**
+ * A display name as a reader would compare it: case, accents, spacing and the
+ * common look-alike letters folded away. Two names with one fold read alike.
+ * Not a full confusables table; `principalId` and the id tag state the truth.
+ */
+export function nameFold(name: string): string {
+  return Array.from(name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase())
+    .map((ch) => LOOK_ALIKES[ch] ?? ch).join('').replace(/[\s\p{P}]+/gu, ' ').trim();
+}
+
+/**
+ * Every author of a document, attributed, by id: what a view looks a name up
+ * in. A persona's principal is named by display name and id when the document
+ * describes it, and by its id when it does not -- never dropped. An author
+ * whose display name another author also bears (case-, accent- and look-alike-
+ * folded), persona or not, is told apart by ` [id]` after the name (#265).
+ * `vouched` says which authors' attestations the host itself performed; none
+ * by default.
+ */
 export function attributions(
   authors: readonly Author[],
   { vouched = () => false }: { vouched?: Vouched | undefined } = {},
 ): Map<string, string> {
   const names = new Map(authors.map((a) => [a.id, a.displayName]));
+  const bearers = new Map<string, number>();
+  for (const a of authors) bearers.set(nameFold(a.displayName), (bearers.get(nameFold(a.displayName)) ?? 0) + 1);
   return new Map(authors.map((a) => [a.id, attribution(a, {
     principal: a.principalId === undefined ? undefined : names.get(a.principalId),
     vouched: vouched(a),
+    tagged: (bearers.get(nameFold(a.displayName)) ?? 0) > 1,
   })]));
 }
