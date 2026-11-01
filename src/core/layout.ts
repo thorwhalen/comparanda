@@ -130,7 +130,8 @@ export function focusInLayout(layout: MatrixLayout, focus: ViewState['session'][
 /**
  * A band-by-band block drawn as one cell (#93): its first and last row and
  * column, as indices into the layout's `rows.entries` and `columns.entries`,
- * the bands it lies in, how many cells it stands for, and their shared reason.
+ * the bands it lies in, how many cells it stands for, and their shared reason
+ * and group pair.
  */
 export interface OmittedBlock {
   rows: { first: number; last: number };
@@ -140,6 +141,11 @@ export interface OmittedBlock {
   cells: number;
   /** The declarations' reason, when every cell's declaration gives the same one. */
   reason: string | undefined;
+  /**
+   * The declarations' group pair, `[alternativeGroupId, criterionGroupId]`, when every cell's declaration names the same
+   * one (#303): a block a band merges from several declarations is about none of them alone.
+   */
+  pair: readonly [string, string] | undefined;
 }
 
 /**
@@ -164,11 +170,15 @@ export function omittedBlocks(
   for (const r of spans(rows.bands)) {
     for (const c of spans(columns.bands)) {
       const declared = r.band.entries.flatMap((re) => c.band.entries.map((ce) => (transposed ? omits(ce.id, re.id) : omits(re.id, ce.id))));
-      if (declared.length < 2 || declared.some((d) => d === undefined)) continue;
-      const reasons = new Set(declared.map((d) => d!.reason));
+      const every = declared.filter((d): d is InapplicableBlock => d !== undefined);
+      if (every.length < 2 || every.length !== declared.length) continue;
+      const first = every[0]!;
+      const reasons = new Set(every.map((d) => d.reason));
+      const onePair = every.every((d) => d.alternativeGroupId === first.alternativeGroupId && d.criterionGroupId === first.criterionGroupId);
       blocks.push({
         rows: { first: r.first, last: r.last }, columns: { first: c.first, last: c.last }, rowBand: r.band, columnBand: c.band,
         cells: declared.length, reason: reasons.size === 1 ? [...reasons][0] : undefined,
+        pair: onePair ? [first.alternativeGroupId, first.criterionGroupId] : undefined,
       });
     }
   }

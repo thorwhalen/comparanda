@@ -143,6 +143,17 @@ describe('omittedBlocks (#93)', () => {
     expect([far!.rowBand.groupId, far!.cells, far!.reason]).toEqual(['g-far', 3, undefined]);
   });
 
+  it('gives the block its group pair, and none when the declarations behind it name different pairs (#303)', () => {
+    expect(omittedBlocks(matrixLayout(relocation, both()), blockOf)[0]!.pair).toEqual(['g-asia', 'g-eu']);
+    // A remainder band holding Asia and the Americas, each declared against EU, with the same reason: one reason, no one pair.
+    const v = setGrouping(setGrouping(initialViewState(relocation), 'alternatives', ['g-europe']), 'criteria', ['g-eu']);
+    const merged = omittedBlocks(matrixLayout(relocation, v), blockOf).find((b) => b.rowBand.groupId === undefined)!;
+    expect([merged.cells, merged.reason, merged.pair]).toEqual([3, 'not an EU destination, so EU residency rules do not apply', undefined]);
+    // Transposed, the same: the pair is the declarations', whichever axis the rows are.
+    const t = omittedBlocks(matrixLayout(relocation, transpose(both())), blockOf)[0]!;
+    expect(t.pair).toEqual(['g-asia', 'g-eu']);
+  });
+
   it('makeInapplicability is the blocks reader, asked yes or no', () => {
     const yes = makeInapplicability(relocation);
     for (const alt of relocation.alternatives) for (const crit of relocation.criteria) {
