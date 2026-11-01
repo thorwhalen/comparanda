@@ -66,6 +66,8 @@ describe('the suggestions panel', () => {
     expect(doc.suggestions.find((s) => s.id === 'sg-rent-tai')!.status).toBe('open');
     expect(panel()!.querySelector('h2')!.textContent).toBe('Open suggestions (1)');
     expect(panel()!.querySelector('[data-said]')!.textContent).toBe('Wrote 1 decision.');
+    // The Write button left with its write: focus stays in the panel, on its heading, never on the grid (#275).
+    expect(document.activeElement).toBe(panel()!.querySelector('h2'));
   });
 
   it('refuses, with the reason, when the host gave the mount no way to write decisions', () => {
@@ -121,7 +123,7 @@ describe('naming a local identity before its first decision (#274)', () => {
     expect(doc.authors.find((a) => a.id === 'local-1')).toMatchObject({ displayName: 'Bob', attestation: { method: 'unverified' } });
   });
 
-  it('is one field: a name taken in the suggestions panel is no longer asked by the discussion', async () => {
+  it('is the same field in both panels, and a name taken in one is no longer asked by the other', async () => {
     const storage = memory();
     handle = mountMatrix(el, {
       analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage }),

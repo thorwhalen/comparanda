@@ -104,7 +104,7 @@ export function DetailPanel(props: DetailPanelProps) {
   const kind = block ? 'block' : alternative && criterion ? 'cell' : alternative ? words.alternative : criterion ? words.criterion : 'analysis';
   return (
     <aside
-      class="comparanda-panel" role="complementary" aria-labelledby={headingId} data-panel={kind}
+      class="comparanda-panel" role="complementary" aria-labelledby={headingId} data-panel={kind} data-focus-home="details"
       onKeyDown={(event: KeyboardEvent) => {
         if (event.key !== 'Escape' || event.defaultPrevented) return;
         event.preventDefault();

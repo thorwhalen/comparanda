@@ -26,8 +26,6 @@ const DEFAULT_IDENTITY = anonymousIdentity();
 const DEFAULT_IDENTITY_ID = 'anonymous';
 /** The details panel: the region the reader opens on a cell, header or block. */
 const DETAIL_PANEL = 'aside.comparanda-panel';
-/** The regions focus stays in when the control holding it leaves with its write, each landing on its `[data-panel-heading]` (#275). */
-const FOCUS_HOMES: readonly string[] = [DETAIL_PANEL, 'section.comparanda-suggestions'];
 import { createEncodingRegistry, type EncodingRegistry } from './encodings/registry.js';
 import type { Author } from '../core/schema/provenance.js';
 import { commentTarget, editComment, reopenThread, replyToThread, resolveThread, startThread } from '../core/threads.js';
@@ -390,7 +388,7 @@ export function mountMatrix(
   };
 
   /** A panel's writes, with the name field offered while one is asked for (#193, #274): one `takeName` behind every panel that signs. */
-  const askingName = <W extends object>(w: W): W & { name?: TakeName } => (drawnAskingName ? { ...w, name: takeName } : w);
+  const askingName = <W extends { name?: TakeName }>(w: W): W => (drawnAskingName ? { ...w, name: takeName } : w);
 
   const draw = () => {
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
@@ -458,20 +456,21 @@ export function mountMatrix(
    * cell that is no longer one -- two tab stops, where ADR-0027 allows one.
    */
   /**
-   * Which of this matrix's focus homes focus was in, if any. Asked of the element as it was found: a removed control keeps
-   * its ancestors only until the render.
+   * Which of this matrix's focus homes focus was in, if any: a region that marks itself `data-focus-home`, whose
+   * `[data-panel-heading]` focus lands on when the control holding it leaves with its write (#275). Asked of the element
+   * as it was found: a removed control keeps its ancestors only until the render.
    */
-  const homeOf = (was: Element | null): string | undefined => FOCUS_HOMES.find((home) => {
-    const region = was?.closest(home);
-    // This matrix's own region, or one a failed render has already detached; never a host's panel around the matrix.
-    return region != null && (!region.isConnected || el.contains(region));
-  });
+  const homeOf = (was: Element | null): string | undefined => {
+    const region = was?.closest('[data-focus-home]');
+    // This matrix's own region, or one a failed render has already detached; never a host's region around the matrix.
+    return region != null && (!region.isConnected || el.contains(region)) ? region.getAttribute('data-focus-home') ?? undefined : undefined;
+  };
   const settle = (was: Element | null, home?: string) => {
     if (was === null) return;
     const now = focused();
     // Focus lost from inside a focus home (a control that left with its write) stays in that region, on its heading,
     // never passing through the grid (#275).
-    const heading = home && now === null ? el.querySelector<HTMLElement>(`${home} [data-panel-heading]`) : null;
+    const heading = home && now === null ? el.querySelector<HTMLElement>(`[data-focus-home="${CSS.escape(home)}"] [data-panel-heading]`) : null;
     if (heading) return heading.focus();
     const stop = el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]');
     if (stop && (now === null || (now !== stop && now.matches('[data-cell]')))) stop.focus();

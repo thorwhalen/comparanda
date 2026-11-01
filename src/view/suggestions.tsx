@@ -109,7 +109,7 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
   };
 
   return (
-    <section class="comparanda-suggestions" ref={root} aria-labelledby={id} data-suggestions={String(open.length)}>
+    <section class="comparanda-suggestions" ref={root} aria-labelledby={id} data-suggestions={String(open.length)} data-focus-home="suggestions">
       {/* Focusable, so focus that leaves with a control (the name field, once a name is taken) lands here, not on the grid (#275). */}
       <h2 id={id} tabIndex={-1} data-panel-heading="">{`Open suggestions (${open.length})`}</h2>
       <p class="comparanda-panel-hint">Accepting writes the proposed value into its cell as its proposer&apos;s; declining records only the decision. Decisions are staged here, each undoable, and written together.</p>
