@@ -45,7 +45,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentType } from 'preact';
 
 import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
-import { matrixLayout, omittedBlocks, type AxisLayout, type Band, type LayoutEntry, type OmittedBlock } from '../core/layout.js';
+import { matrixLayout, omittedBlocks, shownOf, type AxisLayout, type Band, type LayoutEntry, type OmittedBlock } from '../core/layout.js';
 import { cellIndex, cellKey, makeCellReader, unknownMeasure, type Analysis } from '../core/schema/analysis.js';
 import { cellWords } from '../core/cell-words.js';
 import type { Vouched } from '../core/identity.js';
@@ -72,7 +72,6 @@ import { capitalise, outOf, STANDING_SAID } from './words.js';
 import { DetailPanel, type PanelBlock } from './detail-panel.js';
 import { OrphanTray, type ReattachWrite } from './orphans.js';
 import type { AnalysisPanelProps } from './agreement.js';
-import type { Shown } from './shown.js';
 import type { ThreadWrites } from './threads.js';
 import { SuggestionsPanel, type SuggestionWrites } from './suggestions.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
@@ -244,8 +243,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
   /** What the analysis panels list, and in what order: the entries drawn here (#292). */
-  const idsOf = (axis: AxisLayout) => axis.entries.map((e) => e.id);
-  const shown: Shown = transposed ? { alternatives: idsOf(columns), criteria: idsOf(rows) } : { alternatives: idsOf(rows), criteria: idsOf(columns) };
+  const shown = shownOf(layout);
   const groupLabel = new Map(analysis.groups.map((g) => [g.id, g.label]));
   const openHere = openThreadCounts(analysis);
   const rowWord = transposed ? words.criterion : words.alternative;

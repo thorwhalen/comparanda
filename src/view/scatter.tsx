@@ -29,7 +29,8 @@ import { scatterCriteria, scatterModel, type DominanceTier, type ScatterAxis, ty
 import { aliasesOf } from '../core/schema/structure.js';
 import { capitalise } from './words.js';
 import type { AnalysisPanelProps } from './agreement.js';
-import { HiddenNote, hiddenOf, inShownOrder, type Shown } from './shown.js';
+import { hiddenOf, inShownOrder, type Shown } from '../core/layout.js';
+import { HiddenNote } from './shown.js';
 
 /** The plot's drawing box, in SVG user units, the margin its tick labels sit in, and a mark's radius. */
 const PLOT = Object.freeze({ width: 360, height: 280, margin: 44, mark: 5 });
@@ -149,6 +150,9 @@ function Plot({ model, id, rowWord, shown }: { model: UsableScatterModel; id: st
   const spots = new Map<string, (ScatterPoint & { x: number; y: number })[]>();
   for (const p of placed) spots.set(`${p.x}\u0000${p.y}`, [...(spots.get(`${p.x}\u0000${p.y}`) ?? []), p]);
   const front = points.filter((p) => p.here === 'non-dominated').map((p) => (p.x === undefined || p.y === undefined ? `${p.label} (not placed)` : p.label));
+  // The front is the document's: a member the reader hid is counted, never dropped, or "none" could be said of a front that has one.
+  const hiddenFront = model.points.filter((p) => p.here === 'non-dominated').length - points.filter((p) => p.here === 'non-dominated').length;
+  if (hiddenFront > 0) front.push(`${hiddenFront} hidden in the matrix`);
   return (
     <figure aria-labelledby={`${id}-caption`}>
       <figcaption id={`${id}-caption`}>

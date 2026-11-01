@@ -30,7 +30,8 @@ import { attributions, type Vouched } from '../core/identity.js';
 import { messageOf } from './dom.js';
 import type { ViewerContext } from '../core/schema/redaction.js';
 import { aliasesOf } from '../core/schema/structure.js';
-import { HiddenNote, hiddenOf, inShownOrder, type Shown } from './shown.js';
+import { hiddenOf, inShownOrder, type Shown } from '../core/layout.js';
+import { HiddenNote } from './shown.js';
 
 /** What every analysis panel is drawn from: the document and measure shown. */
 export interface AnalysisPanelProps {
@@ -81,6 +82,7 @@ export function AgreementPanel({ analysis, measure, vouched, viewer, shown }: An
     const byCriterion = <T extends { criterionId: string }>(xs: readonly T[]) => inShownOrder(xs, (x) => x.criterionId, shown?.criteria).listed;
     // By alternative, then (a stable sort) by criterion within it, each in the reader's order.
     const byCell = (xs: readonly CellConsensus[]) => inShownOrder(byCriterion(xs), (x) => x.alternativeId, shown?.alternatives).listed;
+    const skipped = byCriterion(result.skipped);
     const bandSource = result.criteria.find((c) => c.band)?.band?.source;
     const camps: Camp[] = naming.labels
       .map((label, i) => ({ id: `camp-${i}`, label, authorIds: raters.filter((r) => naming.of[r.id] === i).map((r) => r.id) }))
@@ -116,8 +118,8 @@ export function AgreementPanel({ analysis, measure, vouched, viewer, shown }: An
           </tbody>
         </table>
         {bandSource && <p class="comparanda-panel-hint" data-band-source="">{`Bands: ${bandSource}`}</p>}
-        {byCriterion(result.skipped).length > 0 && (
-          <p class="comparanda-panel-hint">{`Not computed: ${byCriterion(result.skipped).map((s) => `${crit(s.criterionId)} (${s.reason})`).join('; ')}.`}</p>
+        {skipped.length > 0 && (
+          <p class="comparanda-panel-hint">{`Not computed: ${skipped.map((s) => `${crit(s.criterionId)} (${s.reason})`).join('; ')}.`}</p>
         )}
         <h3 id={`${id}-camps`}>Camps</h3>
         <p class="comparanda-panel-hint">Name the sides author by author: nothing here groups the raters for you. Personas count as their principal&apos;s camp.</p>
@@ -167,10 +169,13 @@ export function AgreementPanel({ analysis, measure, vouched, viewer, shown }: An
               <p class="comparanda-panel-hint">{`${consensus.authorHidden} ${consensus.authorHidden === 1 ? 'value is' : 'values are'} in no camp: an open round hides who gave ${consensus.authorHidden === 1 ? 'it' : 'them'} from you.`}</p>
             )}
             {(['shared', 'divided'] as const).map((status) => {
-              const cells = byCell((consensus as ConsensusResult).cells.filter((c) => c.status === status));
+              const all = (consensus as ConsensusResult).cells.filter((c) => c.status === status);
+              const cells = byCell(all);
+              // The count is the document's, as in the table above; the lines are the shown cells'.
+              const count = cells.length === all.length ? String(all.length) : `${all.length}; ${cells.length} listed`;
               return cells.length > 0 && (
                 <section key={status} data-consensus-status={status}>
-                  <h4>{status === 'shared' ? `Common ground (${cells.length})` : `Divided (${cells.length})`}</h4>
+                  <h4>{status === 'shared' ? `Common ground (${count})` : `Divided (${count})`}</h4>
                   <ul>{cells.map((c) => <li key={`${c.alternativeId}:${c.criterionId}`}>{cellSaid(c)}</li>)}</ul>
                 </section>
               );

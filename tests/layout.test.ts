@@ -6,10 +6,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { focusInLayout, matrixLayout, omittedBlocks } from '../src/core/layout.js';
+import { focusInLayout, hiddenOf, inShownOrder, matrixLayout, omittedBlocks, shownOf } from '../src/core/layout.js';
 import { makeInapplicableBlocks, makeInapplicability } from '../src/core/schema/groups.js';
 import { Analysis } from '../src/core/schema/analysis.js';
-import { initialViewState, setGrouping, transpose, type ViewState } from '../src/core/view-state.js';
+import { applyOrder, initialViewState, setFilter, setGrouping, transpose, type ViewState } from '../src/core/view-state.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
 const relocation = Analysis.parse(JSON.parse(readFileSync(join(examples, 'relocation.json'), 'utf8')));
@@ -173,5 +173,22 @@ describe('focusInLayout (#283)', () => {
   });
   it('reads the axes the same way transposed', () => {
     expect(focusInLayout(matrixLayout(relocation, transpose(hidden)), { alternativeId: 'seoul', criterionId: 'income-tax' })).toEqual({ criterionId: 'income-tax' });
+  });
+});
+
+describe('shownOf, inShownOrder, hiddenOf (#292)', () => {
+  const v = setFilter(applyOrder(initialViewState(relocation), 'alternatives', ['seoul', 'lisbon', 'berlin', 'taipei', 'montreal'], { kind: 'manual', by: 'ana' }), { hiddenAlternatives: ['berlin'], hiddenCriteria: ['rent'] });
+  it('reads what a layout shows by axis, transposed or not', () => {
+    const shown = shownOf(matrixLayout(relocation, v));
+    expect(shown.alternatives).toEqual(['seoul', 'lisbon', 'taipei', 'montreal']);
+    expect(shown.criteria).not.toContain('rent');
+    expect(shownOf(matrixLayout(relocation, transpose(v)))).toEqual(shown);
+  });
+  it('orders and filters by it, and counts what it left out; without one, everything as given', () => {
+    const shown = shownOf(matrixLayout(relocation, v));
+    expect(inShownOrder(relocation.alternatives, (a) => a.id, shown.alternatives)).toMatchObject({ hidden: 1, listed: shown.alternatives.map((id) => expect.objectContaining({ id })) });
+    expect(inShownOrder(['b', 'a'], (x) => x, undefined)).toEqual({ listed: ['b', 'a'], hidden: 0 });
+    expect(hiddenOf(relocation, shown)).toEqual({ alternatives: 1, criteria: 1 });
+    expect(hiddenOf(relocation, undefined)).toEqual({ alternatives: 0, criteria: 0 });
   });
 });

@@ -29,7 +29,8 @@ import { aliasesOf } from '../core/schema/structure.js';
 import { Glyph, GLYPH_KEYS, type GlyphKey } from './channels.js';
 import { capitalise } from './words.js';
 import type { AnalysisPanelProps } from './agreement.js';
-import { HiddenNote, hiddenOf, inShownOrder } from './shown.js';
+import { hiddenOf, inShownOrder } from '../core/layout.js';
+import { HiddenNote } from './shown.js';
 
 /** A lane's glyph: its core reason's, or the undeclared one's for anything else. */
 const glyphOf = (lane: string): GlyphKey => ((GLYPH_KEYS as readonly string[]).includes(lane) ? lane as GlyphKey : 'undeclared');
@@ -52,7 +53,12 @@ export function DotPlotsPanel({ analysis, measure, vouched, viewer, shown }: Ana
     const rowWord = capitalise(aliasesOf(analysis).alternative);
     // A plot per shown criterion and a row per shown alternative, in the reader's order (#292).
     const drawn = inShownOrder(dotPlots(analysis, { measure, viewer }), (p) => p.criterionId, shown?.criteria).listed
-      .map((p) => (p.usable ? { ...p, rows: inShownOrder(p.rows, (r) => r.alternativeId, shown?.alternatives).listed } : p));
+      .map((p) => {
+        if (!p.usable) return p;
+        const rows = inShownOrder(p.rows, (r) => r.alternativeId, shown?.alternatives).listed;
+        // A lane only a hidden row filled would be an empty column under a heading that says something is missing.
+        return { ...p, rows, lanes: p.lanes.filter((lane) => rows.some((r) => r.missing.some((m) => m.lane === lane))) };
+      });
     return (
       <>
         <style>{DOT_PLOT_CSS}</style>

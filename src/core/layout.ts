@@ -188,3 +188,35 @@ export function omittedBlocks(
   }
   return blocks;
 }
+
+/** The ids the reader shows, each axis in the reader's order: what the analysis panels list (#292). */
+export interface Shown {
+  alternatives: readonly string[];
+  criteria: readonly string[];
+}
+
+/** What a layout shows, by axis rather than by rows and columns: transposed or not, the same ids. */
+export function shownOf(layout: Pick<MatrixLayout, 'rows' | 'columns' | 'transposed'>): Shown {
+  const ids = (axis: AxisLayout) => axis.entries.map((e) => e.id);
+  const { rows, columns, transposed } = layout;
+  return transposed ? { alternatives: ids(columns), criteria: ids(rows) } : { alternatives: ids(rows), criteria: ids(columns) };
+}
+
+/**
+ * `items` as the reader arranged them: in `order`, without the ones it does
+ * not hold, and how many were left out. Absent `order` (a host that gives no
+ * arrangement), every item, as given.
+ */
+export function inShownOrder<T>(items: readonly T[], idOf: (item: T) => string, order: readonly string[] | undefined): { listed: T[]; hidden: number } {
+  if (order === undefined) return { listed: [...items], hidden: 0 };
+  const rank = new Map(order.map((id, i) => [id, i]));
+  const listed = items.filter((x) => rank.has(idOf(x))).sort((a, b) => rank.get(idOf(a))! - rank.get(idOf(b))!);
+  return { listed, hidden: items.length - listed.length };
+}
+
+/** How many live alternatives and criteria the reader hid: none, without an arrangement. */
+export function hiddenOf(a: Pick<Analysis, 'alternatives' | 'criteria'>, shown: Shown | undefined): { alternatives: number; criteria: number } {
+  const count = (xs: readonly { id: string; tombstoned?: boolean | undefined }[], order: readonly string[] | undefined) =>
+    inShownOrder(xs.filter((x) => !x.tombstoned), (x) => x.id, order).hidden;
+  return { alternatives: count(a.alternatives, shown?.alternatives), criteria: count(a.criteria, shown?.criteria) };
+}
