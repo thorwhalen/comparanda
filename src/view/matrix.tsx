@@ -45,7 +45,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentType } from 'preact';
 
 import { THREAD_ACTS, type Affordance, type Affordances } from '../core/affordances.js';
-import { matrixLayout, omittedBlocks, type AxisLayout, type Band, type LayoutEntry, type OmittedBlock } from '../core/layout.js';
+import { matrixLayout, omittedBlocks, shownOf, type AxisLayout, type Band, type LayoutEntry, type OmittedBlock } from '../core/layout.js';
 import { cellIndex, cellKey, makeCellReader, unknownMeasure, type Analysis } from '../core/schema/analysis.js';
 import { cellWords } from '../core/cell-words.js';
 import type { Vouched } from '../core/identity.js';
@@ -242,6 +242,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const words = aliasesOf(analysis);
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
+  /** What the analysis panels list, and in what order: the entries drawn here (#292). */
+  const shown = shownOf(layout);
   const groupLabel = new Map(analysis.groups.map((g) => [g.id, g.label]));
   const openHere = openThreadCounts(analysis);
   const rowWord = transposed ? words.criterion : words.alternative;
@@ -799,7 +801,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         />
       )}
       </div>
-      {panels.map((Panel, i) => <Panel key={i} analysis={analysis} measure={measure} vouched={vouched} viewer={viewer} />)}
+      {panels.map((Panel, i) => <Panel key={i} analysis={analysis} measure={measure} vouched={vouched} viewer={viewer} shown={shown} />)}
     </div>
   );
 }

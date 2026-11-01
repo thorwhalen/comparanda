@@ -11,6 +11,7 @@
 export { mountMatrix, type MatrixHandle, type MountOptions } from './mount.js';
 export { mountPersistedMatrix, type PersistedMatrixHandle } from './persist.js';
 export { AgreementPanel, type AnalysisPanelProps } from './agreement.js';
+export { HiddenNote } from './shown.js';
 export { ScatterPanel } from './scatter.js';
 export { DotPlotsPanel } from './dot-plots.js';
 export type { SuggestionChoice, SuggestionWrites } from './suggestions.js';

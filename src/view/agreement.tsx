@@ -29,6 +29,9 @@ import { groupInformedConsensus, type Camp, type CellConsensus, type ConsensusRe
 import { attributions, type Vouched } from '../core/identity.js';
 import { messageOf } from './dom.js';
 import type { ViewerContext } from '../core/schema/redaction.js';
+import { aliasesOf } from '../core/schema/structure.js';
+import { hiddenOf, inShownOrder, type Shown } from '../core/layout.js';
+import { HiddenNote } from './shown.js';
 
 /** What every analysis panel is drawn from: the document and measure shown. */
 export interface AnalysisPanelProps {
@@ -38,6 +41,11 @@ export interface AnalysisPanelProps {
   vouched?: Vouched | undefined;
   /** Who is looking: what an open anonymous round hides (ADR-0023). */
   viewer?: ViewerContext | undefined;
+  /**
+   * What the matrix shows, in the reader's order (#292): a panel lists in this order and leaves out what is hidden,
+   * and says so. Absent, the document's order, everything listed.
+   */
+  shown?: Shown | undefined;
 }
 
 /** The camps as named so far: their labels, and which camp (by index) each author is in. */
@@ -57,7 +65,7 @@ function readAs(c: CriterionAgreement): string {
   return c.labelledAs === 'agreement' ? 'agreement between raters' : `consistency only (weakest independence: ${c.weakestIndependence})`;
 }
 
-export function AgreementPanel({ analysis, measure, vouched, viewer }: AnalysisPanelProps) {
+export function AgreementPanel({ analysis, measure, vouched, viewer, shown }: AnalysisPanelProps) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState<Naming>({ labels: ['Camp 1', 'Camp 2'], of: {} });
@@ -70,6 +78,11 @@ export function AgreementPanel({ analysis, measure, vouched, viewer }: AnalysisP
 
   const body = () => {
     const result = agreement(analysis, { measure });
+    // Listed as the matrix shows them; computed, as ever, over the whole document.
+    const byCriterion = <T extends { criterionId: string }>(xs: readonly T[]) => inShownOrder(xs, (x) => x.criterionId, shown?.criteria).listed;
+    // By alternative, then (a stable sort) by criterion within it, each in the reader's order.
+    const byCell = (xs: readonly CellConsensus[]) => inShownOrder(byCriterion(xs), (x) => x.alternativeId, shown?.alternatives).listed;
+    const skipped = byCriterion(result.skipped);
     const bandSource = result.criteria.find((c) => c.band)?.band?.source;
     const camps: Camp[] = naming.labels
       .map((label, i) => ({ id: `camp-${i}`, label, authorIds: raters.filter((r) => naming.of[r.id] === i).map((r) => r.id) }))
@@ -87,11 +100,12 @@ export function AgreementPanel({ analysis, measure, vouched, viewer }: AnalysisP
         <p class="comparanda-panel-hint">
           Krippendorff&apos;s alpha for each criterion, with its 95% interval. There is deliberately no figure for the matrix as a whole. The bands are shown with their source; they hide, flag and exclude nothing.
         </p>
+        <HiddenNote {...hiddenOf(analysis, shown)} words={aliasesOf(analysis)} />
         <table class="comparanda-analysis-table" data-agreement="">
           <caption>{`Agreement on ${measure}, criterion by criterion`}</caption>
           <thead><tr><th scope="col">Criterion</th><th scope="col">Alpha</th><th scope="col">95% interval</th><th scope="col">Against the bands</th><th scope="col">Reads as</th><th scope="col">Alternatives compared</th></tr></thead>
           <tbody>
-            {result.criteria.map((c) => (
+            {byCriterion(result.criteria).map((c) => (
               <tr key={c.criterionId} data-criterion={c.criterionId}>
                 <th scope="row">{crit(c.criterionId)}</th>
                 <td>{c.alpha === undefined ? 'undefined' : fixed(c.alpha)}</td>
@@ -104,8 +118,8 @@ export function AgreementPanel({ analysis, measure, vouched, viewer }: AnalysisP
           </tbody>
         </table>
         {bandSource && <p class="comparanda-panel-hint" data-band-source="">{`Bands: ${bandSource}`}</p>}
-        {result.skipped.length > 0 && (
-          <p class="comparanda-panel-hint">{`Not computed: ${result.skipped.map((s) => `${crit(s.criterionId)} (${s.reason})`).join('; ')}.`}</p>
+        {skipped.length > 0 && (
+          <p class="comparanda-panel-hint">{`Not computed: ${skipped.map((s) => `${crit(s.criterionId)} (${s.reason})`).join('; ')}.`}</p>
         )}
         <h3 id={`${id}-camps`}>Camps</h3>
         <p class="comparanda-panel-hint">Name the sides author by author: nothing here groups the raters for you. Personas count as their principal&apos;s camp.</p>
@@ -146,7 +160,7 @@ export function AgreementPanel({ analysis, measure, vouched, viewer }: AnalysisP
               <caption>Where the camps share ground, criterion by criterion</caption>
               <thead><tr><th scope="col">Criterion</th><th scope="col">Common ground</th><th scope="col">Divided</th><th scope="col">Not compared</th></tr></thead>
               <tbody>
-                {consensus.criteria.map((c) => (
+                {byCriterion(consensus.criteria).map((c) => (
                   <tr key={c.criterionId}><th scope="row">{crit(c.criterionId)}</th><td>{String(c.shared)}</td><td>{String(c.divided)}</td><td>{String(c.notCompared)}</td></tr>
                 ))}
               </tbody>
@@ -155,11 +169,14 @@ export function AgreementPanel({ analysis, measure, vouched, viewer }: AnalysisP
               <p class="comparanda-panel-hint">{`${consensus.authorHidden} ${consensus.authorHidden === 1 ? 'value is' : 'values are'} in no camp: an open round hides who gave ${consensus.authorHidden === 1 ? 'it' : 'them'} from you.`}</p>
             )}
             {(['shared', 'divided'] as const).map((status) => {
-              const cells = (consensus as ConsensusResult).cells.filter((c) => c.status === status);
-              return cells.length > 0 && (
+              const all = (consensus as ConsensusResult).cells.filter((c) => c.status === status);
+              const cells = byCell(all);
+              // The count is the document's; the lines are the shown cells'. A status every cell of which is hidden still says how many it has.
+              const count = cells.length === all.length ? String(all.length) : `${all.length}; ${cells.length} listed`;
+              return all.length > 0 && (
                 <section key={status} data-consensus-status={status}>
-                  <h4>{status === 'shared' ? `Common ground (${cells.length})` : `Divided (${cells.length})`}</h4>
-                  <ul>{cells.map((c) => <li key={`${c.alternativeId}:${c.criterionId}`}>{cellSaid(c)}</li>)}</ul>
+                  <h4>{status === 'shared' ? `Common ground (${count})` : `Divided (${count})`}</h4>
+                  {cells.length > 0 && <ul>{cells.map((c) => <li key={`${c.alternativeId}:${c.criterionId}`}>{cellSaid(c)}</li>)}</ul>}
                 </section>
               );
             })}

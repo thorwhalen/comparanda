@@ -29,6 +29,8 @@ import { scatterCriteria, scatterModel, type DominanceTier, type ScatterAxis, ty
 import { aliasesOf } from '../core/schema/structure.js';
 import { capitalise } from './words.js';
 import type { AnalysisPanelProps } from './agreement.js';
+import { hiddenOf, inShownOrder, type Shown } from '../core/layout.js';
+import { HiddenNote } from './shown.js';
 
 /** The plot's drawing box, in SVG user units, the margin its tick labels sit in, and a mark's radius. */
 const PLOT = Object.freeze({ width: 360, height: 280, margin: 44, mark: 5 });
@@ -75,21 +77,25 @@ function ticksOf(axis: ScatterAxis): number[] {
     : [min, max];
 }
 
-export function ScatterPanel({ analysis, measure }: AnalysisPanelProps) {
+export function ScatterPanel({ analysis, measure, shown }: AnalysisPanelProps) {
   const [open, setOpen] = useState(false);
   return (
     <details class="comparanda-analysis" data-analysis="scatter" open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>Two criteria against each other, with what is dominated on them</summary>
-      {open && <ScatterBody analysis={analysis} measure={measure} />}
+      {open && <ScatterBody analysis={analysis} measure={measure} shown={shown} />}
     </details>
   );
 }
 
 /** The open panel: computed once per document, measure and pair, not on every render of the matrix around it. */
-function ScatterBody({ analysis, measure }: Pick<AnalysisPanelProps, 'analysis' | 'measure'>) {
+function ScatterBody({ analysis, measure, shown }: Pick<AnalysisPanelProps, 'analysis' | 'measure' | 'shown'>) {
   const id = useId();
   const [chosen, setChosen] = useState<[string, string] | undefined>(undefined);
-  const usable = useMemo(() => scatterCriteria(analysis, measure), [analysis, measure]);
+  const comparable = useMemo(() => scatterCriteria(analysis, measure), [analysis, measure]);
+  // The axes offered are the criteria the matrix shows, in its order (#292); dominance across every criterion still counts the hidden ones.
+  // Keyed on the order's contents: the matrix hands a new array on every render, and the model must not be recomputed for it.
+  const order = shown?.criteria.join('\u0000');
+  const usable = useMemo(() => inShownOrder(comparable, (c) => c, shown?.criteria).listed, [comparable, order]);
   // A choice the document no longer allows keeps what it still can: each axis falls back to the first criterion the other does not hold.
   const [xId, yId] = useMemo((): [string, string] => {
     const [x, y] = chosen ?? [];
@@ -98,9 +104,10 @@ function ScatterBody({ analysis, measure }: Pick<AnalysisPanelProps, 'analysis' 
     const nx = keepX ?? usable.find((c) => c !== keepY) ?? '';
     return [nx, keepY ?? usable.find((c) => c !== nx) ?? ''];
   }, [chosen, usable]);
-  const model = useMemo(() => (usable.length < 2 ? undefined : scatterModel(analysis, { measure, criteria: [xId, yId] })), [analysis, measure, xId, yId, usable]);
+  const model = useMemo(() => (usable.length < 2 ? undefined : scatterModel(analysis, { measure, criteria: [xId, yId] })), [analysis, measure, xId, yId, usable.length]);
   if (!model) {
-    return <p role="note">{`A two-criterion scatter needs two criteria that admit a dominance comparison; this analysis has ${usable.length}.`}</p>;
+    const short = `A two-criterion scatter needs two criteria that admit a dominance comparison; this analysis has ${comparable.length}`;
+    return <p role="note">{comparable.length >= 2 ? `${short}, and the matrix shows ${usable.length} of them: show another to compare.` : `${short}.`}</p>;
   }
   const label = (cid: string) => analysis.criteria.find((c) => c.id === cid)?.label ?? cid;
   const picker = (which: 0 | 1, value: string) => (
@@ -126,13 +133,16 @@ function ScatterBody({ analysis, measure }: Pick<AnalysisPanelProps, 'analysis' 
         {picker(0, xId)}
         {picker(1, yId)}
       </fieldset>
-      {model.usable ? <Plot model={model} id={id} rowWord={capitalise(aliasesOf(analysis).alternative)} /> : <p role="note">{model.reason}</p>}
+      <HiddenNote {...hiddenOf(analysis, shown)} words={aliasesOf(analysis)} />
+      {model.usable ? <Plot model={model} id={id} rowWord={capitalise(aliasesOf(analysis).alternative)} shown={shown} /> : <p role="note">{model.reason}</p>}
     </>
   );
 }
 
-function Plot({ model, id, rowWord }: { model: UsableScatterModel; id: string; rowWord: string }) {
-  const { axes: [ax, ay], points, caption, overallBasis, notes, overallNotes, measure } = model;
+function Plot({ model, id, rowWord, shown }: { model: UsableScatterModel; id: string; rowWord: string; shown: Shown | undefined }) {
+  const { axes: [ax, ay], caption, overallBasis, notes, overallNotes, measure } = model;
+  // Drawn and listed: the alternatives the matrix shows, in its order. A hidden one may still dominate one drawn, and is named as doing so.
+  const points = inShownOrder(model.points, (p) => p.alternativeId, shown?.alternatives).listed;
   const { width, height, margin, mark } = PLOT;
   const placed = points.filter((p): p is ScatterPoint & { x: number; y: number } => p.x !== undefined && p.y !== undefined);
   const unplaced = points.filter((p) => p.x === undefined || p.y === undefined);
@@ -140,6 +150,9 @@ function Plot({ model, id, rowWord }: { model: UsableScatterModel; id: string; r
   const spots = new Map<string, (ScatterPoint & { x: number; y: number })[]>();
   for (const p of placed) spots.set(`${p.x}\u0000${p.y}`, [...(spots.get(`${p.x}\u0000${p.y}`) ?? []), p]);
   const front = points.filter((p) => p.here === 'non-dominated').map((p) => (p.x === undefined || p.y === undefined ? `${p.label} (not placed)` : p.label));
+  // The front is the document's: a member the reader hid is counted, never dropped, or "none" could be said of a front that has one.
+  const hiddenFront = model.points.filter((p) => p.here === 'non-dominated').length - points.filter((p) => p.here === 'non-dominated').length;
+  if (hiddenFront > 0) front.push(`${hiddenFront} hidden in the matrix`);
   return (
     <figure aria-labelledby={`${id}-caption`}>
       <figcaption id={`${id}-caption`}>
@@ -200,7 +213,7 @@ function Plot({ model, id, rowWord }: { model: UsableScatterModel; id: string; r
               <th scope="row">{p.label}</th>
               <td>{p.xWords}</td>
               <td>{p.yWords}</td>
-              <td>{`${TIER_SAID[p.here]}${p.dominatedBy.length > 0 ? ` by ${p.dominatedBy.map((d) => points.find((q) => q.alternativeId === d)?.label ?? d).join(', ')}` : ''}`}</td>
+              <td>{`${TIER_SAID[p.here]}${p.dominatedBy.length > 0 ? ` by ${p.dominatedBy.map((d) => model.points.find((q) => q.alternativeId === d)?.label ?? d).join(', ')}` : ''}`}</td>
               <td>{TIER_SAID[p.overall]}</td>
             </tr>
           ))}
