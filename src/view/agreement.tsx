@@ -171,12 +171,12 @@ export function AgreementPanel({ analysis, measure, vouched, viewer, shown }: An
             {(['shared', 'divided'] as const).map((status) => {
               const all = (consensus as ConsensusResult).cells.filter((c) => c.status === status);
               const cells = byCell(all);
-              // The count is the document's, as in the table above; the lines are the shown cells'.
+              // The count is the document's; the lines are the shown cells'. A status every cell of which is hidden still says how many it has.
               const count = cells.length === all.length ? String(all.length) : `${all.length}; ${cells.length} listed`;
-              return cells.length > 0 && (
+              return all.length > 0 && (
                 <section key={status} data-consensus-status={status}>
                   <h4>{status === 'shared' ? `Common ground (${count})` : `Divided (${count})`}</h4>
-                  <ul>{cells.map((c) => <li key={`${c.alternativeId}:${c.criterionId}`}>{cellSaid(c)}</li>)}</ul>
+                  {cells.length > 0 && <ul>{cells.map((c) => <li key={`${c.alternativeId}:${c.criterionId}`}>{cellSaid(c)}</li>)}</ul>}
                 </section>
               );
             })}

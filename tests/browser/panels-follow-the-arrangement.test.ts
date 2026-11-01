@@ -85,6 +85,29 @@ describe('the agreement panel follows the arrangement', () => {
     }
   });
 
+  it('still says how many cells a status has when the reader hid every one of them', async () => {
+    const camps = [{ id: 'camp-0', label: 'Camp 1', authorIds: ['ana'] }, { id: 'camp-1', label: 'Camp 2', authorIds: ['ben'] }];
+    const whole = groupInformedConsensus(relocation, { measure: 'score', camps });
+    // Keep one alternative with no divided cell: every divided one is then hidden.
+    const kept = relocation.alternatives.find((x) => !whole.cells.some((c) => c.status === 'divided' && c.alternativeId === x.id))!.id;
+    expect(whole.cells.some((c) => c.status === 'divided')).toBe(true);
+    const hideAll = setFilter(initialViewState(relocation), { hiddenAlternatives: relocation.alternatives.map((x) => x.id).filter((id) => id !== kept) });
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', view: hideAll }, { panels: [AgreementPanel] });
+    const panel = await opened('agreement');
+    const select = (author: string) => Array.from(panel.querySelectorAll<HTMLSelectElement>('fieldset select')).find((s) => s.id.endsWith(`-in-${author}`))!;
+    await userEvent.selectOptions(select('ana'), '0');
+    await userEvent.selectOptions(select('ben'), '1');
+    for (const status of ['shared', 'divided'] as const) {
+      const all = whole.cells.filter((c) => c.status === status).length;
+      const listed = whole.cells.filter((c) => c.status === status && c.alternativeId === kept).length;
+      const section = panel.querySelector(`[data-consensus-status="${status}"]`);
+      if (all === 0) { expect(section).toBeNull(); continue; }
+      expect(section!.querySelector('h4')!.textContent).toMatch(new RegExp(`\\(${all}${listed === all ? '' : `; ${listed} listed`}\\)$`));
+      expect(section!.querySelectorAll('li')).toHaveLength(listed);
+    }
+    expect(panel.querySelector('[data-consensus-status="divided"] h4')!.textContent).toMatch(/; 0 listed\)$/);
+  });
+
   it('follows a new arrangement as it arrives, and lists everything again once nothing is hidden', async () => {
     handle = mountMatrix(el, { analysis: relocation, measure: 'score', view }, { panels: [AgreementPanel] });
     const panel = await opened('agreement');
