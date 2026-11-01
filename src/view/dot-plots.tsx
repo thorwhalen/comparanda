@@ -29,6 +29,7 @@ import { aliasesOf } from '../core/schema/structure.js';
 import { Glyph, GLYPH_KEYS, type GlyphKey } from './channels.js';
 import { capitalise } from './words.js';
 import type { AnalysisPanelProps } from './agreement.js';
+import { HiddenNote, hiddenOf, inShownOrder } from './shown.js';
 
 /** A lane's glyph: its core reason's, or the undeclared one's for anything else. */
 const glyphOf = (lane: string): GlyphKey => ((GLYPH_KEYS as readonly string[]).includes(lane) ? lane as GlyphKey : 'undeclared');
@@ -43,12 +44,15 @@ const DOT_PLOT_CSS = `
 .comparanda-matrix .comparanda-dot-plot.comparanda-dot-plot tbody th { text-align: start; }
 `;
 
-export function DotPlotsPanel({ analysis, measure, vouched, viewer }: AnalysisPanelProps) {
+export function DotPlotsPanel({ analysis, measure, vouched, viewer, shown }: AnalysisPanelProps) {
   const [open, setOpen] = useState(false);
 
   const body = () => {
     const names = attributions(analysis.authors, { vouched });
     const rowWord = capitalise(aliasesOf(analysis).alternative);
+    // A plot per shown criterion and a row per shown alternative, in the reader's order (#292).
+    const drawn = inShownOrder(dotPlots(analysis, { measure, viewer }), (p) => p.criterionId, shown?.criteria).listed
+      .map((p) => (p.usable ? { ...p, rows: inShownOrder(p.rows, (r) => r.alternativeId, shown?.alternatives).listed } : p));
     return (
       <>
         <style>{DOT_PLOT_CSS}</style>
@@ -56,7 +60,9 @@ export function DotPlotsPanel({ analysis, measure, vouched, viewer }: AnalysisPa
           Each criterion on its own levels, with nothing between them: a filled dot is a rater named to you, a ring a rater who is not.
           An alternative with no value is in the missing lane, under its reason.
         </p>
-        {dotPlots(analysis, { measure, viewer }).map((p) => {
+        {/* Nothing here is a figure over the rows, so the hidden ones are only not listed. */}
+        <HiddenNote {...hiddenOf(analysis, shown)} words={aliasesOf(analysis)} counted={false} />
+        {drawn.map((p) => {
           if (!p.usable) {
             return (
               <section key={p.criterionId} data-dot-plot={p.criterionId}>

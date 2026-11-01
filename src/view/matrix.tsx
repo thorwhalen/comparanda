@@ -72,6 +72,7 @@ import { capitalise, outOf, STANDING_SAID } from './words.js';
 import { DetailPanel, type PanelBlock } from './detail-panel.js';
 import { OrphanTray, type ReattachWrite } from './orphans.js';
 import type { AnalysisPanelProps } from './agreement.js';
+import type { Shown } from './shown.js';
 import type { ThreadWrites } from './threads.js';
 import { SuggestionsPanel, type SuggestionWrites } from './suggestions.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
@@ -242,6 +243,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const words = aliasesOf(analysis);
   const layout = matrixLayout(analysis, view);
   const { rows, columns, transposed } = layout;
+  /** What the analysis panels list, and in what order: the entries drawn here (#292). */
+  const idsOf = (axis: AxisLayout) => axis.entries.map((e) => e.id);
+  const shown: Shown = transposed ? { alternatives: idsOf(columns), criteria: idsOf(rows) } : { alternatives: idsOf(rows), criteria: idsOf(columns) };
   const groupLabel = new Map(analysis.groups.map((g) => [g.id, g.label]));
   const openHere = openThreadCounts(analysis);
   const rowWord = transposed ? words.criterion : words.alternative;
@@ -799,7 +803,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         />
       )}
       </div>
-      {panels.map((Panel, i) => <Panel key={i} analysis={analysis} measure={measure} vouched={vouched} viewer={viewer} />)}
+      {panels.map((Panel, i) => <Panel key={i} analysis={analysis} measure={measure} vouched={vouched} viewer={viewer} shown={shown} />)}
     </div>
   );
 }
