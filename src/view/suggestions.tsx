@@ -11,6 +11,10 @@
  *
  * The words are core's (`describeOpenSuggestions`), which also decides
  * whether a round lets this reader know who proposed a suggestion.
+ *
+ * A decision is signed as the matrix's identity, so a local identity with no
+ * name yet is offered the name field here too, ahead of the first decision
+ * (#274): the same field the discussion offers, not a second one.
  */
 import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
@@ -21,12 +25,15 @@ import type { Vouched } from '../core/identity.js';
 import { describeOpenSuggestions, type OpenSuggestion } from '../core/suggestion-list.js';
 import { capitalise } from './words.js';
 import { messageOf } from './dom.js';
+import { NameForm, type TakeName } from './name-form.js';
 
 export interface SuggestionChoice { suggestionId: string; decision: SuggestionDecision }
 
 /** Write staged decisions, in order, as one change; rejects with the reason when the source or document refuses. */
 export interface SuggestionWrites {
   decide(choices: readonly SuggestionChoice[]): Promise<void>;
+  /** Give the writer a name before their first decision (#274); see `TakeName` for when it is present. */
+  name?: TakeName;
 }
 
 const DID: Readonly<Record<SuggestionDecision, string>> = { accept: 'accept', decline: 'decline' };
@@ -103,8 +110,11 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
 
   return (
     <section class="comparanda-suggestions" ref={root} aria-labelledby={id} data-suggestions={String(open.length)}>
-      <h2 id={id}>{`Open suggestions (${open.length})`}</h2>
+      {/* Focusable, so focus that leaves with a control (the name field, once a name is taken) lands here, not on the grid (#275). */}
+      <h2 id={id} tabIndex={-1} data-panel-heading="">{`Open suggestions (${open.length})`}</h2>
       <p class="comparanda-panel-hint">Accepting writes the proposed value into its cell as its proposer&apos;s; declining records only the decision. Decisions are staged here, each undoable, and written together.</p>
+      {/* Before every decision it names the author of. */}
+      {writes?.name && <NameForm name={writes.name} idBase={id} />}
       <ol class="comparanda-thread-list">
         {open.map((o) => {
           const choice = live.find((c) => c.suggestionId === o.id);

@@ -18,7 +18,8 @@ import { axisGroups, groupsOf } from '../core/schema/groups.js';
 import { commentTarget, isEditNote, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
 import { attributions, type Vouched } from '../core/identity.js';
 import { capitalise } from './words.js';
-import { messageOf } from './dom.js';
+import { NameForm, type TakeName } from './name-form.js';
+import { refusedField, sentenceOf, useFailure, useSend } from './send.js';
 
 /** The writes a thread takes, performed by whoever holds the source. Each settles when the source has it. */
 export interface ThreadWrites {
@@ -28,12 +29,8 @@ export interface ThreadWrites {
   edit(threadId: string, commentId: string, body: string): Promise<void>;
   resolve(threadId: string): Promise<void>;
   reopen(threadId: string): Promise<void>;
-  /**
-   * Give the writer a name before their first write (#193). Present only while
-   * the identity is one that takes a typed name (`localIdentity()`) and has
-   * none; absent, the panel asks for no name.
-   */
-  name?(typed: string): Promise<void>;
+  /** Give the writer a name before their first write (#193); see `TakeName` for when it is present. */
+  name?: TakeName;
 }
 
 export interface ThreadsProps {
@@ -199,73 +196,6 @@ function CommentItem({ thread, comment: c, author, target, writes, affordances, 
   );
 }
 
-/**
- * A form's submission: the text typed, refused while empty, sent once at a
- * time, kept when the send fails, and the failure said.
- */
-function useSend(send: (text: string) => Promise<void>, empty: string, initial = '', done?: () => void) {
-  const [draft, setDraft] = useState(initial);
-  const [error, setError] = useFailure();
-  const [busy, setBusy] = useState(false);
-  const sending = useRef(false);
-  const submit = async (event: Event) => {
-    event.preventDefault();
-    if (sending.current) return;
-    if (draft.trim() === '') {
-      setError(empty);
-      return;
-    }
-    sending.current = true;
-    setBusy(true);
-    setError(undefined);
-    try {
-      await send(draft);
-      if (done) done();
-      else setDraft('');
-    } catch (e) {
-      setError(sentenceOf(e));
-    } finally {
-      sending.current = false;
-      setBusy(false);
-    }
-  };
-  return { draft, setDraft, error, busy, submit };
-}
-
-/**
- * A field's refusal, on the field itself (#276): marked invalid, and described
- * by the reason as well as by whatever else describes it, so a reader who
- * comes back to it hears why. Cleared with the error, on the next send.
- */
-function refusedField(error: unknown, errorId: string, ...describedBy: string[]) {
-  const ids = [...describedBy, ...(error ? [errorId] : [])].join(' ');
-  return { 'aria-invalid': error ? 'true' as const : undefined, 'aria-describedby': ids || undefined };
-}
-
-/**
- * The name a local identity writes under, asked for once (#193, ADR-0012
- * default 2). It says where the name is kept and that others see it as
- * unverified, because both are true and neither is obvious.
- */
-function NameForm({ name, idBase }: { name: (typed: string) => Promise<void>; idBase: string }) {
-  // Once the name is taken the form leaves the tree, and the matrix puts focus on the panel's heading (#275).
-  const { draft, setDraft, error, busy, submit } = useSend(name, 'type a name first.');
-  return (
-    <form class="comparanda-compose" onSubmit={submit} data-detail="name">
-      <label for={`${idBase}-name`}>Your name</label>
-      <input
-        id={`${idBase}-name`} type="text" autocomplete="name" {...refusedField(error, `${idBase}-name-error`, `${idBase}-name-hint`)} value={draft}
-        onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
-      />
-      <p id={`${idBase}-name-hint`} class="comparanda-panel-hint">
-        Saved on this device, not in an account. It is shown beside what you write, marked unverified: nobody checks it.
-      </p>
-      <button type="submit" aria-disabled={busy}>Use this name</button>
-      {error && <p role="alert" id={`${idBase}-name-error`} key={error.attempt}>{`Name not kept: ${error.text}`}</p>}
-    </form>
-  );
-}
-
 /** A labelled text box and its button. The draft survives a failed send, which says why. */
 function Compose({ label, action, idBase, send, choices, initial, done }: {
   label: string; action: string; idBase: string; send: (body: string, choice?: number) => Promise<void>;
@@ -359,19 +289,4 @@ function onWhat(analysis: Analysis, thread: Thread): string {
   if (anchor.scope === 'group') return `On the group ${group(anchor.groupId)}:`;
   if (anchor.scope === 'group-pair') return `On the block ${group(anchor.groupId)} × ${group(anchor.otherGroupId)}:`;
   return `${capitalise(anchor.scope)}:`;
-}
-
-/**
- * The last failure, re-keyed on every attempt so the alert is a new element
- * and the same reason twice is announced twice.
- */
-function useFailure(): [{ text: string; attempt: number } | undefined, (text: string | undefined) => void] {
-  const [failure, setFailure] = useState<{ text: string; attempt: number } | undefined>(undefined);
-  const set = (text: string | undefined) =>
-    setFailure((was) => (text === undefined ? undefined : { text, attempt: (was?.attempt ?? 0) + 1 }));
-  return [failure, set];
-}
-
-function sentenceOf(e: unknown): string {
-  return messageOf(e).replace(/\.?$/, '.');
 }
