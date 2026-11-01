@@ -170,15 +170,19 @@ export function omittedBlocks(
   for (const r of spans(rows.bands)) {
     for (const c of spans(columns.bands)) {
       const declared = r.band.entries.flatMap((re) => c.band.entries.map((ce) => (transposed ? omits(ce.id, re.id) : omits(re.id, ce.id))));
-      const every = declared.filter((d): d is InapplicableBlock => d !== undefined);
-      if (every.length < 2 || every.length !== declared.length) continue;
-      const first = every[0]!;
-      const reasons = new Set(every.map((d) => d.reason));
-      const onePair = every.every((d) => d.alternativeGroupId === first.alternativeGroupId && d.criterionGroupId === first.criterionGroupId);
+      const declarations = declared.filter((d): d is InapplicableBlock => d !== undefined);
+      if (declarations.length < 2 || declarations.length !== declared.length) continue;
+      /** What every declaration says alike, by `key`; nothing when any two differ. */
+      const shared = (key: (d: InapplicableBlock) => string | undefined) => {
+        const said = new Set(declarations.map(key));
+        return said.size === 1 ? [...said][0] : undefined;
+      };
+      const { alternativeGroupId, criterionGroupId } = declarations[0]!;
+      const onePair = shared((d) => `${d.alternativeGroupId}\u0000${d.criterionGroupId}`) !== undefined;
       blocks.push({
         rows: { first: r.first, last: r.last }, columns: { first: c.first, last: c.last }, rowBand: r.band, columnBand: c.band,
-        cells: declared.length, reason: reasons.size === 1 ? [...reasons][0] : undefined,
-        pair: onePair ? [first.alternativeGroupId, first.criterionGroupId] : undefined,
+        cells: declared.length, reason: shared((d) => d.reason),
+        pair: onePair ? [alternativeGroupId, criterionGroupId] : undefined,
       });
     }
   }
