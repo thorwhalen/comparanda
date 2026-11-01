@@ -331,6 +331,21 @@ describe('the details of an omitted block (#280)', () => {
     expect(threads.querySelector(`label[for="${box!.id}"]`)!.textContent).toMatch(/^Start a thread on the block Asia \u00d7 EU/);
   });
 
+  it('offers no group pair first when the block merges several declarations, so the cell stays first (#303)', async () => {
+    // Banded by Europe alone, Asia and the Americas share the remainder band; each is declared against EU on its own.
+    // Montreal's own reading is dropped so the whole remainder-by-EU block is omitted, drawn as one cell.
+    const doc = Analysis.parse({ ...relocationJson, cells: relocation.cells.filter((c) => !(c.alternativeId === 'montreal' && c.criterionId === 'eu-residency-path')) });
+    const view = setDetailPanel(setFocus(setGrouping(both(initialViewState(doc)), 'alternatives', ['g-europe']), { alternativeId: 'taipei', criterionId: 'eu-residency-path' }), true);
+    mount({ analysis: doc, measure: 'score', source: inMemoryAnalysisSource(doc), identity: anonymousIdentity({ id: 'dana', displayName: 'Dana' }), view });
+    const panel = el.querySelector<HTMLElement>('aside.comparanda-panel')!;
+    // It is a block of three cells, under two declarations.
+    expect(panel.getAttribute('data-panel')).toBe('block');
+    expect(panel.querySelector('[data-detail="block"]')!.textContent).toContain('All 3 cells');
+    const threads = panel.querySelector<HTMLElement>('[data-detail="threads"]')!;
+    const box = threads.querySelector('textarea')!;
+    expect(threads.querySelector(`label[for="${box.id}"]`)!.textContent).toMatch(/^Start a thread on this cell/);
+  });
+
   it('keeps the cell first when the host allows no thread on the block, rather than offering none', async () => {
     const noBlocks: MountMatrixProps['authorize'] = (r) => !('target' in r && r.target?.kind === 'group-pair') || { enabled: false, reason: 'blocks are not discussed here.' };
     const { threads, box } = await startOnBlock(setFocus(both(), { alternativeId: 'taipei', criterionId: 'eu-residency-path' }), noBlocks);

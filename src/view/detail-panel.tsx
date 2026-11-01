@@ -39,7 +39,7 @@ export interface PanelBlock {
   criteria: { band: string; labels: string[] };
   cells: number;
   reason: string | undefined;
-  /** The declaration's group pair, a remainder band's block included: what a thread started here is about. */
+  /** The declarations' group pair, a remainder band's block included, when every cell's declaration names the same one (#303): what a thread started here is about. */
   pair: readonly [string, string] | undefined;
 }
 
