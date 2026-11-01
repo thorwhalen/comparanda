@@ -24,12 +24,15 @@ import {
 const DEFAULT_IDENTITY = anonymousIdentity();
 /** What the anonymous identity is called (`anonymousIdentity`'s default id). */
 const DEFAULT_IDENTITY_ID = 'anonymous';
+/** The details panel: the region the reader opens on a cell, header or block. */
+const DETAIL_PANEL = 'aside.comparanda-panel';
 import { createEncodingRegistry, type EncodingRegistry } from './encodings/registry.js';
 import type { Author } from '../core/schema/provenance.js';
 import { commentTarget, editComment, reopenThread, replyToThread, resolveThread, startThread } from '../core/threads.js';
 import type { Anchor } from '../core/schema/annotations.js';
 import type { ThreadWrites } from './threads.js';
 import type { SuggestionWrites } from './suggestions.js';
+import type { TakeName } from './name-form.js';
 import type { ReattachWrite } from './orphans.js';
 import { reattach } from '../core/orphans.js';
 import { joinGroup } from '../core/group-membership.js';
@@ -276,7 +279,7 @@ export function mountMatrix(
   const changePanel = (open: boolean, { into = false }: { into?: boolean } = {}) => {
     if (destroyed) return;
     moveSession({ panel: open });
-    if (open && into) el.querySelector<HTMLElement>('[data-panel-heading]')?.focus();
+    if (open && into) el.querySelector<HTMLElement>(`${DETAIL_PANEL} [data-panel-heading]`)?.focus();
     current.onViewChange?.(shown);
   };
 
@@ -384,6 +387,9 @@ export function mountMatrix(
     reopen: (threadId) => writeThread('reopen', anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at }), threadId),
   };
 
+  /** A panel's writes, with the name field offered while one is asked for (#193, #274): one `takeName` behind every panel that signs. */
+  const askingName = <W extends { name?: TakeName }>(w: W): W => (drawnAskingName ? { ...w, name: takeName } : w);
+
   const draw = () => {
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
     const viewer = current.viewer ?? { viewerId: viewerIdOf(actor()), now: now().toISOString() };
@@ -417,8 +423,8 @@ export function mountMatrix(
       ...(panels ? { panels } : {}),
       ...(announcement !== undefined ? { announcement } : {}),
       ...(source ? { onJoinGroup: joinGroupWrite } : {}),
-      ...(source ? { threadWrites: drawnAskingName ? { ...threadWrites, name: takeName } : threadWrites, reattachWrite } : {}),
-      ...(source && suggestionWrites ? { suggestionWrites } : {}),
+      ...(source ? { threadWrites: askingName(threadWrites), reattachWrite } : {}),
+      ...(source && suggestionWrites ? { suggestionWrites: askingName(suggestionWrites) } : {}),
       encodings: registry,
       affordances: source
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
@@ -429,13 +435,13 @@ export function mountMatrix(
       viewer,
     };
     const was = focused();
-    const inPanel = inPanelOf(was);
+    const home = homeOf(was);
     render(h(component, resolved), el);
     // Kept only once drawn: a render that throws leaves the reader's focus where it was.
     if (focusSettled) moved = { ...moved, focus: settledFocus };
     // Before focus moves: a focus that scrolls must already see the padding.
     sticky.measure();
-    settle(was, inPanel);
+    settle(was, home);
   };
 
   /** The focused element, if it is in the matrix; read from the root it lives in, a shadow root's own. */
@@ -449,18 +455,22 @@ export function mountMatrix(
    * rollback) can drop focus, and a host that moved the stop leaves focus on a
    * cell that is no longer one -- two tab stops, where ADR-0027 allows one.
    */
-  /** Whether focus was in this matrix's details panel. Asked of the element as it was found: a removed control keeps its ancestors only until the render. */
-  const inPanelOf = (was: Element | null) => {
-    const panel = was?.closest('aside.comparanda-panel');
-    // This matrix's own panel, or one a failed render has already detached; never a host's panel around the matrix.
-    return panel != null && (!panel.isConnected || el.contains(panel));
+  /**
+   * Which of this matrix's focus homes focus was in, if any: a region that marks itself `data-focus-home`, whose
+   * `[data-panel-heading]` focus lands on when the control holding it leaves with its write (#275). Asked of the element
+   * as it was found: a removed control keeps its ancestors only until the render.
+   */
+  const homeOf = (was: Element | null): string | undefined => {
+    const region = was?.closest('[data-focus-home]');
+    // This matrix's own region, or one a failed render has already detached; never a host's region around the matrix, nor the mount element itself.
+    return region != null && region !== el && (!region.isConnected || el.contains(region)) ? region.getAttribute('data-focus-home') ?? undefined : undefined;
   };
-  const settle = (was: Element | null, inPanel = false) => {
+  const settle = (was: Element | null, home?: string) => {
     if (was === null) return;
     const now = focused();
-    // Focus lost from inside the details panel (a control that left with its write) stays in the panel, on its heading,
+    // Focus lost from inside a focus home (a control that left with its write) stays in that region, on its heading,
     // never passing through the grid (#275).
-    const heading = inPanel && now === null ? el.querySelector<HTMLElement>('[data-panel-heading]') : null;
+    const heading = home && now === null ? el.querySelector<HTMLElement>(`:scope [data-focus-home="${CSS.escape(home)}"] [data-panel-heading]`) : null;
     if (heading) return heading.focus();
     const stop = el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]');
     if (stop && (now === null || (now !== stop && now.matches('[data-cell]')))) stop.focus();
@@ -501,7 +511,7 @@ export function mountMatrix(
     // If the old props fail too, unmount again: an empty element and a clean
     // tree, so the next good render fills it rather than diffing against debris.
     try { draw(); } catch { render(null, el); }
-    settle(was, inPanelOf(was));
+    settle(was, homeOf(was));
   };
 
   mounted.add(el);

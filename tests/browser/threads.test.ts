@@ -411,7 +411,7 @@ describe('sprint review', () => {
       await settled();
       await settled();
       expect(root.activeElement).not.toBeNull();
-      expect(root.activeElement!.matches('[data-panel-heading]')).toBe(true);
+      expect(root.activeElement!.matches('aside.comparanda-panel [data-panel-heading]')).toBe(true);
     } finally {
       host.remove();
     }

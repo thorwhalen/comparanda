@@ -184,14 +184,14 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 .comparanda-matrix .comparanda-panel-head { display: flex; gap: 0.5em; align-items: baseline; justify-content: space-between; }
 .comparanda-matrix .comparanda-panel h2 { font-size: 1.05em; margin: 0; }
 .comparanda-matrix .comparanda-panel h3 { font-size: 1em; margin: 0.75em 0 0.25em; }
-.comparanda-matrix .comparanda-panel h2:focus-visible { outline: 2px solid var(--cmp-focus); }
+.comparanda-matrix :is(.comparanda-panel, .comparanda-suggestions) h2:focus-visible { outline: 2px solid var(--cmp-focus); }
 .comparanda-matrix .comparanda-panel-kind, .comparanda-matrix .comparanda-panel-hint,
 .comparanda-matrix .comparanda-provenance, .comparanda-matrix .comparanda-check { color: var(--cmp-muted); font-weight: 400; }
 .comparanda-matrix .comparanda-panel-hint { font-size: 0.9em; margin: 0.25em 0; }
 .comparanda-matrix .comparanda-panel button {
   font: inherit; color: var(--cmp-ink); background: var(--cmp-header); border: 1px solid var(--cmp-rule); padding: 0.1em 0.5em;
 }
-.comparanda-matrix .comparanda-panel :is(button, a):focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
+.comparanda-matrix :is(.comparanda-panel, .comparanda-suggestions) :is(button, a):focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
 .comparanda-matrix .comparanda-panel a { color: var(--cmp-ink); text-decoration: underline; }
 .comparanda-matrix .comparanda-panel-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.2em 0.75em; margin: 0.5em 0; }
 .comparanda-matrix .comparanda-panel-facts dt { font-weight: 600; grid-column: 1; }
@@ -225,7 +225,8 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 }
 .comparanda-matrix .comparanda-panel :is(textarea, select):focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
 .comparanda-matrix .comparanda-panel button[aria-disabled="true"] { color: var(--cmp-muted); cursor: progress; }
-.comparanda-matrix .comparanda-panel [role="alert"] { color: var(--cmp-ink); font-weight: 600; }
+.comparanda-matrix .comparanda-suggestions .comparanda-compose button[aria-disabled="true"] { color: var(--cmp-muted); cursor: progress; }
+.comparanda-matrix :is(.comparanda-panel, .comparanda-suggestions) [role="alert"] { color: var(--cmp-ink); font-weight: 600; }
 .comparanda-matrix .comparanda-handle {
   font: inherit; color: var(--cmp-muted); background: none; border: 0; padding: 0 0.15em; margin-inline-end: 0.2em;
   cursor: grab; touch-action: none; vertical-align: baseline;
