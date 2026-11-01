@@ -462,15 +462,15 @@ export function mountMatrix(
    */
   const homeOf = (was: Element | null): string | undefined => {
     const region = was?.closest('[data-focus-home]');
-    // This matrix's own region, or one a failed render has already detached; never a host's region around the matrix.
-    return region != null && (!region.isConnected || el.contains(region)) ? region.getAttribute('data-focus-home') ?? undefined : undefined;
+    // This matrix's own region, or one a failed render has already detached; never a host's region around the matrix, nor the mount element itself.
+    return region != null && region !== el && (!region.isConnected || el.contains(region)) ? region.getAttribute('data-focus-home') ?? undefined : undefined;
   };
   const settle = (was: Element | null, home?: string) => {
     if (was === null) return;
     const now = focused();
     // Focus lost from inside a focus home (a control that left with its write) stays in that region, on its heading,
     // never passing through the grid (#275).
-    const heading = home && now === null ? el.querySelector<HTMLElement>(`[data-focus-home="${CSS.escape(home)}"] [data-panel-heading]`) : null;
+    const heading = home && now === null ? el.querySelector<HTMLElement>(`:scope [data-focus-home="${CSS.escape(home)}"] [data-panel-heading]`) : null;
     if (heading) return heading.focus();
     const stop = el.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]');
     if (stop && (now === null || (now !== stop && now.matches('[data-cell]')))) stop.focus();

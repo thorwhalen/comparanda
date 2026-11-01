@@ -191,7 +191,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 .comparanda-matrix .comparanda-panel button {
   font: inherit; color: var(--cmp-ink); background: var(--cmp-header); border: 1px solid var(--cmp-rule); padding: 0.1em 0.5em;
 }
-.comparanda-matrix .comparanda-panel :is(button, a):focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
+.comparanda-matrix :is(.comparanda-panel, .comparanda-suggestions) :is(button, a):focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
 .comparanda-matrix .comparanda-panel a { color: var(--cmp-ink); text-decoration: underline; }
 .comparanda-matrix .comparanda-panel-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.2em 0.75em; margin: 0.5em 0; }
 .comparanda-matrix .comparanda-panel-facts dt { font-weight: 600; grid-column: 1; }
