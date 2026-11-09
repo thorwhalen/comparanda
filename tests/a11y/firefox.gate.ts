@@ -11,16 +11,17 @@ import { describe, expect, it } from 'vitest';
 
 import { BROWSER_CHECKS } from './browser-checks.js';
 import { withBrowserEnv } from './browser-env.js';
-import { gateTests, numbersOf } from './gate.js';
+import { gateTests, passesOf } from './gate.js';
+import { passesFor, type CheckId } from './spec.js';
 
-const ENGINE_DEPENDENT = ['A13', 'A15', 'A16', 'A18', 'A20'];
+const ENGINE_DEPENDENT: readonly CheckId[] = ['A13', 'A15', 'A16', 'A18', 'A20'];
 
 const checks = BROWSER_CHECKS.filter((c) => ENGINE_DEPENDENT.includes(c.id));
 
 // A partial run must not shrink without anyone noticing: a renumbered or misspelt id would drop a check from Firefox in silence.
 describe('the Firefox half runs exactly the engine-dependent checks', () => {
-  it('each is implemented, every pass of it included', () => {
-    expect(numbersOf(checks)).toEqual(ENGINE_DEPENDENT);
+  it('each is implemented, with a pass for every surface it lists', () => {
+    expect(passesOf(checks)).toEqual(passesFor(ENGINE_DEPENDENT));
   });
 });
 

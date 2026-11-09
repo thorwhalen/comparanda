@@ -27,12 +27,10 @@ import { vsupGrid } from '../fixtures/vsup-grid.js';
 import { treeFailures } from '../support/cvd-browser.js';
 import { everyCode, heard } from '../support/every-code.js';
 import { obscured } from '../support/sticky-geometry.js';
-import { FIXTURES, PANELS, THEMES, type BrowserEnv } from './browser-env.js';
+import { FIXTURES, ownSetTimeout, PANELS, THEMES, tick, type BrowserEnv } from './browser-env.js';
 import type { Check } from './gate.js';
+import { PANELS_SURFACE } from './spec.js';
 
-/** The browser's own timer, taken before any check patches `setTimeout` to watch the view's: the check's waiting is not the view's timers. */
-const ownSetTimeout = window.setTimeout.bind(window);
-const tick = () => new Promise<void>((resolve) => ownSetTimeout(resolve, 0));
 const sleep = (ms: number) => new Promise<void>((resolve) => ownSetTimeout(resolve, ms));
 const languages = FIXTURES['languages']!;
 const relocation = FIXTURES['relocation']!;
@@ -134,9 +132,15 @@ function unmeasurablePaint(node: Element): string | undefined {
 
 const TEXT_CONTRAST_WHAT = (text: string, r: number, min: number) => `"${text.slice(0, 24)}" is ${r.toFixed(2)}:1 against what is behind it, under ${min}:1`;
 
+/** The SVG shapes a mark is drawn with, text aside: each is measured by its own stroke and fill. */
+const PAINTED_SHAPES = 'path, circle, rect, line, polyline, polygon, ellipse';
+/** Every SVG shape a mark is drawn with. */
+const SHAPES = `${PAINTED_SHAPES}, text`;
+
 /**
- * What cannot be read in `cell`: every element that draws text of its own, and
- * every glyph or hatch stroke or fill, measured as painted (alpha, `opacity`) against what is
+ * What cannot be read in `cell`: every element that draws text of its own (SVG
+ * text by its fill, which is its ink), and the stroke and fill of every drawing
+ * and of every shape in it, measured as painted (alpha, `opacity`) against what is
  * behind it -- the cell's backdrop, or `paper` where backgrounds are suppressed.
  */
 function contrastFaults(cell: Element, where: string, { paper }: { paper?: Rgba } = {}): string[] {
@@ -147,20 +151,21 @@ function contrastFaults(cell: Element, where: string, { paper }: { paper?: Rgba 
     const text = Array.from(node.childNodes).filter((c) => c.nodeType === Node.TEXT_NODE).map((c) => c.textContent!.trim()).join('');
     const unmeasured = unmeasurablePaint(node);
     if (unmeasured) found.push(`${where}: <${node.tagName.toLowerCase()}> ${unmeasured}, which the gate cannot measure`);
-    if (text !== '') {
+    const inkCss = node instanceof SVGElement ? getComputedStyle(node).fill : getComputedStyle(node).color;
+    if (text !== '' && inkCss !== 'none') {
       const on = behind(node);
-      const ink = parseColour(getComputedStyle(node).color);
+      const ink = parseColour(inkCss);
       const r = ratio(painted(`rgba(${ink[0]}, ${ink[1]}, ${ink[2]}, ${ink[3] * opacityOf(node)})`, on), on);
       if (r < TEXT_CONTRAST_MIN) found.push(`${where}: ${TEXT_CONTRAST_WHAT(text, r, TEXT_CONTRAST_MIN)}`);
     }
-    if (node instanceof SVGElement && node.tagName.toLowerCase() === 'svg') {
+    if (node instanceof SVGElement && node.matches(`svg, ${PAINTED_SHAPES}`)) {
       const style = getComputedStyle(node);
       for (const [what, css] of [['stroke', style.stroke], ['fill', style.fill]] as const) {
         if (css === 'none') continue;
         const on = behind(node);
         const c = parseColour(css);
         const r = ratio(painted(`rgba(${c[0]}, ${c[1]}, ${c[2]}, ${c[3] * opacityOf(node)})`, on), on);
-        if (r < GRAPHIC_CONTRAST_MIN) found.push(`${where}: a ${node.getAttribute('class')} ${what} is ${r.toFixed(2)}:1 against what is behind it, under ${GRAPHIC_CONTRAST_MIN}:1`);
+        if (r < GRAPHIC_CONTRAST_MIN) found.push(`${where}: a ${node.getAttribute('class') ?? `<${node.tagName.toLowerCase()}>`} ${what} is ${r.toFixed(2)}:1 against what is behind it, under ${GRAPHIC_CONTRAST_MIN}:1`);
       }
     }
   }
@@ -744,9 +749,6 @@ function channelsSurvive(el: HTMLElement, where: string, { paper }: { paper?: Rg
   return found;
 }
 
-/** The SVG shapes a mark is drawn with. */
-const SHAPES = 'path, circle, rect, line, polyline, polygon, ellipse, text';
-
 /**
  * What a medium took from `root`'s marks and ink: a mark gone (not displayed,
  * no width, or a shape painted with neither stroke nor fill), meaning carried
@@ -863,7 +865,7 @@ async function panelPass(
 }
 
 const a3panels: Check<BrowserEnv> = {
-  id: 'A3', over: 'the analysis panels',
+  id: 'A3', over: PANELS_SURFACE,
   run: (env) => panelPass(env, (panel, where) => Array.from(panel.querySelectorAll<HTMLTableCellElement>('td, th'))
     .filter((cell) => heard(cell) === '').map((cell) => `${where}: the ${cell.tagName.toLowerCase()} at ${cellAt(cell)} is announced as blank`)),
   broken: {
@@ -873,34 +875,43 @@ const a3panels: Check<BrowserEnv> = {
 };
 
 const a13panels: Check<BrowserEnv> = {
-  id: 'A13', over: 'the analysis panels',
+  id: 'A13', over: PANELS_SURFACE,
   run: (env) => panelPass(env, (panel, where) => contrastFaults(panel, where), { themes: THEMES }),
+  // Text ink is the grid pass's fixture; this one is a shape's own paint, which the drawing around it does not set.
   broken: {
-    what: 'every panel\'s row headers are inked transparent',
-    sabotage: (env) => env.afterOpen((panels) => panels.forEach((p) => p.querySelectorAll<HTMLElement>('tbody th').forEach((th) => { th.style.color = 'transparent'; }))),
+    what: 'the scatter plot\'s rings and dots are stroked transparent, each on its own shape',
+    sabotage: (env) => env.afterOpen((panels) => panels.forEach((p) => p.querySelectorAll('svg circle').forEach((c) => c.setAttribute('stroke', 'transparent')))),
+    mustSay: /<circle> stroke/,
   },
-  alsoTrips: { A18: 'ink that is invisible on screen is invisible on paper too' },
+  alsoTrips: {
+    A15: 'forced colors does not repaint a shape\'s own stroke, so it is invisible there too',
+    A18: 'a stroke that is invisible on screen is invisible on paper too',
+  },
 };
 
-/** A stylesheet that hides the panels' marks in one medium only: the fixture for that medium's pass. */
-const hidePanelMarksIn = (media: string) => (env: BrowserEnv) => env.afterMount((el) => {
+/**
+ * A stylesheet that takes the stroke off the panels' drawings in one medium only, so the shapes
+ * that inherit it (a lane's glyph) are painted with nothing: the fixture for that medium's pass.
+ * The grid's fixtures for the same checks hide their marks outright, so both ways a mark is lost fail.
+ */
+const unstrokePanelMarksIn = (media: string) => (env: BrowserEnv) => env.afterMount((el) => {
   const style = document.createElement('style');
-  style.textContent = `@media ${media} { .comparanda-analysis svg { display: none !important; } }`;
+  style.textContent = `@media ${media} { .comparanda-analysis svg { stroke: none !important; } }`;
   el.append(style);
 });
 
 const a15panels: Check<BrowserEnv> = {
-  id: 'A15', over: 'the analysis panels',
+  id: 'A15', over: PANELS_SURFACE,
   async run(env) {
     await env.media({ forcedColors: 'active' });
     if (!matchMedia('(forced-colors: active)').matches) return ['this browser does not honour forcedColors emulation, so the check cannot see what a forced-colors reader sees'];
     return panelPass(env, (panel, where) => marksSurvive(panel, `forced colors / ${where}`));
   },
-  broken: { what: 'the panels\' marks are hidden under forced colors only', sabotage: hidePanelMarksIn('(forced-colors: active)') },
+  broken: { what: 'the panels\' drawings lose their stroke under forced colors only', sabotage: unstrokePanelMarksIn('(forced-colors: active)'), mustSay: /lost its/ },
 };
 
 const a18panels: Check<BrowserEnv> = {
-  id: 'A18', over: 'the analysis panels',
+  id: 'A18', over: PANELS_SURFACE,
   async run(env) {
     await env.media({ media: 'print' });
     if (!matchMedia('print').matches) return ['the print medium was not emulated'];
@@ -909,7 +920,7 @@ const a18panels: Check<BrowserEnv> = {
       return [...marksSurvive(panel, at, { paper: PAPER }), ...paintedBackgrounds(panel, at)];
     }, { themes: THEMES });
   },
-  broken: { what: 'the panels\' marks are hidden in print only', sabotage: hidePanelMarksIn('print') },
+  broken: { what: 'the panels\' drawings lose their stroke in print only', sabotage: unstrokePanelMarksIn('print'), mustSay: /lost its/ },
 };
 
 // ---- A16, A17 (the mounted DOM: the twin of the source greps) ----------------------------------------

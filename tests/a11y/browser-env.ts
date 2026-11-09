@@ -65,12 +65,17 @@ export interface BrowserEnv {
   media(options: MediaOptions): Promise<void>;
 }
 
+/** The browser's own timer, taken before any check patches `setTimeout` to watch the view's: the gate's waiting is not the view's timers. */
+export const ownSetTimeout = window.setTimeout.bind(window);
+export const tick = () => new Promise<void>((resolve) => ownSetTimeout(resolve, 0));
+
 /** Open a panel and wait for its body: a panel draws it on the `toggle` event, which comes a task after `open` is set, and renders a microtask after that. */
 async function opened(panel: HTMLDetailsElement): Promise<void> {
+  if (panel.open) return;
   const toggled = new Promise<void>((resolve) => panel.addEventListener('toggle', () => resolve(), { once: true }));
   panel.open = true;
   await toggled;
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  await tick();
 }
 
 /** The environment for one run: fresh elements, torn down afterwards, media put back. */

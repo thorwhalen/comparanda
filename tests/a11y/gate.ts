@@ -19,7 +19,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { AUTOMATED, idsFor, type CheckId, type Runtime } from './spec.js';
+import { AUTOMATED, idsFor, passesFor, passName, type CheckId, type Runtime } from './spec.js';
 
 export interface BrokenFixture<E> {
   /** What is broken, in a sentence: it shows up in the test's name. */
@@ -50,11 +50,8 @@ export type WithEnv<E> = <T>(sabotage: BrokenFixture<E>['sabotage'] | undefined,
 
 const SECOND = 1000;
 
-/** The numbers `checks` implement, once each and in order, however many passes a number has. */
-export const numbersOf = <E>(checks: readonly Check<E>[]): CheckId[] => [...new Set(checks.map((c) => c.id))];
-
-/** A pass's name: its number, and what it sweeps when the number has more than one pass. */
-const passName = <E>(check: Check<E>): string => (check.over ? `${check.id} over ${check.over}` : check.id);
+/** The passes `checks` implement, by name, in order: compared with `passesFor`, so no pass can be dropped or added unlisted. */
+export const passesOf = <E>(checks: readonly Check<E>[]): string[] => checks.map((c) => passName(c.id, c.over));
 
 /**
  * Register the gate's tests for one runtime's checks. `partial` is for a second
@@ -71,19 +68,15 @@ export function gateTests<E>(
 
   if (!partial) {
     describe(`the ${runtime} half of the accessibility gate implements exactly its checks`, () => {
-      it('no number is listed and not run, or run and not listed', () => {
-        expect(numbersOf(checks)).toEqual(idsFor(runtime));
-      });
-      it('no pass is registered twice', () => {
-        const names = checks.map(passName);
-        expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([]);
+      it('no number or surface is listed and not run, or run and not listed', () => {
+        expect(passesOf(checks)).toEqual(passesFor(idsFor(runtime)));
       });
     });
   }
 
   for (const check of checks) {
     const title = AUTOMATED.find((c) => c.id === check.id)!.title;
-    describe(`${passName(check)}: ${title}`, () => {
+    describe(`${passName(check.id, check.over)}: ${title}`, () => {
       it('holds on the shipped view', { timeout }, async () => {
         expect(await violations(check), `${check.id} found something wrong`).toEqual([]);
       });
