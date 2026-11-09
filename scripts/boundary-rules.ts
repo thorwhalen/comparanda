@@ -65,11 +65,16 @@ export function isClassicZod(specifier: string): boolean {
  * answer: core's policy functions do not ask the provider, and the store's
  * `cellAffordanceOf` skips the structural checks and the host. Correct in core
  * and store; in the view, each is a second source of truth for editability.
+ * The saved-view pair (`viewAffordances`, `createAffordance`) compose a view's
+ * mode with the host but not the provider that keeps it: the view reads
+ * `SavedViewStore.affordances` and `.saveAffordance` instead (#117).
  */
-export const PROVIDER_BLIND = ['makeAffordances', 'cellPolicy', 'documentPolicy', 'cellAffordanceOf'] as const;
+export const PROVIDER_BLIND = [
+  'makeAffordances', 'cellPolicy', 'documentPolicy', 'cellAffordanceOf', 'viewAffordances', 'createAffordance',
+] as const;
 
 const PROVIDER_BLIND_WHY =
-  'read editability through editAffordances (comparanda/store) instead: this one ignores the ' +
+  'read editability through editAffordances, or a SavedViewStore\'s affordances (comparanda/store), instead: this one ignores the ' +
   'provider\'s capability or the host, so a control would show where a write is refused (ADR-0006 clause 3).';
 
 /** Strip comments and string literals so a mention in prose is not a violation. */

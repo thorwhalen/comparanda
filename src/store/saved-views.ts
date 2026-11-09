@@ -11,7 +11,10 @@
  * clause 3), then of `viewAffordances` / `createAffordance`
  * (`core/saved-views.ts`), where a view's mode and the host's `authorize` are
  * composed. A refused write rejects with the refusal's reason and changes
- * nothing. Writes go one at a time through this store, each built on the
+ * nothing. The same answers are read before anything is offered
+ * (`affordances`, `saveAffordance`), so a view never offers a control the
+ * store would refuse, and never refuses one without the reason the store
+ * gives. Writes go one at a time through this store, each built on the
  * record as it stands when its turn comes, so a lock and an update sent
  * together cannot lose the lock. That is within one store: several clients
  * writing one shared provider need its versioned write (#290). There is no
@@ -21,7 +24,7 @@
  * migrations) on the way out: a caller who edits what it was given edits
  * nothing stored, and a malformed record is refused loudly, never shown.
  */
-import { createInMemoryProvider, type DataProvider } from '@zodal/store';
+import type { DataProvider } from '@zodal/store';
 
 import { hostAnswer, type Affordance } from '../core/affordances.js';
 import {
@@ -29,7 +32,8 @@ import {
   type Act, type AuthorizeView, type SavedViewAct, type SavedViewMode, type ViewStep,
 } from '../core/saved-views.js';
 import { parseViewState, snapshotOf, type SavedViewState, type ViewState } from '../core/view-state.js';
-import { affordanceOf, type EditAction } from './index.js';
+import { affordanceOf, type EditAction, type IdentityStorage } from './index.js';
+import { localCollectionProvider, memoryCollection, type LocalCollection } from './local-collection.js';
 
 export interface SavedViewStoreOptions {
   /** The owner's own store, for personal views. Default: in memory. */
@@ -44,7 +48,25 @@ export interface SavedViewStoreOptions {
   newId?: () => string;
 }
 
+/** What may be done to one saved view here: each write, and saving as new, each refused with its reason. */
+export type SavedViewAffordances = Record<SavedViewAct | 'saveAsNew', Affordance>;
+
 export interface SavedViewStore {
+  /**
+   * What this actor may do to `view` here, read before anything is offered: the
+   * provider that keeps it (`getCapabilities`), then the view's mode and the
+   * host (`viewAffordances`). The same answers every write is refused by.
+   */
+  affordances(view: SavedView, actorId: string | undefined): SavedViewAffordances;
+  /**
+   * Whether this actor may save the working arrangement as a new view of `mode`
+   * here: the provider that would keep it, then the host (`createAffordance`).
+   * The host is asked about the view as it would be saved, under `name`.
+   */
+  saveAffordance(
+    current: ViewState | SavedViewState,
+    options: { analysisId: string; mode: Exclude<SavedViewMode, 'locked'>; actorId: string | undefined; name?: string | undefined },
+  ): Affordance;
   /** The views of one analysis this actor can read: their own personal views, and every shared and locked one. */
   list(analysisId: string, actorId: string | undefined): Promise<SavedView[]>;
   /** One view, if this actor may read it: another's personal view is not theirs to be handed. */
@@ -65,6 +87,10 @@ export interface SavedViewStore {
     delete(id: string, act: Act): Promise<void>;
   };
 }
+
+/** The view the host is asked about before one is saved: its id is none of the store's, and its name may not be chosen yet. */
+const DRAFT_ID = 'draft';
+const DRAFT_NAME = 'a new view';
 
 /** A random hex id, from `getRandomValues`: `randomUUID` is missing outside secure contexts. */
 const randomId = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -100,9 +126,9 @@ function refused(what: string, a: Affordance): never {
 }
 
 export function savedViewStore({
-  personal = createInMemoryProvider<SavedView>([], { idField: 'id' }),
-  shared = createInMemoryProvider<SavedView>([], { idField: 'id' }),
-  sequences = createInMemoryProvider<ViewSequence>([], { idField: 'id' }),
+  personal = memoryCollection<SavedView>(),
+  shared = memoryCollection<SavedView>(),
+  sequences = memoryCollection<ViewSequence>(),
   authorize,
   newId = randomId,
 }: SavedViewStoreOptions = {}): SavedViewStore {
@@ -119,12 +145,34 @@ export function savedViewStore({
     if (!v) throw new Error(`there is no saved view "${id}".`);
     return v;
   };
-  /** The provider first, then the mode and the host: the first refusal rejects. */
-  const may = (v: SavedView, act: SavedViewAct, by: string, action: EditAction = act === 'delete' ? 'delete' : 'update') => {
-    const store = affordanceOf(home(v.mode), action, { what: `the view "${v.name}"` });
-    if (!store.enabled) refused(`"${v.name}" cannot be changed`, store);
-    const a = viewAffordances(v, { actorId: by, authorize })[act];
-    if (!a.enabled) refused(`"${v.name}" cannot be changed that way`, a);
+  /**
+   * Each answer gated on the provider that keeps the view: the first refusal is the one given, and the host is not
+   * asked about a write the provider would refuse anyway.
+   */
+  const affordances = (v: SavedView, actorId: string | undefined): SavedViewAffordances => {
+    const store = (act: SavedViewAct) => affordanceOf(home(v.mode), act === 'delete' ? 'delete' : 'update', { what: `the view "${v.name}"` });
+    const host: AuthorizeView | undefined = authorize && ((r) => (r.act === 'create' || r.act === 'edit-sequence' || store(r.act).enabled ? authorize(r) : true));
+    const mode = viewAffordances(v, { actorId, authorize: host });
+    const gated = (act: SavedViewAct) => {
+      const s = store(act);
+      return s.enabled ? mode[act] : s;
+    };
+    const keep = affordanceOf(personal, 'create', { what: 'a view' });
+    return {
+      update: gated('update'), rename: gated('rename'), delete: gated('delete'), lock: gated('lock'), unlock: gated('unlock'),
+      // As a personal view, which needs nobody's leave: only somewhere to keep it.
+      saveAsNew: keep.enabled ? mode.saveAsNew : keep,
+    };
+  };
+  /** Whether `v`, not yet saved, may be: the provider that would keep it, then the host. */
+  const creatable = (v: SavedView, actorId: string | undefined): Affordance => {
+    const store = affordanceOf(home(v.mode), 'create', { what: v.mode === 'personal' ? 'a view' : `a ${v.mode} view` });
+    return store.enabled ? createAffordance(v, { actorId, authorize }) : store;
+  };
+  /** A write, asked first: the first refusal rejects, with its reason, and nothing is written. */
+  const may = (v: SavedView, act: SavedViewAct, by: string) => {
+    const a = affordances(v, by)[act];
+    if (!a.enabled) refused(`"${v.name}" cannot be changed`, a);
   };
   /** One write at a time: two sent together would each build on the same record, and the second would undo the first. */
   let chain: Promise<unknown> = Promise.resolve();
@@ -166,6 +214,9 @@ export function savedViewStore({
   };
 
   return {
+    affordances,
+    saveAffordance: (current, { analysisId, mode, actorId, name = DRAFT_NAME }) =>
+      creatable(createView(current, { id: DRAFT_ID, analysisId, name: name.trim() || DRAFT_NAME, mode, by: actorId ?? '', at: '' }), actorId),
     async list(analysisId, actorId) {
       const all = async (p: DataProvider<SavedView>) => (await p.getList({})).data;
       const mine = (await all(personal)).filter((v) => v.ownerId === actorId);
@@ -174,10 +225,8 @@ export function savedViewStore({
     get: async (id, actorId) => visible(await found(id), actorId),
     create: (current, options) => serial(async () => {
       const v = createView(current, { id: await freshId(), ...options });
-      const store = affordanceOf(home(v.mode), 'create', { what: 'a view' });
-      if (!store.enabled) refused('the view was not saved', store);
-      const host = createAffordance(v, { actorId: options.by, authorize });
-      if (!host.enabled) refused('the view was not saved as shared', host);
+      const a = creatable(v, options.by);
+      if (!a.enabled) refused(v.mode === 'personal' ? 'the view was not saved' : `the view was not saved as ${v.mode}`, a);
       return fromStore(await home(v.mode).create(v));
     }),
     update: (id, current, a) => change('update', (v, x) => updateView(v, current, x))(id, a),
@@ -219,4 +268,28 @@ export function savedViewStore({
       }),
     },
   };
+}
+
+/**
+ * A reader's personal views of one analysis, kept in this browser (#117): the
+ * personal provider for the standalone page, with `localCollectionProvider`'s
+ * fallback chain and its notice. One key per analysis, since every page opened
+ * from `file://` shares one origin. A stored view this version cannot read (a
+ * newer field, a tampered record) is not listed, and is written back unchanged.
+ */
+export function localSavedViews(
+  analysisId: string,
+  { storage, key = `comparanda.saved-views.${analysisId}` }: { storage?: IdentityStorage; key?: string } = {},
+): LocalCollection<SavedView> {
+  return localCollectionProvider<SavedView>({ key, ...(storage ? { storage } : {}), accept: readable });
+}
+
+/** Whether this version can read a stored view: the store's own reading of it. One it cannot is left in storage as it was, never listed. */
+function readable(raw: unknown): raw is SavedView {
+  try {
+    fromStore(raw as SavedView);
+    return true;
+  } catch {
+    return false;
+  }
 }

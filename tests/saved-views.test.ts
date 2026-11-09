@@ -19,7 +19,7 @@ import {
   setGrouping, setSelection, setSort, transpose, lockRun, type Dimension, type ViewState,
 } from '../src/core/view-state.js';
 import { createInMemoryProvider } from '@zodal/store';
-import { savedViewStore } from '../src/store/index.js';
+import { emptyReadOnlyProvider, savedViewStore } from '../src/store/index.js';
 import type { SavedView } from '../src/core/saved-views.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
@@ -283,6 +283,68 @@ describe('the store, against its providers', () => {
     await expect(store.sequences.create({ analysisId: relocation.id, name: 'W', steps: [{ viewId: v.id }] }, ben)).rejects.toThrow(/not authorised/);
     const walk = await store.sequences.create({ analysisId: relocation.id, name: 'W', steps: [{ viewId: v.id }] }, ana);
     await expect(store.sequences.update(walk.id, { name: 'X' }, ben)).rejects.toThrow(/not authorised/);
+  });
+});
+
+describe('what the store offers is what it accepts (#117)', () => {
+  const ids = () => { let n = 0; return () => `id-${(n += 1)}`; };
+  const frozen = (caps: Partial<Record<'canCreate' | 'canUpdate' | 'canDelete', boolean>>) => {
+    const p = createInMemoryProvider<SavedView>([], { idField: 'id' });
+    let now = caps;
+    return { provider: { ...p, getCapabilities: () => ({ ...p.getCapabilities!(), ...now }) }, set: (next: typeof caps) => { now = next; } };
+  };
+
+  it('reads each refusal before anything is written, and the write is refused by the same answer', async () => {
+    const personal = frozen({});
+    const store = savedViewStore({ personal: personal.provider, newId: ids() });
+    const v = await store.create(base, { analysisId: relocation.id, name: 'Mine', ...ana });
+    expect(store.affordances(v, 'ana')).toMatchObject({ update: { enabled: true }, rename: { enabled: true }, delete: { enabled: true } });
+    // Flip a capability: the offer and the write change together, with the provider's reason.
+    personal.set({ canDelete: false });
+    const refused = store.affordances(v, 'ana').delete;
+    expect(refused).toEqual({ enabled: false, reason: expect.stringMatching(/does not accept deletes/) });
+    await expect(store.delete(v.id, ana)).rejects.toThrow(refused.reason);
+    expect(store.affordances(v, 'ana').rename.enabled).toBe(true);
+  });
+
+  it('asks the provider before the mode, and the mode before the host', () => {
+    const shared = frozen({ canUpdate: false });
+    const asked: string[] = [];
+    const store = savedViewStore({ shared: shared.provider, authorize: ({ act }) => (asked.push(act), true) });
+    const may = store.affordances(lockView(view(), ana), 'ana');
+    expect(may.update.reason).toMatch(/does not accept updates/);
+    shared.set({});
+    expect(store.affordances(lockView(view(), ana), 'ana').update.reason).toMatch(/is locked/);
+    // The host is asked only where the provider and the mode allow: unlock, on a locked view.
+    expect(asked).toEqual(['unlock']);
+  });
+
+  it('refuses another reader\'s personal view, and saving as new needs only somewhere to keep it', () => {
+    const personal = frozen({});
+    const store = savedViewStore({ personal: personal.provider });
+    expect(store.affordances(view('personal'), 'ben').rename.reason).toMatch(/someone else's personal view/);
+    expect(store.affordances(view('personal'), 'ben').saveAsNew.enabled).toBe(true);
+    personal.set({ canCreate: false });
+    expect(store.affordances(view('personal'), 'ben').saveAsNew.reason).toMatch(/does not accept new items/);
+  });
+
+  it('says whether a new view of each mode may be saved: the provider, then the host', async () => {
+    const store = savedViewStore({ shared: emptyReadOnlyProvider(), newId: ids() });
+    const ask = (mode: 'personal' | 'shared') => store.saveAffordance(base, { analysisId: relocation.id, mode, actorId: 'ana' });
+    expect(ask('personal')).toEqual({ enabled: true });
+    expect(ask('shared')).toEqual({ enabled: false, reason: expect.stringMatching(/does not accept new items, so a shared view cannot be added here/) });
+    await expect(store.create(base, { analysisId: relocation.id, name: 'Ours', mode: 'shared', ...ana })).rejects.toThrow(ask('shared').reason);
+    const hosted = savedViewStore({ authorize: (r) => r.act !== 'create' || r.view.name === 'Board' || { enabled: false, reason: 'only the board shares views.' } });
+    expect(hosted.saveAffordance(base, { analysisId: relocation.id, mode: 'shared', actorId: 'ben' }).reason).toBe('only the board shares views.');
+    expect(hosted.saveAffordance(base, { analysisId: relocation.id, mode: 'shared', actorId: 'ben', name: 'Board' }).enabled).toBe(true);
+  });
+
+  it('holds nothing where there is no store at all, and lists nothing from it', async () => {
+    const store = savedViewStore({ shared: emptyReadOnlyProvider(), sequences: emptyReadOnlyProvider(), newId: ids() });
+    await store.create(base, { analysisId: relocation.id, name: 'Mine', ...ana });
+    expect((await store.list(relocation.id, 'ana')).map((v) => v.mode)).toEqual(['personal']);
+    expect(await store.get('nothing', 'ana')).toBeUndefined();
+    expect(await store.sequences.list(relocation.id)).toEqual([]);
   });
 });
 

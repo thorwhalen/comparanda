@@ -26,6 +26,7 @@ import { describeOpenSuggestions, type OpenSuggestion } from '../core/suggestion
 import { capitalise } from './words.js';
 import { messageOf } from './dom.js';
 import { NameForm, type TakeName } from './name-form.js';
+import { useFocusNext } from './focus-next.js';
 
 export interface SuggestionChoice { suggestionId: string; decision: SuggestionDecision }
 
@@ -47,7 +48,7 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
 }) {
   const id = useId();
   const root = useRef<HTMLElement>(null);
-  const focusNext = useRef<string | undefined>(undefined);
+  const focusNext = useFocusNext(root);
   const [staged, setStaged] = useState<SuggestionChoice[]>([]);
   const [said, setSaid] = useState('');
   const [busy, setBusy] = useState(false);
@@ -55,10 +56,6 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
   const [nameHeld, setNameHeld] = useState(false);
   // Only while the matrix still offers a name: once it is taken, the panel closes in the render that took it, where focus is settled.
   const held = nameHeld && !!writes?.name;
-  useLayoutEffect(() => {
-    if (focusNext.current) root.current?.querySelector<HTMLElement>(focusNext.current)?.focus();
-    focusNext.current = undefined;
-  });
   const open = describeOpenSuggestions(analysis, { viewer, vouched });
   // A suggestion decided elsewhere meanwhile is no longer staged here.
   const live = staged.filter((c) => open.some((o) => o.id === c.suggestionId));

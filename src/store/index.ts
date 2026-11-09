@@ -35,6 +35,7 @@ import { DEFAULT_CAPABILITIES, createInMemoryProvider } from '@zodal/store';
 import type { DataChangeEvent, DataProvider, ProviderCapabilities } from '@zodal/store';
 
 import type { Analysis } from '../core/schema/analysis.js';
+import { memoryStorage } from './browser-storage.js';
 import { revisionProblems } from '../core/revision.js';
 import {
   cellPolicy, makeAffordances, requireDecision, requireDoing, threadDoing, requireCommentFor, type Affordance, type Affordances, type Authorize, type WriteAffordance,
@@ -208,6 +209,33 @@ export function cellAffordanceOf(
   const fromProvider = affordanceOf(provider, 'update', { what: 'this cell' });
   if (!fromProvider.enabled) return fromProvider;
   return cellPolicy(analysis, cell);
+}
+
+/** What a provider that takes no writes reports: nothing is created, updated or deleted, singly or in bulk. */
+export const READ_ONLY_CAPABILITIES: ProviderCapabilities = Object.freeze({
+  ...DEFAULT_CAPABILITIES, canCreate: false, canUpdate: false, canDelete: false,
+  canBulkUpdate: false, canBulkDelete: false, canUpsert: false,
+});
+
+/**
+ * A provider that holds nothing and takes nothing: where a deployment has no
+ * store for a collection at all (the standalone page's shared views, which live
+ * beside the analysis, #291). It reports `READ_ONLY_CAPABILITIES`, so every
+ * control asked of it is refused with the reason `affordanceOf` gives, and a
+ * write that reaches it anyway rejects.
+ */
+export function emptyReadOnlyProvider<T>(): DataProvider<T> {
+  const refuse = async (): Promise<never> => { throw new Error('this source is read-only.'); };
+  return {
+    getList: async () => ({ data: [], total: 0 }),
+    getOne: refuse,
+    create: refuse,
+    update: refuse,
+    updateMany: refuse,
+    delete: refuse,
+    deleteMany: refuse,
+    getCapabilities: () => ({ ...READ_ONLY_CAPABILITIES }),
+  };
 }
 
 export interface OneItemProviderOptions {
@@ -513,12 +541,7 @@ function browserStorage(): IdentityStorage {
   } catch {
     // Access itself throws where site data is blocked.
   }
-  const m = new Map<string, string>();
-  return {
-    getItem: (k) => m.get(k) ?? null,
-    setItem: (k, v) => void m.set(k, v),
-    removeItem: (k) => void m.delete(k),
-  };
+  return memoryStorage();
 }
 
 /**
@@ -566,3 +589,5 @@ export function writeSafety(
 export * from './view-state-store.js';
 export * from './versioned-source.js';
 export * from './saved-views.js';
+export * from './local-collection.js';
+export type { StorageBacking, StorageStatus } from './browser-storage.js';

@@ -6,8 +6,17 @@
  * Reads nothing but the page itself -- no `fetch`, no URL (ADR-0013) -- and
  * never leaves the reader with a blank page: anything that stops the matrix
  * from rendering is said, in words, where the matrix would have been.
+ *
+ * The page's ports, as ADR-0013 binds them for standalone: the analysis is
+ * frozen (no source, so every annotation control says it is read-only), the
+ * arrangement is kept in this browser (`mountPersistedMatrix`), and so are the
+ * reader's personal saved views (`localSavedViews`, #117). Shared views and
+ * sequences live beside the analysis, and the file carries none (#291): their
+ * providers take nothing, so the panel refuses them with that reason rather
+ * than keeping them where nobody else would see them.
  */
 import { Analysis } from '../core/schema/analysis.js';
+import { emptyReadOnlyProvider, localSavedViews, savedViewStore } from '../store/index.js';
 import { mountPersistedMatrix } from '../view/persist.js';
 import {
   ANALYSIS_ELEMENT_ID, ROOT_ELEMENT_ID, SETTINGS_ELEMENT_ID, type StandaloneSettings,
@@ -19,7 +28,12 @@ async function start(): Promise<void> {
   try {
     const analysis = Analysis.parse(JSON.parse(inlined(ANALYSIS_ELEMENT_ID)));
     const settings = JSON.parse(inlined(SETTINGS_ELEMENT_ID)) as StandaloneSettings;
-    await mountPersistedMatrix(root, { analysis, measure: settings.measure, ...(settings.encoding !== undefined ? { encoding: settings.encoding } : {}) });
+    const personal = localSavedViews(analysis.id);
+    const store = savedViewStore({ personal: personal.provider, shared: emptyReadOnlyProvider(), sequences: emptyReadOnlyProvider() });
+    await mountPersistedMatrix(root, {
+      analysis, measure: settings.measure, ...(settings.encoding !== undefined ? { encoding: settings.encoding } : {}),
+      savedViews: { store, status: personal },
+    });
   } catch (error) {
     const p = document.createElement('p');
     p.setAttribute('role', 'alert');
