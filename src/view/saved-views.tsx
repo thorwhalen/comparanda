@@ -135,7 +135,8 @@ export function SavedViewsPanel({ port, analysis, view }: { port: SavedViewsPort
 
   const write: Write = (run, done, failed, { then, back } = {}) => run().then(
     async () => { await refresh(); setSaid(done); focusNext.current = then; return true; },
-    async (e: unknown) => { setSaid(`${failed}: ${sentenceOf(e)}`); focusNext.current = back; await refresh(); return false; },
+    // Read again first, then said and focused: a control the list no longer holds hands focus to the heading (`useFocusNext`).
+    async (e: unknown) => { await refresh(); setSaid(`${failed}: ${sentenceOf(e)}`); focusNext.current = back; return false; },
   );
 
   const save = useSend(async (name) => {
@@ -235,8 +236,9 @@ function ViewItem({ view: v, may, shown, idBase, port, write, refresh, say, onSh
         <RenameForm
           view={v} idBase={idBase} cancel={() => close('[data-rename]')}
           rename={async (name) => {
-            // Refused, the field says why, and the list is read again: another reader may have changed the view first.
-            await port.rename(v.id, name.trim()).catch(async (e: unknown) => { await refresh(); throw e; });
+            // Refused, it is said in the panel before the list is read again: if another reader removed the view, the
+            // form and its own alert leave with it, and the panel's words are what remains.
+            await port.rename(v.id, name.trim()).catch(async (e: unknown) => { say(`Not renamed: ${sentenceOf(e)}`); await refresh(); throw e; });
             await refresh();
             say(`Renamed to “${name.trim()}”.`);
             close('[data-rename]');

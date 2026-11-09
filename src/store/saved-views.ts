@@ -190,7 +190,7 @@ export function versionedSavedViewStore({
   const versioned = (name: string, p: DataProvider<SavedView> | DataProvider<ViewSequence>) => {
     if (!isVersionedCollection<unknown>(p as DataProvider<unknown>)) {
       // Kept short: this ships in the standalone page, whose byte budget is tight.
-      throw new TypeError(`"${name}" must be a versioned collection (markVersioned), as several clients write it; savedViewStore versions a plain one.`);
+      throw new TypeError(`"${name}" must be a versioned collection (markVersioned); savedViewStore versions a plain one.`);
     }
   };
   versioned('shared', shared);

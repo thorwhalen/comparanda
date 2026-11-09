@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 import { Analysis } from '../src/core/schema/analysis.js';
 import {
-  asVersioned, isVersioned, isVersionedCollection, inMemoryAnalysisSource, markVersioned, memoryCollection, versionedAnalysisSource,
-  versionedCollection, WriteConflict,
+  asVersioned, DEFAULT_COLLECTION_HISTORY_LIMIT, isVersioned, isVersionedCollection, inMemoryAnalysisSource, markVersioned, memoryCollection,
+  savedViewStore, versionedAnalysisSource, versionedCollection, WriteConflict,
 } from '../src/store/index.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -227,5 +227,51 @@ describe('versioned collection (#290): the same mechanism, for many records', ()
     await c.create({ id: 'a', n: 1 });
     expect((await c.getList({})).total).toBe(1);
     expect(c.getCapabilities!().canUpdate).toBe(true);
+  });
+
+  it('refuses a provider that other pages or processes write (multiWriter): versions kept here would never see their writes', () => {
+    const plain = memoryCollection<Row>();
+    const remote = { ...plain, getCapabilities: () => ({ ...plain.getCapabilities!(), multiWriter: true }) };
+    const said = /reports multiWriter.*last would silently win.*getVersioned, updateIfVersion and deleteIfVersion over the backend's own etag or revision.*markVersioned/;
+    expect(() => asVersioned(remote)).toThrow(said);
+    expect(() => versionedCollection(remote)).toThrow(said);
+    expect(() => savedViewStore({ shared: remote as never })).toThrow(said);
+    // The host's own port over its revisions is taken as it is.
+    const own = markVersioned({ ...versionedCollection(memoryCollection<Row>()), getCapabilities: () => ({ ...plain.getCapabilities!(), multiWriter: true }) });
+    expect(asVersioned(own)).toBe(own);
+  });
+
+  it('refuses to wrap a provider versioned already but without a checked delete, rather than ignore its versions', () => {
+    const half = markVersioned({ ...memoryCollection<Row>(), getVersioned: async () => ({ item: { id: 'a', n: 1 }, version: 7 }), updateIfVersion: async () => ({ item: { id: 'a', n: 1 }, version: 8 }) });
+    expect(() => asVersioned(half)).toThrow(/versioned already, but does not check removals/);
+  });
+
+  it('keeps one clock per provider: a second wrapper is refused, and so are other options for the one there is', () => {
+    const plain = memoryCollection<Row>();
+    const describe = () => 'a row';
+    const made = versionedCollection(plain, { describe });
+    expect(asVersioned(plain)).toBe(made);
+    expect(asVersioned(plain, { describe })).toBe(made);
+    expect(() => versionedCollection(plain)).toThrow(/versioned already: two wrappers would keep two clocks/);
+    expect(() => asVersioned(plain, { historyLimit: 3 })).toThrow(/versioned already with other options/);
+    expect(() => asVersioned(plain, { describe: () => 'another' })).toThrow(/versioned already with other options/);
+  });
+
+  it('versions a created record under the id it was stored with, when the provider assigns it', async () => {
+    const plain = memoryCollection<Row>();
+    const assigning = { ...plain, create: (x: Partial<Row>) => plain.create({ ...x, id: x.id ?? 'given' }) };
+    const c = versionedCollection(assigning);
+    await c.create({ n: 1 });
+    const { version } = await c.getVersioned('given');
+    expect(version).toBeGreaterThan(0);
+    await c.update('given', { n: 2 });
+    await expect(c.updateIfVersion('given', { n: 3 }, version)).rejects.toBeInstanceOf(WriteConflict);
+  });
+
+  it(`keeps ${DEFAULT_COLLECTION_HISTORY_LIMIT} past versions per record by default: a collection holds many records, each a full copy`, async () => {
+    const c = await rows();
+    for (let n = 2; n <= DEFAULT_COLLECTION_HISTORY_LIMIT + 1; n++) await c.update('a', { n });
+    const err = await c.updateIfVersion('a', { note: 'mine' }, 1).catch((e) => e);
+    expect(err.incomplete).toBe(true);
   });
 });

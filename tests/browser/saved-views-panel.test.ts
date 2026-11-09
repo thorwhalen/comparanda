@@ -252,31 +252,64 @@ describe('the saved-views panel', () => {
     expect(entry('Cost first')).toBeDefined();
   });
 
-  it('says a lost race in words, writes nothing, and shows what the other reader saved (#290)', async () => {
+  /**
+   * This panel's store and another reader's, over one shared provider, with one shared view saved. The other reader's
+   * `theirs` lands once, between this panel's read and its checked write: the race this panel loses.
+   */
+  const losingRace = async (theirs: (other: ReturnType<typeof savedViewStore>, id: string) => Promise<unknown>) => {
     const inner = versionedCollection(memoryCollection<SavedView>(), { describe: (v) => (v ? `the view "${v.name}"` : 'this view') });
-    /** Another reader's client, whose write lands between this panel's read and its write, once. */
     let other: ReturnType<typeof savedViewStore> | undefined;
     let raced = false;
+    const first = async (id: string) => { if (!raced) { raced = true; await theirs(other!, id); } };
     const shared: VersionedCollection<SavedView> = markVersioned({
       ...inner,
-      updateIfVersion: async (id, data, version) => {
-        if (!raced) { raced = true; await other!.rename(id, 'The argument, revised', { by: 'ben', at: ana.at }); }
-        return inner.updateIfVersion(id, data, version);
-      },
+      updateIfVersion: async (id, data, version) => { await first(id); return inner.updateIfVersion(id, data, version); },
+      deleteIfVersion: async (id, version) => { await first(id); return inner.deleteIfVersion(id, version); },
     });
     const store = savedViewStore({ shared });
     other = savedViewStore({ shared });
     await store.create(initialViewState(relocation), { analysisId: relocation.id, name: 'The argument', mode: 'shared', ...ana });
     handle = mountMatrix(el, { analysis: relocation, measure: 'score', savedViews: { store } });
     await settled(() => entry('The argument'));
+  };
+  const ben = { by: 'ben', at: ana.at };
+  const heading = () => panel().querySelector('[data-panel-heading]');
+
+  it('says a lost race in words, writes nothing, and shows what the other reader saved (#290)', async () => {
+    await losingRace((other, id) => other.rename(id, 'The argument, revised', ben));
     button(entry('The argument')!, 'Lock').focus();
     await userEvent.keyboard('{Enter}');
     await settled(() => /Not locked/.test(said() ?? ''));
     expect(said()).toMatch(/^Not locked: conflict: someone else changed the view "The argument, revised" while you were editing .*Nothing was written/);
-    // The list is read again: the other reader's name, and no lock.
+    // The list is read again: the other reader's name, and no lock. Focus stays on the control, which is still there.
     await settled(() => entry('The argument, revised'));
     expect(entry('The argument, revised')!.getAttribute('data-mode')).toBe('shared');
     expect(button(entry('The argument, revised')!, 'Lock').hasAttribute('aria-disabled')).toBe(false);
+    expect(document.activeElement?.textContent).toBe('Lock');
+  });
+
+  it('a delete that loses to another reader\'s delete: said, the view gone from the list, focus on the heading (#290)', async () => {
+    await losingRace((other, id) => other.delete(id, ben));
+    button(entry('The argument')!, 'Delete').focus();
+    await userEvent.keyboard('{Enter}');
+    button(entry('The argument')!, 'Delete it').focus();
+    await userEvent.keyboard('{Enter}');
+    await settled(() => /Not deleted/.test(said() ?? ''));
+    expect(said()).toMatch(/^Not deleted: conflict: someone else removed the view "The argument" while you were editing/);
+    await settled(() => !entry('The argument'));
+    await settled(() => document.activeElement === heading());
+  });
+
+  it('a rename that loses to another reader\'s delete: said in the panel though the form has gone, focus on the heading (#290)', async () => {
+    await losingRace((other, id) => other.delete(id, ben));
+    button(entry('The argument')!, 'Rename').focus();
+    await userEvent.keyboard('{Enter}');
+    await userEvent.fill(entry('The argument')!.querySelector<HTMLInputElement>('input')!, 'Cheapest');
+    await userEvent.keyboard('{Enter}');
+    await settled(() => /Not renamed/.test(said() ?? ''));
+    expect(said()).toMatch(/^Not renamed: conflict: someone else removed the view "The argument" while you were editing/);
+    await settled(() => !entry('The argument'));
+    await settled(() => document.activeElement === heading());
   });
 
   it('refuses a malformed savedViews prop, naming it', () => {

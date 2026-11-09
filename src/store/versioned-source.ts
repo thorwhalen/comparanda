@@ -35,7 +35,7 @@
 import type { DataChangeEvent, DataProvider } from '@zodal/store';
 
 import type { Analysis } from '../core/schema/analysis.js';
-import { inMemoryAnalysisSource, type AnalysisSource, type OneItemProviderOptions } from './index.js';
+import { capabilitiesOf, inMemoryAnalysisSource, type AnalysisSource, type OneItemProviderOptions } from './index.js';
 
 /** A record and the version it was read at. */
 export interface Versioned<T> {
@@ -181,8 +181,11 @@ export function isVersioned(source: object): boolean {
 export const isVersionedCollection = <T>(provider: DataProvider<T>): provider is VersionedCollection<T> =>
   isVersioned(provider) && typeof (provider as Partial<VersionedCollection<T>>).deleteIfVersion === 'function';
 
-/** How many past versions' bases are kept per record, unless `historyLimit` says otherwise. */
+/** How many past versions' bases the analysis keeps, unless `historyLimit` says otherwise: one document, edited often. */
 export const DEFAULT_HISTORY_LIMIT = 50;
+
+/** How many past versions' bases a collection keeps per record, unless `historyLimit` says otherwise: many records, each a full copy. */
+export const DEFAULT_COLLECTION_HISTORY_LIMIT = 10;
 
 export interface VersionedCollectionOptions<T> {
   /** Past versions kept per record for describing a conflict. A writer older than this is told against the current record. */
@@ -202,17 +205,53 @@ type History<T> = Map<number, { base: T | undefined; touched: string[] }>;
 /** The id a change event is about. */
 const idOf = (event: DataChangeEvent<unknown>): string => ('id' in event ? event.id : (event.item as { id: string }).id);
 
+/** The wrapper made for each provider object, and the options it was made with: one clock per provider. */
+const wrappers = new WeakMap<object, { made: VersionedCollection<never>; historyLimit: number; describe: (record: never) => string }>();
+
+/**
+ * Versions kept here are kept in this page (this process): they see only the
+ * writes made through the wrapper. That is a true check only when every writer
+ * is in this page. Refused, with what to do instead, for a provider that cannot
+ * be versioned here: one that says other pages or processes write it
+ * (`multiWriter`, ADR-0006), one already versioned, or one already wrapped.
+ */
+function versionableHere(inner: DataProvider<unknown>): void {
+  if (isVersioned(inner)) {
+    throw new TypeError(
+      'this provider is versioned already, but does not check removals (deleteIfVersion): wrapping it would ignore its own versions. ' +
+        'Add deleteIfVersion over the same etag or revision as its updateIfVersion.',
+    );
+  }
+  if (wrappers.has(inner)) {
+    throw new TypeError('this provider is versioned already: two wrappers would keep two clocks. Hand every writer the one asVersioned(provider) gives.');
+  }
+  if ((capabilitiesOf(inner) as { multiWriter?: boolean }).multiWriter === true) {
+    throw new TypeError(
+      'this provider reports multiWriter: other pages or processes write it, and versions kept in this page never see their writes, ' +
+        'so every checked write would pass and the last would silently win (ADR-0011 clause 6). Implement getVersioned, updateIfVersion ' +
+        "and deleteIfVersion over the backend's own etag or revision, and declare them with markVersioned.",
+    );
+  }
+}
+
 /**
  * `inner`, with versioned writes. Every record starts at version 0, and every
  * stored write to it through this wrapper (checked or not) moves its version to
  * the collection's next count. Writes go one at a time, so a check and the
- * write it allows are never split by another. Writes that go around the
- * wrapper, straight to `inner`, are not seen: hand the wrapper to every writer.
+ * write it allows are never split by another.
+ *
+ * **A compare-and-set within one page or process.** Writes that go around the
+ * wrapper, straight to `inner` or from another page, are not seen: hand the
+ * wrapper to every writer (`asVersioned` does), and give a backend several
+ * processes write its own port (`versionableHere` refuses one that says so).
+ * One wrapper per provider object: a second is refused, so there is one clock.
  */
 export function versionedCollection<T extends { id: string }>(
   inner: DataProvider<T>,
-  { historyLimit = DEFAULT_HISTORY_LIMIT, describe = () => 'this record' }: VersionedCollectionOptions<T> = {},
+  options: VersionedCollectionOptions<T> = {},
 ): VersionedCollection<T> {
+  versionableHere(inner);
+  const { historyLimit = DEFAULT_COLLECTION_HISTORY_LIMIT, describe = () => 'this record' } = options;
   /** The last count handed out: every stored write takes the next. */
   let clock = 0;
   const versions = new Map<string, number>();
@@ -246,15 +285,21 @@ export function versionedCollection<T extends { id: string }>(
     queue = result.catch(() => undefined); // a refused write does not block the next
     return result;
   };
-  /** Store under the next count: `store` makes the change, and the version moves only once it is made. */
-  const stored = async <R>(id: string, store: () => Promise<R>, base: (r: R) => T | undefined, touched: string[]): Promise<{ result: R; version: number }> => {
+  /**
+   * Store under the next count: `store` makes the change, and the version moves only once it is made, on the id the
+   * stored record has (`keyOf`: a created record's id may be the provider's to assign).
+   */
+  const stored = async <R>(
+    id: string, store: () => Promise<R>, base: (r: R) => T | undefined, touched: string[], keyOf: (r: R) => string = () => id,
+  ): Promise<{ result: R; version: number }> => {
     const next = clock + 1;
     producing = { id, version: next };
     try {
       const result = await store();
+      const key = keyOf(result);
       clock = next;
-      versions.set(id, clock);
-      remember(id, clock, base(result), touched);
+      versions.set(key, clock);
+      remember(key, clock, base(result), touched);
       return { result, version: clock };
     } finally {
       producing = undefined;
@@ -303,7 +348,7 @@ export function versionedCollection<T extends { id: string }>(
   // Its own methods too, for a provider whose methods live on a prototype; its subscribe only with versions added.
   const { subscribe: unversioned, ...rest } = inner;
   const subscribe = unversioned?.bind(inner);
-  return markVersioned<VersionedCollection<T>>({
+  const made = markVersioned<VersionedCollection<T>>({
     ...rest,
     getList: (params) => inner.getList(params),
     getOne: (id) => inner.getOne(id),
@@ -317,7 +362,7 @@ export function versionedCollection<T extends { id: string }>(
       }
       : {}),
     create: (data) => serial(async () => {
-      const { result } = await stored(String(data.id), () => inner.create(data), (r) => structuredClone(r), Object.keys(data));
+      const { result } = await stored(data.id ?? '', () => inner.create(data), (r) => structuredClone(r), Object.keys(data), (r) => r.id);
       removed.delete(result.id);
       return result;
     }),
@@ -339,24 +384,27 @@ export function versionedCollection<T extends { id: string }>(
     updateIfVersion: (id, data, expectedVersion) => checked(id, data, expectedVersion, () => write(id, data)),
     deleteIfVersion: (id, expectedVersion) => checked(id, {}, expectedVersion, () => remove(id)),
   });
+  wrappers.set(inner, { made: made as unknown as VersionedCollection<never>, historyLimit, describe: describe as (record: never) => string });
+  return made;
 }
-
-/** One wrapper per provider object: every writer in this page that is handed the same provider shares its versions. */
-const wrappers = new WeakMap<object, VersionedCollection<never>>();
 
 /**
  * `provider` itself when it already honours the port (by identity), else its
  * `versionedCollection`, made once per provider object and handed to every
  * caller after, so two stores given one plain provider check each other's
- * writes. `options` apply when the wrapper is first made. A provider that other
- * pages or processes write cannot be versioned from here: its host supplies the
- * port over its own revisions (`markVersioned`).
+ * writes. Asked again with options other than the ones it was made with, it
+ * refuses rather than ignore them. A provider that other pages or processes
+ * write is refused (`multiWriter`): its host supplies the port over its own
+ * revisions (`markVersioned`).
  */
-export function asVersioned<T extends { id: string }>(provider: DataProvider<T>, options?: VersionedCollectionOptions<T>): VersionedCollection<T> {
+export function asVersioned<T extends { id: string }>(provider: DataProvider<T>, options: VersionedCollectionOptions<T> = {}): VersionedCollection<T> {
   if (isVersionedCollection(provider)) return provider;
-  let made = wrappers.get(provider) as VersionedCollection<T> | undefined;
-  if (!made) wrappers.set(provider, (made = versionedCollection(provider, options)) as unknown as VersionedCollection<never>);
-  return made;
+  const kept = wrappers.get(provider);
+  if (!kept) return versionedCollection(provider, options);
+  const differs = (options.historyLimit !== undefined && options.historyLimit !== kept.historyLimit) ||
+    (options.describe !== undefined && options.describe !== kept.describe);
+  if (differs) throw new TypeError('this provider was versioned already with other options (historyLimit, describe); one provider has one wrapper, made once.');
+  return kept.made as unknown as VersionedCollection<T>;
 }
 
 /**

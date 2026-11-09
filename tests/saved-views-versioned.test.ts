@@ -139,7 +139,7 @@ describe('a lock racing an update, through two clients over one shared provider 
 describe('the versioned port the store needs', () => {
   it('versionedSavedViewStore refuses a shared provider that does not honour it, saying what to pass instead', () => {
     expect(() => versionedSavedViewStore({ shared: memoryCollection<SavedView>() as never, sequences: emptyReadOnlyProvider() }))
-      .toThrow(/"shared" must be a versioned collection .* savedViewStore versions a plain one/);
+      .toThrow(/"shared" must be a versioned collection .*savedViewStore versions a plain one/);
   });
 
   it('a provider that holds nothing honours it trivially: every checked write is refused as its plain one is', async () => {
