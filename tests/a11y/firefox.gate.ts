@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { BROWSER_CHECKS } from './browser-checks.js';
 import { withBrowserEnv } from './browser-env.js';
-import { gateTests } from './gate.js';
+import { gateTests, numbersOf } from './gate.js';
 
 const ENGINE_DEPENDENT = ['A13', 'A15', 'A16', 'A18', 'A20'];
 
@@ -19,8 +19,8 @@ const checks = BROWSER_CHECKS.filter((c) => ENGINE_DEPENDENT.includes(c.id));
 
 // A partial run must not shrink without anyone noticing: a renumbered or misspelt id would drop a check from Firefox in silence.
 describe('the Firefox half runs exactly the engine-dependent checks', () => {
-  it('each is implemented once', () => {
-    expect(checks.map((c) => c.id)).toEqual(ENGINE_DEPENDENT);
+  it('each is implemented, every pass of it included', () => {
+    expect(numbersOf(checks)).toEqual(ENGINE_DEPENDENT);
   });
 });
 

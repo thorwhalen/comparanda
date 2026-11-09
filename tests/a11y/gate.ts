@@ -32,6 +32,12 @@ export interface BrokenFixture<E> {
 
 export interface Check<E> {
   readonly id: CheckId;
+  /**
+   * What this pass sweeps, when a number has more than one (the grid, then the
+   * analysis panels, #292): each pass is its own check, with its own fixture,
+   * so a fault in one surface is shown to be caught by the pass over it.
+   */
+  readonly over?: string;
   /** What it found wrong, one line each; empty when the environment is sound. */
   readonly run: (env: E) => string[] | Promise<string[]>;
   readonly broken: BrokenFixture<E>;
@@ -43,6 +49,12 @@ export interface Check<E> {
 export type WithEnv<E> = <T>(sabotage: BrokenFixture<E>['sabotage'] | undefined, use: (env: E) => Promise<T>) => Promise<T>;
 
 const SECOND = 1000;
+
+/** The numbers `checks` implement, once each and in order, however many passes a number has. */
+export const numbersOf = <E>(checks: readonly Check<E>[]): CheckId[] => [...new Set(checks.map((c) => c.id))];
+
+/** A pass's name: its number, and what it sweeps when the number has more than one pass. */
+const passName = <E>(check: Check<E>): string => (check.over ? `${check.id} over ${check.over}` : check.id);
 
 /**
  * Register the gate's tests for one runtime's checks. `partial` is for a second
@@ -60,14 +72,18 @@ export function gateTests<E>(
   if (!partial) {
     describe(`the ${runtime} half of the accessibility gate implements exactly its checks`, () => {
       it('no number is listed and not run, or run and not listed', () => {
-        expect(checks.map((c) => c.id)).toEqual(idsFor(runtime));
+        expect(numbersOf(checks)).toEqual(idsFor(runtime));
+      });
+      it('no pass is registered twice', () => {
+        const names = checks.map(passName);
+        expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([]);
       });
     });
   }
 
   for (const check of checks) {
     const title = AUTOMATED.find((c) => c.id === check.id)!.title;
-    describe(`${check.id}: ${title}`, () => {
+    describe(`${passName(check)}: ${title}`, () => {
       it('holds on the shipped view', { timeout }, async () => {
         expect(await violations(check), `${check.id} found something wrong`).toEqual([]);
       });
@@ -83,6 +99,7 @@ export function gateTests<E>(
       if (!partial) it('and its broken fixture trips no other check', { timeout: timeout * 4 }, async () => {
         const tripped: string[] = [];
         for (const other of checks) {
+          // Another pass of the same number is the same check over another surface, not a neighbour.
           if (other.id === check.id) continue;
           const found = await violations(other, check.broken.sabotage);
           if (found.length > 0) tripped.push(other.id);

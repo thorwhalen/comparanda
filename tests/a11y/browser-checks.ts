@@ -8,6 +8,10 @@
  * browser made of it -- computed styles, boxes, focus, live regions -- never
  * the source that produced it. Each comes with the smallest fault that should
  * make it fail, applied to the same mounted DOM.
+ *
+ * A3, A13, A15 and A18 have a second pass over the shipped analysis panels,
+ * opened (#292), scoped to `details.comparanda-analysis` so the panels' tables
+ * are not swept into the grid's passes, and with a fixture of its own.
  */
 import { userEvent } from '@vitest/browser/context';
 
@@ -18,11 +22,12 @@ import { anonymousIdentity } from '../../src/store/index.js';
 import { SHIPPED_ENCODINGS, type MountMatrixProps } from '../../src/view/index.js';
 import { vsupTrees } from '../../src/view/encodings/vsup-derive.js';
 import { GRAPHIC_CONTRAST_MIN, TEXT_CONTRAST_MIN } from '../../src/view/encodings/contrast.js';
+import type { Theme } from '../../src/view/theme.js';
 import { vsupGrid } from '../fixtures/vsup-grid.js';
 import { treeFailures } from '../support/cvd-browser.js';
 import { everyCode, heard } from '../support/every-code.js';
 import { obscured } from '../support/sticky-geometry.js';
-import { FIXTURES, THEMES, type BrowserEnv } from './browser-env.js';
+import { FIXTURES, PANELS, THEMES, type BrowserEnv } from './browser-env.js';
 import type { Check } from './gate.js';
 
 /** The browser's own timer, taken before any check patches `setTimeout` to watch the view's: the check's waiting is not the view's timers. */
@@ -732,19 +737,39 @@ function channelsSurvive(el: HTMLElement, where: string, { paper }: { paper?: Rg
     if ((td.querySelector('.comparanda-shown')?.textContent ?? '').trim() === '') found.push(`${at} shows no numeral`);
     const style = getComputedStyle(td);
     if (style.borderTopStyle === 'none' || parseFloat(style.borderTopWidth) === 0) found.push(`${at} has no border`);
-    for (const node of [td, ...Array.from(td.querySelectorAll('*'))]) {
-      if (getComputedStyle(node).backgroundImage !== 'none') found.push(`${at} carries meaning in a background image (${node.tagName.toLowerCase()})`);
-    }
-    for (const svg of Array.from(td.querySelectorAll('svg'))) {
-      const box = svg.getBoundingClientRect();
-      if (getComputedStyle(svg).display === 'none' || box.width === 0 || getComputedStyle(svg).stroke === 'none') found.push(`${at} lost its ${svg.getAttribute('class')} mark`);
-    }
     // An absence, of any reason, is a shape (ADR-0028): not only the ones recorded as `missing`.
     if (td.dataset['absence'] !== undefined && !td.querySelector('svg.comparanda-glyph')) found.push(`${at} is absent (${td.dataset['state']}) and shows no glyph`);
-    found.push(...contrastFaults(td, at, paper ? { paper } : {}));
+    found.push(...marksSurvive(td, at, paper ? { paper } : {}));
   }
   return found;
 }
+
+/** The SVG shapes a mark is drawn with. */
+const SHAPES = 'path, circle, rect, line, polyline, polygon, ellipse, text';
+
+/**
+ * What a medium took from `root`'s marks and ink: a mark gone (not displayed,
+ * no width, or a shape painted with neither stroke nor fill), meaning carried
+ * in a background image, or ink that is no longer legible against what is
+ * behind it (`paper`, where backgrounds are suppressed).
+ */
+function marksSurvive(root: Element, at: string, { paper }: { paper?: Rgba } = {}): string[] {
+  const found: string[] = [];
+  for (const node of [root, ...Array.from(root.querySelectorAll('*'))]) {
+    if (getComputedStyle(node).backgroundImage !== 'none') found.push(`${at} carries meaning in a background image (${node.tagName.toLowerCase()})`);
+  }
+  for (const svg of Array.from(root.querySelectorAll('svg'))) {
+    const unpainted = Array.from(svg.querySelectorAll(SHAPES)).some((s) => { const style = getComputedStyle(s); return style.stroke === 'none' && style.fill === 'none'; });
+    if (getComputedStyle(svg).display === 'none' || svg.getBoundingClientRect().width === 0 || unpainted) found.push(`${at} lost its ${svg.getAttribute('class') ?? svg.getAttribute('role')} mark`);
+  }
+  found.push(...contrastFaults(root, at, paper ? { paper } : {}));
+  return found;
+}
+
+/** Every cell in `root` that still paints a background, where backgrounds are suppressed. */
+const paintedBackgrounds = (root: Element, where: string): string[] => Array.from(root.querySelectorAll('th, td'))
+  .filter((node) => parseColour(getComputedStyle(node).backgroundColor)[3] !== 0)
+  .map((node) => `${where}: ${node.tagName.toLowerCase()} "${node.textContent!.trim().slice(0, 20)}" still paints a background`);
 
 /** Every reason code in force on a cell of its own, so a code added without its glyph fails here (ADR-0009, ADR-0029). */
 const EVERY_CODE = everyCode().analysis;
@@ -791,10 +816,7 @@ const a18: Check<BrowserEnv> = {
         const where = `print / ${caseName(encoding, analysis, view)} / ${theme} on screen`;
         const { el } = env.mount({ analysis, measure: 'score', encoding, ...(view ? { view } : {}) }, { theme });
         // A printer may drop backgrounds: the ink and the marks must hold against paper, wherever the cells' own fills were.
-        found.push(...channelsSurvive(el, where, { paper: PAPER }));
-        for (const node of Array.from(el.querySelectorAll('th, td'))) {
-          if (parseColour(getComputedStyle(node).backgroundColor)[3] !== 0) found.push(`${where}: ${node.tagName.toLowerCase()} "${node.textContent!.trim().slice(0, 20)}" still paints a background`);
-        }
+        found.push(...channelsSurvive(el, where, { paper: PAPER }), ...paintedBackgrounds(el, where));
       }
     }
     return cap(found);
@@ -807,6 +829,87 @@ const a18: Check<BrowserEnv> = {
       el.append(style);
     }),
   },
+};
+
+// ---- A3, A13, A15, A18 over the analysis panels (#292) ------------------------------------------
+
+/** What the panels are opened over: two raters (agreement, a dot on every level used), and every reason code in a lane of its own. */
+const PANEL_CASES: readonly (readonly [string, Analysis])[] = [['relocation', relocation], ['every code', EVERY_CODE]];
+
+/** Where a panel's cell is: its plot (for a dot plot), its row, its column. */
+const cellAt = (cell: HTMLTableCellElement) =>
+  `${cell.closest<HTMLElement>('[data-dot-plot]')?.dataset['dotPlot'] ?? ''} row ${cell.closest<HTMLElement>('tr')?.dataset['row'] ?? '?'} column ${cell.cellIndex + 1}`.trim();
+
+/**
+ * Every shipped panel, opened over each case in each of `themes`, and what
+ * `visit` found in it -- or that it drew no table, so a body that never opened
+ * cannot pass for one that holds.
+ */
+async function panelPass(
+  env: BrowserEnv, visit: (panel: HTMLDetailsElement, where: string) => string[], { themes = [undefined] }: { themes?: readonly (Theme | undefined)[] } = {},
+): Promise<string[]> {
+  const found: string[] = [];
+  for (const theme of themes) {
+    for (const [name, analysis] of PANEL_CASES) {
+      const { panels } = await env.mountPanels({ analysis, measure: 'score' }, theme ? { theme } : {});
+      if (panels.length !== PANELS.length) found.push(`${name}: ${panels.length} panels were drawn of the ${PANELS.length} registered`);
+      for (const panel of panels) {
+        const where = `${name} / the ${panel.dataset['analysis']} panel${theme ? ` / ${theme}` : ''}`;
+        found.push(...(panel.open && panel.querySelector('table') ? visit(panel, where) : [`${where}: opened, it drew no table`]));
+      }
+    }
+  }
+  return cap(found);
+}
+
+const a3panels: Check<BrowserEnv> = {
+  id: 'A3', over: 'the analysis panels',
+  run: (env) => panelPass(env, (panel, where) => Array.from(panel.querySelectorAll<HTMLTableCellElement>('td, th'))
+    .filter((cell) => heard(cell) === '').map((cell) => `${where}: the ${cell.tagName.toLowerCase()} at ${cellAt(cell)} is announced as blank`)),
+  broken: {
+    what: 'a dot-plot cell with dots in it is emptied of everything, hidden text included',
+    sabotage: (env) => env.afterOpen((panels) => panels.map((p) => p.querySelector('td[data-dots]')).find(Boolean)!.replaceChildren()),
+  },
+};
+
+const a13panels: Check<BrowserEnv> = {
+  id: 'A13', over: 'the analysis panels',
+  run: (env) => panelPass(env, (panel, where) => contrastFaults(panel, where), { themes: THEMES }),
+  broken: {
+    what: 'every panel\'s row headers are inked transparent',
+    sabotage: (env) => env.afterOpen((panels) => panels.forEach((p) => p.querySelectorAll<HTMLElement>('tbody th').forEach((th) => { th.style.color = 'transparent'; }))),
+  },
+  alsoTrips: { A18: 'ink that is invisible on screen is invisible on paper too' },
+};
+
+/** A stylesheet that hides the panels' marks in one medium only: the fixture for that medium's pass. */
+const hidePanelMarksIn = (media: string) => (env: BrowserEnv) => env.afterMount((el) => {
+  const style = document.createElement('style');
+  style.textContent = `@media ${media} { .comparanda-analysis svg { display: none !important; } }`;
+  el.append(style);
+});
+
+const a15panels: Check<BrowserEnv> = {
+  id: 'A15', over: 'the analysis panels',
+  async run(env) {
+    await env.media({ forcedColors: 'active' });
+    if (!matchMedia('(forced-colors: active)').matches) return ['this browser does not honour forcedColors emulation, so the check cannot see what a forced-colors reader sees'];
+    return panelPass(env, (panel, where) => marksSurvive(panel, `forced colors / ${where}`));
+  },
+  broken: { what: 'the panels\' marks are hidden under forced colors only', sabotage: hidePanelMarksIn('(forced-colors: active)') },
+};
+
+const a18panels: Check<BrowserEnv> = {
+  id: 'A18', over: 'the analysis panels',
+  async run(env) {
+    await env.media({ media: 'print' });
+    if (!matchMedia('print').matches) return ['the print medium was not emulated'];
+    return panelPass(env, (panel, where) => {
+      const at = `print / ${where} on screen`;
+      return [...marksSurvive(panel, at, { paper: PAPER }), ...paintedBackgrounds(panel, at)];
+    }, { themes: THEMES });
+  },
+  broken: { what: 'the panels\' marks are hidden in print only', sabotage: hidePanelMarksIn('print') },
 };
 
 // ---- A16, A17 (the mounted DOM: the twin of the source greps) ----------------------------------------
@@ -973,4 +1076,7 @@ const a20: Check<BrowserEnv> = {
   alsoTrips: { A14: 'a fade still running when the screenshot is taken is the colour it captures' },
 };
 
-export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [a2, a3, a4, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16twin, a17twin, a18, a20];
+/** In number order; a number's grid pass first, then its pass over the panels. */
+export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [
+  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a16twin, a17twin, a18, a18panels, a20,
+];

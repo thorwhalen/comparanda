@@ -32,6 +32,8 @@
  * colour they set and whose style they never touch: the style is the cell's
  * `terminal` channel. Print is the light theme with no fills, legible without
  * `print-color-adjust`, which is set only on the legend's samples, as a hint.
+ * The print block takes the fill off every `td`, the analysis panels' too
+ * (#292), at the band header's specificity, which also outranks a swatch's.
  */
 import { paletteRules, paletteVars, PALETTE, type Swatch } from './encodings/palette.js';
 import { THEMES, type Theme } from './theme.js';
@@ -281,7 +283,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   .comparanda-matrix .comparanda-scroll { overflow: visible; max-height: none; }
   .comparanda-matrix thead th, .comparanda-matrix tbody th { position: static; }
   /* Backgrounds off, whatever the printer does: the cells' fills go, their ink returns to the page's. */
-  .comparanda-matrix th, .comparanda-matrix tr.comparanda-band th, .comparanda-matrix tbody td[data-cell] {
+  .comparanda-matrix th, .comparanda-matrix :is(td, tr.comparanda-band th) {
     background: none; box-shadow: none; border-width: 1px; border-color: var(--cmp-muted);
   }
   .comparanda-matrix tbody td[data-swatch] { color: var(--cmp-ink); }

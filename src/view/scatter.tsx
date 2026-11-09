@@ -161,6 +161,8 @@ function Plot({ model, id, rowWord, shown }: { model: UsableScatterModel; id: st
       </figcaption>
       <svg
         viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" style={{ maxWidth: '100%', height: 'auto' }}
+        // The ink the marks are drawn in, declared on the drawing: left to the default it is black, whatever the theme (#292).
+        fill="currentColor"
         aria-label={`${ax.label} across, ${ay.label} up, better toward the top right. The table below says the same in words.`}
       >
         {ticksOf(ax).map((t) => (
