@@ -167,6 +167,16 @@ The clauses above as code, and the choices they left open:
 4. **A sequence step** is `{ viewId, caption? }` in a strict schema. "An ordered list of view ids, nothing more" is read with clause 4's optional caption, which is words about the step, not state. Any other field is refused. `stepsOf` gives a broken step that names the missing view, in its place.
 5. **The fragment** is `#view=<id>`, or `#sequence=<id>&step=<n>` with `n` counted from 1, both URI-encoded (`viewFragment`, `parseViewFragment`). It is the same in the standalone file and on a host's link. Wiring it into the standalone page, and the "Modified" marker's UI, are view work outside this record.
 
+### 2026-11-09 — The saved-views panel, and saved views in the standalone page (#117)
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+
+1. **The panel asks the store, and only the store.** `SavedViewStore.affordances(view, actorId)` and `.saveAffordance(current, { mode, ... })` answer before anything is offered, with the rule every write is refused by: the provider that keeps the view (`getCapabilities`), then the mode and the host (`viewAffordances`, `createAffordance`). The host is not asked about a write the provider would refuse. View code may not call the two core functions itself: they are on the boundary check's provider-blind list, beside `makeAffordances`.
+2. **Showing a view is a move of the reader's.** `mountMatrix` takes a `savedViews` prop (`{ store, notice? }`) and draws the panel with it. Showing a view lays its whole arrangement (`loadView`, the reader's position kept) over the host's view as one more part of the session overlay. Moves made before it give way to it; moves made after lie on top of it; a host that gives a view with a different arrangement replaces it. It is reported through `onViewChange`, so a persisted arrangement keeps it.
+3. **The marker.** Once a view is shown or saved, the panel names it and says, by dimension, what the arrangement has moved on in (`viewMarker`). "Save over" and "Revert" sit beside the marker. Revert is the whole view; per-dimension revert, the fragment and sequences are not drawn yet.
+4. **The standalone page keeps personal views in the browser** (`localSavedViews`, over `localCollectionProvider`): injected storage, the memory fallback with a notice, a loud refusal when the storage is full, one key per analysis. `@zodal/store-localstorage` was not used: it reads the global `localStorage` with no injection or fallback, and its query engine cost the page 3.5 kB it does not have. Shared views and sequences live beside the analysis and the file carries none (#291): their providers there are `emptyReadOnlyProvider()`, so the panel refuses them with that provider's reason. No flag says "standalone".
+
 ## References
 1. [Getting started with Airtable views — Airtable Support](https://support.airtable.com/docs/getting-started-with-airtable-views)
 2. [Database views, filters, sorts & groups — Notion Help Center](https://www.notion.com/help/views-filters-and-sorts)

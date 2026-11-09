@@ -93,12 +93,18 @@ const a1: Check<StandaloneEnv> = {
     const seen = new Set<string>();
     for (const scheme of SCHEMES) {
       const { page } = await env.open({ colorScheme: scheme });
-      // Once as it opens, and once with the detail panel up: the markup a reader meets after Enter.
-      for (const state of ['as opened', 'with the panel open']) {
-        if (state !== 'as opened') {
+      // As it opens, with the detail panel up (the markup a reader meets after Enter), and with a view saved
+      // (#117): the saved-views panel's list, its "shown" marker and its refused shared-view control.
+      for (const state of ['as opened', 'with the panel open', 'with a view saved']) {
+        if (state === 'with the panel open') {
           await page.locator('tbody td').first().focus();
           await page.keyboard.press('Enter');
           await page.waitForSelector('[role="complementary"]');
+        }
+        if (state === 'with a view saved') {
+          await page.locator('[data-save-view] input').fill('Cost first');
+          await page.keyboard.press('Enter');
+          await page.waitForSelector('[data-saved-view] [data-show]');
         }
         const { violations } = await new AxeBuilder({ page }).analyze();
         for (const v of violations) seen.add(v.id);

@@ -109,7 +109,8 @@ describe('over budget, the build fails and says why', () => {
 });
 
 describe('a reservation', () => {
-  const held = { limit: STANDALONE_BUDGET.limit, reserved: [{ package: RESERVED, bytes: 4 * 1024, why: 'a test reservation' }] };
+  // Room for the reservation on top of the real limit: this is about how a reservation is charged, not about the page's headroom.
+  const held = { limit: STANDALONE_BUDGET.limit + 4 * 1024, reserved: [{ package: RESERVED, bytes: 4 * 1024, why: 'a test reservation' }] };
 
   it('is charged until its package is bundled', async () => {
     const { budget } = await buildStandalone(relocationJson, { budget: held, check: 'static' });

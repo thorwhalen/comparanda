@@ -16,8 +16,11 @@ import { threadDoing, type Affordance, type Affordances, type ThreadAct } from '
 import type { decideSuggestions as DecideSuggestions } from '../core/suggestions.js';
 import { initialViewState, setDetailPanel, setFocus, ViewState, type Session } from '../core/view-state.js';
 import { focusInLayout, matrixLayout } from '../core/layout.js';
+import { canonical } from '../core/canonical.js';
+import { loadView, type SavedView } from '../core/saved-views.js';
 import {
-  anonymousIdentity, DEFAULT_CAPABILITIES, editAffordances, isVersioned, takesName, type AnalysisSource, type DataChangeEvent, type DataProvider, type IdentityProvider,
+  anonymousIdentity, editAffordances, READ_ONLY_CAPABILITIES, isVersioned, takesName,
+  type AnalysisSource, type DataChangeEvent, type DataProvider, type IdentityProvider, type SavedViewStore,
 } from '../store/index.js';
 
 /** Who writes when the host names no one: usable, not a stub (ADR-0012). */
@@ -34,6 +37,7 @@ import type { ThreadWrites } from './threads.js';
 import type { SuggestionWrites } from './suggestions.js';
 import type { TakeName } from './name-form.js';
 import type { ReattachWrite } from './orphans.js';
+import type { SavedViewsPort } from './saved-views.js';
 import { reattach } from '../core/orphans.js';
 import { joinGroup } from '../core/group-membership.js';
 import type { Axis } from '../core/schema/groups.js';
@@ -99,12 +103,7 @@ export interface MountOptions {
  * refused by the same path a frozen source takes, and `withoutSource` then
  * words the reason about the matrix rather than about a source it lacks.
  */
-const NO_SOURCE: Pick<DataProvider<unknown>, 'getCapabilities'> = {
-  getCapabilities: () => ({
-    ...DEFAULT_CAPABILITIES, canCreate: false, canUpdate: false, canDelete: false,
-    canBulkUpdate: false, canBulkDelete: false, canUpsert: false,
-  }),
-};
+const NO_SOURCE: Pick<DataProvider<unknown>, 'getCapabilities'> = { getCapabilities: () => READ_ONLY_CAPABILITIES };
 
 /**
  * The write affordances without a source, in words about the matrix rather
@@ -127,6 +126,7 @@ function withoutSource(a: Affordances): Affordances {
 /** Every prop `mountMatrix` reads. A key outside this list is a typo, and is refused rather than ignored. */
 const PROP_KEYS = [
   'analysis', 'measure', 'vocabulary', 'encoding', 'view', 'standing', 'viewer', 'vouched', 'source', 'authorize', 'onViewChange', 'identity', 'notice',
+  'savedViews',
 ] as const satisfies readonly (keyof MountMatrixProps)[];
 
 /** Which assertions' authors the rounds hide from `viewer`, as a string to compare: equal strings, equal view. */
@@ -168,9 +168,12 @@ export function mountMatrix(
    * host last said: the matrix's own session state, laid over the host's
    * `view`, each part until the host gives a `view` that says something new
    * about that part: a host that keeps only focus does not close the panel.
+   * `view` is a whole arrangement the reader loaded (a saved view, #117), laid
+   * under the other parts, until the host gives a view with a different arrangement.
    */
   let moved: {
-    focus?: Session['focus']; panel?: boolean; orders?: Pick<ViewState, 'alternativeOrder' | 'criterionOrder'>; encoding?: string; arranged?: Arrangement;
+    focus?: Session['focus']; panel?: boolean; orders?: Pick<ViewState, 'alternativeOrder' | 'criterionOrder'> | undefined; encoding?: string | undefined;
+    arranged?: Arrangement | undefined; view?: ViewState;
   } | undefined;
   /** The last sentence for the live region, and how many have been said, so a repeat is heard again. */
   let announcement: string | undefined;
@@ -275,6 +278,42 @@ export function mountMatrix(
     moveSession({ arranged: { ...moved?.arranged, ...change } });
     current.onViewChange?.(shown);
   };
+  /**
+   * Show a saved view whole (#117): its arrangement, the reader's position kept (`loadView`), laid over the host's view as
+   * the reader's own move, which every move made before it gives way to; reported, as any move is.
+   */
+  const loadWhole = (v: SavedView) => {
+    if (destroyed) return;
+    const state = loadView(v, shown);
+    moveSession({ view: state, encoding: state.encoding, orders: undefined, arranged: undefined });
+    current.onViewChange?.(shown);
+  };
+  /**
+   * The saved-views panel's port (#117): one per store, so the panel keeps its list across renders and reads it again
+   * only from a new store. Each write is signed as the identity in force, and saves the arrangement as shown.
+   */
+  let viewsPort: { store: SavedViewStore; port: SavedViewsPort } | undefined;
+  const savedViewsPort = (store: SavedViewStore): SavedViewsPort => {
+    if (viewsPort?.store === store) return viewsPort.port;
+    const act = async () => ({ by: (await inForce().current()).id, at: now().toISOString() });
+    const port: SavedViewsPort = {
+      list: async () => store.list(analysis.id, (await inForce().current()).id),
+      affordances: (v) => store.affordances(v, actor()),
+      saveAffordance: (mode) => store.saveAffordance(shown, { analysisId: analysis.id, mode, actorId: actor() }),
+      // The arrangement as shown when asked: the argument is read before the identity is awaited.
+      save: async (name, mode) => store.create(shown, { analysisId: analysis.id, name, mode, ...(await act()) }),
+      update: async (id) => store.update(id, shown, await act()),
+      rename: async (id, name) => store.rename(id, name, await act()),
+      delete: async (id) => store.delete(id, await act()),
+      lock: async (id) => store.lock(id, await act()),
+      unlock: async (id) => store.unlock(id, await act()),
+      apply: loadWhole,
+      notice: () => current.savedViews?.notice?.(),
+    };
+    viewsPort = { store, port };
+    return port;
+  };
+
   /** Open or close the detail panel; `into` moves focus to its heading once it is drawn. */
   const changePanel = (open: boolean, { into = false }: { into?: boolean } = {}) => {
     if (destroyed) return;
@@ -397,7 +436,9 @@ export function mountMatrix(
     drawnAskingName = asksName();
     // Without one, the document's own order, so a source's added alternative shows.
     const base = view ?? initialViewState(analysis);
-    shown = moved && 'focus' in moved ? setFocus(base, moved.focus) : base;
+    // A loaded view replaces the host's arrangement, not where the host says the reader is.
+    const laid = moved?.view ? { ...moved.view, session: base.session } : base;
+    shown = moved && 'focus' in moved ? setFocus(laid, moved.focus) : laid;
     if (moved?.panel !== undefined) shown = setDetailPanel(shown, moved.panel);
     if (moved?.orders) shown = { ...shown, ...moved.orders };
     if (moved?.encoding) shown = { ...shown, encoding: moved.encoding };
@@ -425,6 +466,7 @@ export function mountMatrix(
       ...(source ? { onJoinGroup: joinGroupWrite } : {}),
       ...(source ? { threadWrites: askingName(threadWrites), reattachWrite } : {}),
       ...(source && suggestionWrites ? { suggestionWrites: askingName(suggestionWrites) } : {}),
+      ...(current.savedViews ? { savedViews: savedViewsPort(current.savedViews.store) } : {}),
       encodings: registry,
       affordances: source
         ? editAffordances(source, analysis, authorize ? { authorize } : {})
@@ -577,6 +619,7 @@ export function mountMatrix(
         if (nextFocus.focus !== givenFocus.focus) delete kept.focus;
         if (nextFocus.panel !== givenFocus.panel) delete kept.panel;
         if (nextFocus.orders !== givenFocus.orders) delete kept.orders;
+        if (nextFocus.arrangement !== givenFocus.arrangement) delete kept.view;
         if (nextFocus.encoding !== givenFocus.encoding || 'encoding' in next) delete kept.encoding;
         if (kept.arranged) {
           const arranged = { ...kept.arranged };
@@ -649,6 +692,10 @@ function checked(props: MountMatrixProps): MountMatrixProps {
   if (props.onViewChange !== undefined && typeof props.onViewChange !== 'function') {
     throw new TypeError(`props.onViewChange must be a function (view) => void; got ${describe(props.onViewChange)}.`);
   }
+  const views = props.savedViews;
+  if (views !== undefined && (typeof views?.store?.affordances !== 'function' || (views.notice !== undefined && typeof views.notice !== 'function'))) {
+    throw new TypeError(`props.savedViews must be { store: savedViewStore(), notice? }; got ${describe(views)}.`);
+  }
   if (source !== undefined && typeof source.subscribe !== 'function') {
     // A source the view cannot follow would offer edits against a document it
     // never refreshes -- a lock written elsewhere would never close them.
@@ -664,9 +711,10 @@ function checked(props: MountMatrixProps): MountMatrixProps {
 const ARRANGED = ['grouping', 'selection', 'filter'] as const;
 
 /** What a given `view` says about the reader's position (comparable by value, blind to key order) and the panel. */
-function sessionIn(view: unknown): { focus: string; panel: boolean; orders: string; encoding: string } & Record<typeof ARRANGED[number], string> {
+function sessionIn(view: unknown): { focus: string; panel: boolean; orders: string; encoding: string; arrangement: string } & Record<typeof ARRANGED[number], string> {
   const v = view as ViewState | undefined;
   const focus = v?.session?.focus;
+  const { session: _session, ...arrangement } = v ?? {};
   return {
     focus: JSON.stringify([focus?.alternativeId ?? null, focus?.criterionId ?? null]),
     panel: v?.session?.detailPanelOpen === true,
@@ -676,6 +724,8 @@ function sessionIn(view: unknown): { focus: string; panel: boolean; orders: stri
     grouping: JSON.stringify(v?.grouping ?? null),
     selection: JSON.stringify(v?.selection ?? null),
     filter: JSON.stringify(v?.filter ?? null),
+    // The whole arrangement, by value: what a loaded view yields to (#117).
+    arrangement: v ? canonical(arrangement) : '',
   };
 }
 
