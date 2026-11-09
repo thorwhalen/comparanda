@@ -151,7 +151,11 @@ Both are shape changes inside v1, which has not been frozen or published. That f
 - **Status:** accepted
 - **Date:** 2026-11-09
 
-Request 3 (#63) keeps rejected criteria in the analysis so "why isn't X in here?" has an answer on the page. For a `merged` reject that answer is the criterion it went into, and `rejectedCriteria[].mergedIntoId` was documented as carrying it but never checked (#335). `validateAnalysis` now reports `merged-into-resolves` (family `schema`, an error): a `merged` reject with no `mergedIntoId`, or a `mergedIntoId` on any reject that names no criterion in the analysis. A tombstoned criterion is a valid target, since tombstoning keeps the id readable. `mergedIntoId` stays optional for `redundant`. A rule in the validator only: no shape change and no schema version bump.
+Request 3 (#63) keeps rejected criteria in the analysis so "why isn't X in here?" has an answer on the page. For a `merged` reject that answer is the criterion it went into, and `rejectedCriteria[].mergedIntoId` was documented as carrying it but never checked (#335). `validateAnalysis` now reports `merged-into-resolves` (family `schema`, an error): a `merged` reject with no `mergedIntoId`, or a `mergedIntoId` on any reject that names no criterion in the analysis. A tombstoned criterion is a valid target, since tombstoning keeps the id readable. `mergedIntoId` stays optional for `redundant`. A rule in the validator only: no shape change and no schema version bump; the emitted artifact describes the rule on `mergedIntoId`, since JSON Schema cannot check a reference.
+
+**A target on any other code is allowed on purpose.** An `out-of-scope` reject that names a criterion in the document passes. The companion repo refuses that pairing, but the only warning channel here is `completeness`, and a stray target is not unfinished work, while the `schema` family is always an error. Allowing it is the reversible choice: a later rule can tighten it, whereas an error now would reject documents that may have a reason to point at a related criterion.
+
+**A stored document with a `merged` reject and no target stops validating.** No migration can repair it, because only the author knows which criterion absorbed the reject; the fix is to add `mergedIntoId` by hand or change the code. The companion repo always writes a target on its merges, so no document it produced is affected.
 
 ## Amendments — citation
 

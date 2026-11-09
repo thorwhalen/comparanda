@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { validateAnalysis } from '../src/core/schema/analysis.js';
+import { SCHEMA_VERSION, validateAnalysis } from '../src/core/schema/analysis.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const relocation = () => JSON.parse(readFileSync(join(root, 'examples/relocation.json'), 'utf8'));
@@ -30,20 +30,37 @@ describe('merged-into-resolves', () => {
     expect(rest).toEqual([]);
     expect(p).toMatchObject({ path: 'rejectedCriteria[0].mergedIntoId', severity: 'error', family: 'schema', adr: 'ADR-0003' });
     expect(p!.message).toContain('"Cost of living" is merged but does not say into which criterion');
-    expect(p!.fix).toMatch(/criterion that absorbed "Cost of living".*another reasonCode/);
+    expect(p!.fix).toMatch(/set mergedIntoId .*tombstoned.*or use another reasonCode\.$/);
   });
 
   it('refuses a target that is not a criterion in the analysis, whatever the code', () => {
-    for (const reasonCode of ['merged', 'redundant']) {
+    for (const reasonCode of ['merged', 'redundant', undefined]) {
       const doc = relocation();
       doc.rejectedCriteria[0].reasonCode = reasonCode;
       doc.rejectedCriteria[0].mergedIntoId = 'housing';
       const [p, ...rest] = ruled(doc);
       expect(rest, reasonCode).toEqual([]);
       expect(p!.path).toBe('rejectedCriteria[0].mergedIntoId');
-      expect(p!.message).toContain('folded into "housing", which is not a criterion in this analysis');
+      expect(p!.message).toContain('"Cost of living" names "housing", which is not a criterion here');
+      // Only a merge must keep a target; anything else may drop it.
+      expect(p!.fix.includes('or remove mergedIntoId'), String(reasonCode)).toBe(reasonCode !== 'merged');
       expect(validateAnalysis(doc).ok, reasonCode).toBe(false);
     }
+  });
+
+  it('allows a resolvable target on a reject of any other code, on purpose (ADR-0003, 2026-11-09)', () => {
+    const doc = relocation();
+    doc.rejectedCriteria[1].mergedIntoId = 'rent';
+    expect(doc.rejectedCriteria[1].reasonCode).toBe('not-discriminating');
+    expect(ruled(doc)).toEqual([]);
+  });
+
+  it('is described in the emitted artifact, which cannot enforce it', () => {
+    const artifact = readFileSync(join(root, `schema/comparanda.v${SCHEMA_VERSION}.json`), 'utf8');
+    const description = JSON.parse(artifact).properties.rejectedCriteria.items.properties.mergedIntoId.description;
+    expect(description).toContain('Required when reasonCode is merged');
+    expect(description).toContain('tombstoned');
+    expect(description).toContain('merged-into-resolves');
   });
 
   it('accepts a tombstoned target', () => {

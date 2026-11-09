@@ -860,16 +860,18 @@ export function validateAnalysis(
     }
   }
 
-  // A merged reject names the criterion that absorbed it, and any named target is a criterion here; a tombstoned one still answers "where did it go" (#335).
+  // A merged reject names its target, and any target is a criterion here, tombstoned or not (#335).
   a.rejectedCriteria.forEach((r, i) => {
     const into = r.mergedIntoId;
-    if (into === undefined ? r.reasonCode === 'merged' : !critIds.has(into)) {
+    const merged = r.reasonCode === 'merged';
+    if (into === undefined ? merged : !critIds.has(into)) {
       err(
         'merged-into-resolves', `rejectedCriteria[${i}].mergedIntoId`,
         into === undefined
           ? `rejected "${r.label}" is merged but does not say into which criterion`
-          : `rejected "${r.label}" was folded into "${into}", which is not a criterion in this analysis`,
-        `set it to the id of the criterion that absorbed "${r.label}" (a tombstoned one counts)${into === undefined ? ', or use another reasonCode' : ''}.`,
+          : `rejected "${r.label}" names "${into}", which is not a criterion here`,
+        'set mergedIntoId to the id of a criterion in this analysis (a tombstoned one counts)' +
+          `${!merged ? ', or remove mergedIntoId' : into === undefined ? ', or use another reasonCode' : ''}.`,
       );
     }
   });
