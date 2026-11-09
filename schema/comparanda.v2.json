@@ -345,6 +345,20 @@
                   ],
                   "additionalProperties": false
                 },
+                "neutral": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ],
+                  "description": "The level a diverging bar is centred on: a declared neutral, never inferred (a range midpoint is the undeclared midpoint ADR-0010 forbids). Ordinal measurements only, and one of their levels. Absent means none is declared, and the bar is not centred."
+                },
                 "range": {
                   "type": "object",
                   "properties": {
@@ -472,6 +486,20 @@
                   "contentHash"
                 ],
                 "additionalProperties": false
+              },
+              "neutral": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  }
+                ],
+                "description": "The level a diverging bar is centred on: a declared neutral, never inferred (a range midpoint is the undeclared midpoint ADR-0010 forbids). Ordinal measurements only, and one of their levels. Absent means none is declared, and the bar is not centred."
               },
               "range": {
                 "type": "object",

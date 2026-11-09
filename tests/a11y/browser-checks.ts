@@ -16,7 +16,7 @@
 import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
-import { initialViewState, setGrouping, type ViewState } from '../../src/core/view-state.js';
+import { initialViewState, setDetailPanel, setFocus, setGrouping, type ViewState } from '../../src/core/view-state.js';
 import { CORE_MISSING_CODES, vocabularyOf } from '../../src/index.js';
 import { anonymousIdentity } from '../../src/store/index.js';
 import { SHIPPED_ENCODINGS, type MountMatrixProps } from '../../src/view/index.js';
@@ -956,6 +956,9 @@ async function* everyMount(env: BrowserEnv): AsyncGenerator<{ el: HTMLElement; w
   el.querySelector<HTMLElement>('tbody td')!.focus();
   await userEvent.keyboard('{Enter}');
   yield { el, where: 'the detail panel open' };
+  // The panel over a cell with several ratings on a scale that declares a neutral: the centred bar and its empty gap (#311).
+  const view = setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true);
+  yield { ...env.mount({ analysis: relocation, measure: 'score', view }), where: 'the detail panel over a centred level bar' };
 }
 
 const a16twin: Check<BrowserEnv> = {

@@ -95,10 +95,14 @@ export interface LevelDistribution {
   undeclared: number;
   /**
    * Whether the bar is ordered (an ordinal scale) or a set of categories (a
-   * nominal one). It is never centred: a diverging bar needs a declared
-   * neutral level (ADR-0010, ADR-0026), and schema v1 has no field for one.
+   * nominal one).
    */
   ordered: boolean;
+  /**
+   * The measurement's declared neutral level (#311), when it has one: the bar is centred on it. Never inferred --
+   * a range midpoint is the undeclared midpoint ADR-0010 forbids -- so a scale that declares none is not centred.
+   */
+  neutral?: ScalarValue | undefined;
 }
 
 export interface CellDetail {
@@ -241,7 +245,7 @@ function distributionOf(set: readonly Assertion[], m: Measurement | undefined): 
   if (values.length < 2) return {};
   const levels = m.levels.map((level) => ({ level, count: values.filter((v) => v === level).length }));
   const placed = levels.reduce((n, l) => n + l.count, 0);
-  return { distribution: { levels, n: values.length, undeclared: values.length - placed, ordered: m.level === 'ordinal' } };
+  return { distribution: { levels, n: values.length, undeclared: values.length - placed, ordered: m.level === 'ordinal', neutral: m.neutral } };
 }
 
 /** Why a criterion takes no part in an alternative's standing. */

@@ -30,3 +30,13 @@ export const ENUM_DESCRIPTIONS: readonly EnumDescription[] = Object.freeze([
     description: 'Why it was rejected. ' + REJECT_REASON_CODES.map((c) => `${c}: ${REJECT_REASON_GLOSSES[c]}`).join(' '),
   },
 ]);
+
+/**
+ * A property's description in the artifact, by its name, wherever an object carries it and says nothing yet. Only
+ * for names that mean one thing in the whole schema.
+ */
+export const PROPERTY_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze({
+  neutral:
+    'The level a diverging bar is centred on: a declared neutral, never inferred (a range midpoint is the undeclared midpoint ADR-0010 forbids). '
+    + 'Ordinal measurements only, and one of their levels. Absent means none is declared, and the bar is not centred.',
+});

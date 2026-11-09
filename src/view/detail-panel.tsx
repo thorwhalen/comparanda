@@ -253,23 +253,31 @@ function EvidenceItem({ evidence: e }: { evidence: EvidenceDetail }) {
 
 /**
  * How several values fall across the declared levels, as a stacked bar with
- * every segment's level and count in words beside it. In level order, never
- * centred: a diverging bar needs a declared neutral level (ADR-0026), and
- * schema v1 cannot declare one.
+ * every segment's level and count in words beside it. In level order. Centred
+ * only on a neutral level the measurement declares (ADR-0026, #311): the
+ * shorter side is padded with an empty gap so the neutral's midpoint is the
+ * bar's, and the neutral segment is marked in bold and named in words.
  */
 function Distribution({ distribution: d }: { distribution: LevelDistribution }) {
-  const said = d.levels.filter((l) => l.count > 0).map((l) => `${String(l.level)}: ${l.count}`);
+  const shown = d.levels.filter((l) => l.count > 0);
+  const said = shown.map((l) => `${String(l.level)}: ${l.count}`);
+  const at = d.neutral === undefined ? -1 : d.levels.findIndex((l) => l.level === d.neutral);
+  /** What lies above the neutral less what lies below it: the side that needs the empty gap, and how long. */
+  const tilt = at < 0 ? 0 : d.levels.reduce((n, l, i) => n + Math.sign(i - at) * l.count, 0);
+  const gap = (grow: number) => grow > 0 && <span style={{ flexGrow: grow }} />;
   return (
     <figure class="comparanda-distribution" data-detail="distribution">
       <div class="comparanda-bar" aria-hidden="true">
-        {d.levels.filter((l) => l.count > 0).map((l) => (
-          <span key={String(l.level)} style={{ flexGrow: l.count }}>{String(l.level)}</span>
+        {gap(tilt)}
+        {shown.map((l) => (
+          <span key={String(l.level)} style={{ flexGrow: l.count }} data-neutral={l.level === d.neutral || undefined}>{String(l.level)}</span>
         ))}
+        {gap(-tilt)}
       </div>
       <figcaption>
         {`${d.n} values by level${d.ordered ? ', lowest first' : ''}: ${said.join('; ')}.`}
         {d.undeclared > 0 && ` ${d.undeclared} not on a declared level.`}
-        {' Not centred: this scale declares no neutral level.'}
+        {at < 0 ? ' Not centred: this scale declares no neutral level.' : ` Centred on the declared neutral level ${String(d.neutral)}.`}
       </figcaption>
     </figure>
   );

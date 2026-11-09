@@ -210,6 +210,29 @@ describe('what it carries', () => {
     expect(panel()!.querySelector('[data-detail="set"]')!.textContent).toMatch(/3/);
   });
 
+  it('centres the bar on a declared neutral with an empty gap on the shorter side, and says so; an undeclared one is not centred (#311)', () => {
+    mount({ analysis: relocation, measure: 'score', view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true) });
+    const dist = panel()!.querySelector('[data-detail="distribution"]')!;
+    // Berlin: two ratings of 1 (below the neutral 3) and one of 3 (the neutral): the right side is padded to match.
+    const parts = Array.from(dist.querySelectorAll('.comparanda-bar > span'));
+    expect(parts.map((s) => s.matches(':empty') ? 'gap' : s.textContent)).toEqual(['1', '3', 'gap']);
+    expect(parts[1]!.hasAttribute('data-neutral')).toBe(true);
+    expect((parts[2] as HTMLElement).style.flexGrow).toBe('2');
+    // The neutral segment's midpoint is the bar's.
+    const bar = dist.querySelector('.comparanda-bar')!.getBoundingClientRect();
+    const mid = parts[1]!.getBoundingClientRect();
+    expect(Math.abs((mid.left + mid.right) / 2 - (bar.left + bar.right) / 2)).toBeLessThan(1.5);
+    expect(dist.querySelector('figcaption')!.textContent).toContain('Centred on the declared neutral level 3.');
+    expect(dist.querySelector('figcaption')!.textContent).not.toContain('Not centred');
+  });
+
+  it('says it is not centred when the scale declares no neutral level', () => {
+    mount({ analysis: relocation, measure: 'score', view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'seoul', criterionId: 'school-quality' }), true) });
+    const dist = panel()!.querySelector('[data-detail="distribution"]');
+    expect(dist?.querySelector('figcaption')?.textContent).toContain('Not centred: this scale declares no neutral level.');
+    expect(dist?.querySelector('.comparanda-bar span:empty')).toBeNull();
+  });
+
   it("an alternative's header names its strongest and weakest criteria", () => {
     mount({ analysis: relocation, measure: 'score', view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'lisbon' }), true) });
     expect(panel()!.getAttribute('data-panel')).toBe(relocation.aliases?.alternative ?? 'option');
