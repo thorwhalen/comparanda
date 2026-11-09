@@ -57,11 +57,14 @@ describe('cellDetail', () => {
     expect(d.set.reading).toBe('draws');
   });
 
-  it('places several values over the declared levels, in order, uncentred', () => {
+  it('places several values over the declared levels, in order, carrying the declared neutral (#311)', () => {
     const d = detail('berlin', 'winter-daylight');
     expect(d.distribution?.levels.map((l) => l.count)).toEqual([2, 0, 1, 0, 0]);
     expect(d.distribution?.n).toBe(3);
     expect(d.distribution?.ordered).toBe(true);
+    expect(d.distribution?.neutral).toBe(3);
+    // A scale that declares none is not centred.
+    expect(detail('seoul', 'school-quality').distribution?.neutral).toBeUndefined();
     expect(detail('lisbon', 'income-tax').distribution).toBeUndefined();
   });
 

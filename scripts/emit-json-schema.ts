@@ -34,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Analysis, SCHEMA_VERSION } from '../src/core/schema/analysis.js';
 import { ALIAS_PAIRS } from '../src/core/schema/structure.js';
-import { ENUM_DESCRIPTIONS } from '../src/core/schema/schema-descriptions.js';
+import { ENUM_DESCRIPTIONS, PROPERTY_DESCRIPTIONS } from '../src/core/schema/schema-descriptions.js';
 import { CORE_MISSING_CODES } from '../src/core/schema/missingness.js';
 import { CORE_REDUCTIONS } from '../src/core/schema/values.js';
 import { SCALE_CORE } from '../src/core/schema/measurement.js';
@@ -54,7 +54,7 @@ if (outFlag >= 0 && (outValue === undefined || outValue.startsWith('--'))) throw
 const outDir = outValue ?? join(here, '..', 'schema');
 
 /**
- * Give every property whose `enum` is exactly a described coded set its description, wherever it appears (the
+ * Give every property whose `enum` is exactly a described coded set (and every property named in `PROPERTY_DESCRIPTIONS`) its description, wherever it appears (the
  * artifact inlines a shared shape at each use). Written here and not into the zod schema so the standalone bundle,
  * which carries that schema under a byte budget, does not carry the prose (`schema-descriptions.ts`).
  */
@@ -66,6 +66,12 @@ function describeEnums(node: unknown): void {
   if (Array.isArray(members)) {
     const hit = ENUM_DESCRIPTIONS.find((d) => d.codes.length === members.length && d.codes.every((c, i) => c === members[i]));
     if (hit && rec.description === undefined) rec.description = hit.description;
+  }
+  const props = rec.properties as Record<string, Record<string, unknown>> | undefined;
+  if (props) {
+    for (const [name, text] of Object.entries(PROPERTY_DESCRIPTIONS)) {
+      if (props[name] && props[name].description === undefined) props[name].description = text;
+    }
   }
   Object.values(rec).forEach(describeEnums);
 }

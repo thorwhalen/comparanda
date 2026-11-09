@@ -245,6 +245,7 @@
           4,
           5
         ],
+        "neutral": 3,
         "scale": "ordinal-1-5-anchored",
         "anchors": {
           "levels": {
