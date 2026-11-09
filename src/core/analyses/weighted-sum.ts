@@ -292,6 +292,14 @@ export function weightedSum(a: Analysis, opts: WeightedSumOptions): WeightedSumR
   };
 }
 
+/** The analysis with one criterion's substitution weight set to `weight`: a changed weighting to aggregate under (#98). */
+export function withSubstitutionWeight(a: Analysis, criterionId: string, weight: number): Analysis {
+  return {
+    ...a,
+    criteria: a.criteria.map((c) => (c.id === criterionId ? { ...c, weights: { ...c.weights, substitution: weight } } : c)),
+  };
+}
+
 function formatFloor(f: number): string {
   return Math.abs(f - 2 / 3) < 1e-12 ? '2/3' : String(f);
 }

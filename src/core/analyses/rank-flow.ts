@@ -16,49 +16,31 @@
  * - **A row the coverage gate did not score is unscored, not ranked last.** It
  *   keeps the label the ranking gave it ("not scored -- insufficient coverage")
  *   and takes no position, so it cannot be read as the worst.
- * - **It ranks the current selection, and refuses above `maxRows`.** Bump charts
- *   are reported unreadable much past thirty ranked rows (ADR-0026 [2]), which is
- *   our own boundary; the refusal says how many there are and what to do.
- * - **Its caption is a stability statement.** How many rows change place and how
- *   many pairs pass each other; never which row is first. The word for a row is
- *   the analysis's own (`words`), not hard-coded.
+ * - **A move is a change of place against the rows ranked in both rankings.**
+ *   A row entering or leaving the ranking shifts the numbers below it and is
+ *   counted as that, never as the others moving; a row the data stop (or start)
+ *   separating from a neighbour, at the same rank, has lost (or gained)
+ *   separability, which is said as that and not as a move.
+ * - **It ranks the current selection, and refuses above `maxRows`** (ADR-0026
+ *   [2]); the refusal says how many there are and what to do.
+ * - **Its caption is a stability statement**: unstable only when something
+ *   ranked in both changes place; never which row is first. The word for a row
+ *   is the analysis's own (`words`), not hard-coded.
  *
- * Two sources of rankings, one model (ADR-0026: "the slope chart for
- * rater-versus-rater is the same component"): a weighted sum under its declared
- * and a changed weighting (`withSubstitutionWeight`, `firstOrderChange`), and
- * two raters' ratings on one criterion (`raterRanking`). The weighted rows are
- * computed by the caller with the aggregation it opted into; this module
- * imports no aggregation, only the separability rule.
+ * The rankings are the caller's: a weighted sum's rows under its declared and a
+ * changed weighting (`withSubstitutionWeight` in `weighted-sum.ts`,
+ * `firstOrderChange` in `sensitivity.ts`), or two raters' (`rater-ranking.ts`).
+ * This module imports no aggregation, only the separability rule.
  *
  * No DOM: the panel in `view/rank-flow.tsx` draws this, and a test reads it.
  */
-import type { Analysis } from '../schema/analysis.js';
-import { cellIndex, cellKey, vocabularyOf } from '../schema/analysis.js';
-import { makeInapplicableBlocks } from '../schema/groups.js';
-import { isOrdered, type Measurement } from '../schema/measurement.js';
-import { NOT_APPLICABLE } from '../schema/missingness.js';
-import { sightingOf, type ViewerContext } from '../schema/redaction.js';
-import { measurementFor } from '../schema/structure.js';
-import { liveAssertions, type ScalarValue } from '../schema/values.js';
-import { cellWords } from '../cell-words.js';
-import { separability } from './weighted-sum.js';
-import type { SensitivityResult } from './sensitivity.js';
+import { separability, type Separable } from './weighted-sum.js';
 
 /** ADR-0026: bump charts are reported unsuitable much past thirty ranked rows [2]. */
 export const RANK_FLOW_MAX_ROWS = 30;
 
-/**
- * How far past a reported order change the changed weighting sits, as a share of
- * the larger of the weights and 1: the probe `sensitivity` itself checks the
- * order with either side of a boundary, so "just past" means the same thing here.
- */
-export const PAST_THE_CHANGE = 1e-6;
-
 /** One row of one ranking: a point, an interval the data allows, or not scored, with why. */
-export type Rankable =
-  | { alternativeId: string; status: 'point'; value: number }
-  | { alternativeId: string; status: 'interval'; interval: readonly [number, number] }
-  | { alternativeId: string; status: 'not-scored'; label: string };
+export type Rankable = (Exclude<Separable, { status: 'not-scored' }> | { status: 'not-scored'; label: string }) & { alternativeId: string };
 
 /** One ranking: its label (a column heading) and its rows. A `WeightedSumResult`'s rows are one. */
 export interface RankScenario {
@@ -97,11 +79,19 @@ export interface RankColumn {
 }
 
 /**
- * What happened to one alternative between two adjacent columns: against the
- * others ranked in both it kept its place, rose or fell; or it is ranked in one
- * of the two only, or in neither.
+ * What happened to one alternative between two adjacent columns, read against
+ * the others ranked in both: it kept its place, rose or fell; or, at the same
+ * rank, the data stopped (`unsettled`) or started (`settled`) separating it
+ * from a neighbour -- a change of separability, not a move. Or it is ranked in
+ * one of the two only, or in neither.
  */
-export type RankMove = 'held' | 'rose' | 'fell' | 'entered' | 'left' | 'unranked';
+export type RankMove = 'held' | 'rose' | 'fell' | 'unsettled' | 'settled' | 'entered' | 'left' | 'unranked';
+
+/** The moves that are a change of place: drawn dashed, and what makes an order unstable. */
+export const PLACE_CHANGES: readonly RankMove[] = Object.freeze(['rose', 'fell']);
+
+/** The moves of a row ranked in both rankings: those a line is drawn for. */
+export const RANKED_IN_BOTH: readonly RankMove[] = Object.freeze(['held', 'rose', 'fell', 'unsettled', 'settled']);
 
 export interface RankStep {
   from: string;
@@ -148,8 +138,8 @@ export function tooManyToRank(
   count: number, { maxRows = RANK_FLOW_MAX_ROWS, words = ROW_WORDS }: Pick<RankFlowOptions, 'maxRows' | 'words'> = {},
 ): string | undefined {
   if (count <= maxRows) return undefined;
-  return `A rank-flow ranks at most ${maxRows} ${words.alternatives}, and ${count} are selected: past about thirty `
-    + 'ranked rows the lines are reported to become untraceable (ADR-0026). Hide some in the matrix to rank the rest.';
+  return `A rank-flow ranks at most ${maxRows} ${words.alternatives}, and ${count} are selected: with many ranked rows `
+    + 'the lines of a bump chart are reported to become untraceable (ADR-0026). Hide some in the matrix to rank the rest.';
 }
 
 /** The rank positions of each ranking, and what moved between each adjacent pair. */
@@ -198,178 +188,80 @@ function columnOf(s: RankScenario, rows: readonly Rankable[]): RankColumn {
 }
 
 /**
- * What moved from one ranking to the next. A row's move is read against the
- * rows ranked in **both**, not by its rank number: a row the gate admits or drops
- * shifts the numbers below it, and that is said as its own count ("ranked in one
- * of them only"), never as the others moving.
+ * What moved from one ranking to the next, and the stability statement for it.
+ * Read pair by pair over the rows ranked in both, never from rank numbers: a
+ * row changes place only when it and another row are separated one way, then
+ * the other (they pass each other). A pair the data stop separating, or start
+ * to, changes both rows' rank numbers without either passing the other: that is
+ * separability lost (`unsettled`) or gained (`settled`), not a move. A row
+ * entering or leaving the ranking shifts the numbers below it, and is counted
+ * as that.
  */
 function stepOf(from: RankColumn, to: RankColumn, before: readonly Rankable[], after: readonly Rankable[], words: RowWords): RankStep {
-  const both = new Set(before.filter((r, i) => r.status !== 'not-scored' && after[i]!.status !== 'not-scored').map((r) => r.alternativeId));
-  const was = ranksAmong(before.filter((r) => both.has(r.alternativeId)));
-  const now = ranksAmong(after.filter((r) => both.has(r.alternativeId)));
-  const moves = before.map((r, i) => {
-    const id = r.alternativeId;
-    if (!both.has(id)) {
-      const move: RankMove = r.status !== 'not-scored' ? 'left' : after[i]!.status !== 'not-scored' ? 'entered' : 'unranked';
-      return { alternativeId: id, move };
-    }
-    const a = was.get(id)!;
-    const b = now.get(id)!;
-    const move: RankMove = a.rank !== b.rank ? (b.rank < a.rank ? 'rose' : 'fell')
-      : a.lowest !== b.lowest ? (b.lowest < a.lowest ? 'rose' : 'fell') : 'held';
-    return { alternativeId: id, move };
-  });
+  const both = before.map((r, i) => r.status !== 'not-scored' && after[i]!.status !== 'not-scored');
+  const was = ranksAmong(before.filter((_, i) => both[i]));
+  const now = ranksAmong(after.filter((_, i) => both[i]));
+  /** Per row ranked in both: rows it passed upward, passed downward, stopped being separated from, started being separated from. */
+  const tally = before.map(() => ({ up: 0, down: 0, lost: 0, gained: 0 }));
   const passed: RankStep['passed'] = [];
   for (let i = 0; i < before.length; i += 1) {
     for (let j = i + 1; j < before.length; j += 1) {
+      if (!both[i] || !both[j]) continue;
       const then = separability(before[i]!, before[j]!);
       const later = separability(after[i]!, after[j]!);
-      if ((then === 'x-higher' && later === 'y-higher') || (then === 'y-higher' && later === 'x-higher')) {
+      if (then === later) continue;
+      if (then !== 'not-separable' && later !== 'not-separable') {
         passed.push({ first: before[i]!.alternativeId, second: before[j]!.alternativeId });
+        const iRose = later === 'x-higher';
+        tally[i]![iRose ? 'up' : 'down'] += 1;
+        tally[j]![iRose ? 'down' : 'up'] += 1;
+      } else {
+        const side = later === 'not-separable' ? 'lost' : 'gained';
+        tally[i]![side] += 1;
+        tally[j]![side] += 1;
       }
     }
   }
-  const inBoth = both.size;
-  const changed = moves.filter((m) => m.move === 'rose' || m.move === 'fell').length;
-  const crossed = moves.filter((m) => m.move === 'entered' || m.move === 'left').length;
+  const moves = before.map((r, i) => {
+    const id = r.alternativeId;
+    if (!both[i]) {
+      const move: RankMove = r.status !== 'not-scored' ? 'left' : after[i]!.status !== 'not-scored' ? 'entered' : 'unranked';
+      return { alternativeId: id, move };
+    }
+    const { up, down, lost, gained } = tally[i]!;
+    // Passed rows both ways: the direction is the one its place among the rows ranked in both went.
+    const mid = (x: { rank: number; lowest: number }) => x.rank + x.lowest;
+    const move: RankMove = up + down > 0
+      ? (up > down || (up === down && mid(now.get(id)!) < mid(was.get(id)!)) ? 'rose' : 'fell')
+      : lost > 0 ? 'unsettled' : gained > 0 ? 'settled' : 'held';
+    return { alternativeId: id, move };
+  });
+  const count = (m: RankMove | readonly RankMove[]) => moves.filter((x) => (typeof m === 'string' ? x.move === m : m.includes(x.move))).length;
+  const changed = count(PLACE_CHANGES);
+  const crossed = count(['entered', 'left']);
   const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-  const head = `From "${from.label}" to "${to.label}"`;
   const rows = (k: number) => n(k, words.alternative, words.alternatives);
+  const their = (k: number) => (k === 1 ? 'its' : 'their');
+  const extras = [
+    count('unsettled') > 0 && `the data no longer separate ${rows(count('unsettled'))} from ${their(count('unsettled'))} neighbours`,
+    count('settled') > 0 && `the data now separate ${rows(count('settled'))} from ${their(count('settled'))} neighbours`,
+    crossed > 0 && `${rows(crossed)} ${crossed === 1 ? 'is' : 'are'} ranked in one of them only`,
+  ].filter((x): x is string => typeof x === 'string');
+  const head = `From "${from.label}" to "${to.label}"`;
+  const inBoth = both.filter(Boolean).length;
   let caption: string;
   if (inBoth === 0 && crossed === 0) {
     caption = `${head}, no ${words.alternative} is ranked in either, so there is no order to compare.`;
-  } else if (changed === 0 && crossed === 0) {
+  } else if (changed > 0) {
+    const moved = `${changed} of the ${rows(inBoth)} ranked in both ${changed === 1 ? 'changes' : 'change'} place`
+      + `${passed.length > 0 ? ` and ${n(passed.length, 'pair passes', 'pairs pass')} each other` : ''}`;
+    caption = `${head}, ${[moved, ...extras].join('; ')}: the order is not stable across these two rankings.`;
+  } else if (inBoth === 0) {
+    caption = `${head}, no ${words.alternative} is ranked in both; ${extras.join('; ')}.`;
+  } else if (extras.length === 0) {
     caption = `${head}, every one of the ${rows(inBoth)} ranked in both keeps its place: the order holds across these two rankings.`;
   } else {
-    const parts = [
-      inBoth > 0 && `${changed} of the ${rows(inBoth)} ranked in both ${changed === 1 ? 'changes' : 'change'} place`
-        + `${passed.length > 0 ? ` and ${n(passed.length, 'pair passes', 'pairs pass')} each other` : ''}`,
-      crossed > 0 && `${rows(crossed)} ${crossed === 1 ? 'is' : 'are'} ranked in one of them only`,
-    ].filter((x): x is string => typeof x === 'string');
-    caption = `${head}, ${parts.join('; ')}: the order is not stable across these two rankings.`;
+    caption = `${head}, the order of the ${rows(inBoth)} ranked in both holds; ${extras.join('; ')}.`;
   }
   return { from: from.id, to: to.id, moves, passed, caption };
-}
-
-/** The analysis with one criterion's substitution weight set to `weight`: a changed weighting to rank under. */
-export function withSubstitutionWeight(a: Analysis, criterionId: string, weight: number): Analysis {
-  return {
-    ...a,
-    criteria: a.criteria.map((c) => (c.id === criterionId ? { ...c, weights: { ...c.weights, substitution: weight } } : c)),
-  };
-}
-
-/** A changed weighting: one criterion's substitution weight, set to `weight`. */
-export interface WeightChange { criterionId: string; weight: number }
-
-/**
- * The changed weighting a rank-flow opens on: just past the smallest movement of
- * one weight that `sensitivity` found changes the order -- of `criterionId`'s
- * weight when one is named, of any weight otherwise -- so the chart shows the
- * first change there is (`opening: 'first-change'`). Where that weight's
- * movement changes nothing, or changes it only by taking every weight to zero
- * (which leaves nothing to rank), it is raised instead by the share
- * `sensitivity` calls fragile, ADR-0015's 5% of the total weight, so the chart
- * shows the order holding where a fragile one would not (`'fragile-share'`).
- * Nothing when the weighted sum refused, or `criterionId` is not in the sum.
- */
-export function firstOrderChange(
-  s: SensitivityResult, { criterionId, past = PAST_THE_CHANGE }: { criterionId?: string; past?: number } = {},
-): (WeightChange & { opening: 'first-change' | 'fragile-share' }) | undefined {
-  const { smallest, criteria, fragileBelow, totalWeight } = s.weightPerturbation;
-  const c = criteria.find((x) => x.criterionId === (criterionId ?? smallest?.criterionId)) ?? (criterionId === undefined ? criteria[0] : undefined);
-  if (!c) return undefined;
-  const near = c.nearest;
-  const raised = { criterionId: c.criterionId, weight: c.weight + fragileBelow * totalWeight, opening: 'fragile-share' as const };
-  if (!near) return raised;
-  const step = Math.max(Math.abs(near.at), c.weight, 1) * past;
-  const weight = near.direction === 'up' ? near.at + step : Math.max(near.at - step, 0);
-  return totalWeight - c.weight + weight > 0 ? { criterionId: c.criterionId, weight, opening: 'first-change' } : raised;
-}
-
-// ---- Rater versus rater -------------------------------------------------------------------
-
-export interface RaterRankingOptions {
-  measure: string;
-  /** Who is looking: an open round may hide whose rating is whose (ADR-0023). */
-  viewer?: ViewerContext | undefined;
-}
-
-/** A criterion two or more raters can be ranked on, and who. */
-export interface RaterCriterion {
-  criterionId: string;
-  /** Raters whose every rating on it this viewer may see against their name, in the analysis's author order. */
-  raters: string[];
-  /** Raters with a rating here that is hidden from this viewer, or not shown against them: not offered. */
-  notOffered: number;
-}
-
-/** Where a value sits on a criterion's better-worse order, or nothing when it has none. Higher is better. */
-function orderOf(m: Measurement, v: ScalarValue): number | undefined {
-  const sign = m.preference === 'decreasing' ? -1 : 1;
-  if (typeof v === 'number') return sign * v;
-  const at = m.levels?.findIndex((l) => l === v) ?? -1;
-  return at < 0 ? undefined : sign * at;
-}
-
-/** Whether a criterion's ratings can be put in a better-worse order at all. */
-const rankable = (m: Measurement | undefined): m is Measurement =>
-  !!m && isOrdered(m.level) && (m.preference === 'increasing' || m.preference === 'decreasing');
-
-/**
- * The criteria on which at least two raters can be ranked against each other.
- * A rater is offered only where every live rating they made on the criterion is
- * one this viewer may see against their name: a rater-by-rater ranking of an
- * open anonymous round would undo the round.
- */
-export function raterCriteria(a: Analysis, { measure, viewer }: RaterRankingOptions): RaterCriterion[] {
-  const cells = cellIndex(a);
-  const alts = a.alternatives.filter((x) => !x.tombstoned);
-  return a.criteria.filter((c) => !c.tombstoned && rankable(measurementFor(c, measure))).flatMap((c): RaterCriterion[] => {
-    const seen = new Map<string, boolean>();
-    for (const alt of alts) {
-      for (const s of liveAssertions(cells.get(cellKey(alt.id, c.id, measure))?.assertions ?? [])) {
-        seen.set(s.authorId, (seen.get(s.authorId) ?? true) && sightingOf(a, s, viewer) === 'named');
-      }
-    }
-    const raters = a.authors.filter((au) => seen.get(au.id) === true).map((au) => au.id);
-    const notOffered = [...seen.values()].filter((ok) => !ok).length;
-    return raters.length >= 2 ? [{ criterionId: c.id, raters, notOffered }] : [];
-  });
-}
-
-/**
- * One rater's ranking of the alternatives on one criterion: their own rating
- * where they gave one, by the criterion's direction of preference. A rater who
- * recorded an absence, or rated nothing here, leaves that row unscored with why,
- * in the matrix's words. Refused (a string) when the criterion has no order or
- * the rater is not one this viewer may see against their ratings.
- */
-export function raterRanking(
-  a: Analysis, criterionId: string, authorId: string, { measure, viewer }: RaterRankingOptions,
-): RankScenario | string {
-  const c = a.criteria.find((x) => x.id === criterionId && !x.tombstoned);
-  const m = c ? measurementFor(c, measure) : undefined;
-  if (!c || !rankable(m)) return `"${c?.label ?? criterionId}" has no better-worse order to rank ratings by.`;
-  if (!raterCriteria(a, { measure, viewer }).some((rc) => rc.criterionId === criterionId && rc.raters.includes(authorId))) {
-    return `the ratings of "${authorId}" on "${c.label}" are not all ones you may see against their name, so they are not ranked.`;
-  }
-  const cells = cellIndex(a);
-  const vocabulary = vocabularyOf(a);
-  const blockOf = makeInapplicableBlocks(a);
-  const said = (code: string) => cellWords({ missing: { code } }, { inapplicable: false, vocabulary, criterionId }).text;
-  const rows = a.alternatives.filter((x) => !x.tombstoned).map((alt): Rankable => {
-    const own = liveAssertions(cells.get(cellKey(alt.id, criterionId, measure))?.assertions ?? []).filter((s) => s.authorId === authorId);
-    const unscored = (label: string): Rankable => ({ alternativeId: alt.id, status: 'not-scored', label });
-    if (own.length === 0) {
-      const block = blockOf(alt.id, criterionId);
-      return unscored(block ? `${said(NOT_APPLICABLE)}${block.reason?.trim() ? ` (${block.reason.trim()})` : ''}` : 'not rated by this rater');
-    }
-    if (own.length > 1) return unscored('more than one live rating from this rater');
-    const s = own[0]!;
-    if (s.missing) return unscored(said(s.missing.code));
-    const value = s.value === undefined ? undefined : orderOf(m, s.value);
-    return value === undefined ? unscored('a rating off the criterion\'s order') : { alternativeId: alt.id, status: 'point', value };
-  });
-  return { id: `rater:${authorId}`, label: authorId, rows };
 }

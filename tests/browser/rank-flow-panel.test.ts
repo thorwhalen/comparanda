@@ -13,7 +13,7 @@ import { weightedSum } from '../../src/core/analyses/weighted-sum.js';
 import { initialViewState, setFilter } from '../../src/core/view-state.js';
 import { mountMatrix, rankFlowPanel, type MatrixHandle, type WeightingOptIn } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
-import { weighted } from '../support/weighted.js';
+import { reversal, weighted } from '../support/weighted.js';
 
 const relocation = Analysis.parse(relocationJson);
 const weightedRelocation = weighted(relocation);
@@ -39,8 +39,15 @@ const open = async (analysis: Analysis, view = initialViewState(analysis)) => {
 };
 const caption = () => panel()!.querySelector('figcaption')!.textContent!;
 const row = (id: string) => Array.from(panel()!.querySelectorAll(`tr[data-row="${id}"] td`), (td) => td.textContent);
-/** Endorsement words (the sensitivity caption's own "no number here is a recommendation" is a disclaimer, and is matched as one). */
-const ENDORSEMENT = /\b(best|winner|wins|top|first place)\b|recommend(?!ation\.)/i;
+/** Endorsement words a caption must never use (ADR-0026). */
+const ENDORSEMENT = /\b(best|winner|wins|top|recommend\w*|choose|first place)\b/i;
+/** The sensitivity caption's disclaimer, which names those words to disown them: matched whole, then set aside. */
+const DISCLAIMER = 'it does not say which alternative to choose, and no number here is a recommendation.';
+/** The caption without its disclaimer, which must be there. */
+const endorsable = () => {
+  expect(caption()).toContain(DISCLAIMER);
+  return caption().replace(DISCLAIMER, '');
+};
 
 /** `n` alternatives, one weighted criterion: enough rows to exceed the limit. */
 function many(n: number): Analysis {
@@ -75,8 +82,9 @@ describe('captioned as a stability finding, never a winner', () => {
   it('leads with the sensitivity analysis\'s own caption, counts what moved, and inherits the ordinal warning', async () => {
     await open(weightedRelocation);
     expect(caption()).toMatch(/^Stability of the reported order under a change of weights/);
-    expect(caption()).toMatch(/From "As declared" to "Winter daylight at [\d.]+, declared 1", 2 of the 3 options ranked in both change place: the order is not stable/);
-    expect(caption()).not.toMatch(ENDORSEMENT);
+    // The first change here is separability lost, not a pass: the order of the rows ranked in both holds.
+    expect(caption()).toMatch(/From "As declared" to "Winter daylight at [\d.]+, declared 1", the order of the 3 options ranked in both holds; the data no longer separate 2 options from their neighbours\.$/);
+    expect(endorsable()).not.toMatch(ENDORSEMENT);
     const warnings = Array.from(panel()!.querySelectorAll('[data-warning]'), (p) => p.textContent);
     expect(warnings.some((w) => /^Ordinal criteria are in this sum/.test(w!))).toBe(true);
     expect(panel()!.querySelector('[data-finding]')!.textContent).toMatch(/^As declared: Weights: the order first changes when "winter-daylight" moves down/);
@@ -84,20 +92,39 @@ describe('captioned as a stability finding, never a winner', () => {
 });
 
 describe('drawn by shape, labelled at both ends, and said in words', () => {
-  it('dashes a line that changes rank, keeps one that holds solid, and names every ranked row at both ends', async () => {
+  const lines = () => Array.from(panel()!.querySelectorAll<SVGPathElement>('path[data-flow]'));
+  const dashed = (l: Element) => l.getAttribute('stroke-dasharray') !== null;
+
+  it('dashes a line that changes place, and only that', async () => {
+    await open(reversal());
+    expect(lines().map((l) => [l.dataset['flow'], l.dataset['move'], dashed(l)])).toEqual([['oak', 'fell', true], ['pine', 'rose', true], ['steel', 'held', false]]);
+    for (const l of lines()) expect(l.getAttribute('stroke')).toBe('currentColor');
+    expect(caption()).toMatch(/2 of the 3 options ranked in both change place and 1 pair passes each other: the order is not stable/);
+    expect(endorsable()).not.toMatch(ENDORSEMENT);
+    expect(panel()!.querySelector('[data-passed]')!.textContent).toBe('Pass each other: Oak and Pine.');
+  });
+
+  it('draws separability lost as a solid line to a ring, never as a move, and names every ranked row at both ends', async () => {
     await open(weightedRelocation);
-    const lines = Array.from(panel()!.querySelectorAll<SVGPathElement>('path[data-flow]'));
-    expect(lines.map((l) => [l.dataset['flow'], l.dataset['move']])).toEqual([['lisbon', 'fell'], ['berlin', 'held'], ['montreal', 'rose']]);
-    for (const l of lines) {
-      expect(l.getAttribute('stroke')).toBe('currentColor');
-      expect(l.getAttribute('stroke-dasharray') !== null).toBe(l.dataset['move'] !== 'held');
-    }
+    expect(lines().map((l) => [l.dataset['flow'], l.dataset['move'], dashed(l)])).toEqual([['lisbon', 'unsettled', false], ['berlin', 'held', false], ['montreal', 'unsettled', false]]);
     const ends = (column: string) => Array.from(panel()!.querySelectorAll(`[data-column="${column}"] [data-end-label]`), (t) => t.textContent);
     expect(ends('declared')).toEqual(['Lisbon (1)', 'Berlin, Montreal (2 to 3)']);
     expect(ends('changed')).toEqual(['Lisbon, Montreal (1 to 3)', 'Berlin (2 to 3)']);
     // A settled rank is a dot, one the data leave open a ring.
     const mark = (column: string, rank: number) => panel()!.querySelector(`[data-column="${column}"] [data-rank="${rank}"] circle`)!.getAttribute('fill');
-    expect([mark('declared', 1), mark('declared', 2)]).toEqual(['currentColor', 'none']);
+    expect([mark('declared', 1), mark('declared', 2), mark('changed', 1)]).toEqual(['currentColor', 'none', 'none']);
+  });
+
+  it('draws at its natural size in a scroller the keyboard reaches, so a narrow screen scrolls rather than shrinks it', async () => {
+    el.style.width = '320px';
+    await open(weightedRelocation);
+    const svg = panel()!.querySelector('svg')!;
+    const scroller = svg.parentElement!;
+    expect(svg.getBoundingClientRect().width).toBeCloseTo(Number(svg.getAttribute('width')), 1);
+    expect(svg.getBoundingClientRect().width).toBeGreaterThan(320);
+    expect(getComputedStyle(scroller).overflowX).toBe('auto');
+    expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth);
+    expect([scroller.tabIndex, scroller.getAttribute('role'), scroller.getAttribute('aria-label')]).toEqual([0, 'region', expect.stringMatching(/scrolls sideways/)]);
   });
 
   it('puts what the gate did not score below a rule as a cross, never as a rank, and says why', async () => {
@@ -108,7 +135,7 @@ describe('drawn by shape, labelled at both ends, and said in words', () => {
       'not ranked: not scored -- insufficient coverage', 'not ranked: not scored -- insufficient coverage', 'ranked under neither',
     ]);
     expect(row('berlin')).toEqual(['2, not separable from Montreal on the data', '2 to 3, not settled by the data', 'keeps 2 to 3']);
-    expect(row('lisbon')).toEqual(['1', '1, not separable from Montreal on the data', 'falls (1, then 1 to 2)']);
+    expect(row('lisbon')).toEqual(['1', '1, not separable from Montreal on the data', 'keeps its place; the data no longer separate it from a neighbour (1, then 1 to 2)']);
   });
 });
 

@@ -30,7 +30,8 @@ import { vsupGrid } from '../fixtures/vsup-grid.js';
 import { treeFailures } from '../support/cvd-browser.js';
 import { everyCode, heard } from '../support/every-code.js';
 import { obscured } from '../support/sticky-geometry.js';
-import { weighted } from '../support/weighted.js';
+import { reversal, weighted } from '../support/weighted.js';
+import { PLACE_CHANGES } from '../../src/core/analyses/rank-flow.js';
 import { FIXTURES, ownSetTimeout, PANELS, THEMES, tick, type BrowserEnv } from './browser-env.js';
 import type { Check } from './gate.js';
 import { PANELS_SURFACE, RANK_FLOW_SURFACE } from './spec.js';
@@ -878,7 +879,8 @@ const a3panels: Check<BrowserEnv> = {
     .filter((cell) => heard(cell) === '').map((cell) => `${where}: the ${cell.tagName.toLowerCase()} at ${cellAt(cell)} is announced as blank`)),
   broken: {
     what: 'a dot-plot cell with dots in it is emptied of everything, hidden text included',
-    sabotage: (env) => env.afterOpen((panels) => panels.map((p) => p.querySelector('td[data-dots]')).find(Boolean)!.replaceChildren()),
+    // A mount with no dot plot (the rank-flow pass's all-ratio case, #98) has nothing for it to break.
+    sabotage: (env) => env.afterOpen((panels) => panels.map((p) => p.querySelector('td[data-dots]')).find(Boolean)?.replaceChildren()),
   },
 };
 
@@ -922,15 +924,15 @@ const a15panels: Check<BrowserEnv> = {
  * What the rank-flow must still say once every hue is gone (#98): that a line changes place (its dash, never its
  * slope alone), whose line it is (a label at both ends), and which rows are not ranked (a cross per unscored row).
  */
-function rankFlowFaults(panel: Element, at: string): string[] {
+function rankFlowFaults(panel: Element, at: string, { mustMove }: { mustMove: boolean }): string[] {
   const found: string[] = [];
   const lines = Array.from(panel.querySelectorAll<SVGPathElement>('path[data-flow]'));
-  if (!lines.some((l) => l.dataset['move'] !== 'held')) found.push(`${at}: no line changes place in this case, so nothing here shows how movement is drawn`);
+  const moves = (l: SVGPathElement) => (PLACE_CHANGES as readonly string[]).includes(l.dataset['move']!);
+  if (mustMove && !lines.some(moves)) found.push(`${at}: no line changes place in this case, so nothing here shows how movement is drawn`);
   for (const l of lines) {
-    const moved = l.dataset['move'] !== 'held';
     const dashed = getComputedStyle(l).strokeDasharray !== 'none';
-    if (moved && !dashed) found.push(`${at}: the line of ${l.dataset['flow']} changes place and is drawn solid, so nothing but its slope says it moved`);
-    if (!moved && dashed) found.push(`${at}: the line of ${l.dataset['flow']} keeps its place and is drawn dashed`);
+    if (moves(l) && !dashed) found.push(`${at}: the line of ${l.dataset['flow']} changes place and is drawn solid, so nothing but its slope says it moved`);
+    if (!moves(l) && dashed) found.push(`${at}: the line of ${l.dataset['flow']} keeps its place (${l.dataset['move']}) and is drawn dashed`);
   }
   const columns = Array.from(panel.querySelectorAll('[data-column]'));
   for (const column of [columns[0], columns[columns.length - 1]]) {
@@ -950,19 +952,22 @@ function rankFlowFaults(panel: Element, at: string): string[] {
   return [...found, ...marksSurvive(panel, at)];
 }
 
+/** The case whose weighting change makes two rows pass each other: where a dashed line must be. */
+const REVERSAL_CASE = 'a pass';
+
 const a15rankFlow: Check<BrowserEnv> = {
   id: 'A15', over: RANK_FLOW_SURFACE,
   async run(env) {
     await env.media({ forcedColors: 'active' });
     if (!matchMedia('(forced-colors: active)').matches) return ['this browser does not honour forcedColors emulation, so the check cannot see what a forced-colors reader sees'];
     const found: string[] = [];
-    for (const [name, analysis] of PANEL_CASES) {
+    // The panel cases for separability lost (relocation) and rows left unscored (every code); one where two rows pass each other, for the dash.
+    for (const [name, analysis] of [...PANEL_CASES, [REVERSAL_CASE, reversal()] as const]) {
       const { panels } = await env.mountPanels({ analysis, measure: 'score' });
       const panel = panels.find((p) => p.dataset['analysis'] === 'rank-flow');
       const at = `forced colors / ${name} / the rank-flow`;
       if (!panel?.querySelector('svg')) found.push(`${at}: opened, it drew nothing`);
-      // The every-code case ranks almost nothing (the gate leaves its rows unscored): it is here for the crosses, not the lines.
-      else found.push(...rankFlowFaults(panel, at).filter((f) => name === 'relocation' || !/no line changes place/.test(f)));
+      else found.push(...rankFlowFaults(panel, at, { mustMove: name === REVERSAL_CASE }));
     }
     return cap(found);
   },

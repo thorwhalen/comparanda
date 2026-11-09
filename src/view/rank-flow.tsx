@@ -7,12 +7,12 @@
  * **Unreachable unless weighted aggregation is opted into.** There is no
  * `RankFlowPanel` to register: `rankFlowPanel({ weightedSum, sensitivity })`
  * makes one, from core's two opt-in analyses, which the composition root passes
- * the way it passes `arrange` (ADR-0017 clause 4). This module imports neither
- * as a value, so it cannot rank anything it was not handed; called without
- * them it throws, saying why. A document none of whose criteria carries a
- * substitution weight has opted into nothing either, and the panel is absent.
- * Never in the standalone page, which registers no panels: it costs that page's
- * byte budget nothing.
+ * the way it passes `arrange` (ADR-0017 clause 4). This module never imports
+ * either as a value, statically or dynamically, so it cannot aggregate anything
+ * it was not handed; called without them it throws, saying why. A document none
+ * of whose criteria carries a substitution weight has opted into nothing either,
+ * and the panel is absent. Never in the standalone page, which registers no
+ * panels: it costs that page's byte budget nothing.
  *
  * What it draws, and refuses to:
  *
@@ -21,17 +21,21 @@
  * - **A stability caption, never a winner.** The caption is the sensitivity
  *   analysis's own sentence and the rank-flow's count of what moved, both
  *   carried by core results so this view cannot recaption them as an
- *   endorsement; the weighted sum's warnings (the ordinal one first among them)
- *   are shown under it, as they are not suppressible.
+ *   endorsement; the weighted sum's warnings (the ordinal one among them) are
+ *   shown under it, as they are not suppressible.
  * - **Ranks only the current selection** -- the alternatives the matrix shows --
  *   and refuses above `maxRows` (30), with the reason, before computing anything.
  * - **Never colour alone** (comparanda-dev-a11y-gate): a line that changes place
- *   against the others ranked in both is dashed and one that keeps it solid; every line is named at both ends; a
- *   rank the data cannot settle is a ring, a settled one a dot; a row the
- *   coverage gate did not score is a cross below a dashed rule, never a rank.
- *   All of it in `currentColor`, and all of it in the table beneath, in words.
+ *   against the others ranked in both is dashed, and every other line solid; every
+ *   line is named at both ends; a rank the data settle is a dot, one they leave
+ *   open a ring; a row the coverage gate did not score is a cross below a dashed
+ *   rule, never a rank. All of it in `currentColor`, and all of it in the table
+ *   beneath, in words.
  * - **A keyboard path for everything**: every control is a native radio,
- *   select or number field. Nothing in the drawing is interactive.
+ *   select or number field, and the drawing's scroller takes focus. Nothing in
+ *   the drawing is interactive.
+ * - **Drawn at its natural size**, in a scroller, so a narrow screen scrolls it
+ *   sideways rather than shrinking its labels below reading size.
  *
  * Closed by default and computed only once opened, like every analysis panel.
  */
@@ -39,13 +43,14 @@ import type { ComponentType } from 'preact';
 import { useId, useMemo, useState } from 'preact/hooks';
 
 import {
-  firstOrderChange, rankFlow, raterCriteria, raterRanking, RANK_FLOW_MAX_ROWS, tooManyToRank, withSubstitutionWeight,
-  type RankColumn, type RankFlow, type RankMove, type RankPlace, type RankScenario, type RowWords, type WeightChange,
+  PLACE_CHANGES, rankFlow, RANKED_IN_BOTH, RANK_FLOW_MAX_ROWS, tooManyToRank,
+  type RankColumn, type RankFlow, type RankMove, type RankPlace, type RankScenario, type RowWords,
 } from '../core/analyses/rank-flow.js';
-import type { sensitivity } from '../core/analyses/sensitivity.js';
-import type { weightedSum } from '../core/analyses/weighted-sum.js';
+import { raterCriteria, raterRanking } from '../core/analyses/rater-ranking.js';
+import { firstOrderChange, type sensitivity, type WeightChange } from '../core/analyses/sensitivity.js';
+import { withSubstitutionWeight, type weightedSum } from '../core/analyses/weighted-sum.js';
 import type { Analysis } from '../core/schema/analysis.js';
-import { aliasesOf } from '../core/schema/structure.js';
+import { aliasesOf, type Aliases } from '../core/schema/structure.js';
 import { attributions } from '../core/identity.js';
 import { hiddenOf, inShownOrder } from '../core/layout.js';
 import type { AnalysisPanelProps } from './agreement.js';
@@ -55,7 +60,9 @@ import { capitalise } from './words.js';
 /**
  * The opt-in: core's weighted sum and its sensitivity analysis, handed over by
  * the composition root. A rank-flow presupposes a ranking, and a ranking
- * presupposes an aggregation, which ADR-0015 refuses to do by default.
+ * presupposes an aggregation, which ADR-0015 refuses to do by default. Typed to
+ * those two implementations: another aggregation (ADR-0015 declines TOPSIS and
+ * AHP for v1) would widen this to a result shape, not a function signature.
  */
 export interface WeightingOptIn {
   weightedSum: typeof weightedSum;
@@ -67,8 +74,11 @@ export interface RankFlowPanelOptions {
   maxRows?: number;
 }
 
-/** The drawing's geometry, in SVG user units: row pitch, heading room, column gap, mark radius, the label's estimated glyph width, and padding. */
-const PLOT = Object.freeze({ step: 22, top: 44, gap: 200, mark: 4, glyph: 6.6, pad: 12, font: 11 });
+/**
+ * The drawing's geometry, in SVG user units: row pitch, the first row's height, how far above it a column's
+ * heading sits, column gap, mark radius, a label's estimated glyph width, padding, and type size.
+ */
+const PLOT = Object.freeze({ step: 22, top: 44, heading: 22, gap: 200, mark: 4, glyph: 6.6, pad: 12, font: 11 });
 
 /** The dash a line that changes place is drawn with: its shape, not a hue, says it moved. */
 const MOVED_DASH = '6 4';
@@ -92,18 +102,28 @@ export function rankFlowPanel(optIn: WeightingOptIn, { maxRows = RANK_FLOW_MAX_R
     return (
       <details class="comparanda-analysis" data-analysis="rank-flow" open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
         <summary>{`Whether the order of the ${words.alternatives} holds under a change of weighting, or between two raters`}</summary>
-        {open && <RankFlowBody {...{ analysis, measure, shown, viewer, vouched, optIn, maxRows }} />}
+        {open && <RankFlowBody {...{ analysis, measure, shown, viewer, vouched, optIn, maxRows, words }} />}
       </details>
     );
   };
 }
 
-type BodyProps = AnalysisPanelProps & { optIn: WeightingOptIn; maxRows: number };
+/** What both comparisons draw with: the document, its words, the alternatives' names, and the ranking over the selection. */
+interface Context {
+  analysis: Analysis;
+  measure: string;
+  id: string;
+  rowWords: RowWords;
+  names: (alternativeId: string) => string;
+  /** `rankFlow` over the current selection, with the panel's limit and words. */
+  rank: (scenarios: readonly RankScenario[]) => RankFlow;
+}
 
-function RankFlowBody({ analysis, measure, shown, viewer, vouched, optIn, maxRows }: BodyProps) {
+function RankFlowBody({ analysis, measure, shown, viewer, vouched, optIn, maxRows, words }: AnalysisPanelProps & {
+  optIn: WeightingOptIn; maxRows: number; words: Aliases;
+}) {
   const id = useId();
   const [mode, setMode] = useState<'weighting' | 'raters'>('weighting');
-  const words = aliasesOf(analysis);
   const rowWords: RowWords = { alternative: words.alternative, alternatives: words.alternatives };
   const order = shown?.alternatives.join('\u0000');
   // The current selection: the alternatives the matrix shows, in its order.
@@ -112,6 +132,11 @@ function RankFlowBody({ analysis, measure, shown, viewer, vouched, optIn, maxRow
     [analysis, order],
   );
   const tooMany = tooManyToRank(selection.length, { maxRows, words: rowWords });
+  const ctx: Context = {
+    analysis, measure, id, rowWords,
+    names: (aid) => analysis.alternatives.find((x) => x.id === aid)?.label ?? aid,
+    rank: (scenarios) => rankFlow(scenarios, { alternativeIds: selection, maxRows, words: rowWords }),
+  };
   const radio = (value: typeof mode, text: string) => (
     <label>
       <input type="radio" name={`${id}-mode`} value={value} checked={mode === value} onChange={() => setMode(value)} />
@@ -132,8 +157,8 @@ function RankFlowBody({ analysis, measure, shown, viewer, vouched, optIn, maxRow
             {radio('raters', 'of two raters, on one criterion')}
           </fieldset>
           {mode === 'weighting'
-            ? <WeightingFlow {...{ analysis, measure, selection, optIn, maxRows, rowWords, id }} />
-            : <RaterFlow {...{ analysis, measure, viewer, vouched, shown, selection, maxRows, rowWords, id }} />}
+            ? <WeightingFlow ctx={ctx} selection={selection} optIn={optIn} />
+            : <RaterFlow ctx={ctx} viewer={viewer} vouched={vouched} shown={shown} />}
         </>
       )}
     </>
@@ -143,9 +168,8 @@ function RankFlowBody({ analysis, measure, shown, viewer, vouched, optIn, maxRow
 /** A weight as a person reads it: at most six decimals, which keeps "just past" visibly past. */
 const weightSaid = (w: number) => String(Math.round(w * 1e6) / 1e6);
 
-function WeightingFlow({ analysis, measure, selection, optIn, maxRows, rowWords, id }: {
-  analysis: Analysis; measure: string; selection: string[]; optIn: WeightingOptIn; maxRows: number; rowWords: RowWords; id: string;
-}) {
+function WeightingFlow({ ctx, selection, optIn }: { ctx: Context; selection: string[]; optIn: WeightingOptIn }) {
+  const { analysis, measure, id } = ctx;
   const key = selection.join('\u0000');
   const sens = useMemo(() => optIn.sensitivity(analysis, { measure, alternativeIds: selection }), [analysis, measure, key]);
   const base = useMemo(() => optIn.weightedSum(analysis, { measure, alternativeIds: selection }), [analysis, measure, key]);
@@ -161,16 +185,16 @@ function WeightingFlow({ analysis, measure, selection, optIn, maxRows, rowWords,
   }
   const label = (cid: string) => analysis.criteria.find((c) => c.id === cid)?.label ?? cid;
   const declared = base.basis.find((b) => b.criterionId === change.criterionId)!.weight;
-  const first = firstOrderChange(sens, { criterionId: change.criterionId });
-  const fragile = `a raise of ${Math.round(sens.weightPerturbation.fragileBelow * 100)}% of the total weight (${weightSaid(first!.weight)})`;
-  const opening = first!.opening === 'first-change'
-    ? `Opens just past the smallest change of this weight that alters the order (${weightSaid(first!.weight)}).`
-    : `No change of this weight alone alters the order, short of leaving nothing to rank; opens at ${fragile}, the share ADR-0015 calls fragile.`;
+  const first = firstOrderChange(sens, { criterionId: change.criterionId })!;
+  const opening = first.opening === 'first-change'
+    ? `Opens just past the smallest change of this weight that alters the order (${weightSaid(first.weight)}).`
+    : `No change of this weight alone alters the order, short of leaving nothing to rank; opens at a raise of `
+      + `${Math.round(sens.weightPerturbation.fragileBelow * 100)}% of the total weight (${weightSaid(first.weight)}), the share ADR-0015 calls fragile.`;
   const extra = (changed.refused ? [] : changed.warnings).filter((w) => !sens.warnings.includes(w));
-  const model = changed.refused ? undefined : rankFlow([
+  const model = changed.refused ? undefined : ctx.rank([
     { id: 'declared', label: 'As declared', rows: base.rows },
     { id: 'changed', label: `${label(change.criterionId)} at ${weightSaid(change.weight)}, declared ${weightSaid(declared)}`, rows: changed.rows },
-  ], { alternativeIds: selection, maxRows, words: rowWords });
+  ]);
   return (
     <>
       <fieldset>
@@ -197,7 +221,7 @@ function WeightingFlow({ analysis, measure, selection, optIn, maxRows, rowWords,
         <p class="comparanda-panel-hint" id={`${id}-opening`}>{opening}</p>
       </fieldset>
       {model
-        ? <RankFlowFigure model={model} id={id} names={(aid) => analysis.alternatives.find((x) => x.id === aid)?.label ?? aid} rowWords={rowWords} lead={sens.caption} rankOne="Rank 1 is the highest weighted sum." />
+        ? <RankFlowFigure ctx={ctx} model={model} lead={sens.caption} rankOne="Rank 1 is the highest weighted sum." />
         : <p role="note" data-refused="">{`The changed weighting is refused: ${changed.refused!.message}`}</p>}
       <p class="comparanda-panel-hint" data-finding="">{`As declared: ${sens.finding}`}</p>
       {[...sens.warnings, ...extra].map((w) => <p key={w} class="comparanda-panel-hint" role="note" data-warning="">{w}</p>)}
@@ -208,9 +232,8 @@ function WeightingFlow({ analysis, measure, selection, optIn, maxRows, rowWords,
   );
 }
 
-function RaterFlow({ analysis, measure, viewer, vouched, shown, selection, maxRows, rowWords, id }: Pick<AnalysisPanelProps, 'viewer' | 'vouched' | 'shown'> & {
-  analysis: Analysis; measure: string; selection: string[]; maxRows: number; rowWords: RowWords; id: string;
-}) {
+function RaterFlow({ ctx, viewer, vouched, shown }: { ctx: Context } & Pick<AnalysisPanelProps, 'viewer' | 'vouched' | 'shown'>) {
+  const { analysis, measure, id } = ctx;
   const critOrder = shown?.criteria.join('\u0000');
   const choices = useMemo(
     () => inShownOrder(raterCriteria(analysis, { measure, viewer }), (c) => c.criterionId, shown?.criteria).listed,
@@ -218,7 +241,7 @@ function RaterFlow({ analysis, measure, viewer, vouched, shown, selection, maxRo
   );
   const [critChosen, setCritChosen] = useState<string | undefined>(undefined);
   const [pair, setPair] = useState<[string | undefined, string | undefined]>([undefined, undefined]);
-  const names = attributions(analysis.authors, { vouched });
+  const raterNames = attributions(analysis.authors, { vouched });
   const rc = choices.find((c) => c.criterionId === critChosen) ?? choices[0];
   if (!rc) {
     return <p role="note" data-refused="">No criterion has two raters whose ratings you may see against their names, so there is no rater comparison here.</p>;
@@ -227,12 +250,10 @@ function RaterFlow({ analysis, measure, viewer, vouched, shown, selection, maxRo
   // A choice the criterion no longer allows keeps what it can: each side falls back to the first rater the other does not hold.
   const left = pair[0] !== undefined && rc.raters.includes(pair[0]) ? pair[0] : rc.raters[0]!;
   const right = pair[1] !== undefined && rc.raters.includes(pair[1]) && pair[1] !== left ? pair[1] : rc.raters.find((r) => r !== left)!;
-  const nameOf = (aid: string) => names.get(aid) ?? aid;
+  const nameOf = (aid: string) => raterNames.get(aid) ?? aid;
   const scenarios = [left, right].map((r) => raterRanking(analysis, rc.criterionId, r, { measure, viewer }));
   const refused = scenarios.find((s): s is string => typeof s === 'string');
-  const model = refused ? undefined : rankFlow((scenarios as RankScenario[]).map((s, i) => ({ ...s, label: nameOf([left, right][i]!) })), {
-    alternativeIds: selection, maxRows, words: rowWords,
-  });
+  const model = refused ? undefined : ctx.rank((scenarios as RankScenario[]).map((s, i) => ({ ...s, label: nameOf([left, right][i]!) })));
   const picker = (side: 0 | 1, value: string) => (
     <>
       <label for={`${id}-rater-${side}`}>{side === 0 ? 'Left' : 'Right'}</label>{' '}
@@ -266,7 +287,7 @@ function RaterFlow({ analysis, measure, viewer, vouched, shown, selection, maxRo
         )}
       </fieldset>
       {model
-        ? <RankFlowFigure model={model} id={id} names={(aid) => analysis.alternatives.find((x) => x.id === aid)?.label ?? aid} rowWords={rowWords} rankOne={`Rank 1 is each rater's best rating on ${label(rc.criterionId)}, by its direction of preference.`} />
+        ? <RankFlowFigure ctx={ctx} model={model} rankOne={`Rank 1 is each rater's best rating on ${label(rc.criterionId)}, by its direction of preference.`} />
         : <p role="note" data-refused="">{`Not ranked: ${refused}`}</p>}
     </>
   );
@@ -295,6 +316,8 @@ function moveSaid(move: RankMove, from: RankColumn, to: RankColumn, a: RankPlace
     case 'held': return at(a) === at(b) ? `keeps ${at(a)}` : `keeps its place (${ranks})`;
     case 'rose': return `rises (${ranks})`;
     case 'fell': return `falls (${ranks})`;
+    case 'unsettled': return `keeps its place; the data no longer separate it from a neighbour (${ranks})`;
+    case 'settled': return `keeps its place; the data now separate it from a neighbour (${ranks})`;
     case 'entered': return `ranked only under "${to.label}"`;
     case 'left': return `ranked only under "${from.label}"`;
     default: return 'ranked under neither';
@@ -302,9 +325,7 @@ function moveSaid(move: RankMove, from: RankColumn, to: RankColumn, a: RankPlace
 }
 
 /** The drawing and its table, from any rank-flow model: the same component for weightings and for raters. A refused model says why. */
-function RankFlowFigure({ model, id, names, rowWords, lead, rankOne }: {
-  model: RankFlow; id: string; names: (id: string) => string; rowWords: RowWords; lead?: string; rankOne: string;
-}) {
+function RankFlowFigure({ ctx: { id, names, rowWords }, model, lead, rankOne }: { ctx: Context; model: RankFlow; lead?: string; rankOne: string }) {
   if (!model.usable) return <p role="note" data-refused="">{model.reason}</p>;
   const { columns, steps, alternatives } = model;
   const rankedIn = (c: RankColumn) => c.places.filter((p): p is Ranked => p.status === 'ranked');
@@ -322,7 +343,7 @@ function RankFlowFigure({ model, id, names, rowWords, lead, rankOne }: {
   const longest = Math.max(
     ...ends.flatMap((c) => [...endLabels(c).map((l) => l.text), ...unrankedIn(c), c.label]).map((t) => t.length),
   );
-  const { step, top, gap, mark, glyph, pad, font } = PLOT;
+  const { step, top, heading, gap, mark, glyph, pad, font } = PLOT;
   const side = pad + mark * 2 + longest * glyph;
   const xOf = (i: number) => side + i * gap;
   const width = side * 2 + (columns.length - 1) * gap;
@@ -331,63 +352,68 @@ function RankFlowFigure({ model, id, names, rowWords, lead, rankOne }: {
   const lane = Math.max(0, ...columns.map((c) => unrankedIn(c).length));
   const rule = yOf(maxRank) + step;
   const height = lane > 0 ? rule + lane * step + pad : yOf(maxRank) + pad * 2;
-  const anchorOf = (i: number) => (i === 0 ? 'end' : i === columns.length - 1 ? 'start' : 'middle');
+  const last = columns.length - 1;
+  const anchorOf = (i: number) => (i === 0 ? 'end' : i === last ? 'start' : 'middle');
   const labelX = (i: number) => (i === 0 ? xOf(i) - mark * 2 - 2 : xOf(i) + mark * 2 + 2);
-  const said = (aid: string, c: RankColumn) => placeSaid(c.places[model.alternatives.indexOf(aid)]!, names);
+  const said = (aid: string, c: RankColumn) => placeSaid(c.places[alternatives.indexOf(aid)]!, names);
   return (
     <figure aria-labelledby={`${id}-flow-caption`} data-rank-flow="">
       <figcaption id={`${id}-flow-caption`}>
         {lead && <strong>{lead}</strong>}
         {`${lead ? ' ' : ''}${model.caption}`}
       </figcaption>
-      <svg
-        viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" style={{ maxWidth: '100%', height: 'auto' }}
-        // The ink every mark and label is drawn in, declared on the drawing so no shape falls back to black in a dark theme.
-        fill="currentColor"
-        aria-label={`Ranks under "${columns[0]!.label}" on the left and "${columns[columns.length - 1]!.label}" on the right, rank 1 at the top. The table below says the same in words.`}
-      >
-        {columns.map((c, i) => (
-          <text key={`h${c.id}`} x={i === 0 ? xOf(i) + mark : i === columns.length - 1 ? xOf(i) - mark : xOf(i)} y={top - 22} text-anchor={anchorOf(i)} font-size={font + 1} fill="currentColor">{c.label}</text>
-        ))}
-        {steps.map((s, i) => s.moves.map(({ alternativeId, move }) => {
-          if (move !== 'held' && move !== 'rose' && move !== 'fell') return null;
-          const a = columns[i]!.places[alternatives.indexOf(alternativeId)] as Ranked;
-          const b = columns[i + 1]!.places[alternatives.indexOf(alternativeId)] as Ranked;
-          return (
-            <path
-              key={`${s.from}${alternativeId}`} data-flow={alternativeId} data-move={move}
-              d={`M${xOf(i)} ${yOf(a.rank)}L${xOf(i + 1)} ${yOf(b.rank)}`}
-              fill="none" stroke="currentColor" stroke-width={move === 'held' ? 1.5 : 2} stroke-dasharray={move === 'held' ? undefined : MOVED_DASH}
-            />
-          );
-        }))}
-        {columns.map((c, i) => (
-          <g key={`m${c.id}`} data-column={c.id}>
-            {endLabels(c).map((l) => (
-              <g key={l.rank} data-rank={l.rank}>
-                <circle cx={xOf(i)} cy={yOf(l.rank)} r={mark} fill={l.exact ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.5" />
-                {(i === 0 || i === columns.length - 1) && (
-                  <text data-end-label="" x={labelX(i)} y={yOf(l.rank) + 4} text-anchor={anchorOf(i)} font-size={font} fill="currentColor">{l.text}</text>
-                )}
-              </g>
-            ))}
-            {unrankedIn(c).map((t, k) => {
-              const x = xOf(i);
-              const y = rule + (k + 0.5) * step;
-              return (
-                <g key={t} data-unranked="">
-                  <path d={`M${x - mark} ${y - mark}L${x + mark} ${y + mark}M${x - mark} ${y + mark}L${x + mark} ${y - mark}`} fill="none" stroke="currentColor" stroke-width="1.5" />
-                  {(i === 0 || i === columns.length - 1) && <text x={labelX(i)} y={y + 4} text-anchor={anchorOf(i)} font-size={font} fill="currentColor">{t}</text>}
+      {/* At its natural size, scrolled sideways where the page is narrower: shrunk to fit a phone, its labels would be a few pixels tall. */}
+      <div role="region" tabIndex={0} aria-label="The rank-flow drawing; it scrolls sideways where it is wider than the page" style={{ overflowX: 'auto' }}>
+        <svg
+          viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img"
+          // The ink every mark and label is drawn in, declared on the drawing so no shape falls back to black in a dark theme.
+          fill="currentColor"
+          aria-label={`Ranks under "${columns[0]!.label}" on the left and "${columns[last]!.label}" on the right, rank 1 at the top. The table below says the same in words.`}
+        >
+          {columns.map((c, i) => (
+            <text key={`h${c.id}`} x={i === 0 ? xOf(i) + mark : i === last ? xOf(i) - mark : xOf(i)} y={top - heading} text-anchor={anchorOf(i)} font-size={font + 1} fill="currentColor">{c.label}</text>
+          ))}
+          {steps.map((s, i) => s.moves.map(({ alternativeId, move }) => {
+            if (!RANKED_IN_BOTH.includes(move)) return null;
+            const a = columns[i]!.places[alternatives.indexOf(alternativeId)] as Ranked;
+            const b = columns[i + 1]!.places[alternatives.indexOf(alternativeId)] as Ranked;
+            const moved = PLACE_CHANGES.includes(move);
+            return (
+              <path
+                key={`${s.from}${alternativeId}`} data-flow={alternativeId} data-move={move}
+                d={`M${xOf(i)} ${yOf(a.rank)}L${xOf(i + 1)} ${yOf(b.rank)}`}
+                fill="none" stroke="currentColor" stroke-width={moved ? 2 : 1.5} stroke-dasharray={moved ? MOVED_DASH : undefined}
+              />
+            );
+          }))}
+          {columns.map((c, i) => (
+            <g key={`m${c.id}`} data-column={c.id}>
+              {endLabels(c).map((l) => (
+                <g key={l.rank} data-rank={l.rank}>
+                  <circle cx={xOf(i)} cy={yOf(l.rank)} r={mark} fill={l.exact ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.5" />
+                  {(i === 0 || i === last) && (
+                    <text data-end-label="" x={labelX(i)} y={yOf(l.rank) + 4} text-anchor={anchorOf(i)} font-size={font} fill="currentColor">{l.text}</text>
+                  )}
                 </g>
-              );
-            })}
-          </g>
-        ))}
-        {lane > 0 && <path data-unranked-rule="" d={`M${pad} ${rule}H${width - pad}`} fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 3" />}
-      </svg>
+              ))}
+              {unrankedIn(c).map((t, k) => {
+                const x = xOf(i);
+                const y = rule + (k + 0.5) * step;
+                return (
+                  <g key={t} data-unranked="">
+                    <path d={`M${x - mark} ${y - mark}L${x + mark} ${y + mark}M${x - mark} ${y + mark}L${x + mark} ${y - mark}`} fill="none" stroke="currentColor" stroke-width="1.5" />
+                    {(i === 0 || i === last) && <text x={labelX(i)} y={y + 4} text-anchor={anchorOf(i)} font-size={font} fill="currentColor">{t}</text>}
+                  </g>
+                );
+              })}
+            </g>
+          ))}
+          {lane > 0 && <path data-unranked-rule="" d={`M${pad} ${rule}H${width - pad}`} fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 3" />}
+        </svg>
+      </div>
       <ul class="comparanda-panel-hint" aria-label="What the marks mean">
         <li>{`${rankOne} Each line joins one ${rowWords.alternative}'s rank in the two rankings, and is named at both ends: ranks, not scores, so a line's slope is not a size.`}</li>
-        <li>A dashed line changes place against the others ranked in both; a solid one keeps it, even where a row ranked in one only shifts its number.</li>
+        <li>A dashed line changes place against the others ranked in both; every other line is solid, including one whose number shifts only because a row is ranked in one ranking alone.</li>
         <li>A filled dot is a rank the data settle, shared when tied; a ring is one they leave open, because a score is an interval that overlaps another's.</li>
         <li>A cross below the dashed rule is not ranked in that ranking; the table says why.</li>
       </ul>
@@ -401,15 +427,12 @@ function RankFlowFigure({ model, id, names, rowWords, lead, rankOne }: {
           </tr>
         </thead>
         <tbody>
-          {alternatives.map((aid) => (
+          {alternatives.map((aid, k) => (
             <tr key={aid} data-row={aid}>
               <th scope="row">{names(aid)}</th>
               {columns.map((c) => <td key={c.id}>{said(aid, c)}</td>)}
               <td data-move-said="">
-                {steps.map((s, i) => {
-                  const k = alternatives.indexOf(aid);
-                  return moveSaid(s.moves[k]!.move, columns[i]!, columns[i + 1]!, columns[i]!.places[k]!, columns[i + 1]!.places[k]!);
-                }).join('; ')}
+                {steps.map((s, i) => moveSaid(s.moves[k]!.move, columns[i]!, columns[i + 1]!, columns[i]!.places[k]!, columns[i + 1]!.places[k]!)).join('; ')}
               </td>
             </tr>
           ))}

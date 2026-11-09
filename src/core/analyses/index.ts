@@ -17,3 +17,4 @@ export * from './seriation.js';
 export * from './sensitivity.js';
 export * from './scatter.js';
 export * from './rank-flow.js';
+export * from './rater-ranking.js';
