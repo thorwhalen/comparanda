@@ -169,6 +169,18 @@ export function measurementFor(criterion: Criterion, measure: string): Measureme
 }
 
 /**
+ * Why a proposed criterion was rejected: the shipped codes, and the companion's four (request 19, #315; version 2).
+ * Its `merged-into` is this set's `merged`, spelled once, with `mergedIntoId` naming the target; a `means-objective`
+ * reject says in `reason` which objective it serves, since the shape has no field for it. The one-line glosses live
+ * in `schema-descriptions.ts`, which the emitted artifact reads and the standalone bundle does not.
+ */
+export const REJECT_REASON_CODES = Object.freeze([
+  'redundant', 'not-discriminating', 'out-of-scope', 'not-assessable', 'merged',
+  'means-objective', 'not-controllable', 'no-discrimination-expected', 'user-rejected',
+  'other',
+] as const);
+export type RejectReasonCode = (typeof REJECT_REASON_CODES)[number];
+/**
  * A criterion that was proposed and rejected, retained with its reason.
  *
  * Kept in the analysis because "why isn't cost in here?" is asked in every
@@ -178,9 +190,7 @@ export function measurementFor(criterion: Criterion, measure: string): Measureme
 export const RejectedCriterion = z.strictObject({
   label: z.string(),
   reason: z.string(),
-  reasonCode: z.optional(
-    z.enum(['redundant', 'not-discriminating', 'out-of-scope', 'not-assessable', 'merged', 'other']),
-  ),
+  reasonCode: z.optional(z.enum(REJECT_REASON_CODES)),
   /** For `merged` and `redundant`: the criterion it was folded into. */
   mergedIntoId: z.optional(z.string()),
   proposedBy: z.optional(z.string()),

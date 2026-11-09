@@ -1465,6 +1465,13 @@
       "reasonCode": "not-discriminating",
       "proposedBy": "ben",
       "at": "2026-08-22T09:00:00Z"
+    },
+    {
+      "label": "Direct flights",
+      "reason": "Serves the family-visit objective already scored as flight hours: flying direct matters only through the hours it saves, so it is not a goal of its own.",
+      "reasonCode": "means-objective",
+      "proposedBy": "ana",
+      "at": "2026-08-22T09:00:00Z"
     }
   ],
   "reductions": [],

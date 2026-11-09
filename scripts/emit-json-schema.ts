@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Analysis, SCHEMA_VERSION } from '../src/core/schema/analysis.js';
 import { ALIAS_PAIRS } from '../src/core/schema/structure.js';
+import { ENUM_DESCRIPTIONS } from '../src/core/schema/schema-descriptions.js';
 import { CORE_MISSING_CODES } from '../src/core/schema/missingness.js';
 import { CORE_REDUCTIONS } from '../src/core/schema/values.js';
 import { SCALE_CORE } from '../src/core/schema/measurement.js';
@@ -51,6 +52,23 @@ const outValue = outFlag >= 0 ? process.argv[outFlag + 1] : undefined;
 // A bare `--out` is a mistake, never a request for the default: falling back would overwrite the committed files.
 if (outFlag >= 0 && (outValue === undefined || outValue.startsWith('--'))) throw new Error('--out needs a directory after it.');
 const outDir = outValue ?? join(here, '..', 'schema');
+
+/**
+ * Give every property whose `enum` is exactly a described coded set its description, wherever it appears (the
+ * artifact inlines a shared shape at each use). Written here and not into the zod schema so the standalone bundle,
+ * which carries that schema under a byte budget, does not carry the prose (`schema-descriptions.ts`).
+ */
+function describeEnums(node: unknown): void {
+  if (Array.isArray(node)) return node.forEach(describeEnums);
+  if (node === null || typeof node !== 'object') return;
+  const rec = node as Record<string, unknown>;
+  const members = rec.enum;
+  if (Array.isArray(members)) {
+    const hit = ENUM_DESCRIPTIONS.find((d) => d.codes.length === members.length && d.codes.every((c, i) => c === members[i]));
+    if (hit && rec.description === undefined) rec.description = hit.description;
+  }
+  Object.values(rec).forEach(describeEnums);
+}
 
 /** Members of a zod enum, as a plain array. */
 function membersOf(e: { options: readonly string[] }): string[] {
@@ -164,6 +182,7 @@ function main(): void {
   aliases.dependentRequired = Object.fromEntries(
     ALIAS_PAIRS.flatMap(([one, many]) => [[one, [many]], [many, [one]]]),
   );
+  describeEnums(document);
   const schema = {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     // The immutable location: the release tag's raw file (docs/schema-v1.md).

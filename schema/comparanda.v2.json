@@ -696,8 +696,13 @@
               "out-of-scope",
               "not-assessable",
               "merged",
+              "means-objective",
+              "not-controllable",
+              "no-discrimination-expected",
+              "user-rejected",
               "other"
-            ]
+            ],
+            "description": "Why it was rejected. redundant: says what another criterion already says. not-discriminating: was found not to separate the alternatives: they would score alike. out-of-scope: is outside the question being decided. not-assessable: cannot be assessed with the evidence available. merged: was folded into another criterion (mergedIntoId). means-objective: is a means to an objective already scored, not a goal of its own. not-controllable: is not something the decider can influence. no-discrimination-expected: the decider cares, but nothing suggests, before any scoring, that the alternatives could differ on it. user-rejected: the person deciding rejected it. other: none of the above; the reason says why."
           },
           "mergedIntoId": {
             "type": "string"

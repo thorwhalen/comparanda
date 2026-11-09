@@ -91,8 +91,8 @@ It exercises what the clean example does not:
   also the asking-rent report that disagrees with it — so `contradictedCells` has one cell to count;
 - two failed checks, one of each kind: a `stale` quote (the document changed) and an
   `unresolvable` target (the page is gone), both dated and attributed like any other verdict;
-- two rejected criteria kept in `rejectedCriteria` rather than discarded: one `merged` into rent,
-  one `not-discriminating`;
+- three rejected criteria kept in `rejectedCriteria` rather than discarded: one `merged` into rent,
+  one `not-discriminating`, one `means-objective` (version 2);
 - three annotation threads: one resolved, one open, one anchored to a criterion rather than a cell;
 - a **criteria-set version** (`criteriaVersion: "2"`): the climate column was redefined from a felt description to the Köppen main group (`definedInVersion: "2"`, with the change and its reason in `definition` and `provenance`), and Berlin's climate score was given the day before, under version 1, so `supersededCells` reports exactly that one;
 - a **round**: Berlin's three winter-daylight raters scored in one blind round (`feedback: none`, `attribution: anonymous`), and their assertions carry its `roundId`;
