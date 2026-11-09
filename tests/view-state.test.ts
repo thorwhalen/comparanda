@@ -66,7 +66,7 @@ describe('the shape (#53)', () => {
     // A future view state is refused by its own chain, whatever the document version is.
     const future = JSON.stringify({ ...initialViewState(relocation()), schemaVersion: VIEW_STATE_VERSION + 1 });
     expect(() => parseViewState(future)).toThrow();
-    expect(SCHEMA_VERSION).toBe(1); // the two numbers are separate facts, not one
+    expect(SCHEMA_VERSION).toBe(2); // the two numbers are separate facts, not one
   });
 
   it('classifies every field, and refuses one nobody classified', () => {

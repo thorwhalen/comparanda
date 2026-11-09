@@ -1,6 +1,6 @@
 {
   "id": "relocation",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "Where to live next",
   "subject": {
     "question": "Which city should we move to next year?",
@@ -498,6 +498,7 @@
       "assertions": [
         {
           "id": "a-rent-lis-ana",
+          "confidence": "medium",
           "authorId": "ana",
           "at": "2026-08-22T09:00:00Z",
           "evidence": [],
@@ -525,6 +526,7 @@
       "assertions": [
         {
           "id": "a-rent-ber-ana",
+          "confidence": "high",
           "authorId": "ana",
           "at": "2026-08-22T09:00:00Z",
           "evidence": [
@@ -619,6 +621,7 @@
       "assertions": [
         {
           "id": "a-rent-tai-ana",
+          "confidence": "low",
           "disclosure": {
             "label": "household-finances"
           },

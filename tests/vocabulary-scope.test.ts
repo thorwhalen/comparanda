@@ -36,7 +36,7 @@ const NO_FILING = {
 };
 
 const doc = (over: Record<string, unknown> = {}) => ({
-  id: 'a1', schemaVersion: 1, subject: { question: 'q' },
+  id: 'a1', schemaVersion: 2, subject: { question: 'q' },
   authors: [AUTHOR],
   alternatives: [{ id: 'alt-1', label: 'A' }],
   criteria: [

@@ -1,6 +1,6 @@
 {
   "id": "languages",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "Choosing a language for the ingest service",
   "subject": {
     "question": "Which language should the new ingest service be written in?",

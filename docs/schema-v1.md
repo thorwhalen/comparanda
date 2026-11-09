@@ -48,3 +48,9 @@ Two pulled-forward fields are exercised by tests rather than by the fixture, del
 - **#122**, the working-note correction sweep: docs only, it does not touch the schema, and its own text says to wait for rubricator's ADR renumbering.
 - **#143**, target criteria in `atLeastAsGood` and screening: analysis behaviour over existing fields; it changes no field.
 - **#119**, the first npm publish: the owner's call; the tag and release are the immutable location until then.
+
+## Version 2 (2026-11-09)
+
+Version 2 is the first bump under the freeze's own rules (#307, request 17): one additive field, **`Assertion.confidence`** (`high | medium | low`, optional, no default), and one registered no-op migration step, `from: 1`, which changes the version and nothing else. A version-1 document therefore reads as a version-2 document after `migrate`; `validateAnalysis` refuses an unmigrated one by version, as it always did. The artifacts are emitted as `schema/comparanda.v2.json` and `schema/vocabularies.v2.json` (the emitter names them by `SCHEMA_VERSION`), with `$id` the `schema-v2` tag; the `.v1.json` files stay in the repository as the frozen version-1 contract, no longer re-emitted. `tests/fixtures/languages.v1.json` is the version-1 document the migration tests run, captured at its version.
+
+The other additive requests queued for the next version ride version 2 rather than a version each: `Measurement.neutral` (#311) and the reject-reason codes (#315) add to the shape without a further bump while version 2 is the current version (a later document stays valid under an earlier build's reader only by migrating, which is a no-op); the step description says what version 2 holds.

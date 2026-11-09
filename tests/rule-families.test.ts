@@ -29,7 +29,7 @@ const CRITERION = {
 
 const doc = (cells: unknown[], extra: Record<string, unknown> = {}) => ({
   id: 'a1',
-  schemaVersion: 1,
+  schemaVersion: 2,
   subject: { question: 'which one?' },
   authors: [AUTHOR],
   alternatives: [{ id: 'alt-1', label: 'A' }, { id: 'alt-2', label: 'B' }],
@@ -211,7 +211,7 @@ describe('every problem is classified', () => {
     // "duplicate declaration" would then have silently also silenced "unknown
     // alternative", which is the opposite of what a stable id is for.
     const r = validateAnalysis({
-      id: 'a', schemaVersion: 1, subject: { question: 'q' },
+      id: 'a', schemaVersion: 2, subject: { question: 'q' },
       authors: [AUTHOR], alternatives: [], criteria: [],
       cells: [{ alternativeId: 'ghost', criterionId: 'ghost', measure: 'score', assertions: [] }],
       missingCodes: [{ id: 'withheld', broader: 'withheld', means: 'x' }],

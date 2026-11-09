@@ -2,10 +2,12 @@
  * The migration harness, run for real.
  *
  * ADR-0006 and #54: "a deliberately-added version 2 in a test migrates a
- * version 1 fixture and back-reports the chain". The package is at version 1,
- * and the real chain refuses a step that would produce a version beyond the
- * current one -- so the test builds a chain towards version 2 (and 3) with
- * `createMigrationChain`, which is the same code with a different target.
+ * version 1 fixture and back-reports the chain". The real chain refuses a step
+ * that would produce a version beyond the current one -- so the hypothetical
+ * steps run on a chain built with `createMigrationChain`, which is the same code
+ * with a different target. The version-1 fixture is a copy captured at version 1
+ * (`tests/fixtures/languages.v1.json`), never the current example regenerated,
+ * which would prove only that the current code agrees with itself.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -20,7 +22,10 @@ import { viewStateMigrations, VIEW_STATE_VERSION } from '../src/core/view-state.
 import { SCHEMA_VERSION, validateAnalysis } from '../src/core/schema/analysis.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
+const here = dirname(fileURLToPath(import.meta.url));
 const languagesV1 = (): VersionedDocument =>
+  JSON.parse(readFileSync(join(here, 'fixtures', 'languages.v1.json'), 'utf8'));
+const languagesCurrent = (): VersionedDocument =>
   JSON.parse(readFileSync(join(examples, 'languages.json'), 'utf8'));
 
 /**
@@ -117,8 +122,18 @@ describe('refusals', () => {
 describe('the package chain, towards SCHEMA_VERSION', () => {
   afterEach(() => _clearMigrations());
 
+  it('migrates the version-1 fixture to the current version, reports the shipped step, and validates', () => {
+    const r = migrate(languagesV1());
+    expect(r.path).toEqual([1, SCHEMA_VERSION]);
+    expect(r.applied).toEqual(DOCUMENT_MIGRATIONS.map((m) => m.describes));
+    // The additive step changes the version and nothing else.
+    expect(r.document).toEqual({ ...languagesV1(), schemaVersion: SCHEMA_VERSION });
+    expect(r.document).toEqual(languagesCurrent());
+    expect(validateAnalysis(r.document).ok).toBe(true);
+  });
+
   it('leaves a current document alone and reports an empty chain', () => {
-    const doc = languagesV1();
+    const doc = languagesCurrent();
     expect(doc.schemaVersion).toBe(SCHEMA_VERSION);
     expect(needsMigration(doc)).toBe(false);
     const r = migrate(doc);
@@ -135,7 +150,7 @@ describe('the package chain, towards SCHEMA_VERSION', () => {
   it('refuses a step past SCHEMA_VERSION, so a test cannot quietly extend the real chain', () => {
     expect(() => registerMigration({ ...v1ToV2, from: SCHEMA_VERSION }))
       .toThrow(/bump SCHEMA_VERSION first/);
-    expect(registeredMigrations()).toEqual([]);
+    expect(registeredMigrations()).toEqual([...DOCUMENT_MIGRATIONS]);
   });
 
   it('keeps separate chains separate', () => {
@@ -143,8 +158,8 @@ describe('the package chain, towards SCHEMA_VERSION', () => {
     // for it shares nothing with this one.
     const other = createMigrationChain({ currentVersion: 2 });
     other.register(v1ToV2);
-    expect(registeredMigrations()).toEqual([]);
-    expect(needsMigration(languagesV1())).toBe(false);
+    expect(registeredMigrations()).toEqual([...DOCUMENT_MIGRATIONS]);
+    expect(needsMigration(languagesCurrent())).toBe(false);
   });
 });
 
@@ -196,6 +211,6 @@ describe('view state migrates independently of the document (#54)', () => {
     expect(viewStateMigrations.migrate(vs).path).toEqual([VIEW_STATE_VERSION]);
 
     expect(() => viewStateMigrations.migrate({ schemaVersion: VIEW_STATE_VERSION + 1 })).toThrow(/reads up to/);
-    expect(migrate(languagesV1()).path).toEqual([SCHEMA_VERSION]);
+    expect(migrate(languagesCurrent()).path).toEqual([SCHEMA_VERSION]);
   });
 });

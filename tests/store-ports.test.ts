@@ -329,7 +329,7 @@ describe('subscribe: the analysis source is load-and-subscribe (ADR-0013, ADR-00
     guarded.subscribe!((e) => heard.push(e));
     await expect(frozen.update(a.id, { title: 'x' })).rejects.toThrow(/read-only/);
     // A schema version the write path refuses (revisionProblems).
-    await expect(guarded.update(a.id, { schemaVersion: 2 } as never)).rejects.toThrow(/refused/);
+    await expect(guarded.update(a.id, { schemaVersion: 3 } as never)).rejects.toThrow(/refused/);
     expect(heard).toEqual([]);
   });
 

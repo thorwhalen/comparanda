@@ -38,7 +38,7 @@ import { Rendition, validateEvidence, type EvidenceRuleId } from './evidence.js'
  * harness retrofitted after the first breaking change has to reconstruct what
  * the old shape was from memory.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** The question being decided. One per analysis. */
 export const Subject = z.strictObject({
@@ -209,6 +209,8 @@ export const RULE_SOURCES = Object.freeze({
   // Multi-rater cells.
   'cells-unique': 'ADR-0011',
   'independence-recorded': 'ADR-0022',
+  // Confidence has one home per (alternative, criterion): the assertion field or a `confidence` measure (request 17).
+  'confidence-one-home': 'ADR-0003',
   'supersession-resolves': 'ADR-0011',
   'supersession-acyclic': 'ADR-0011',
   // A stored value the measurement does not admit: the affordance layer
@@ -556,6 +558,10 @@ export function validateAnalysis(
     }
   });
 
+  // Where an analysis scores `confidence` as a measure, the assertion field would be a second home for it (request 17).
+  const homeOf = (c: { alternativeId: string; criterionId: string }) => `${c.alternativeId}\u0000${c.criterionId}`;
+  const confidenceMeasured = new Set(a.cells.filter((c) => c.measure === 'confidence').map(homeOf));
+
   a.cells.forEach((cell, i) => {
     const at = `cells[${i}]`;
     if (!altIds.has(cell.alternativeId)) {
@@ -582,6 +588,14 @@ export function validateAnalysis(
           `unknown author "${as.authorId}". An assertion nobody is named for cannot be weighed, ` +
             'and an agreement statistic over it cannot know how many heads produced it.',
           'add the author to `authors`, or attribute the assertion to an existing one.',
+        );
+      }
+      if (as.confidence !== undefined && confidenceMeasured.has(homeOf(cell))) {
+        err(
+          'confidence-one-home', `${atA}.confidence`,
+          `this assertion carries a confidence and "${cell.alternativeId}" x "${cell.criterionId}" also scores a "confidence" measure: ` +
+            'two homes for one quantity, and neither would win',
+          'keep the assertion field (evidence quality) or the measure (a quantity this analysis scores), not both for the same alternative and criterion.',
         );
       }
       const hasValue = as.value !== undefined;

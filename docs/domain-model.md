@@ -60,6 +60,15 @@ The originating sketch described a third axis called "metric", with `score`, `co
 Collapsing them into one axis would mean the schema has to store a value for a thing that is
 computed, and the view has to special-case one member of an otherwise uniform dimension.
 
+### `confidence`, the measure, and `Assertion.confidence`, the field (request 17, #307)
+
+Two things carry the word, and they are not the same quantity.
+
+- **`Assertion.confidence`** (`high | medium | low`, optional, no default) is the **evidence quality of one assertion**: how well its cited source supports it. It is a closed ordinal, never a number, never called `certainty` (that word is for evaluation runs and does not appear in a delivered analysis), and absent means none recorded. Its glosses are the field's schema description.
+- **A measure named `confidence`** is a quantity an analysis may choose to *score*: its own declaration, scale, assertions, authors and missingness, one cell per alternative and criterion.
+
+Both exist, and the schema keeps them from becoming two homes for one thing: for a given (alternative, criterion), an analysis uses the field **or** the measure, and `validateAnalysis` refuses an assertion carrying the field where that pair also scores a `confidence` measure (rule `confidence-one-home`). Neither wins; the document is asked to choose, because a reader who found both could not say which one a view or an agreement statistic should read. The field is the default for an agent that records how well it could cite; the measure remains for an analysis whose raters score confidence as a criterion of its own.
+
 So the model is:
 
 - **Measures** are a real dimension of the data. The matrix is a tensor of shape

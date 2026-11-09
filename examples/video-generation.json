@@ -1,6 +1,6 @@
 {
   "id": "video-generation",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "AI video generation, on published capability and stated policy",
   "subject": {
     "question": "Which AI video generation product fits a team that needs an API, commercial rights, and a clear position on customer data?",

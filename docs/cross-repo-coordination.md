@@ -670,7 +670,7 @@ filed as a batch rather than discovered during implementation.
 | 14 | `Criterion.missingCodes` overlay; the `MissingnessVocabulary` facade | no — analysis scope works in v1 |
 | 15 | `validateAnalysis` takes injected rule families; `ValidationProblem` gains `family`, `fix`, `ruleId` | yes |
 | 16 | `Suggestion.proposed` typed as a partial `Assertion` — it is `z.unknown()` today, so no honesty rule can reach suggestion mode | no — before suggestions ship |
-| 17 | `Assertion.confidence`: optional, a closed ordinal enum `high \| medium \| low` carrying the evidence-quality glosses as its description; never numeric, never named or modelled as `certainty` | no — additive, optional, so v1 documents stay valid |
+| 17 | `Assertion.confidence`: optional, a closed ordinal enum `high \| medium \| low` carrying the evidence-quality glosses as its description; never numeric, never named or modelled as `certainty` | no — additive and optional; a v1 document reaches v2 by a registered no-op step |
 | 18 | `Measurement.neutral`: optional `ScalarValue`, one of `levels` or inside `range`, ordinal only, so the detail panel's diverging bar can be centred on a declared neutral (ADR-0010) | no — additive, queued for the next schema version |
 | 19 | `rejectedCriteria[].reasonCode` carries the five codes of the companion's ADR-0016 (`merged-into`, `means-objective`, `not-controllable`, `no-discrimination-expected`, `user-rejected`) | no — additive; the companion stores `other` with the code prefixed on `reason` meanwhile |
 
@@ -685,8 +685,7 @@ proper-scoring-rule computation that ADR-0012 exists to prevent. It is optional 
 because absent means "none recorded" and a default level would be a claim nobody made. The
 shipped schema can already store `confidence` as a *measure*; the mirror issue
 ([#307](https://github.com/thorwhalen/comparanda/issues/307), key `request-assertion-confidence`)
-carries the question of how the field and the measure relate. Disposition: `accept-later` (v1 is frozen; the migration cost is one additive, no-op step), pending
-that issue.
+carries the question of how the field and the measure relate. Disposition: `accept-v2`, **landed 2026-11-09** ([#307](https://github.com/thorwhalen/comparanda/issues/307)): `SCHEMA_VERSION` is 2, with a registered no-op step from 1. The field and the measure are kept apart by one rule: for a given (alternative, criterion) an analysis uses the field or a `confidence` measure, and `validateAnalysis` refuses both (`confidence-one-home`); see `docs/domain-model.md`. The artifact is now `schema/comparanda.v2.json`.
 
 **On request 18.** Decided in #184 (2026-10-30): schema v1 is not bumped for the neutral level alone. It is queued for the next schema version, as an additive optional field with a no-op migration step, mirrored by [#311](https://github.com/thorwhalen/comparanda/issues/311) (key `request-measurement-neutral`). `target` is not a neutral and a range midpoint is the undeclared midpoint ADR-0010 forbids, so the panel keeps drawing an uncentred bar, and says so, until a measurement declares one. Disposition: `accept-later`.
 

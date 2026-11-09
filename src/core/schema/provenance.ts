@@ -161,6 +161,32 @@ export const Independence = z.enum([
 export type Independence = z.infer<typeof Independence>;
 
 /**
+ * How well the cited source supports an assertion: **evidence quality**, a judgement about the support, and not how
+ * sure the author or a model is (request 17, rubricator ADR-0012: the two uncertainties stay apart, and
+ * `certainty` is a word for evaluation runs that never appears in a delivered analysis).
+ *
+ * A closed three-level **ordinal**, never a number: a number invites a proper-scoring-rule computation over what is
+ * a judgement of evidence. The glosses travel with the field as its schema `description`, so a producer in another
+ * language reads the definition beside the values.
+ *
+ * Ordered by `CONFIDENCE_LEVELS`, lowest first. Where it sits relative to a *measure* named `confidence` is in
+ * `docs/domain-model.md` (the field describes the evidence for one assertion; the measure is a quantity the
+ * analysis scores), and `validateAnalysis` flags an assertion that carries both (`confidence-field-or-measure`).
+ */
+export const CONFIDENCE_LEVELS = Object.freeze(['low', 'medium', 'high'] as const);
+export const CONFIDENCE_GLOSSES: Readonly<Record<(typeof CONFIDENCE_LEVELS)[number], string>> = Object.freeze({
+  high: 'directly supported by the cited source.',
+  medium: 'inferred from adjacent evidence.',
+  low: 'plausible reasoning with little support.',
+});
+export const Confidence = z.enum(CONFIDENCE_LEVELS).check(z.describe(
+  'Evidence quality of this assertion, not certainty. Ordinal, lowest first: '
+  + CONFIDENCE_LEVELS.map((l) => `${l}: ${CONFIDENCE_GLOSSES[l]}`).join(' ')
+  + ' Absent means no confidence was recorded, never a level.',
+));
+export type Confidence = z.infer<typeof Confidence>;
+
+/**
  * Whether an assertion at this rung may enter an inter-rater agreement statistic.
  *
  * Takes `undefined` because the field is optional and absent means *unknown
