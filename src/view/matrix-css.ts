@@ -91,11 +91,30 @@ export function stripCss({ bracketBelow, hiddenBelow }: { bracketBelow: number; 
 }`;
 }
 
+/**
+ * The matrix stylesheet. Its explanations live here, not in the CSS: a comment inside
+ * the template literal ships in the standalone page (ADR-0017 clause 8), a comment out here does not.
+ * In source order:
+ * - Focus scrolls clear of the sticky chrome (SC 2.4.11): the extents are measured by mount (sticky.ts).
+ * - No width here; forced colors and print give it one. The style is the terminal channel, set below.
+ * - The terminal channel (ADR-0028 amendment), read from the code's own flag: an absence that is not terminal (`not-assessed`, `deferred`, their extensions, an undeclared code, a structural code declared open) has the gap's dashed shape; an answered one, the answer's solid frame. A structural, terminal absence has no frame: it reads as ground, not as a placeholder.
+ * - Focused, the gap keeps its dashed shape: the ring takes the focus colour, not a solid line.
+ * - The answer's frame outranks the plain ring on specificity; focused, it is the ring.
+ * - An encoding's swatch paints the cell and sets the ink measured against it. Same specificity as the td[data-state] rules that mute an empty cell's ink, and later: keep it after them.
+ * - On a fill, the focus ring takes the ink, which clears 4.5:1 there; the focus colour does not on every step.
+ * - The strip: its box is a container (so the cell's width picks the form), as wide as one slot per level at rest.
+ * - The detail panel (#94): beside the matrix when there is room, under it when not; never over it.
+ * - Held in grab mode: a shape, not only a colour -- a thick dashed frame.
+ * - Where a pointer drop would land: a thick rule on that side, drawn as a border so forced colors keeps it.
+ * - A sticky header is its own stacking context, so the menu's z-index counts only inside it: lift the header holding an open menu above its siblings, or the next rows' headers paint over the menu.
+ * - Width and colour only: the style is each cell's terminal channel (ADR-0028 amendment).
+ * - The one exemption: the legend's samples, whose only job is to show the palette.
+ * - Backgrounds off, whatever the printer does: the cells' fills go, their ink returns to the page's.
+ */
 export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
 .comparanda-matrix { color: var(--cmp-ink); background: var(--cmp-surface); }
 .comparanda-matrix .comparanda-scroll {
   overflow: auto; max-height: var(--comparanda-max-height, 80vh); position: relative;
-  /* Focus scrolls clear of the sticky chrome (SC 2.4.11): the extents are measured by mount (sticky.ts). */
   scroll-padding-block-start: var(--cmp-sticky-block, 0px);
   scroll-padding-inline-start: var(--cmp-sticky-inline, 0px);
 }
@@ -116,7 +135,6 @@ export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
   padding: 0.35em 0.6em; line-height: 1.4; text-align: start; vertical-align: top;
   background: var(--cmp-surface); color: var(--cmp-ink);
   box-shadow: inset -1px -1px 0 var(--cmp-rule);
-  /* No width here; forced colors and print give it one. The style is the terminal channel, set below. */
   border: 0 solid transparent;
 }
 .comparanda-matrix th { background: var(--cmp-header); font-weight: 600; }
@@ -131,20 +149,11 @@ export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
 .comparanda-matrix td[data-state="refused"],
 .comparanda-matrix td[data-state="not-applicable"],
 .comparanda-matrix td[data-state="not-assessed"] { color: var(--cmp-muted); font-style: italic; }
-/* The terminal channel (ADR-0028 amendment), read from the code's own flag: an absence that is not terminal
-   (\`not-assessed\`, \`deferred\`, their extensions, an undeclared code, a structural code declared open) has
-   the gap's dashed shape; an answered one, the answer's solid frame. A structural, terminal absence has no
-   frame: it reads as ground, not as a placeholder. */
 .comparanda-matrix td[data-terminal="false"] { outline: 1px dashed var(--cmp-muted); outline-offset: -4px; border-style: dashed; }
 .comparanda-matrix td[data-terminal="true"]:not([data-absence="structural"]) { outline: 1px solid var(--cmp-muted); outline-offset: -4px; }
-/* Focused, the gap keeps its dashed shape: the ring takes the focus colour, not a solid line. */
 .comparanda-matrix td[data-terminal="false"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
-/* The answer's frame outranks the plain ring on specificity; focused, it is the ring. */
 .comparanda-matrix td[data-terminal="true"]:focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: -2px; }
-/* An encoding's swatch paints the cell and sets the ink measured against it. Same specificity as the
-   td[data-state] rules that mute an empty cell's ink, and later: keep it after them. */
 ${paletteRules(PALETTE, '.comparanda-matrix')}
-/* On a fill, the focus ring takes the ink, which clears 4.5:1 there; the focus colour does not on every step. */
 .comparanda-matrix td[data-swatch]:focus-visible { outline-color: currentColor; }
 .comparanda-matrix td[data-swatch] { font-style: normal; }
 .comparanda-matrix .comparanda-badge { margin-inline-start: 0.4em; font-weight: 700; }
@@ -152,7 +161,6 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   display: inline-block; width: 0.9em; height: 0.9em; vertical-align: -0.1em; overflow: hidden;
 }
 .comparanda-matrix td .comparanda-glyph { margin-inline-end: 0.35em; }
-/* The strip: its box is a container (so the cell's width picks the form), as wide as one slot per level at rest. */
 .comparanda-matrix .comparanda-strip-box { display: block; container-type: inline-size; inline-size: calc(var(--k) * 0.8em); max-inline-size: 100%; margin-block-start: 0.15em; }
 .comparanda-matrix .comparanda-strip-dots, .comparanda-matrix .comparanda-strip-bracket { display: block; inline-size: 100%; block-size: auto; }
 .comparanda-matrix .comparanda-strip-bracket { display: none; }
@@ -178,7 +186,6 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 }
 .comparanda-matrix .comparanda-body { display: flex; flex-wrap: wrap; gap: 0.75em; align-items: flex-start; }
 .comparanda-matrix .comparanda-body > .comparanda-scroll { flex: 1 1 28em; min-width: 0; }
-/* The detail panel (#94): beside the matrix when there is room, under it when not; never over it. */
 .comparanda-matrix .comparanda-panel {
   flex: 0 1 24em; min-width: min(100%, 16em); max-height: var(--comparanda-max-height, 80vh); overflow: auto;
   padding: 0.5em 0.75em; box-shadow: inset 0 0 0 1px var(--cmp-rule); border: 0 solid transparent;
@@ -242,9 +249,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 }
 .comparanda-matrix .comparanda-handle:hover, .comparanda-matrix .comparanda-handle[aria-expanded="true"] { color: var(--cmp-ink); }
 .comparanda-matrix .comparanda-handle[data-dragging] { cursor: grabbing; }
-/* Held in grab mode: a shape, not only a colour -- a thick dashed frame. */
 .comparanda-matrix th[data-grabbed] { outline: 3px dashed var(--cmp-focus); outline-offset: -3px; }
-/* Where a pointer drop would land: a thick rule on that side, drawn as a border so forced colors keeps it. */
 .comparanda-matrix th[data-drop="before"][scope="col"] { border-inline-start-width: 4px; border-color: var(--cmp-focus); }
 .comparanda-matrix th[data-drop="after"][scope="col"] { border-inline-end-width: 4px; border-color: var(--cmp-focus); }
 .comparanda-matrix th[data-drop="before"][scope="row"] { border-top-width: 4px; border-color: var(--cmp-focus); }
@@ -254,10 +259,6 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   min-width: 12em; max-height: 18em; overflow: auto; font-weight: 400; white-space: nowrap;
   background: var(--cmp-surface); color: var(--cmp-ink); border: 1px solid var(--cmp-muted);
 }
-/*
- * A sticky header is its own stacking context, so the menu's z-index counts only inside it: lift the
- * header holding an open menu above its siblings, or the next rows' headers paint over the menu.
- */
 .comparanda-matrix thead th[data-menu-open], .comparanda-matrix tbody th[data-menu-open] { z-index: 5; }
 .comparanda-matrix .comparanda-menu [role="menuitem"] { padding: 0.15em 0.6em; cursor: pointer; }
 .comparanda-matrix .comparanda-menu [role="menuitem"]:focus { outline: 2px solid var(--cmp-focus); outline-offset: -2px; }
@@ -270,10 +271,8 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 }
 .comparanda-matrix .comparanda-arrange button:focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
 @media (forced-colors: active) {
-  /* Width and colour only: the style is each cell's terminal channel (ADR-0028 amendment). */
   .comparanda-matrix th, .comparanda-matrix td { box-shadow: none; border-width: 1px; border-color: CanvasText; }
   .comparanda-matrix thead tr.comparanda-band + tr th { top: calc(2.1em + 2px); }
-  /* The one exemption: the legend's samples, whose only job is to show the palette. */
   .comparanda-matrix .comparanda-swatch { forced-color-adjust: none; }
   .comparanda-matrix .comparanda-forced-only { display: block; }
   .comparanda-matrix .comparanda-panel, .comparanda-matrix .comparanda-bar span { border-width: 1px; border-color: CanvasText; }
@@ -282,7 +281,6 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 @media print {${themed(tokens('light'), tokens('light'))}
   .comparanda-matrix .comparanda-scroll { overflow: visible; max-height: none; }
   .comparanda-matrix thead th, .comparanda-matrix tbody th { position: static; }
-  /* Backgrounds off, whatever the printer does: the cells' fills go, their ink returns to the page's. */
   .comparanda-matrix th, .comparanda-matrix :is(td, tr.comparanda-band th) {
     background: none; box-shadow: none; border-width: 1px; border-color: var(--cmp-muted);
   }
