@@ -24,7 +24,7 @@
  * the finished file is then checked for what the projection removed (`withheld.ts`, #183).
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -206,7 +206,10 @@ async function bundleShell(entry: string): Promise<{ shell: string; codeBytes: n
       }
     },
   };
-  const root = await mkdtemp(join(tmpdir(), 'comparanda-build-'));
+  // The real path: on macOS tmpdir() is /var/folders/..., a symlink to /private/var/folders/...,
+  // and Vite names the HTML entry relative to a root it resolves through the link (it then climbs
+  // out with `../`, which it refuses). Handing it the resolved directory keeps the name `index.html`.
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'comparanda-build-')));
   try {
     await writeFile(join(root, 'main.js'), `import ${JSON.stringify(pathToFileURL(entry).href)};\n`);
     await writeFile(join(root, 'index.html'), TEMPLATE);
