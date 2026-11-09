@@ -13,7 +13,8 @@ import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, transpose, type ViewState } from '../../src/core/view-state.js';
 import type { SavedView } from '../../src/core/saved-views.js';
 import {
-  anonymousIdentity, createInMemoryProvider, emptyReadOnlyProvider, localSavedViews, savedViewStore, type DataProvider,
+  anonymousIdentity, createInMemoryProvider, emptyReadOnlyProvider, localSavedViews, markVersioned, memoryCollection, savedViewStore,
+  versionedCollection, type DataProvider, type VersionedCollection,
 } from '../../src/store/index.js';
 import { mountMatrix, type MatrixHandle } from '../../src/view/index.js';
 import relocationJson from '../../examples/relocation.json';
@@ -249,6 +250,33 @@ describe('the saved-views panel', () => {
     await settled(() => /Not deleted/.test(said() ?? ''));
     expect(document.activeElement?.textContent).toBe('Delete');
     expect(entry('Cost first')).toBeDefined();
+  });
+
+  it('says a lost race in words, writes nothing, and shows what the other reader saved (#290)', async () => {
+    const inner = versionedCollection(memoryCollection<SavedView>(), { describe: (v) => (v ? `the view "${v.name}"` : 'this view') });
+    /** Another reader's client, whose write lands between this panel's read and its write, once. */
+    let other: ReturnType<typeof savedViewStore> | undefined;
+    let raced = false;
+    const shared: VersionedCollection<SavedView> = markVersioned({
+      ...inner,
+      updateIfVersion: async (id, data, version) => {
+        if (!raced) { raced = true; await other!.rename(id, 'The argument, revised', { by: 'ben', at: ana.at }); }
+        return inner.updateIfVersion(id, data, version);
+      },
+    });
+    const store = savedViewStore({ shared });
+    other = savedViewStore({ shared });
+    await store.create(initialViewState(relocation), { analysisId: relocation.id, name: 'The argument', mode: 'shared', ...ana });
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', savedViews: { store } });
+    await settled(() => entry('The argument'));
+    button(entry('The argument')!, 'Lock').focus();
+    await userEvent.keyboard('{Enter}');
+    await settled(() => /Not locked/.test(said() ?? ''));
+    expect(said()).toMatch(/^Not locked: conflict: someone else changed the view "The argument, revised" while you were editing .*Nothing was written/);
+    // The list is read again: the other reader's name, and no lock.
+    await settled(() => entry('The argument, revised'));
+    expect(entry('The argument, revised')!.getAttribute('data-mode')).toBe('shared');
+    expect(button(entry('The argument, revised')!, 'Lock').hasAttribute('aria-disabled')).toBe(false);
   });
 
   it('refuses a malformed savedViews prop, naming it', () => {
