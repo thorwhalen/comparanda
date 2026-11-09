@@ -104,8 +104,9 @@ export function stripCss({ bracketBelow, hiddenBelow }: { bracketBelow: number; 
 /**
  * The matrix stylesheet. Its explanations live here, not in the CSS: a comment inside
  * the template literal ships in the standalone page (ADR-0017 clause 8), a comment out here does not.
- * For the same reason `&` stands for the scope, `.comparanda-matrix`, as it would in CSS nesting: the
- * page carries the scope once, not once per rule, and the stylesheet built is the same (#208).
+ * For the same reason `& ` stands for the scope, `.comparanda-matrix `, as it would in CSS nesting: the
+ * page carries the scope once, not once per rule, and the stylesheet built is the same (#208). Only an `&`
+ * that starts a selector -- a line's first, or after `, ` -- is expanded; `tests/channels.test.ts` fails on any other.
  * In source order:
  * - Focus scrolls clear of the sticky chrome (SC 2.4.11): the extents are measured by mount (sticky.ts).
  * - No width here; forced colors and print give it one. The style is the terminal channel, set below.
@@ -165,7 +166,7 @@ export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
 & td[data-terminal="true"]:not([data-absence="structural"]) { outline: 1px solid var(--cmp-muted); outline-offset: -4px; }
 & td[data-terminal="false"]:focus-visible { outline: 2px dashed var(--cmp-focus); }
 & td[data-terminal="true"]:focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: -2px; }
-${paletteRules(PALETTE, '&')}
+${paletteRules(PALETTE, '.comparanda-matrix')}
 & td[data-swatch]:focus-visible { outline-color: currentColor; }
 & td[data-swatch] { font-style: normal; }
 & .comparanda-badge { margin-inline-start: 0.4em; font-weight: 700; }
@@ -302,4 +303,4 @@ ${paletteRules(PALETTE, '&')}
   & .comparanda-swatch { print-color-adjust: exact; -webkit-print-color-adjust: exact; outline: 1px solid var(--cmp-ink); }
   & .comparanda-print-only { display: block; }
 }
-`.replace(/&/g, '.comparanda-matrix');
+`.replace(/^(\s*)& |, & /gm, (m) => m.replace('&', '.comparanda-matrix'));

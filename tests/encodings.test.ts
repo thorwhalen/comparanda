@@ -147,7 +147,7 @@ describe('value', () => {
   it('says its step in words, toward each criterion\'s preferred end, so the step is not told by colour alone (#208)', () => {
     const ctx = contextOf(relocation);
     const p = prepared(value, ctx);
-    const words = ['worst fifth', 'second fifth', 'middle fifth', 'fourth fifth', 'best fifth'];
+    const words = ['worst step', 'second step', 'middle step', 'fourth step', 'best step'];
     const down = new Set(['rent', 'flight-hours']);
     let marked = 0;
     for (const [alt, crit] of cells(ctx)) {
@@ -164,7 +164,7 @@ describe('value', () => {
     // The cheapest rent is heard as the best, and why: on rent, lower is better.
     const rents = ctx.alternatives.filter((alt) => typeof ctx.read(alt, 'rent')?.value === 'number')
       .sort((x, y) => (ctx.read(x, 'rent')!.value as number) - (ctx.read(y, 'rent')!.value as number));
-    expect(p.mark(rents[0]!, 'rent').said).toBe(', best fifth for this criterion, where lower is better');
+    expect(p.mark(rents[0]!, 'rent').said).toBe(', best step for this criterion, where lower is better');
   });
 
   it('a 1-5 rating spans the ramp end to end', () => {

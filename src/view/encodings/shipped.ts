@@ -16,7 +16,7 @@ import { isOrdered, type Measurement } from '../../core/schema/measurement.js';
 import { measurementFor } from '../../core/schema/structure.js';
 import { stripDisagreement, stripLevels, type RaterStrip } from '../../core/rater-strip.js';
 import type { ScalarValue } from '../../core/schema/values.js';
-import type { Swatch, SwatchId } from './palette.js';
+import { DERIVED_SWATCHES, type Swatch, type SwatchId } from './palette.js';
 import { VSUP_PALETTE } from './vsup-palette.js';
 import { capitalise } from '../words.js';
 import { layerFor, mergeTree, nodeOf, SCORE_LEVELS, vsupSwatchId, type LevelGroup, type MergeTree, type VsupSwatchId } from './vsup.js';
@@ -57,6 +57,8 @@ export const value = /* @__PURE__ */ defineEncoding({
     }
     const counts = new Map<SwatchId, number>();
     const word = ['Worst fifth', 'Second fifth', 'Middle fifth', 'Fourth fifth', 'Best fifth'];
+    // Said per cell as a step of the five-step ramp, not a fifth: a three-level scale lands on steps 1, 3 and 5.
+    const said = ['worst', 'second', 'middle', 'fourth', 'best'];
     const mark = (alt: string, crit: string): CellMark => {
       const m = placed.get(crit);
       const v = ctx.read(alt, crit)?.value;
@@ -66,9 +68,9 @@ export const value = /* @__PURE__ */ defineEncoding({
       const swatch = STEPS[step]!;
       counts.set(swatch, (counts.get(swatch) ?? 0) + 1);
       // The step in words, so it is not told by colour alone (#208). "Best" is toward the criterion's
-      // preferred end, so a decreasing one says so: its best fifth holds its lowest values.
+      // preferred end, so a decreasing one says so: its best step holds its lowest values.
       const lower = m!.preference === 'decreasing' ? ', where lower is better' : '';
-      return { swatch, said: `, ${word[step]!.toLowerCase()} for this criterion${lower}` };
+      return { swatch, said: `, ${said[step]} step for this criterion${lower}` };
     };
     for (const alt of ctx.alternatives) for (const crit of ctx.criteria) mark(alt, crit);
     return {
@@ -396,7 +398,8 @@ function suppressedBy(ctx: EncodingContext, spec: SuppressionSpec): PreparedEnco
       };
     }
     const palette: Record<string, Swatch> = {};
-    for (const { swatch } of used.values()) palette[swatch] = VSUP_PALETTE[swatch]!;
+    // Each entry is entered as the shipped one, so the matrix takes these `vsup-` ids and no one else's (#208).
+    for (const { swatch } of used.values()) DERIVED_SWATCHES.add(palette[swatch] = VSUP_PALETTE[swatch]!);
     // Most confident first (on one scale across columns), then worst to best: the rows of the wedge.
     const confident = (u: { column: SuppressedColumn; layer: number }) => u.layer / (u.column.tree.confidenceLevels - 1);
     const lines = [...used.values()].sort((a, b) => (confident(b) - confident(a)) || (a.node - b.node));

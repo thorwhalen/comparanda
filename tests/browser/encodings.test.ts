@@ -169,6 +169,39 @@ describe('an encoding\'s own palette', () => {
     });
   }
 
+  it('a palette whose getter answers the check legibly and the page otherwise is drawn as checked (#208)', () => {
+    let reads = 0;
+    // The first read is legible; every later one is grey on white, with a rule smuggled in after it.
+    const tricky = {
+      get 'mine-1'() {
+        reads += 1;
+        return reads === 1 ? legible : { light: ['#ffffff', '#777777; } td { color: transparent'], dark: legible.dark };
+      },
+    };
+    const own = defineEncoding({
+      id: 'own-palette', label: 'Own palette', texture: { channel: 'none', because: 'a test.' },
+      prepare: () => ({ legend: { title: 'Own', entries: [], notes: [] }, mark: () => ({ swatch: 'mine-1' }), palette: tricky as never }),
+    });
+    mount({ analysis: relocation, measure: 'score', encoding: 'own-palette' }, createEncodingRegistry([...SHIPPED_ENCODINGS, own]));
+    expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-encoding')).toBe('own-palette');
+    const sheet = Array.from(el.querySelectorAll('.comparanda-matrix style')).map((s) => s.textContent!).find((t) => t.includes('mine-1'))!;
+    expect(sheet).toContain('--cmp-sw-mine-1-ink: #1b1d21');
+    expect(sheet).not.toMatch(/#777777|td \{ color: transparent/);
+    expect(getComputedStyle(painted()[0]!).color).toBe('rgb(27, 29, 33)');
+  });
+
+  it('a hatch drawn under a third party\'s palette is stroked in its checked ink, so it is held too (#208)', () => {
+    const own = defineEncoding({
+      id: 'own-palette', label: 'Own palette', texture: { channel: 'hatch', carries: 'confidence', levels: 3 },
+      prepare: () => ({ legend: { title: 'Own', entries: [], notes: [] }, mark: () => ({ swatch: 'mine-1', hatch: 3 }), palette: { 'mine-1': legible } }),
+    });
+    mount({ analysis: relocation, measure: 'score', encoding: 'own-palette' }, createEncodingRegistry([...SHIPPED_ENCODINGS, own]));
+    const td = painted().find((n) => n.querySelector('.comparanda-hatch'))!;
+    const stroke = getComputedStyle(td.querySelector('.comparanda-hatch path, .comparanda-hatch line') ?? td.querySelector('.comparanda-hatch')!).stroke;
+    expect(stroke).toBe(getComputedStyle(td).color);
+    expect(contrast(stroke, getComputedStyle(td).backgroundColor)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('a legible palette of its own ids is drawn, its swatch ids plain strings with no cast (#208)', () => {
     const own = defineEncoding({
       id: 'own-palette', label: 'Own palette', texture: { channel: 'none', because: 'a test.' },
@@ -190,11 +223,11 @@ describe('the value encoding says its step (#208)', () => {
     mount({ analysis: relocation, measure: 'score', encoding: 'value' });
     const heard = (td: HTMLElement) => Array.from(td.querySelectorAll('.comparanda-sr')).map((s) => s.textContent).join('');
     expect(painted().length).toBeGreaterThan(0);
-    for (const td of painted()) expect(heard(td), td.dataset['pair']).toMatch(/, (worst|second|middle|fourth|best) fifth for this criterion/);
+    for (const td of painted()) expect(heard(td), td.dataset['pair']).toMatch(/, (worst|second|middle|fourth|best) step for this criterion/);
     // Rent is decreasing: its darkest step is heard as the best, with the direction that makes it so.
     const best = painted().filter((td) => td.dataset['pair']!.endsWith('\u0000rent') && td.dataset['swatch'] === 'seq-5');
     expect(best.length).toBeGreaterThan(0);
-    for (const td of best) expect(heard(td)).toMatch(/best fifth for this criterion, where lower is better$/);
+    for (const td of best) expect(heard(td)).toMatch(/best step for this criterion, where lower is better$/);
   });
 });
 

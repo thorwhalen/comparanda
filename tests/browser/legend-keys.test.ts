@@ -47,4 +47,20 @@ describe('legend lines', () => {
     const samples = Array.from(el.querySelectorAll<HTMLElement>('.comparanda-legend li .comparanda-swatch')).map((s) => s.dataset['swatch']);
     expect(samples).toEqual(['seq-1', 'seq-5']);
   });
+
+  it('two lines that differ only by their badge are two lines, with no key collision', () => {
+    const badges = defineEncoding({
+      id: 'two-badges', label: 'Two badges', texture: { channel: 'none', because: 'a test.' },
+      prepare: () => ({
+        legend: { title: 'Badges', entries: [{ swatch: 'seq-3', badge: '+', label: 'Same words' }, { swatch: 'seq-3', badge: '-', label: 'Same words' }], notes: [] },
+        mark: () => ({}),
+      }),
+    });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', encoding: badges.id }, { encodings: createEncodingRegistry([...SHIPPED_ENCODINGS, badges]) });
+    handle.update({ encoding: 'text-only' });
+    handle.update({ encoding: badges.id });
+    expect(errors.mock.calls.map((c) => String(c[0])).filter((m) => /same key/.test(m))).toEqual([]);
+    expect(Array.from(el.querySelectorAll('.comparanda-legend li .comparanda-swatch')).map((s) => s.textContent)).toEqual(['+', '-']);
+  });
 });

@@ -56,10 +56,12 @@ export const PALETTE = /* @__PURE__ */ Object.freeze({
 } as const satisfies Record<string, Swatch>);
 
 /**
- * The derived palettes' entries, by identity (`vsup-palette.ts` enters its own).
- * A prepared palette may name a `vsup-` id only with one of these: the derived
- * stylesheet is page-wide, so another colour under that id would repaint it in
- * every matrix on the page (#208).
+ * The derived palettes' entries, by identity: the value-suppressing encodings
+ * enter each `VSUP_PALETTE` entry they hand the matrix, when they build their
+ * palette (no module registers anything at load, ADR-0010 clause 8). A prepared
+ * palette may name a `vsup-` id only with one of these: the derived stylesheet
+ * is page-wide, so another colour under that id would repaint it in every
+ * matrix on the page (#208).
  */
 export const DERIVED_SWATCHES: WeakSet<Swatch> = /* @__PURE__ */ new WeakSet();
 
