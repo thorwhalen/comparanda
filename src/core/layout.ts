@@ -159,6 +159,15 @@ export interface OmittedBlock {
 export function omittedBlocks(
   layout: MatrixLayout,
   omits: (alternativeId: string, criterionId: string) => InapplicableBlock | undefined,
+  {
+    declarationsOf,
+  }: {
+    /**
+     * Every declaration a cell is in (#323), for a matrix whose groups overlap: the block's pair and reason are then the
+     * declaration that covers every cell, and not the first each cell happens to match. Default: the one `omits` gives.
+     */
+    declarationsOf?: (alternativeId: string, criterionId: string) => readonly InapplicableBlock[];
+  } = {},
 ): OmittedBlock[] {
   const { rows, columns, transposed } = layout;
   if (!rows.bands || !columns.bands) return [];
@@ -169,19 +178,26 @@ export function omittedBlocks(
   const blocks: OmittedBlock[] = [];
   for (const r of spans(rows.bands)) {
     for (const c of spans(columns.bands)) {
-      const declared = r.band.entries.flatMap((re) => c.band.entries.map((ce) => (transposed ? omits(ce.id, re.id) : omits(re.id, ce.id))));
-      const declarations = declared.filter((d): d is InapplicableBlock => d !== undefined);
-      if (declarations.length < 2 || declarations.length !== declared.length) continue;
+      /** Each cell's declarations, empty when the cell shows anything of its own. */
+      const lists = r.band.entries.flatMap((re) => c.band.entries.map((ce) => {
+        const [alt, crit] = transposed ? [ce.id, re.id] : [re.id, ce.id];
+        const first = omits(alt, crit);
+        return first ? declarationsOf?.(alt, crit) ?? [first] : [];
+      }));
+      if (lists.length < 2 || lists.some((l) => l.length === 0)) continue;
+      const declarations = lists.map((l) => l[0]!);
       /** What every declaration says alike, by `key`; nothing when any two differ. */
       const shared = (key: (d: InapplicableBlock) => string | undefined) => {
         const said = new Set(declarations.map(key));
         return said.size === 1 ? [...said][0] : undefined;
       };
-      const { alternativeGroupId, criterionGroupId } = declarations[0]!;
-      const onePair = shared((d) => `${d.alternativeGroupId}\u0000${d.criterionGroupId}`) !== undefined;
+      // A declaration that covers the whole block, when overlapping declarations give one: the block is exactly it.
+      const covering = lists.reduce((common, l) => common.filter((d) => l.includes(d)))[0];
+      const { alternativeGroupId, criterionGroupId } = covering ?? declarations[0]!;
+      const onePair = covering !== undefined || shared((d) => `${d.alternativeGroupId}\u0000${d.criterionGroupId}`) !== undefined;
       blocks.push({
         rows: { first: r.first, last: r.last }, columns: { first: c.first, last: c.last }, rowBand: r.band, columnBand: c.band,
-        cells: declared.length, reason: shared((d) => d.reason),
+        cells: lists.length, reason: covering ? covering.reason : shared((d) => d.reason),
         pair: onePair ? [alternativeGroupId, criterionGroupId] : undefined,
       });
     }

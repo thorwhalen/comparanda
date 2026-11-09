@@ -211,12 +211,12 @@ export function makeInapplicability(a: Analysis): (alternativeId: string, criter
 }
 
 /**
- * The declared block a cell is inside, if any (the first, in declaration
- * order): what `makeInapplicability` asks, with the declaration and its
- * reason kept, for a view that says why (#93).
+ * Every declared block a cell is inside, in declaration order (#323): groups are tags, so declarations can overlap
+ * and a cell can be in several. The objects are the analysis's own, so one declaration is the same object wherever
+ * it is returned.
  */
-export function makeInapplicableBlocks(a: Analysis): (alternativeId: string, criterionId: string) => InapplicableBlock | undefined {
-  if (a.inapplicable.length === 0) return () => undefined;
+export function makeInapplicableDeclarations(a: Analysis): (alternativeId: string, criterionId: string) => readonly InapplicableBlock[] {
+  if (a.inapplicable.length === 0) return () => [];
   const alts = axisGroups(a, 'alternatives');
   const crits = axisGroups(a, 'criteria');
   const altCache = new Map<string, Set<string>>();
@@ -228,8 +228,18 @@ export function makeInapplicableBlocks(a: Analysis): (alternativeId: string, cri
   };
   return (alternativeId, criterionId) => {
     const ag = memo(altCache, alts, alternativeId);
-    if (ag.size === 0) return undefined;
+    if (ag.size === 0) return [];
     const cg = memo(critCache, crits, criterionId);
-    return a.inapplicable.find((b) => ag.has(b.alternativeGroupId) && cg.has(b.criterionGroupId));
+    return a.inapplicable.filter((b) => ag.has(b.alternativeGroupId) && cg.has(b.criterionGroupId));
   };
+}
+
+/**
+ * The declared block a cell is inside, if any (the first, in declaration
+ * order): what `makeInapplicability` asks, with the declaration and its
+ * reason kept, for a view that says why (#93).
+ */
+export function makeInapplicableBlocks(a: Analysis): (alternativeId: string, criterionId: string) => InapplicableBlock | undefined {
+  const declarations = makeInapplicableDeclarations(a);
+  return (alternativeId, criterionId) => declarations(alternativeId, criterionId)[0];
 }

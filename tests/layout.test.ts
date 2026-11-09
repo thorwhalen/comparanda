@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { focusInLayout, hiddenOf, inShownOrder, matrixLayout, omittedBlocks, shownOf } from '../src/core/layout.js';
-import { makeInapplicableBlocks, makeInapplicability } from '../src/core/schema/groups.js';
+import { makeInapplicableBlocks, makeInapplicableDeclarations, makeInapplicability } from '../src/core/schema/groups.js';
 import { Analysis } from '../src/core/schema/analysis.js';
 import { applyOrder, initialViewState, setFilter, setGrouping, transpose, type ViewState } from '../src/core/view-state.js';
 
@@ -152,6 +152,28 @@ describe('omittedBlocks (#93)', () => {
     // Transposed, the same: the pair is the declarations', whichever axis the rows are.
     const t = omittedBlocks(matrixLayout(relocation, transpose(both())), blockOf)[0]!;
     expect(t.pair).toEqual(['g-asia', 'g-eu']);
+  });
+
+  it('takes the pair and reason of the declaration that covers the whole block, though groups overlap (#323)', () => {
+    // Taipei is also an island, and "island x EU" is declared before "Asia x EU" with another reason: the first match differs by cell.
+    const doc = structuredClone(relocation);
+    doc.groups.push({ id: 'g-island', label: 'Islands', axis: 'alternatives' } as (typeof doc.groups)[number]);
+    doc.alternatives.find((a) => a.id === 'taipei')!.groupIds.push('g-island');
+    doc.inapplicable.unshift({ alternativeGroupId: 'g-island', criterionGroupId: 'g-eu', reason: 'islands have their own residency regime' });
+    const layout = matrixLayout(doc, both(initialViewState(doc)));
+    const asia = (blocks: ReturnType<typeof omittedBlocks>) => blocks.find((b) => b.rowBand.groupId === 'g-asia')!;
+
+    // Without the list of declarations, the cells disagree: no pair, no reason.
+    const first = asia(omittedBlocks(layout, makeInapplicableBlocks(doc)));
+    expect([first.pair, first.reason]).toEqual([undefined, undefined]);
+
+    // With them, the block is exactly the declaration that covers every cell of it.
+    const covered = asia(omittedBlocks(layout, makeInapplicableBlocks(doc), { declarationsOf: makeInapplicableDeclarations(doc) }));
+    expect([covered.pair, covered.reason]).toEqual([['g-asia', 'g-eu'], 'not an EU destination, so EU residency rules do not apply']);
+    // Declaration order does not decide: listed the other way round, the same block reads the same.
+    doc.inapplicable.reverse();
+    const reversed = asia(omittedBlocks(matrixLayout(doc, both(initialViewState(doc))), makeInapplicableBlocks(doc), { declarationsOf: makeInapplicableDeclarations(doc) }));
+    expect([reversed.pair, reversed.reason]).toEqual([covered.pair, covered.reason]);
   });
 
   it('makeInapplicability is the blocks reader, asked yes or no', () => {
