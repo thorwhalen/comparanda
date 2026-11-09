@@ -172,6 +172,14 @@ describe('naming a local identity before its first decision (#274)', () => {
     expect(nameForm()).not.toBeNull();
   });
 
+  it('is asked while one decision is still allowed, though the other is refused (#320)', async () => {
+    const authorize = (r: { action: string; decision?: string }) => (r.action === 'decide-suggestion' && r.decision === 'accept' ? { enabled: false, reason: 'only decline' } : true);
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }), authorize }, at);
+    await settled();
+    expect(button(entry(first.id), 'Accept').getAttribute('aria-disabled')).toBe('true');
+    expect(nameForm()).not.toBeNull();
+  });
+
   it('is not asked of an identity that has a name, takes none, or has no way to write decisions', async () => {
     const storage = memory();
     await localIdentity({ storage }).name('Ada');

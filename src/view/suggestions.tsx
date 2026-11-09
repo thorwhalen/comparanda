@@ -60,14 +60,13 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
   const live = staged.filter((c) => open.some((o) => o.id === c.suggestionId));
   if (open.length === 0 && said === '') return null;
 
-  // The name is asked for only when some decision here is one this reader may make (#320).
-  const maySign = open.some((o) => affordances.decideSuggestion(o.id, 'accept').enabled || affordances.decideSuggestion(o.id, 'decline').enabled);
-
   const refusal = (sid: string, d: SuggestionDecision): string | undefined => {
     const may = affordances.decideSuggestion(sid, d);
     if (!may.enabled) return may.reason || 'not possible here.';
     return writes ? undefined : NO_WRITES;
   };
+  // The name is asked for only when some decision here is one this reader may make (#320): the rule the buttons follow.
+  const maySign = open.some((o) => (['accept', 'decline'] as const).some((d) => refusal(o.id, d) === undefined));
   const stage = (choices: SuggestionChoice[], sentence: string) => {
     setStaged([...live.filter((c) => !choices.some((x) => x.suggestionId === c.suggestionId)), ...choices]);
     setSaid(sentence);

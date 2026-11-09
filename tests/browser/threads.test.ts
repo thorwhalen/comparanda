@@ -541,6 +541,14 @@ describe('naming a local identity before its first write (#193)', () => {
     expect(nameForm()).not.toBeNull();
   });
 
+  it('is asked while only a reply is allowed, and not made to depend on the resolved threads being shown (#320)', async () => {
+    const authorize = (r: { action: string; thread?: string }) => (r.action === 'comment' && r.thread !== 'reply' ? { enabled: false, reason: 'replies only' } : true);
+    mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }), authorize, view: where });
+    await settled();
+    expect(threads().querySelector('textarea')).not.toBeNull();
+    expect(nameForm()).not.toBeNull();
+  });
+
   it('is not shown, even for a moment, to a named identity that has yet to say so', async () => {
     const storage = memory();
     await localIdentity({ storage }).name('Ada');
