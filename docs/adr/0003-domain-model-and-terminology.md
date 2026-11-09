@@ -146,6 +146,13 @@ Both are shape changes inside v1, which has not been frozen or published. That f
 
 **The write path refuses a bypass.** `criteriaRevisionProblems(before, after)` flags three cases: a meaning field changed without the set version moving forward; a `definedInVersion` moved backwards; and a `definedInVersion` later than the set version. The in-memory analysis source runs it on every `update`, and any future provider must do the same. It needs the previous document, so it is not a `validateAnalysis` rule. No schema shape changes.
 
+### 2026-11-09 — A merged reject names the criterion that absorbed it
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+
+Request 3 (#63) keeps rejected criteria in the analysis so "why isn't X in here?" has an answer on the page. For a `merged` reject that answer is the criterion it went into, and `rejectedCriteria[].mergedIntoId` was documented as carrying it but never checked (#335). `validateAnalysis` now reports `merged-into-resolves` (family `schema`, an error): a `merged` reject with no `mergedIntoId`, or a `mergedIntoId` on any reject that names no criterion in the analysis. A tombstoned criterion is a valid target, since tombstoning keeps the id readable. `mergedIntoId` stays optional for `redundant`. A rule in the validator only: no shape change and no schema version bump.
+
 ## Amendments — citation
 
 ### 2026-08-22 — Reference 8's access caveat is lifted

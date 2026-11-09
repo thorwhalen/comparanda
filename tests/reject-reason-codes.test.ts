@@ -17,6 +17,8 @@ const ajv = new Ajv2020({ strict: true, allErrors: true }).compile(readJson(`sch
 const withCode = (reasonCode: string) => {
   const doc = readJson('examples/relocation.json');
   doc.rejectedCriteria[1].reasonCode = reasonCode;
+  // A merge names what absorbed it (#335); every other code leaves the field off.
+  if (reasonCode === 'merged') doc.rejectedCriteria[1].mergedIntoId = 'rent';
   return doc;
 };
 
