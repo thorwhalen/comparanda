@@ -13,10 +13,10 @@
  * single-value cells is a migration through every stored analysis.
  */
 import * as z from 'zod/mini';
-import { EvidenceRef } from './evidence.js';
+import { Confidence, EvidenceRef } from './evidence.js';
 import { Missing } from './missingness.js';
 import {
-  Confidence, Independence, Perturbation, effectiveIndependence,
+  Independence, Perturbation, effectiveIndependence,
 } from './provenance.js';
 import { meanIsLegal, type LevelOfMeasurement } from './measurement.js';
 import {

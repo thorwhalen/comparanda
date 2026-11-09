@@ -13,7 +13,7 @@ import { promisify } from 'node:util';
 import { chromium, type Browser } from 'playwright';
 
 import { buildStandalone, MAILING_NOTE, type BuildResult } from '../../src/build/index.js';
-import { Analysis } from '../../src/core/schema/analysis.js';
+import { Analysis, SCHEMA_VERSION } from '../../src/core/schema/analysis.js';
 import { ANALYSIS_ELEMENT_ID } from '../../src/standalone/contract.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -52,6 +52,15 @@ describe('a temp dir reached through a symlink (#319)', () => {
       await rm(link, { force: true });
       await rm(real, { recursive: true, force: true });
     }
+  }, 60_000);
+});
+
+describe('a document from the version before (#307)', () => {
+  it('is carried forward and built, and the page inlines the document at the current version', async () => {
+    const v1 = JSON.parse(await readFile(join(repo, 'tests', 'fixtures', 'languages.v1.json'), 'utf8'));
+    expect(v1.schemaVersion).toBe(1);
+    const page = await buildStandalone(v1);
+    expect((inlinedAnalysis(page.html) as { schemaVersion: number }).schemaVersion).toBe(SCHEMA_VERSION);
   }, 60_000);
 });
 

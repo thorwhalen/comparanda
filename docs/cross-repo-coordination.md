@@ -35,7 +35,7 @@ Two repositories, one contract.
   has ever been emitted. The gates are therefore *not* uniformly ahead of us — Gate 2a is a reading
   nobody has done, Gate 2b is blocked on a file nobody has written, and both fixtures are still a
   README. Read every "ahead of us" below with that correction.
-- **The contract is two artifacts.** `comparanda.v1.json` carries the shape; `vocabularies.v1.json`,
+- **The contract is two artifacts.** `comparanda.v<N>.json` (N the current `SCHEMA_VERSION`) carries the shape; `vocabularies.v<N>.json`,
   emitted beside it in the same pass, carries the closed core of each extensible vocabulary and
   where its declarations live in the document. A JSON Schema cannot say "open, and here is the
   closed core underneath it" without closing it. `rubricator` **vendors both together**, refreshed
@@ -685,7 +685,7 @@ proper-scoring-rule computation that ADR-0012 exists to prevent. It is optional 
 because absent means "none recorded" and a default level would be a claim nobody made. The
 shipped schema can already store `confidence` as a *measure*; the mirror issue
 ([#307](https://github.com/thorwhalen/comparanda/issues/307), key `request-assertion-confidence`)
-carries the question of how the field and the measure relate. Disposition: `accept-v2`, **landed 2026-11-09** ([#307](https://github.com/thorwhalen/comparanda/issues/307)): `SCHEMA_VERSION` is 2, with a registered no-op step from 1. The field and the measure are kept apart by one rule: for a given (alternative, criterion) an analysis uses the field or a `confidence` measure, and `validateAnalysis` refuses both (`confidence-one-home`); see `docs/domain-model.md`. The artifact is now `schema/comparanda.v2.json`.
+carries the question of how the field and the measure relate. Disposition: `accept-v2`, **landed 2026-11-09** ([#307](https://github.com/thorwhalen/comparanda/issues/307)): `SCHEMA_VERSION` is 2, with a registered no-op step from 1. The field is evidence quality and the measure is a quantity an analysis scores; both may coexist, the view reads the measure (docs/domain-model.md), and no validator rule joins them. The artifact is now `schema/comparanda.v2.json`.
 
 **On request 18.** Decided in #184 (2026-10-30): schema v1 is not bumped for the neutral level alone. It is queued for the next schema version, as an additive optional field with a no-op migration step, mirrored by [#311](https://github.com/thorwhalen/comparanda/issues/311) (key `request-measurement-neutral`). `target` is not a neutral and a range midpoint is the undeclared midpoint ADR-0010 forbids, so the panel keeps drawing an uncentred bar, and says so, until a measurement declares one. Disposition: `accept-later`.
 

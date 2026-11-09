@@ -10,10 +10,10 @@
  *
  * Two files, because they answer different questions:
  *
- * 1. **`comparanda.v1.json`** -- the JSON Schema for an analysis document. What
+ * 1. **`comparanda.v<N>.json`** (N is `SCHEMA_VERSION`) -- the JSON Schema for an analysis document. What
  *    a producer must emit and a consumer may assume.
  *
- * 2. **`vocabularies.v1.json`** -- the closed core of every open vocabulary,
+ * 2. **`vocabularies.v<N>.json`** -- the closed core of every open vocabulary,
  *    with the facts each core member carries. JSON Schema can say a missingness
  *    code is a string; it cannot say that `withheld` is terminal and not
  *    informative, and that fact is what a consumer in another language needs in

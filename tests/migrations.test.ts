@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  createMigrationChain, migrate, needsMigration, registerMigration, registeredMigrations,
+  carriedForward, createMigrationChain, migrate, needsMigration, registerMigration, registeredMigrations,
   missingMigrationSteps, _clearMigrations, DOCUMENT_MIGRATIONS, type VersionedDocument,
 } from '../src/core/migrations.js';
 import { viewStateMigrations, VIEW_STATE_VERSION } from '../src/core/view-state.js';
@@ -128,7 +128,6 @@ describe('the package chain, towards SCHEMA_VERSION', () => {
     expect(r.applied).toEqual(DOCUMENT_MIGRATIONS.map((m) => m.describes));
     // The additive step changes the version and nothing else.
     expect(r.document).toEqual({ ...languagesV1(), schemaVersion: SCHEMA_VERSION });
-    expect(r.document).toEqual(languagesCurrent());
     expect(validateAnalysis(r.document).ok).toBe(true);
   });
 
@@ -160,6 +159,26 @@ describe('the package chain, towards SCHEMA_VERSION', () => {
     other.register(v1ToV2);
     expect(registeredMigrations()).toEqual([...DOCUMENT_MIGRATIONS]);
     expect(needsMigration(languagesCurrent())).toBe(false);
+  });
+});
+
+describe('carrying an earlier document forward for a consumer that takes it as found', () => {
+  it('migrates an earlier version, and a document with no version, and says what validateAnalysis alone would say of the first', () => {
+    expect(validateAnalysis(languagesV1()).problems.find((p) => p.ruleId === 'schema-version-readable')?.message)
+      .toMatch(/version 1; this build reads version 2, and carries an earlier one forward with `migrate`/);
+    expect(carriedForward(languagesV1()).schemaVersion).toBe(SCHEMA_VERSION);
+    expect(validateAnalysis(carriedForward(languagesV1())).ok).toBe(true);
+    const { schemaVersion: _omitted, ...bare } = languagesV1();
+    expect(validateAnalysis(carriedForward(bare)).ok).toBe(true);
+  });
+
+  it('leaves alone what migrate would refuse or misread, so the validator names the real problem', () => {
+    for (const odd of [{ ...languagesV1(), schemaVersion: SCHEMA_VERSION + 1 }, { ...languagesV1(), schemaVersion: '1' },
+      { ...languagesV1(), schemaVersion: 0.5 }, { ...languagesV1(), schemaVersion: 0 }, null, 3, [1]]) {
+      expect(carriedForward(odd)).toBe(odd);
+    }
+    expect(validateAnalysis({ ...languagesV1(), schemaVersion: '1' }).problems.map((p) => p.message).join())
+      .toMatch(/which is not a version this build can read or migrate/);
   });
 });
 

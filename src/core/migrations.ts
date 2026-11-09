@@ -213,3 +213,18 @@ export function missingMigrationSteps(): number[] {
 export function needsMigration(doc: VersionedDocument): boolean {
   return documentChain.needsMigration(doc);
 }
+
+/**
+ * The document at the current version, if it is an earlier one this build can carry forward; otherwise as given.
+ *
+ * For a consumer that takes a producer's document as it finds it (the standalone build): a version-1 document
+ * becomes a version-2 one by the registered steps. Anything `migrate` would refuse or misread -- a later version, a
+ * `schemaVersion` that is not a whole number, a non-object -- is returned untouched, so `validateAnalysis` says what
+ * is wrong with it rather than the chain stamping a bad version as good. A document without `schemaVersion` reads as 1.
+ */
+export function carriedForward<T>(doc: T): T {
+  if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) return doc;
+  const v = (doc as VersionedDocument).schemaVersion;
+  if (v !== undefined && !(typeof v === 'number' && Number.isInteger(v) && v >= 1)) return doc;
+  return needsMigration(doc as VersionedDocument) ? (migrate(doc as VersionedDocument).document as T) : doc;
+}

@@ -160,3 +160,11 @@ of a URL and why: **ADR-0015, amendment of 2026-08-22**.
 11. [Likert scales, levels of measurement and the "laws" of statistics — G. Norman (2010)](https://link.springer.com/article/10.1007/s10459-010-9222-y) — paywalled; the quoted sentence is from the abstract.
 12. [Ten Common Misunderstandings … about Likert Scales and Likert Response Formats and their Antidotes — J. Carifio & R. J. Perla (2007)](https://thescipub.com/abstract/jssp.2007.106.116) — read directly; quotations verbatim.
 13. [Analyzing ordinal data with metric models: What could possibly go wrong? — T. M. Liddell & J. K. Kruschke (2018)](https://scholarworks.iu.edu/dspace/items/9bcd0f5e-7837-4f9c-ac07-a114e595e146)
+
+### 2026-11-09 — `confidence` the measure and `Assertion.confidence` the field are different quantities
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Deciders:** Thor Whalen (request 17, rubricator#258); settled in #307
+
+Request 17 added an optional `Assertion.confidence` (`high | medium | low`: how well the cited source supports one assertion, an ordinal that is never a number and never called `certainty`). The shipped schema could already store `confidence` as a *measure*. They are two quantities, not two homes for one: the field is evidence quality for one assertion; the measure is something an analysis scores, with its own declaration, scale and authors. Both may coexist; the view's confidence layer reads the measure; no validator rule joins them (a rule refusing the pair would forbid adding the measure the view reads). Correction 1 above stands: neither is an encoding.

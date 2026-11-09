@@ -126,13 +126,11 @@ const hostile = {
       alternativeId: 'x', criterionId: 'n', measure: 'score',
       assertions: [
         { id: 'v1', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, value: 'zz', justification: 'j', evidence: [] },
-        { id: 'v2', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, value: 2, justification: 'j', evidence: [], supersededBy: 'ghost', confidence: 'high' },
+        { id: 'v2', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, value: 2, justification: 'j', evidence: [], supersededBy: 'ghost' },
         { id: 'v3', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, value: 2, justification: 'j', evidence: [], supersededBy: 'v4' },
         { id: 'v4', authorId: 'ana', at: '2026-08-22T00:00:00Z', version: 1, value: 2, justification: 'j', evidence: [], supersededBy: 'v3' },
       ],
     },
-    // The same pair scores a `confidence` measure, and v2 above also carries the field: two homes (request 17).
-    { alternativeId: 'x', criterionId: 'n', measure: 'confidence', assertions: [] },
     { alternativeId: 'nobody', criterionId: 'nothing', measure: 'score', assertions: [] },
     { alternativeId: 'x', criterionId: 'bare', measure: 'score', assertions: [] },
   ],
