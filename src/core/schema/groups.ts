@@ -210,13 +210,8 @@ export function makeInapplicability(a: Analysis): (alternativeId: string, criter
   return (alternativeId, criterionId) => blockOf(alternativeId, criterionId) !== undefined;
 }
 
-/**
- * Every declared block a cell is inside, in declaration order (#323): groups are tags, so declarations can overlap
- * and a cell can be in several. The objects are the analysis's own, so one declaration is the same object wherever
- * it is returned.
- */
-export function makeInapplicableDeclarations(a: Analysis): (alternativeId: string, criterionId: string) => readonly InapplicableBlock[] {
-  if (a.inapplicable.length === 0) return () => [];
+/** Which declarations a cell is under, over the two axes' group memberships, prepared once. */
+function declarationsMatching(a: Analysis): (alternativeId: string, criterionId: string) => (b: InapplicableBlock) => boolean {
   const alts = axisGroups(a, 'alternatives');
   const crits = axisGroups(a, 'criteria');
   const altCache = new Map<string, Set<string>>();
@@ -228,18 +223,33 @@ export function makeInapplicableDeclarations(a: Analysis): (alternativeId: strin
   };
   return (alternativeId, criterionId) => {
     const ag = memo(altCache, alts, alternativeId);
-    if (ag.size === 0) return [];
     const cg = memo(critCache, crits, criterionId);
-    return a.inapplicable.filter((b) => ag.has(b.alternativeGroupId) && cg.has(b.criterionGroupId));
+    return (b) => ag.has(b.alternativeGroupId) && cg.has(b.criterionGroupId);
   };
+}
+
+/**
+ * Every declared block a cell is inside, in declaration order (#323): groups are tags, so declarations can overlap
+ * and a cell can be in several. The objects are the analysis's own. Cached per analysis (it is immutable to a view),
+ * so a render asking again does not rebuild the group graph.
+ */
+const declarationsCache = new WeakMap<Analysis, (alternativeId: string, criterionId: string) => readonly InapplicableBlock[]>();
+export function makeInapplicableDeclarations(a: Analysis): (alternativeId: string, criterionId: string) => readonly InapplicableBlock[] {
+  let reader = declarationsCache.get(a);
+  if (!reader) {
+    const matching = a.inapplicable.length === 0 ? undefined : declarationsMatching(a);
+    declarationsCache.set(a, (reader = (alt, crit) => (matching ? a.inapplicable.filter(matching(alt, crit)) : [])));
+  }
+  return reader;
 }
 
 /**
  * The declared block a cell is inside, if any (the first, in declaration
  * order): what `makeInapplicability` asks, with the declaration and its
- * reason kept, for a view that says why (#93).
+ * reason kept, for a view that says why (#93). Stops at the first match.
  */
 export function makeInapplicableBlocks(a: Analysis): (alternativeId: string, criterionId: string) => InapplicableBlock | undefined {
-  const declarations = makeInapplicableDeclarations(a);
-  return (alternativeId, criterionId) => declarations(alternativeId, criterionId)[0];
+  if (a.inapplicable.length === 0) return () => undefined;
+  const matching = declarationsMatching(a);
+  return (alternativeId, criterionId) => a.inapplicable.find(matching(alternativeId, criterionId));
 }

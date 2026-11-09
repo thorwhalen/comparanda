@@ -282,12 +282,13 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
 
   // A block with nothing in it to show is one cell (#93): every cell structurally absent, with no reading,
   // no thread and no mark of its own. Its cells then look alike to an encoding, so the first one's swatch is the block's.
+  // Declarations overlap (groups are tags): a block's pair is the one declaration that covers all of it (#323).
+  const declaredAt = makeInapplicableDeclarations(analysis);
   const blocks = omittedBlocks(layout, (alt, crit) => {
     const { badge, strip } = prepared.mark(alt, crit);
     return read(alt, crit) === undefined && !openHere.has(`${alt}\u0000${crit}`) && !badge && !strip
-      ? affordances.inapplicableBlock(alt, crit) : undefined;
-    // Declarations overlap (groups are tags): a block's pair is the one declaration that covers all of it (#323).
-  }, { declarationsOf: makeInapplicableDeclarations(analysis) });
+      ? declaredAt(alt, crit) : [];
+  });
   const grid = gridOf(rows.entries, columns.entries, transposed, blocks);
   /** The group each axis's picker shows, until the reader picks another. */
   const [picked, setPicked] = useState<Partial<Record<Axis, string>>>({});
