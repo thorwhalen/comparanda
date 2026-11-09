@@ -174,3 +174,25 @@ Redaction is decided there, as for the rater strip (ADR-0023). A hidden value is
 1. **A table per criterion is the dot plot**, with its own scoped stylesheet so the matrix's grid rules (a rule on every cell, sticky headers) draw nothing through its rows. There is one alternative per row and one level per column, the dots sit in the cells, and the missing lanes come after the levels. The ticks stay discrete, with nothing drawn between them, and the table is its own text alternative: every count is said, with who put each dot there.
 2. **Shapes, not colours.** A filled dot is a rater named to the reader; a ring is a hand the round does not name. A lane carries its reason's glyph and words (ADR-0028).
 3. **A criterion on a continuous range has no dot plot here, and the panel says why.** Drawing it on levels would be wrong, and a continuous axis is a different component.
+
+## Amendment, 2026-11-09: the rank-flow as shipped
+
+From #98. `rankFlow` (`core/analyses/rank-flow.ts`) takes two or more rankings of one set of alternatives and gives each alternative's rank position in each, and what moved between adjacent rankings. It is handed rows (a weighted sum's, or a rater's) and imports no aggregation, only `separability`:
+
+- **A rank is one plus the rows separated above it**, so rows at the same point share a rank (a tie, kept), and rows whose intervals overlap share one and are never tie-broken. Each place also carries the lowest rank the data allow it, and whether the data settle it at all.
+- **A row the coverage gate did not score is unscored, with the ranking's own label**, and takes no position: it is never ranked last.
+- **A move is read against the rows ranked in both rankings**, not by rank number, so a row entering or leaving the gate is counted as that, and does not read as the others moving.
+- **It ranks the selection it is given and refuses above thirty** (`RANK_FLOW_MAX_ROWS`, [2]) with the count and what to do, before anything is computed.
+- **Its caption is a stability statement**: how many change place, how many pairs pass each other, how many are ranked in one ranking only, and whether the order holds. It never names a first. The word for an alternative is the analysis's alias.
+
+The rankings come from two places. Under a weighting: the weighted sum as declared, and with one substitution weight changed (`withSubstitutionWeight`), opening just past the smallest change `sensitivity` reports (`firstOrderChange`). If that change would leave nothing to sum, or there is none, it opens at a raise of ADR-0015's fragile 5% instead, and says which. Between raters, the same model: each rater's own ratings on one criterion, ordered by its direction of preference (`raterRanking`). A rater is offered only where every rating they made on that criterion is one this viewer may see against their name (`raterCriteria`, ADR-0023). Absences are said in the matrix's words.
+
+The panel (`view/rank-flow.tsx`) is gated twice. **There is no panel to register without the opt-in**: `rankFlowPanel({ weightedSum, sensitivity })` makes it from core's two opt-in analyses, which the composition root passes as it passes `arrange`. The view module imports neither as a value, a test holds it to that, and called without them it throws, saying why. **A document with no substitution weight draws no panel.** The standalone page registers no panels, so it carries none of this. Its rules:
+
+1. **Ranks, never values.** No score is drawn; a line joins one alternative's two rank positions.
+2. **The caption leads with `sensitivity`'s own caption**, then the rank-flow's count. The weighted sum's warnings follow, the ordinal one among them, and so does the declared weighting's finding.
+3. **Shapes, not colours.** A line that changes place is dashed and one that keeps it is solid. Every line is named at both ends. A rank the data settle is a dot, one they leave open is a ring. An unscored alternative is a cross below a dashed rule. Everything is drawn in the text colour, and a table says all of it in words. The a11y gate's A15 has a pass over these lines with its own broken fixture.
+4. **Only the selection is ranked**: the alternatives the matrix shows. The panel says that hiding one changes ranks and never a score.
+5. **Every control is native**: a radio for the two comparisons, selects for the criterion and the raters, a number field for the weight. The weight is committed on change, never per keystroke. A draft that is no number gives way to the weight in force. A negative weight is refused by the weighted sum, in its words.
+
+Not shipped here: `rankShare` (Monte-Carlo rank acceptability, ADR-0015's amendment of 2026-08-21), which is to render inside this panel and has its own issue.

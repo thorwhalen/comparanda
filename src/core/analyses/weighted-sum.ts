@@ -297,12 +297,22 @@ function formatFloor(f: number): string {
 }
 
 /**
+ * What `separability` reads of a row: a point, an interval, or nothing scored.
+ * A `WeightedSumRow` is one; so is any other score a caller ranks by the same
+ * rule (rank-flow's rater rankings, #98).
+ */
+export type Separable =
+  | { status: 'point'; value: number }
+  | { status: 'interval'; interval: readonly [number, number] }
+  | { status: 'not-scored' };
+
+/**
  * Whether two scored rows can be ordered. Two intervals (or an interval and a
  * point) are separable only when they do not overlap; otherwise the answer is
  * "not separable on the available data", never a tie-break (ADR-0015).
  */
-export function separability(x: WeightedSumRow, y: WeightedSumRow): 'x-higher' | 'y-higher' | 'not-separable' {
-  const bounds = (r: WeightedSumRow): [number, number] | undefined =>
+export function separability(x: Separable, y: Separable): 'x-higher' | 'y-higher' | 'not-separable' {
+  const bounds = (r: Separable): readonly [number, number] | undefined =>
     r.status === 'point' ? [r.value, r.value] : r.status === 'interval' ? r.interval : undefined;
   const bx = bounds(x);
   const by = bounds(y);

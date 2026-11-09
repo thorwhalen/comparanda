@@ -9,8 +9,10 @@
 import { commands } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
+import { sensitivity } from '../../src/core/analyses/sensitivity.js';
+import { weightedSum } from '../../src/core/analyses/weighted-sum.js';
 import {
-  AgreementPanel, createEncodingRegistry, DotPlotsPanel, mountMatrix, ScatterPanel, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps,
+  AgreementPanel, createEncodingRegistry, DotPlotsPanel, mountMatrix, rankFlowPanel, ScatterPanel, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps,
 } from '../../src/view/index.js';
 import type { Theme } from '../../src/view/theme.js';
 import languagesJson from '../../examples/languages.json';
@@ -41,8 +43,11 @@ export const FIXTURES: Readonly<Record<string, Analysis>> = {
 };
 export const ENCODINGS = createEncodingRegistry(SHIPPED_ENCODINGS);
 export const THEMES = ['light', 'dark'] as const satisfies readonly Theme[];
-/** The analysis panels the package ships, registered as a composition root would (#292). */
-export const PANELS = [AgreementPanel, ScatterPanel, DotPlotsPanel] as const;
+/**
+ * The analysis panels the package ships, registered as a composition root would (#292). The rank-flow is made from
+ * the weighted aggregation it is gated behind (#98), and draws only over an analysis that declares weights.
+ */
+export const PANELS = [AgreementPanel, ScatterPanel, DotPlotsPanel, rankFlowPanel({ weightedSum, sensitivity })] as const;
 
 export interface MountOptions {
   readonly theme?: Theme;

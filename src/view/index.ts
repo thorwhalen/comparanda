@@ -14,6 +14,7 @@ export { AgreementPanel, type AnalysisPanelProps } from './agreement.js';
 export { HiddenNote } from './shown.js';
 export { ScatterPanel } from './scatter.js';
 export { DotPlotsPanel } from './dot-plots.js';
+export { rankFlowPanel, type RankFlowPanelOptions, type WeightingOptIn } from './rank-flow.js';
 export type { SuggestionChoice, SuggestionWrites } from './suggestions.js';
 export { Matrix, TEXT_ONLY, type Arrangement, type CellState, type MatrixViewProps } from './matrix.js';
 export type { MatrixProps, MatrixPropsUpdate, MountMatrixProps } from './props.js';

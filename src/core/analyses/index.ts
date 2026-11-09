@@ -16,3 +16,4 @@ export * from './weighted-sum.js';
 export * from './seriation.js';
 export * from './sensitivity.js';
 export * from './scatter.js';
+export * from './rank-flow.js';
