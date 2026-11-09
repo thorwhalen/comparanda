@@ -222,6 +222,22 @@ describe('naming a local identity before its first decision (#274)', () => {
     expect(panel()).toBeNull();
   });
 
+  it('holds one draft for both panels: the discussion\'s field, drawn later, starts from the name typed here (#328)', async () => {
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }) }, at);
+    await settled();
+    await userEvent.click(nameForm()!.querySelector('input')!);
+    await userEvent.keyboard('Ad');
+    handle.update({ view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true) });
+    await settled();
+    const discussion = el.querySelector<HTMLInputElement>('[data-detail="threads"] [data-detail="name"] input')!;
+    expect(discussion.value).toBe('Ad');
+    // Typed on there, and the field here takes it up when the reader comes back to it.
+    await userEvent.click(discussion);
+    await userEvent.keyboard('a');
+    await userEvent.click(nameForm()!.querySelector('input')!);
+    expect(nameForm()!.querySelector('input')!.value).toBe('Ada');
+  });
+
   it('is not asked of an identity that has a name, takes none, or has no way to write decisions', async () => {
     const storage = memory();
     await localIdentity({ storage }).name('Ada');

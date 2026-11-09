@@ -16,7 +16,7 @@
  * name yet is offered the name field here too, ahead of the first decision
  * (#274): the same field the discussion offers, not a second one.
  */
-import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useId, useRef, useState } from 'preact/hooks';
 
 import type { Analysis } from '../core/schema/analysis.js';
 import type { Affordances, SuggestionDecision } from '../core/affordances.js';
@@ -25,16 +25,14 @@ import type { Vouched } from '../core/identity.js';
 import { describeOpenSuggestions, type OpenSuggestion } from '../core/suggestion-list.js';
 import { capitalise } from './words.js';
 import { messageOf } from './dom.js';
-import { NameForm, type TakeName } from './name-form.js';
+import { NameForm, type NameWrites } from './name-form.js';
 import { useFocusNext } from './focus-next.js';
 
 export interface SuggestionChoice { suggestionId: string; decision: SuggestionDecision }
 
 /** Write staged decisions, in order, as one change; rejects with the reason when the source or document refuses. */
-export interface SuggestionWrites {
+export interface SuggestionWrites extends NameWrites {
   decide(choices: readonly SuggestionChoice[]): Promise<void>;
-  /** Give the writer a name before their first decision (#274); see `TakeName` for when it is present. */
-  name?: TakeName;
 }
 
 const DID: Readonly<Record<SuggestionDecision, string>> = { accept: 'accept', decline: 'decline' };
@@ -53,9 +51,8 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
   const [said, setSaid] = useState('');
   const [busy, setBusy] = useState(false);
   // The name field holds a draft: the panel stays drawn for it, though no suggestion is left to show (#321).
-  const [nameHeld, setNameHeld] = useState(false);
   // Only while the matrix still offers a name: once it is taken, the panel closes in the render that took it, where focus is settled.
-  const held = nameHeld && !!writes?.name;
+  const held = !!writes?.name && writes.nameDraft?.get() !== undefined;
   const open = describeOpenSuggestions(analysis, { viewer, vouched });
   // A suggestion decided elsewhere meanwhile is no longer staged here.
   const live = staged.filter((c) => open.some((o) => o.id === c.suggestionId));
@@ -117,7 +114,7 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
       <h2 id={id} tabIndex={-1} data-panel-heading="">{`Open suggestions (${open.length})`}</h2>
       <p class="comparanda-panel-hint">Accepting writes the proposed value into its cell as its proposer&apos;s; declining records only the decision. Decisions are staged here, each undoable, and written together.</p>
       {/* Before every decision it names the author of. */}
-      {writes?.name && (maySign || held) && <NameForm name={writes.name} idBase={id} onHold={setNameHeld} />}
+      {writes?.name && (maySign || held) && <NameForm name={writes.name} idBase={id} held={writes.nameDraft} />}
       <ol class="comparanda-thread-list">
         {open.map((o) => {
           const choice = live.find((c) => c.suggestionId === o.id);

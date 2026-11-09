@@ -18,19 +18,17 @@ import { axisGroups, groupsOf } from '../core/schema/groups.js';
 import { commentTarget, isEditNote, threadsAt, type Position, type ThreadAt } from '../core/threads.js';
 import { attributions, type Vouched } from '../core/identity.js';
 import { capitalise } from './words.js';
-import { NameForm, type TakeName } from './name-form.js';
+import { NameForm, type NameWrites } from './name-form.js';
 import { refusedField, sentenceOf, useFailure, useSend } from './send.js';
 
 /** The writes a thread takes, performed by whoever holds the source. Each settles when the source has it. */
-export interface ThreadWrites {
+export interface ThreadWrites extends NameWrites {
   start(anchor: Anchor, body: string): Promise<void>;
   reply(threadId: string, body: string): Promise<void>;
   /** Rewrite a comment; its earlier wording stays in the thread (#195). */
   edit(threadId: string, commentId: string, body: string): Promise<void>;
   resolve(threadId: string): Promise<void>;
   reopen(threadId: string): Promise<void>;
-  /** Give the writer a name before their first write (#193); see `TakeName` for when it is present. */
-  name?: TakeName;
 }
 
 export interface ThreadsProps {
@@ -50,8 +48,8 @@ export interface ThreadsProps {
 
 export function Threads({ analysis, measure, position, affordances, writes, idBase, vouched, pair }: ThreadsProps) {
   const [showResolved, setShowResolved] = useState(false);
-  // A name being typed is kept though the write that asked for it goes (#321).
-  const [nameHeld, setNameHeld] = useState(false);
+  // A name being typed is kept though the write that asked for it goes (#321), and found again when the panel is (#328).
+  const nameHeld = writes?.nameDraft?.get() !== undefined;
   const words = aliasesOf(analysis);
   const all = threadsAt(analysis, position);
   const open = all.filter((x) => !x.thread.resolved);
@@ -73,7 +71,7 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
     <section class="comparanda-threads" aria-labelledby={`${idBase}-threads`} data-detail="threads">
       <h3 id={`${idBase}-threads`}>{`Discussion (${open.length} open${resolved.length ? `, ${resolved.length} resolved` : ''})`}</h3>
       {/* Before every form it names the author of: the first write here is one of them. */}
-      {writes?.name && (maySign || nameHeld) && <NameForm name={writes.name} idBase={idBase} onHold={setNameHeld} />}
+      {writes?.name && (maySign || nameHeld) && <NameForm name={writes.name} idBase={idBase} held={writes.nameDraft} />}
       {open.length === 0 && <p class="comparanda-panel-hint">No open threads here.</p>}
       {open.length > 0 && (
         <ol class="comparanda-thread-list">

@@ -549,6 +549,19 @@ describe('naming a local identity before its first write (#193)', () => {
     expect(nameForm()).not.toBeNull();
   });
 
+  it('keeps a name being typed while the panel is closed, and gives it back when it opens again (#328)', async () => {
+    const handle = mount({ analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }), view: where });
+    await settled();
+    await userEvent.click(nameBox());
+    await userEvent.keyboard('Ad');
+    handle.update({ view: setDetailPanel(where, false) });
+    await settled();
+    expect(el.querySelector('[data-detail="name"]')).toBeNull();
+    handle.update({ view: where });
+    await settled();
+    expect(nameBox().value).toBe('Ad');
+  });
+
   it('is not shown, even for a moment, to a named identity that has yet to say so', async () => {
     const storage = memory();
     await localIdentity({ storage }).name('Ada');

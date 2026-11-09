@@ -35,7 +35,7 @@ import { commentTarget, editComment, reopenThread, replyToThread, resolveThread,
 import type { Anchor } from '../core/schema/annotations.js';
 import type { ThreadWrites } from './threads.js';
 import type { SuggestionWrites } from './suggestions.js';
-import type { TakeName } from './name-form.js';
+import type { NameDraft, NameWrites } from './name-form.js';
 import type { ReattachWrite } from './orphans.js';
 import type { SavedViewsPort } from './saved-views.js';
 import { reattach } from '../core/orphans.js';
@@ -413,6 +413,16 @@ export function mountMatrix(
       'the decisions',
     ),
   };
+  /** The name being typed (#328): here, not in its field, so a field drawn again starts from it. */
+  let typedName: string | undefined;
+  const nameDraft: NameDraft = {
+    get: () => typedName,
+    // Typing draws nothing; a hold let go draws, after the render that let it go, so a panel kept for it alone closes.
+    set: (typed) => {
+      if (typed === undefined && typedName !== undefined) queueMicrotask(() => { if (!destroyed) draw(); });
+      typedName = typed;
+    },
+  };
   /**
    * The name a local identity writes under, taken from the panel (#193): once
    * it answers to it, the field is gone. Never a rename: an identity named
@@ -426,6 +436,8 @@ export function mountMatrix(
     // Only the identity still in force: one the host has since replaced keeps its own.
     if (destroyed || inForce() !== identity) return;
     known = { identity, id: author.id };
+    // Taken: nothing is held, and the field leaves with the render that follows.
+    typedName = undefined;
     refreshViewer();
   };
   /** A thread's anchor in a document; absent, the thread's own write says there is no such thread. */
@@ -444,8 +456,8 @@ export function mountMatrix(
     reopen: (threadId) => writeThread('reopen', anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at }), threadId),
   };
 
-  /** A panel's writes, with the name field offered while one is asked for (#193, #274): one `takeName` behind every panel that signs. */
-  const askingName = <W extends { name?: TakeName }>(w: W): W => (drawnAskingName ? { ...w, name: takeName } : w);
+  /** A panel's writes, with the name field offered while one is asked for (#193, #274): one `takeName` and one draft behind every panel that signs. */
+  const askingName = <W extends NameWrites>(w: W): W => (drawnAskingName ? { ...w, name: takeName, nameDraft } : w);
 
   const draw = () => {
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
