@@ -539,3 +539,15 @@ export const Confidence = z.enum(CONFIDENCE_LEVELS).check(z.describe(
   + ' Absent means no confidence was recorded, never a level.',
 ));
 export type Confidence = z.infer<typeof Confidence>;
+
+/**
+ * The evidence quality of a set of assertions, such as the ones behind a cell's value (#330): the lowest level any
+ * of them records. An ordinal is never averaged, and the weakest support is the cautious reading of a set.
+ * Undefined for an empty set, and when any member records none: absent is never a level, so a set is never read
+ * above what each of its members recorded.
+ */
+export function weakestConfidence(assertions: readonly { readonly confidence?: Confidence | undefined }[]): Confidence | undefined {
+  // An absent level ranks -1, which no level has; an empty set's minimum, Infinity, names none either.
+  const ranks = assertions.map((a) => CONFIDENCE_LEVELS.indexOf(a.confidence!));
+  return ranks.includes(-1) ? undefined : CONFIDENCE_LEVELS[Math.min(...ranks)];
+}

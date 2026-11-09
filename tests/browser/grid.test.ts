@@ -15,10 +15,11 @@ import {
 } from '../../src/core/view-state.js';
 import { h } from 'preact';
 
-import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
+import { createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import { Matrix, type MatrixViewProps } from '../../src/view/matrix.js';
 import languagesJson from '../../examples/languages.json';
 import relocationJson from '../../examples/relocation.json';
+import { languagesWithConfidence, languagesWithEvidenceQuality } from '../fixtures/confidence.js';
 
 const languages = Analysis.parse(languagesJson);
 const relocation = Analysis.parse(relocationJson);
@@ -273,6 +274,57 @@ describe('what a cell announces', () => {
     expect(valued.length).toBeGreaterThan(0);
     const said = valued[0]!.textContent!;
     expect(said).toMatch(/ of 5, confidence low$/);
+  });
+
+  /** A cell by its pair; a NUL cannot appear in a CSS selector, so not by `querySelector`. */
+  const at = (alt: string, crit: string) => Array.from(table().querySelectorAll<HTMLElement>('td'))
+    .find((td) => td.dataset['pair'] === `${alt}\u0000${crit}`)!;
+
+  const shipped = createEncodingRegistry(SHIPPED_ENCODINGS);
+  const mountShipped = (props: MountMatrixProps) => handles.push(mountMatrix(el, props, { encodings: shipped }));
+
+  it('with no confidence measure, a rating says its evidence quality as its confidence, as the hatch draws it (#330)', () => {
+    mountShipped({ analysis: languagesWithEvidenceQuality(), measure: 'score', encoding: 'uncertainty-suppressed' });
+    // python's ecosystem is held at low evidence quality: drawn densest, and said.
+    expect(at('python', 'ecosystem').dataset['hatch']).toBe('3');
+    expect(at('python', 'ecosystem').textContent).toMatch(/ of 5, confidence low$/);
+    expect(at('rust', 'performance').textContent).toMatch(/ of 5, confidence high$/);
+    // go records none: nothing drawn, nothing said.
+    expect(at('go', 'ecosystem').dataset['hatch']).toBeUndefined();
+    expect(at('go', 'ecosystem').textContent).not.toMatch(/confidence/);
+  });
+
+  it('evidence quality is said only by the layer that draws it: every other view reads as it did (#330)', () => {
+    for (const encoding of ['text-only', 'value', 'datum', 'missingness']) {
+      mountShipped({ analysis: languagesWithEvidenceQuality(), measure: 'score', encoding });
+      expect(at('python', 'ecosystem').textContent, encoding).not.toMatch(/confidence/);
+      handles.pop()!.destroy();
+    }
+    // The example that records the field and no measure keeps its default view's words.
+    mount({ analysis: relocation, measure: 'score' });
+    expect(table().textContent).not.toMatch(/confidence/);
+  });
+
+  it('with both, the confidence measure is what a rating says, not the field, in the layer and out of it (#330)', () => {
+    const both = languagesWithConfidence();
+    const lowField = Analysis.parse({ ...both, cells: both.cells.map((c) => c.measure !== 'score' ? c : {
+      ...c, assertions: c.assertions.map((x) => ({ ...x, confidence: 'low' })),
+    }) });
+    // Alone, the low field is what the layer says...
+    mountShipped({
+      analysis: { ...lowField, measures: lowField.measures.filter((m) => m.name !== 'confidence'), cells: lowField.cells.filter((c) => c.measure !== 'confidence') },
+      measure: 'score', encoding: 'uncertainty-suppressed',
+    });
+    expect(at('rust', 'performance').textContent).toMatch(/ of 5, confidence low$/);
+    handles.pop()!.destroy();
+    // ...beside the measure, the measure is, said once, and a cell it leaves empty says nothing.
+    for (const encoding of ['uncertainty-suppressed', 'text-only']) {
+      mountShipped({ analysis: lowField, measure: 'score', encoding });
+      expect(at('rust', 'performance').textContent, encoding).toMatch(/ of 5, confidence high$/);
+      expect(at('rust', 'performance').textContent!.match(/confidence/g), encoding).toHaveLength(1);
+      expect(at('go', 'ecosystem').textContent, encoding).not.toMatch(/confidence/);
+      handles.pop()!.destroy();
+    }
   });
 
   it('a missing cell says its reason, never a bare blank', () => {

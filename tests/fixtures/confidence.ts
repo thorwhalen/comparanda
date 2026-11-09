@@ -3,6 +3,9 @@
  * scores, for the value-suppressing encoding (#91). Invented, like the example
  * it extends (ADR-0033). `go`'s cells carry no confidence, so the encoding's
  * "left uncoloured" path is exercised too.
+ *
+ * `languagesWithEvidenceQuality` records the same levels as `Assertion.confidence` on the scores themselves and
+ * declares no confidence measure (#330), the other source the confidence layer reads.
  */
 import { Analysis } from '../../src/core/schema/analysis.js';
 import languagesJson from '../../examples/languages.json';
@@ -31,6 +34,17 @@ export function languagesWithConfidence(
         justification: 'how much of the evidence we could check', evidence: [], version: 1, independence: 'independent',
       }],
     }));
+  }
+  return Analysis.parse(json);
+}
+
+/** The same levels as each score's `Assertion.confidence`, and no confidence measure (#330). `go` records none. */
+export function languagesWithEvidenceQuality(): Analysis {
+  const json = structuredClone(languagesJson) as Record<string, any>;
+  const criteria = json['criteria'].map((c: { id: string }) => c.id);
+  for (const cell of json['cells']) {
+    const level = CONFIDENCE[cell.alternativeId]?.[criteria.indexOf(cell.criterionId)];
+    if (level) for (const a of cell.assertions) a.confidence = level;
   }
   return Analysis.parse(json);
 }

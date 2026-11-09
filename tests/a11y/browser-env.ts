@@ -19,7 +19,7 @@ import type { Theme } from '../../src/view/theme.js';
 import languagesJson from '../../examples/languages.json';
 import relocationJson from '../../examples/relocation.json';
 import videoJson from '../../examples/video-generation.json';
-import { languagesWithConfidence } from '../fixtures/confidence.js';
+import { languagesWithConfidence, languagesWithEvidenceQuality } from '../fixtures/confidence.js';
 import type { WithEnv } from './gate.js';
 
 export interface MediaOptions {
@@ -36,12 +36,13 @@ declare module '@vitest/browser/context' {
   }
 }
 
-/** The example analyses, plus the confident one the value-suppressing encoding needs. */
+/** The example analyses, plus the confident ones the value-suppressing encoding needs: by a measure, and by evidence quality (#330). */
 export const FIXTURES: Readonly<Record<string, Analysis>> = {
   languages: Analysis.parse(languagesJson),
   relocation: Analysis.parse(relocationJson),
   'video-generation': Analysis.parse(videoJson),
   'languages with confidence': languagesWithConfidence(),
+  'languages with evidence quality': languagesWithEvidenceQuality(),
 };
 /**
  * A third party's encoding, as `defineEncoding` lets anyone write one, whose palette draws a grey ink

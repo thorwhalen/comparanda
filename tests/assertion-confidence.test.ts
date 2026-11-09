@@ -12,7 +12,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 
 import { Analysis, SCHEMA_VERSION, validateAnalysis } from '../src/core/schema/analysis.js';
 import { Assertion } from '../src/core/schema/values.js';
-import { CONFIDENCE_GLOSSES, CONFIDENCE_LEVELS } from '../src/core/schema/evidence.js';
+import { CONFIDENCE_GLOSSES, CONFIDENCE_LEVELS, weakestConfidence, type Confidence } from '../src/core/schema/evidence.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const readJson = (p: string) => JSON.parse(readFileSync(join(root, p), 'utf8'));
@@ -85,5 +85,24 @@ describe('the field', () => {
     });
     // Only the measure's own declaration is missing on that criterion; nothing about the field is a problem.
     expect(validateAnalysis(doc).problems.filter((p) => p.path.endsWith('.confidence'))).toEqual([]);
+  });
+});
+
+describe('weakestConfidence: a set of assertions read as one level (#330)', () => {
+  const at = (...levels: (Confidence | undefined)[]) => levels.map((confidence) => (confidence ? { confidence } : {}));
+
+  it('is the lowest level recorded, whatever the order, and never one between', () => {
+    expect(weakestConfidence(at('high'))).toBe('high');
+    expect(weakestConfidence(at('high', 'low', 'medium'))).toBe('low');
+    expect(weakestConfidence(at('high', 'medium', 'high'))).toBe('medium');
+    // high and low are not averaged to medium.
+    expect(weakestConfidence(at('low', 'high'))).toBe('low');
+  });
+
+  it('is none for an empty set, or when any member records none: absent is never a level', () => {
+    expect(weakestConfidence([])).toBeUndefined();
+    expect(weakestConfidence(at(undefined))).toBeUndefined();
+    expect(weakestConfidence(at('high', undefined))).toBeUndefined();
+    expect(weakestConfidence(at('low', undefined))).toBeUndefined();
   });
 });
