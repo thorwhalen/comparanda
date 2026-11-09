@@ -47,7 +47,7 @@ export type ViewStateStatus = StorageStatus;
 export { StorageQuotaError };
 
 const MEMORY_NOTICE =
-  'This browser is not letting the page save anything, so your arrangement and saved views will be lost when this tab closes.';
+  'This browser is not letting the page save anything, so your arrangement will be lost when this tab closes.';
 
 /** The slice of an event target the `storage` event arrives on. */
 export interface StorageEvents {

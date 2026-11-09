@@ -228,7 +228,7 @@ export function emptyReadOnlyProvider<T>(): DataProvider<T> {
   const refuse = async (): Promise<never> => { throw new Error('this source is read-only.'); };
   return {
     getList: async () => ({ data: [], total: 0 }),
-    getOne: async (id: string) => { throw new Error(`no item with id "${id}"; this source holds nothing.`); },
+    getOne: refuse,
     create: refuse,
     update: refuse,
     updateMany: refuse,

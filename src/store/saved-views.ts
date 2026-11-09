@@ -65,7 +65,7 @@ export interface SavedViewStore {
    */
   saveAffordance(
     current: ViewState | SavedViewState,
-    options: { analysisId: string; mode: Exclude<SavedViewMode, 'locked'>; actorId: string | undefined; name?: string },
+    options: { analysisId: string; mode: Exclude<SavedViewMode, 'locked'>; actorId: string | undefined; name?: string | undefined },
   ): Affordance;
   /** The views of one analysis this actor can read: their own personal views, and every shared and locked one. */
   list(analysisId: string, actorId: string | undefined): Promise<SavedView[]>;
@@ -274,11 +274,22 @@ export function savedViewStore({
  * A reader's personal views of one analysis, kept in this browser (#117): the
  * personal provider for the standalone page, with `localCollectionProvider`'s
  * fallback chain and its notice. One key per analysis, since every page opened
- * from `file://` shares one origin.
+ * from `file://` shares one origin. A stored view this version cannot read (a
+ * newer field, a tampered record) is not listed, and is written back unchanged.
  */
 export function localSavedViews(
   analysisId: string,
   { storage, key = `comparanda.saved-views.${analysisId}` }: { storage?: IdentityStorage; key?: string } = {},
 ): LocalCollection<SavedView> {
-  return localCollectionProvider<SavedView>({ key, ...(storage ? { storage } : {}) });
+  return localCollectionProvider<SavedView>({ key, ...(storage ? { storage } : {}), accept: readable });
+}
+
+/** Whether this version can read a stored view: the store's own reading of it. One it cannot is left in storage as it was, never listed. */
+function readable(raw: unknown): raw is SavedView {
+  try {
+    fromStore(raw as SavedView);
+    return true;
+  } catch {
+    return false;
+  }
 }

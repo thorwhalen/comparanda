@@ -43,7 +43,7 @@ import { joinGroup } from '../core/group-membership.js';
 import type { Axis } from '../core/schema/groups.js';
 import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type Arrangement, type MatrixViewProps } from './matrix.js';
-import type { MatrixPropsUpdate, MountMatrixProps } from './props.js';
+import type { MatrixPropsUpdate, MountMatrixProps, SavedViewsProp } from './props.js';
 import { trackStickyExtents } from './sticky.js';
 import { activeElementOf, messageOf } from './dom.js';
 
@@ -185,6 +185,8 @@ export function mountMatrix(
   const actor = () => (known?.identity === inForce() ? known.id : undefined);
   /** Who the last render was drawn for, to tell whether a new reader changes what it shows. */
   let drawnFor: string | undefined;
+  /** Who was acting at the last render: the saved views listed are theirs (#117). */
+  let drawnActor: string | undefined;
   /** Whether the last render asked for a name (#193). */
   let drawnAskingName = false;
   /** The identity's id as a viewer: the anonymous identity is nobody in particular, and must not be taken for an author who happens to be called that. */
@@ -201,7 +203,7 @@ export function mountMatrix(
     const at = now().toISOString();
     const othersHidden = !current.viewer
       && hiddenAuthors(analysis, { viewerId: drawnFor, now: at }) !== hiddenAuthors(analysis, { viewerId: viewerIdOf(actor()), now: at });
-    if (othersHidden || drawnAskingName !== asksName()) draw();
+    if (othersHidden || drawnAskingName !== asksName() || (current.savedViews && drawnActor !== actor())) draw();
   };
   const learnActor = (identity = inForce()) => {
     // Until the new identity answers, nobody known: the previous one must not sign moves made in the gap, or see what only they may.
@@ -289,17 +291,18 @@ export function mountMatrix(
     current.onViewChange?.(shown);
   };
   /**
-   * The saved-views panel's port (#117): one per store, so the panel keeps its list across renders and reads it again
-   * only from a new store. Each write is signed as the identity in force, and saves the arrangement as shown.
+   * The saved-views panel's port (#117): one per store and reader, so the panel keeps its list across renders and reads
+   * it again for a new store or a new reader. Each write is signed as the identity in force, and saves the arrangement as shown.
    */
-  let viewsPort: { store: SavedViewStore; port: SavedViewsPort } | undefined;
+  let viewsPort: { store: SavedViewStore; reader: string | undefined; port: SavedViewsPort } | undefined;
   const savedViewsPort = (store: SavedViewStore): SavedViewsPort => {
-    if (viewsPort?.store === store) return viewsPort.port;
+    const reader = actor();
+    if (viewsPort?.store === store && viewsPort.reader === reader) return viewsPort.port;
     const act = async () => ({ by: (await inForce().current()).id, at: now().toISOString() });
     const port: SavedViewsPort = {
       list: async () => store.list(analysis.id, (await inForce().current()).id),
       affordances: (v) => store.affordances(v, actor()),
-      saveAffordance: (mode) => store.saveAffordance(shown, { analysisId: analysis.id, mode, actorId: actor() }),
+      saveAffordance: (mode, name) => store.saveAffordance(shown, { analysisId: analysis.id, mode, actorId: actor(), name }),
       // The arrangement as shown when asked: the argument is read before the identity is awaited.
       save: async (name, mode) => store.create(shown, { analysisId: analysis.id, name, mode, ...(await act()) }),
       update: async (id) => store.update(id, shown, await act()),
@@ -308,10 +311,23 @@ export function mountMatrix(
       lock: async (id) => store.lock(id, await act()),
       unlock: async (id) => store.unlock(id, await act()),
       apply: loadWhole,
-      notice: () => current.savedViews?.notice?.(),
     };
-    viewsPort = { store, port };
+    viewsPort = { store, reader, port };
     return port;
+  };
+  /** The saved views' storage, followed: a notice it raises or clears is drawn (#117). */
+  let viewsStatus: { of: SavedViewsProp['status']; off?: (() => void) | undefined } = { of: undefined };
+  const followViewsStatus = () => {
+    const of = current.savedViews?.status;
+    if (viewsStatus.of === of) return;
+    viewsStatus.off?.();
+    viewsStatus = { of, off: of?.onStatus(() => { if (!destroyed) draw(); }) };
+  };
+  /** The notice to draw: the host's, else the saved views' storage's, until the reader acknowledges it. */
+  const noticeOf = (): MountMatrixProps['notice'] => {
+    const status = current.savedViews?.status;
+    const message = status?.status().notice;
+    return current.notice ?? (status && message ? { message, onAcknowledge: status.acknowledge } : undefined);
   };
 
   /** Open or close the detail panel; `into` moves focus to its heading once it is drawn. */
@@ -433,6 +449,7 @@ export function mountMatrix(
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
     const viewer = current.viewer ?? { viewerId: viewerIdOf(actor()), now: now().toISOString() };
     drawnFor = viewer.viewerId;
+    drawnActor = actor();
     drawnAskingName = asksName();
     // Without one, the document's own order, so a source's added alternative shows.
     const base = view ?? initialViewState(analysis);
@@ -458,7 +475,7 @@ export function mountMatrix(
       onReorder: reorder,
       onEncodingChange: changeEncoding,
       onArrange: rearrange,
-      ...(current.notice ? { notice: current.notice } : {}),
+      ...(noticeOf() ? { notice: noticeOf()! } : {}),
       actor: () => actor() ?? DEFAULT_IDENTITY_ID,
       ...(arrange ? { arrange } : {}),
       ...(panels ? { panels } : {}),
@@ -561,6 +578,7 @@ export function mountMatrix(
     unsubscribe = follow(current.source);
     learnActor();
     draw();
+    followViewsStatus();
   } catch (error) {
     // A mount that failed holds nothing: no subscription, no claim, no half a tree.
     destroyed = true;
@@ -640,6 +658,7 @@ export function mountMatrix(
         throw error;
       }
       if (swapped) before.unsubscribe?.();
+      followViewsStatus();
       reportSettled();
       if (props.identity !== before.current.identity) learnActor();
     },
@@ -648,6 +667,7 @@ export function mountMatrix(
       destroyed = true;
       unsubscribe?.();
       unsubscribe = undefined;
+      viewsStatus.off?.();
       sticky.release();
       render(null, el);
       mounted.delete(el);
@@ -693,8 +713,8 @@ function checked(props: MountMatrixProps): MountMatrixProps {
     throw new TypeError(`props.onViewChange must be a function (view) => void; got ${describe(props.onViewChange)}.`);
   }
   const views = props.savedViews;
-  if (views !== undefined && (typeof views?.store?.affordances !== 'function' || (views.notice !== undefined && typeof views.notice !== 'function'))) {
-    throw new TypeError(`props.savedViews must be { store: savedViewStore(), notice? }; got ${describe(views)}.`);
+  if (views !== undefined && typeof views?.store?.affordances !== 'function') {
+    throw new TypeError(`props.savedViews must be { store: savedViewStore(), status? }; got ${describe(views)}.`);
   }
   if (source !== undefined && typeof source.subscribe !== 'function') {
     // A source the view cannot follow would offer edits against a document it

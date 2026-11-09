@@ -66,6 +66,29 @@ describe('a local collection', () => {
     expect(heard).toEqual([expect.stringMatching(/storage is full/)]);
     storage.setItem = set;
     expect((await c.provider.getList({})).data.map((r) => r.id)).toEqual(['a']);
+    // A later write that succeeds clears it: "NOT saved" is no longer true.
+    await c.provider.create({ id: 'b', name: 'B' });
+    expect(c.status()).toEqual({ backing: 'local-storage' });
+  });
+
+  it('keeps the memory notice through writes that succeed: nothing is kept past the tab still', async () => {
+    const refusing = { getItem: () => null, setItem: (): undefined => { throw domError('SecurityError'); }, removeItem: () => undefined };
+    const c = localCollectionProvider<Row>({ key: 'k', storage: refusing });
+    await c.provider.create({ id: 'a', name: 'A' });
+    expect(c.status().notice).toBe(LOCAL_COLLECTION_MEMORY_NOTICE);
+  });
+
+  it('moves stored text it cannot read aside before writing over it, and refuses rather than lose a second one', async () => {
+    const storage = mapStorage(new Map([['k', '{"v":2,"views":{}}']]));
+    const c = localCollectionProvider<Row>({ key: 'k', storage });
+    expect((await c.provider.getList({})).data).toEqual([]);
+    await c.provider.create({ id: 'a', name: 'A' });
+    expect(storage.map.get('k.unreadable')).toBe('{"v":2,"views":{}}');
+    expect(JSON.parse(storage.map.get('k')!)).toEqual([{ id: 'a', name: 'A' }]);
+    storage.map.set('k', 'not json');
+    await expect(c.provider.create({ id: 'b', name: 'B' })).rejects.toThrow(/cannot read, and "k.unreadable" is taken: nothing was written/);
+    expect(storage.map.get('k')).toBe('not json');
+    expect(storage.map.get('k.unreadable')).toBe('{"v":2,"views":{}}');
   });
 
   it('reads the stored list on every operation, so another tab\'s record is not overwritten', async () => {
@@ -109,5 +132,17 @@ describe('a reader\'s personal saved views, kept locally', () => {
     expect(await store().get(v.id, 'ana')).toMatchObject({ name: 'Cost first', mode: 'personal' });
     expect([...storage.map.keys()]).toEqual([`comparanda.saved-views.${relocation.id}`]);
     expect(await savedViewStore({ personal: localSavedViews('another', { storage }).provider }).list(relocation.id, 'ana')).toEqual([]);
+  });
+
+  it('list what this version can read, leaving a view it cannot read stored as it was', async () => {
+    const storage = mapStorage();
+    const store = savedViewStore({ personal: localSavedViews(relocation.id, { storage }).provider });
+    const v = await store.create(base, { analysisId: relocation.id, name: 'Cost first', ...ana });
+    const key = `comparanda.saved-views.${relocation.id}`;
+    const newer = { ...v, id: 'newer', name: 'From a newer page', pinnedTo: 'board' };
+    storage.map.set(key, JSON.stringify([newer, ...JSON.parse(storage.map.get(key)!)]));
+    expect((await store.list(relocation.id, 'ana')).map((x) => x.name)).toEqual(['Cost first']);
+    await store.rename(v.id, 'Cheapest', ana);
+    expect(JSON.parse(storage.map.get(key)!)[0]).toEqual(newer);
   });
 });

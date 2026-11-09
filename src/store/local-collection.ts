@@ -15,7 +15,8 @@
  * the next read rather than overwritten by a stale copy; operations in this tab
  * go one at a time. A stored record this collection does not accept is never
  * handed out, and is written back as it was: a newer version's record survives
- * an older page.
+ * an older page. Stored text that is not a list at all is moved aside, under
+ * `<key>.unreadable`, before the first write over it.
  *
  * Queries are the caller's, as `DEFAULT_CAPABILITIES` says (no server-side
  * sort, filter, search or pagination): `getList` returns the whole collection.
@@ -74,16 +75,26 @@ export function memoryCollection<T extends { id: string }>(): DataProvider<T> {
 function collectionIn<T extends { id: string }>(
   store: IdentityStorage, key: string, accept: (raw: unknown) => raw is T, channel: StatusChannel,
 ): DataProvider<T> {
-  /** The stored list, split into what this collection holds and what it leaves alone. Anything unreadable is an empty list. */
-  const read = (): { held: T[]; kept: unknown[] } => {
+  /** Where stored text that is not a list this version can read is kept, so the first write here does not destroy it. */
+  const aside = `${key}.unreadable`;
+  /** The stored list, split into what this collection holds and what it leaves alone. Unreadable text reads as an empty list. */
+  const read = (): { held: T[]; kept: unknown[]; unreadable?: string } => {
+    const text = store.getItem(key) ?? '[]';
     let raw: unknown;
     try {
-      raw = JSON.parse(store.getItem(key) ?? '[]');
+      raw = JSON.parse(text);
     } catch {
-      raw = [];
+      raw = undefined;
     }
-    const list = Array.isArray(raw) ? raw : [];
-    return { held: list.filter(accept), kept: list.filter((x) => !accept(x)) };
+    if (!Array.isArray(raw)) return { held: [], kept: [], unreadable: text };
+    return { held: raw.filter(accept), kept: raw.filter((x) => !accept(x)) };
+  };
+  /** Before the first write over unreadable text, move it aside; if something is aside already, refuse rather than lose either. */
+  const keepAside = (text: string) => {
+    if (store.getItem(aside) !== null) {
+      throw new Error(`"${key}" holds what this version cannot read, and "${aside}" is taken: nothing was written.`);
+    }
+    writeOrSay(store, aside, text, channel);
   };
   const missing = (id: string) => new Error(`no record "${id}" is kept here.`);
 
@@ -94,9 +105,12 @@ function collectionIn<T extends { id: string }>(
    */
   const run = <R>(op: (held: T[]) => { result: R; next?: T[] }): Promise<R> => {
     const go = async () => {
-      const { held, kept } = read();
+      const { held, kept, unreadable } = read();
       const { result, next } = op(held);
-      if (next) writeOrSay(store, key, JSON.stringify([...kept, ...next]), channel);
+      if (next) {
+        if (unreadable !== undefined) keepAside(unreadable);
+        writeOrSay(store, key, JSON.stringify([...kept, ...next]), channel);
+      }
       return result;
     };
     const step = chain.then(go, go);
@@ -105,8 +119,12 @@ function collectionIn<T extends { id: string }>(
   };
   /** Each record a copy: nobody holds a reference into the list. */
   const copy = (x: T): T => structuredClone(x);
-  const merge = (held: T[], ids: readonly string[], data: Partial<T>) =>
-    held.map((x) => (ids.includes(x.id) ? { ...x, ...data, id: x.id } : x));
+  /** Merge `data` into the records `ids` name, or remove them; `one` refuses an id that is not kept. */
+  const change = (ids: readonly string[], data: Partial<T> | undefined, one: boolean) => run((held) => {
+    if (one && !held.some((x) => x.id === ids[0])) throw missing(ids[0]!);
+    const next = data ? held.map((x) => (ids.includes(x.id) ? { ...x, ...data, id: x.id } : x)) : held.filter((x) => !ids.includes(x.id));
+    return { result: next.filter((x) => ids.includes(x.id)).map(copy), next };
+  });
 
   return {
     getList: () => run((held) => ({ result: { data: held.map(copy), total: held.length } })),
@@ -120,20 +138,10 @@ function collectionIn<T extends { id: string }>(
       if (!item.id || held.some((x) => x.id === item.id)) throw new Error(`a record needs an id of its own; "${String(item.id)}" is not one.`);
       return { result: copy(item), next: [...held, copy(item)] };
     }),
-    update: (id, data) => run((held) => {
-      if (!held.some((x) => x.id === id)) throw missing(id);
-      const next = merge(held, [id], data);
-      return { result: copy(next.find((x) => x.id === id)!), next };
-    }),
-    updateMany: (ids, data) => run((held) => {
-      const next = merge(held, ids, data);
-      return { result: next.filter((x) => ids.includes(x.id)).map(copy), next };
-    }),
-    delete: (id) => run((held) => {
-      if (!held.some((x) => x.id === id)) throw missing(id);
-      return { result: undefined, next: held.filter((x) => x.id !== id) };
-    }),
-    deleteMany: (ids) => run((held) => ({ result: undefined, next: held.filter((x) => !ids.includes(x.id)) })),
+    update: async (id, data) => (await change([id], data, true))[0]!,
+    updateMany: (ids, data) => change(ids, data, false),
+    delete: async (id) => void await change([id], undefined, true),
+    deleteMany: async (ids) => void await change(ids, undefined, false),
     getCapabilities: () => ({ ...DEFAULT_CAPABILITIES }),
   };
 }

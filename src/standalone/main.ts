@@ -32,7 +32,7 @@ async function start(): Promise<void> {
     const store = savedViewStore({ personal: personal.provider, shared: emptyReadOnlyProvider(), sequences: emptyReadOnlyProvider() });
     await mountPersistedMatrix(root, {
       analysis, measure: settings.measure, ...(settings.encoding !== undefined ? { encoding: settings.encoding } : {}),
-      savedViews: { store, notice: () => personal.status().notice },
+      savedViews: { store, status: personal },
     });
   } catch (error) {
     const p = document.createElement('p');

@@ -23,7 +23,8 @@ import type { CheckStanding, CitationCheck } from '../core/schema/evidence.js';
 import type { MissingnessVocabulary } from '../core/schema/missingness.js';
 import type { ViewerContext } from '../core/schema/redaction.js';
 import type { ViewState } from '../core/view-state.js';
-import type { AnalysisSource, IdentityProvider, SavedViewStore } from '../store/index.js';
+import type { SavedView } from '../core/saved-views.js';
+import type { AnalysisSource, IdentityProvider, LocalCollection, SavedViewStore } from '../store/index.js';
 
 /** What the matrix renders. The contract ADR-0032 publishes before the matrix. */
 export interface MatrixProps {
@@ -98,18 +99,19 @@ export interface MountMatrixProps extends MatrixProps {
    * matrix draws the saved-views panel, which saves the arrangement as shown and
    * shows a saved one whole, as the reader's own move. Every control is asked of
    * `store` first (its providers' capabilities, each view's mode, the host), so
-   * one it refuses is shown refused, with the reason. `notice` is what the
-   * storage behind it has to tell the reader, read on each render: the
-   * standalone page passes `localSavedViews(...)`'s. Independent of `source`:
-   * a read-only analysis can still be arranged, and its arrangements kept.
+   * one it refuses is shown refused, with the reason. `status` is the storage
+   * behind it (the standalone page passes `localSavedViews(...)`): its notice
+   * is shown as the matrix's `notice`, after the host's own, until the reader
+   * acknowledges it. Independent of `source`: a read-only analysis can still
+   * be arranged, and its arrangements kept.
    */
   savedViews?: SavedViewsProp;
 }
 
-/** The `savedViews` prop: the store, and what its storage has to tell the reader. */
+/** The `savedViews` prop: the store, and the status of the storage behind it. */
 export interface SavedViewsProp {
   store: SavedViewStore;
-  notice?: () => string | undefined;
+  status?: Pick<LocalCollection<SavedView>, 'status' | 'onStatus' | 'acknowledge'>;
 }
 
 /**

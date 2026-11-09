@@ -111,13 +111,15 @@ export function statusChannel(initial: StorageStatus): StatusChannel {
 /**
  * Write `value` under `key`, or say why not: the channel's notice is set and the
  * write rejects -- with a `StorageQuotaError` when the storage is full, with the
- * storage's own error otherwise. What was stored before is left as it was.
+ * storage's own error otherwise. What was stored before is left as it was. A
+ * write that succeeds clears a notice that said one had failed: it is no longer true.
  */
 export function writeOrSay(store: IdentityStorage, key: string, value: string, channel: StatusChannel): void {
+  const { backing, notice } = channel.status();
   try {
     store.setItem(key, value);
+    if (notice === QUOTA_NOTICE || notice === SAVE_FAILED_NOTICE) channel.set({ backing });
   } catch (e) {
-    const backing = channel.status().backing;
     if (!isQuota(e)) {
       channel.set({ backing, notice: SAVE_FAILED_NOTICE });
       throw e;
