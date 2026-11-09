@@ -40,6 +40,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => ownSetTimeout(resol
 const languages = FIXTURES['languages']!;
 const relocation = FIXTURES['relocation']!;
 const confident = FIXTURES['languages with confidence']!;
+const evidenced = FIXTURES['languages with evidence quality']!;
 const crits = languages.criteria.map((c) => c.id);
 const ENCODING_IDS = SHIPPED_ENCODINGS.map((e) => e.id);
 
@@ -786,11 +787,13 @@ const EVERY_CODE = everyCode().analysis;
 const BANDED = viewsOf(relocation)[1]!.view!;
 const MEDIUM_CASES: readonly (readonly [string, Analysis, ViewState?])[] = [
   ['missingness', relocation], ['missingness', EVERY_CODE], ['uncertainty-suppressed', confident], ['text-only', relocation],
+  // The same hatch, drawn from each value's evidence quality when no confidence measure exists (#330).
+  ['uncertainty-suppressed', evidenced],
   // Banded on both axes: the omitted block's glyph and words must survive too (#93).
   ['missingness', relocation, BANDED], ['text-only', relocation, BANDED],
 ];
 const caseName = (encoding: string, analysis: Analysis, view?: ViewState) =>
-  `${encoding}${analysis === EVERY_CODE ? ' / every code' : ''}${view ? ' / banded' : ''}`;
+  `${encoding}${analysis === EVERY_CODE ? ' / every code' : ''}${analysis === evidenced ? ' / evidence quality' : ''}${view ? ' / banded' : ''}`;
 
 const a15: Check<BrowserEnv> = {
   id: 'A15',

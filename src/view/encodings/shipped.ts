@@ -15,7 +15,9 @@ import { CORE_MISSING_CODES, coreReasonOf, NOT_APPLICABLE, NOT_ASSESSED, type Mi
 import { isOrdered, type Measurement } from '../../core/schema/measurement.js';
 import { measurementFor } from '../../core/schema/structure.js';
 import { stripDisagreement, stripLevels, type RaterStrip } from '../../core/rater-strip.js';
-import type { ScalarValue } from '../../core/schema/values.js';
+import type { Reduced, ScalarValue } from '../../core/schema/values.js';
+import { CONFIDENCE_LEVELS, weakestConfidence, type Confidence } from '../../core/schema/evidence.js';
+import type { Analysis } from '../../core/schema/analysis.js';
 import { DERIVED_SWATCHES, type Swatch, type SwatchId } from './palette.js';
 import { VSUP_PALETTE } from './vsup-palette.js';
 import { capitalise } from '../words.js';
@@ -247,6 +249,21 @@ export const datum = /* @__PURE__ */ defineEncoding({
 
 /** The measure a confidence qualifies its score with, by name: what value suppression and a cell's announcement read. */
 export const CONFIDENCE = 'confidence';
+
+/**
+ * Whether the analysis has a confidence measure (declared, or recorded in a cell). When it does, the confidence
+ * layer reads the measure; when it does not, each value's `Assertion.confidence` (#330, docs/domain-model.md).
+ * One rule for the whole matrix, never per cell: the two are different quantities, and one layer reads one.
+ */
+export const hasConfidenceMeasure = (a: Analysis): boolean =>
+  a.measures.some((m) => m.name === CONFIDENCE) || a.cells.some((c) => c.measure === CONFIDENCE);
+
+/** A value's recorded evidence quality, which the confidence layer reads when there is no confidence measure. */
+export const fieldConfidence = (r: Reduced | undefined): Confidence | undefined =>
+  r?.value === undefined ? undefined : weakestConfidence(r.contributing);
+
+/** `Assertion.confidence`'s scale, closed and ordinal, as the merge tree reads one: nothing stored, nothing declared. */
+const FIELD_SCALE = { level: 'ordinal', preference: 'increasing', levels: [...CONFIDENCE_LEVELS] } as Measurement;
 /** Confidence recorded on a range rather than as levels is read in this many layers, the hatch's maximum. */
 const CONTINUOUS_CONFIDENCE_LAYERS = 3;
 const CONTINUOUS_CONFIDENCE_WORDS = ['low', 'medium', 'high'];
@@ -454,19 +471,22 @@ export const uncertaintySuppressed = /* @__PURE__ */ defineEncoding({
   texture: { channel: 'hatch', carries: 'confidence', levels: 3 },
   prepare: (ctx) => {
     if (ctx.measure === CONFIDENCE) return { unavailable: 'the shown measure is the confidence itself; show the measure it qualifies.' };
-    if (!ctx.analysis.measures.some((m) => m.name === CONFIDENCE)) return { unavailable: 'this analysis records no confidence measure to suppress by.' };
+    const measured = hasConfidenceMeasure(ctx.analysis);
     const byId = new Map(ctx.analysis.criteria.map((c) => [c.id, c]));
     return suppressedBy(ctx, {
       columnOf: (id) => {
         const c = byId.get(id);
-        return c ? suppressedColumn(measurementFor(c, ctx.measure), measurementFor(c, CONFIDENCE)) : undefined;
+        return c ? suppressedColumn(measurementFor(c, ctx.measure), measured ? measurementFor(c, CONFIDENCE) : FIELD_SCALE) : undefined;
       },
-      certainty: (alt, crit) => ctx.readMeasure(CONFIDENCE, alt, crit)?.value,
+      certainty: measured
+        ? (alt, crit) => ctx.readMeasure(CONFIDENCE, alt, crit)?.value
+        : (alt, crit) => fieldConfidence(ctx.read(alt, crit)),
       noun: 'confidence',
       falls: 'confidence falls',
       noCell: `no shown cell records both a ${ctx.measure} and a confidence on their declared scales.`,
       noColumn: ' and a ranked confidence to suppress it by',
       notes: (uncoloured) => [
+        ...(measured ? [] : [`Confidence is each ${ctx.measure}'s evidence quality, the lowest its assertions record.`]),
         `The ${ctx.measure} stays as text in every cell. In the study that introduced this blend, it changed which options readers chose -- they avoided the least certain, and accepted worse expected value to do so -- not how accurately they read values.`,
         ...(uncoloured
           ? [`Cells with no confidence recorded, and criteria with no ranked confidence or whose ${ctx.measure} is not on a ranked scale of ${SCORE_LEVELS[0]} to ${SCORE_LEVELS[1]} levels, are left uncoloured.`]

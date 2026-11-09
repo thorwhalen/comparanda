@@ -15,10 +15,11 @@ import {
 } from '../../src/core/view-state.js';
 import { h } from 'preact';
 
-import { mountMatrix, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
+import { createEncodingRegistry, mountMatrix, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps } from '../../src/view/index.js';
 import { Matrix, type MatrixViewProps } from '../../src/view/matrix.js';
 import languagesJson from '../../examples/languages.json';
 import relocationJson from '../../examples/relocation.json';
+import { languagesWithConfidence, languagesWithEvidenceQuality } from '../fixtures/confidence.js';
 
 const languages = Analysis.parse(languagesJson);
 const relocation = Analysis.parse(relocationJson);
@@ -273,6 +274,31 @@ describe('what a cell announces', () => {
     expect(valued.length).toBeGreaterThan(0);
     const said = valued[0]!.textContent!;
     expect(said).toMatch(/ of 5, confidence low$/);
+  });
+
+  /** A cell by its pair; a NUL cannot appear in a CSS selector, so not by `querySelector`. */
+  const at = (alt: string, crit: string) => Array.from(table().querySelectorAll<HTMLElement>('td'))
+    .find((td) => td.dataset['pair'] === `${alt}\u0000${crit}`)!;
+
+  it('with no confidence measure, a rating says its evidence quality as its confidence, as the hatch draws it (#330)', () => {
+    handles.push(mountMatrix(el, { analysis: languagesWithEvidenceQuality(), measure: 'score', encoding: 'uncertainty-suppressed' }, { encodings: createEncodingRegistry(SHIPPED_ENCODINGS) }));
+    // python's ecosystem is held at low evidence quality: drawn densest, and said.
+    expect(at('python', 'ecosystem').dataset['hatch']).toBe('3');
+    expect(at('python', 'ecosystem').textContent).toMatch(/ of 5, confidence low$/);
+    expect(at('rust', 'performance').textContent).toMatch(/ of 5, confidence high$/);
+    // go records none: nothing drawn, nothing said.
+    expect(at('go', 'ecosystem').dataset['hatch']).toBeUndefined();
+    expect(at('go', 'ecosystem').textContent).not.toMatch(/confidence/);
+  });
+
+  it('with both, the confidence measure is what a rating says, not the field (#330)', () => {
+    const both = languagesWithConfidence();
+    const lowField = Analysis.parse({ ...both, cells: both.cells.map((c) => c.measure !== 'score' ? c : {
+      ...c, assertions: c.assertions.map((x) => ({ ...x, confidence: 'low' })),
+    }) });
+    mount({ analysis: lowField, measure: 'score' });
+    expect(at('rust', 'performance').textContent).toMatch(/ of 5, confidence high$/);
+    expect(at('go', 'ecosystem').textContent).not.toMatch(/confidence/);
   });
 
   it('a missing cell says its reason, never a bare blank', () => {

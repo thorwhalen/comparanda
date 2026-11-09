@@ -26,7 +26,7 @@ import { VSUP_PALETTE } from '../src/view/encodings/vsup-palette.js';
 import { groupMidpoint, layerFor, layerUncertainty, mergeTree } from '../src/view/encodings/vsup.js';
 import type { PreparedEncoding } from '../src/view/index.js';
 import { THEMES, type Theme } from '../src/view/theme.js';
-import { languagesWithConfidence } from './fixtures/confidence.js';
+import { languagesWithConfidence, languagesWithEvidenceQuality } from './fixtures/confidence.js';
 
 const THEME_NAMES = ['light', 'dark'] as const satisfies readonly Theme[];
 // Nothing is painted under a cell's text: the hatch and the glyph (#102, ADR-0028) are drawn beside it,
@@ -329,11 +329,62 @@ describe('uncertainty-suppressed', () => {
     }
   });
 
-  it('cannot draw without a confidence measure, or over the confidence itself, and says why', () => {
+  it('cannot draw with no confidence recorded at all, or over the confidence itself, and says why', () => {
     const plain = languagesWithConfidence();
-    const without = { ...plain, measures: plain.measures.filter((m) => m.name !== 'confidence') } as Analysis;
-    expect(prepare(without)).toEqual({ unavailable: expect.stringMatching(/no confidence measure/) });
+    // Neither a confidence measure nor any value's evidence quality: nothing to suppress by.
+    const without = {
+      ...plain,
+      measures: plain.measures.filter((m) => m.name !== 'confidence'),
+      cells: plain.cells.filter((c) => c.measure !== 'confidence'),
+    } as Analysis;
+    expect(prepare(without)).toEqual({ unavailable: expect.stringMatching(/no shown cell records both a score and a confidence/) });
     expect(prepare(plain, 'confidence')).toEqual({ unavailable: expect.stringMatching(/confidence itself/) });
+  });
+
+  describe('with no confidence measure, each value\'s evidence quality (#330)', () => {
+    const cellsOf = (a: Analysis) => a.alternatives.flatMap((x) => a.criteria.map((c) => [x.id, c.id] as const));
+
+    it('is the layer: the same marks the same levels draw as a measure, and the legend says what it reads', () => {
+      const field = ready(languagesWithEvidenceQuality());
+      const measure = ready(languagesWithConfidence());
+      for (const [alt, crit] of cellsOf(languagesWithEvidenceQuality())) expect(field.mark(alt, crit), `${alt} ${crit}`).toEqual(measure.mark(alt, crit));
+      expect(field.mark('python', 'ecosystem')).toEqual({ swatch: 'vsup-5x3-0-0', hatch: 3 });
+      expect(field.mark('go', 'ecosystem')).toEqual({});
+      expect(field.legend.entries).toEqual(measure.legend.entries);
+      expect(field.legend.notes).toContain('Confidence is each score\'s evidence quality, the lowest its assertions record.');
+      expect(measure.legend.notes.join(' ')).not.toMatch(/evidence quality/);
+    });
+
+    it('gives way to a confidence measure wherever the analysis has one, in every cell', () => {
+      // Every score's field says low; the measure says otherwise, and it is what is read.
+      const both = languagesWithConfidence();
+      const lowField = { ...both, cells: both.cells.map((c) => c.measure !== 'score' ? c : {
+        ...c, assertions: c.assertions.map((x) => ({ ...x, confidence: 'low' as const })),
+      }) } as Analysis;
+      const p = ready(lowField);
+      expect(p.mark('rust', 'performance')).toEqual({ swatch: 'vsup-5x3-2-4' });
+      // go records no confidence measure: it stays plain rather than falling back to the field.
+      expect(p.mark('go', 'ecosystem')).toEqual({});
+      expect(p.legend.notes.join(' ')).not.toMatch(/evidence quality/);
+    });
+
+    it('is the lowest level the value\'s assertions record, never an average, and none when one records none', () => {
+      const a = languagesWithEvidenceQuality();
+      // rust's performance: two raters agree on 5, one at high and one at low evidence quality.
+      const twice = (confidence?: 'low') => ({
+        ...a,
+        defaultReduction: 'mode',
+        cells: a.cells.map((c) => {
+          if (c.alternativeId !== 'rust' || c.criterionId !== 'performance' || c.measure !== 'score') return c;
+          const { confidence: high, ...first } = c.assertions[0]!;
+          expect(high).toBe('high');
+          const second = { ...first, id: 'rust-performance-2', authorId: 'ben', ...(confidence ? { confidence } : {}) };
+          return { ...c, assertions: [c.assertions[0]!, second] };
+        }),
+      }) as Analysis;
+      expect(ready(twice('low')).mark('rust', 'performance')).toEqual({ swatch: 'vsup-5x3-0-0', hatch: 3 });
+      expect(ready(twice()).mark('rust', 'performance')).toEqual({});
+    });
   });
 
   it('a confidence with no ranked scale leaves the matrix to text, and says why', () => {

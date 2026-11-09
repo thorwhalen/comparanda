@@ -58,7 +58,7 @@ import {
 import { aliasesOf } from '../core/schema/structure.js';
 import { isWithheldFromReader, type Reduced } from '../core/schema/values.js';
 import type { Session, ViewState } from '../core/view-state.js';
-import { CONFIDENCE, textOnly } from './encodings/shipped.js';
+import { CONFIDENCE, fieldConfidence, hasConfidenceMeasure, textOnly } from './encodings/shipped.js';
 import {
   describeTexture, type CellMark, type EncodingDefinition, type EncodingRegistry, type Legend as LegendData, type PreparedEncoding,
 } from './encodings/registry.js';
@@ -200,8 +200,10 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     if (!reads.has(key)) reads.set(key, reader.read(alt, crit));
     return reads.get(key);
   };
-  const confidence = measure !== CONFIDENCE && unknownMeasure(analysis, CONFIDENCE) === undefined
-    ? makeCellReader(analysis, CONFIDENCE) : undefined;
+  // A cell's confidence, said in words wherever the layer hatches it: the measure's, else its value's evidence quality (#330).
+  const measured = hasConfidenceMeasure(analysis);
+  const confidence = measured && measure !== CONFIDENCE ? makeCellReader(analysis, CONFIDENCE) : undefined;
+  const sureOf = (alt: string, crit: string) => measured ? confidence?.read(alt, crit)?.value : fieldConfidence(read(alt, crit));
   // Another measure's reading of the same cell, for an encoding that crosses two (value by confidence).
   const others = new Map<string, ReturnType<typeof makeCellReader> | null>();
   const readMeasure = (other: string, alt: string, crit: string) => {
@@ -366,7 +368,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const reduced = read(altId, critId);
     if (reduced?.withheldFromReader) return '';
     const why = reduced?.contributing.find((a) => !isWithheldFromReader(a) && a.justification?.trim())?.justification?.trim();
-    const sure = confidence?.read(altId, critId)?.value;
+    const sure = sureOf(altId, critId);
     return [why, sure !== undefined ? `${CONFIDENCE} ${String(sure)}` : undefined].filter(Boolean).join(' \u00b7 ');
   };
   const tipId = `${helpId}-tip`;
@@ -380,7 +382,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     const [altLabel, critLabel] = transposed
       ? [columnLabel.get(columnId), rowLabel.get(rowId)]
       : [rowLabel.get(rowId), columnLabel.get(columnId)];
-    const sure = state === 'value' ? confidence?.read(altId, critId)?.value : undefined;
+    const sure = state === 'value' ? sureOf(altId, critId) : undefined;
     const after = state === 'value'
       ? `${reduced?.withheldFromReader ? '' : outOf(reduced?.value, reader.measurementOf(critId))}${sure !== undefined ? `, ${CONFIDENCE} ${String(sure)}` : ''}`
       : '';
