@@ -30,8 +30,9 @@ import type { Analysis } from '../schema/analysis.js';
 import { makeCellReader, vocabularyOf } from '../schema/analysis.js';
 import { makeInapplicability } from '../schema/groups.js';
 import { cellWords } from '../cell-words.js';
-import { aliasesOf, measurementFor } from '../schema/structure.js';
-import { declaredIndifference, dominance, dominanceScope, EXCLUSION_WORDS, type DominanceResult, type ExcludedCriterion } from './dominance.js';
+import { aliasesOf, measurementFor, type Aliases } from '../schema/structure.js';
+import { declaredIndifference, type Measurement } from '../schema/measurement.js';
+import { dominance, dominanceScope, EXCLUSION_WORDS, type DominanceResult, type ExcludedCriterion } from './dominance.js';
 
 export type DominanceTier = 'non-dominated' | 'possibly-dominated' | 'dominated';
 
@@ -46,6 +47,8 @@ export interface ScatterAxis {
   preference: string | undefined;
   /** The indifference threshold the practical tolerance would apply on it (`declaredIndifference`); `undefined` when none is declared. */
   indifference: number | undefined;
+  /** That threshold in words: in levels on an ordinal scale ("1 level"), else in the range's unit ("600 USD/month"). */
+  indifferenceWords: string | undefined;
 }
 
 /** The alternatives both comparisons ran over. */
@@ -57,11 +60,21 @@ export interface ScatterScope {
   size: number;
 }
 
-/** The practical tolerance: whether it was applied, and how much it could change. */
+/**
+ * What the practical tolerance can change: `none` when no compared criterion
+ * declares an indifference threshold, `outer-only` when only criteria off the
+ * two axes do (only the tier across every criterion can move), `both` otherwise.
+ */
+export type ToleranceEffect = 'none' | 'outer-only' | 'both';
+
+/** The practical tolerance: whether it was applied, how much it could change, and that in words. */
 export interface ScatterTolerance {
   applied: boolean;
-  /** Of the criteria the comparison across every criterion uses, how many declare an indifference threshold. */
+  /** Of the criteria the comparison across every criterion compares (its basis, not every criterion), how many declare an indifference threshold. */
   overall: { declared: number; of: number };
+  effect: ToleranceEffect;
+  /** What the tolerance does here, or why it does nothing, for the control that sets it: one sentence. */
+  said: string;
 }
 
 /** One alternative on the scatter. */
@@ -141,25 +154,46 @@ function counted(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** "1 of the 6 criteria compared declares one": how many of the compared criteria declare a threshold, `across` saying compared where. */
+function declaredAmong({ declared, of }: ScatterTolerance['overall'], al: Aliases, across = ''): string {
+  return `${declared} of the ${counted(of, al.criterion, al.criteria)} compared${across} ${declared === 1 ? 'declares' : 'declare'} one`;
+}
+
+/** A threshold in words: levels on an ordinal scale, where the range's unit names the scale ("1-5"), not a quantity; else the unit. */
+function thresholdWords(q: number, m: Measurement): string {
+  if (m.level === 'ordinal') return `${q} ${q === 1 ? 'level' : 'levels'}`;
+  return m.range?.unit === undefined ? String(q) : `${q} ${m.range.unit}`;
+}
+
+/** What the tolerance does here, or why nothing, in words: the control's hint, worded for whether it is on. */
+function toleranceSaid(al: Aliases, axes: readonly [ScatterAxis, ScatterAxis], t: Omit<ScatterTolerance, 'said'>): string {
+  const among = `${counted(t.overall.of, al.criterion, al.criteria)} compared`;
+  if (t.effect === 'none') {
+    return t.applied
+      ? `On, but none of the ${among} declares an indifference threshold, so it changes nothing: the comparison is strict.`
+      : `Unavailable: none of the ${among} declares an indifference threshold, so the practical tolerance would change nothing.`;
+  }
+  if (t.effect === 'outer-only') {
+    return `Neither ${axes[0].label} nor ${axes[1].label} declares an indifference threshold, so here the tolerance changes only the tier ` +
+      `across every ${al.criterion} (${declaredAmong(t.overall, al)}).`;
+  }
+  return `Counts a difference at or below a ${al.criterion}'s declared indifference threshold as none; it is not transitive, so any cycle it makes is reported.`;
+}
+
 /**
  * The scope and the tolerance, in words: "compared across every alternative
  * (5), strictly: any difference counts." The tolerance names each axis's
  * threshold, or that it declares none and is compared strictly, and how many of
  * the criteria behind the outer mark declare one.
  */
-function basisWords(a: Analysis, axes: readonly [ScatterAxis, ScatterAxis], scope: ScatterScope, tolerance: ScatterTolerance): string {
-  const al = aliasesOf(a);
+function basisWords(al: Aliases, axes: readonly [ScatterAxis, ScatterAxis], scope: ScatterScope, tolerance: Omit<ScatterTolerance, 'said'>): string {
   const where = scope.groupId === undefined
     ? `compared across every ${al.alternative} (${scope.size})`
     : `compared within the group "${scope.label}": ${counted(scope.size, al.alternative, al.alternatives)}`;
   if (!tolerance.applied) return `${where}, strictly: any difference counts.`;
-  const onAxis = (x: ScatterAxis) => (x.indifference === undefined
-    ? `${x.label}: none declared, so compared strictly`
-    : `${x.label}: ${x.indifference}${x.unit === undefined ? '' : ` ${x.unit}`}`);
-  const { declared, of } = tolerance.overall;
-  const across = `${declared} of the ${counted(of, al.criterion, al.criteria)} across every ${al.criterion} ${declared === 1 ? 'declares' : 'declare'} one`;
+  const onAxis = (x: ScatterAxis) => `${x.label}: ${x.indifferenceWords ?? 'none declared, so compared strictly'}`;
   return `${where}, with the practical tolerance: a difference at or below a ${al.criterion}'s indifference threshold counts as none ` +
-    `(${axes.map(onAxis).join('; ')}; ${across}).`;
+    `(${axes.map(onAxis).join('; ')}; ${declaredAmong(tolerance.overall, al, ` across every ${al.criterion}`)}).`;
 }
 
 /**
@@ -189,19 +223,21 @@ export function scatterModel(a: Analysis, { measure, criteria, groupId, usePract
   const measurementOf = (id: string) => measurementFor(crit(id)!, measure);
   const axis = (id: string): ScatterAxis => {
     const m = measurementOf(id)!;
+    const q = declaredIndifference(m);
     // In the basis, so it has a range and a direction (dominance's own rule, ADR-0019 clause 7).
     return {
       criterionId: id, label: crit(id)!.label, range: { min: m.range!.min, max: m.range!.max }, unit: m.range!.unit,
-      preference: m.preference, indifference: declaredIndifference(m),
+      preference: m.preference, indifference: q, indifferenceWords: q === undefined ? undefined : thresholdWords(q, m),
     };
   };
   const axes = [axis(xId), axis(yId)] as const;
   const inScope = new Set(dominanceScope(a, scoped));
   const scope: ScatterScope = { groupId, label: group?.label, size: inScope.size };
-  const tolerance: ScatterTolerance = {
-    applied: usePracticalTolerance,
-    overall: { declared: overall.basis.filter((id) => declaredIndifference(measurementOf(id)) !== undefined).length, of: overall.basis.length },
-  };
+  const declared = overall.basis.filter((id) => declaredIndifference(measurementOf(id)) !== undefined).length;
+  const effect: ToleranceEffect = declared === 0 ? 'none' : axes.every((x) => x.indifference === undefined) ? 'outer-only' : 'both';
+  const measured = { applied: usePracticalTolerance, overall: { declared, of: overall.basis.length }, effect };
+  const al = aliasesOf(a);
+  const tolerance: ScatterTolerance = { ...measured, said: toleranceSaid(al, axes, measured) };
   const reader = makeCellReader(a, measure);
   const vocabulary = vocabularyOf(a);
   const inapplicable = makeInapplicability(a);
@@ -233,7 +269,7 @@ export function scatterModel(a: Analysis, { measure, criteria, groupId, usePract
     points,
     scope,
     tolerance,
-    basis: basisWords(a, axes, scope, tolerance),
+    basis: basisWords(al, axes, scope, tolerance),
     caption: SCATTER_CAPTION,
     overallBasis: overall.basisDescription,
     notes: here.notes,

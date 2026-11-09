@@ -160,13 +160,17 @@ describe('the scatter panel', () => {
     const scope = () => panel()!.querySelector<HTMLSelectElement>('select[id$="-scope"]');
     const tolerance = () => panel()!.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     const basis = () => panel()!.querySelector('[data-basis]')!.textContent;
+    const hint = () => panel()!.querySelector('[data-tolerance-hint]')!.textContent;
+    const dropped = () => panel()!.querySelector('[data-scope-dropped]')!.textContent;
     const rows = () => Array.from(panel()!.querySelectorAll<HTMLElement>('tbody tr'), (r) => r.dataset['row']);
+    const axis = (which: 0 | 1, criterion: string) => userEvent.selectOptions(Array.from(panel()!.querySelectorAll('select'))[which]!, criterion);
     /** Relocation with an indifference threshold on rent: 600 USD/month counts as no difference. */
     const tolerant = () => {
       const doc = structuredClone(relocation);
       doc.criteria.find((c) => c.id === 'rent')!.defaultMeasurement!.thresholds = { indifference: 600 };
       return Analysis.parse(doc);
     };
+    const hiding = (...hiddenAlternatives: string[]) => setFilter(initialViewState(relocation), { hiddenAlternatives });
 
     it('scopes the comparison to a group the reader picks, by keyboard, and the basis sentence names it', async () => {
       await open(relocation);
@@ -175,27 +179,59 @@ describe('the scatter panel', () => {
       expect(panel()!.querySelector(`label[for="${scope()!.id}"]`)!.textContent).toBe('Compare');
       scope()!.focus();
       await userEvent.selectOptions(scope()!, 'g-asia');
-      expect(rows()).toEqual(['taipei', 'seoul']);
+      await expect.poll(rows).toEqual(['taipei', 'seoul']);
       expect(basis()).toBe('Compared within the group "Asia": 2 options, strictly: any difference counts.');
       expect(panel()!.textContent).toContain('across 2 options in "Asia"');
       await userEvent.selectOptions(scope()!, '');
-      expect(rows()).toHaveLength(5);
+      await expect.poll(rows).toHaveLength(5);
+    });
+
+    it('names a sub-group\'s parent in its option, and scopes to its members', async () => {
+      const doc = structuredClone(relocation);
+      doc.groups.push({ id: 'g-iberia', label: 'Iberia', axis: 'alternatives', parentId: 'g-europe' });
+      doc.alternatives.find((a) => a.id === 'lisbon')!.groupIds = ['g-iberia'];
+      await open(Analysis.parse(doc));
+      expect(Array.from(scope()!.options, (o) => o.textContent)).toContain('Iberia, in Europe (1)');
+      await userEvent.selectOptions(scope()!, 'g-iberia');
+      await expect.poll(rows).toEqual(['lisbon']);
     });
 
     it('offers only the groups with an alternative the matrix shows, and counts only their own hidden ones', async () => {
-      await open(relocation, setFilter(initialViewState(relocation), { hiddenAlternatives: ['montreal', 'seoul'] }));
+      await open(relocation, hiding('montreal', 'seoul'));
       expect(Array.from(scope()!.options, (o) => o.value)).toEqual(['', 'g-europe', 'g-asia']);
       await userEvent.selectOptions(scope()!, 'g-asia');
       // Seoul is hidden, so not listed; it is in the group, so still compared, and counted as hidden. Montreal is out of scope, not hidden.
-      expect(rows()).toEqual(['taipei']);
+      await expect.poll(rows).toEqual(['taipei']);
       expect(panel()!.querySelector('[data-hidden-note]')!.textContent).toMatch(/^Hidden in the matrix, so not listed here: 1 option\./);
       expect(basis()).toContain('2 options');
-      // Hiding the group's last shown member withdraws it, and the panel says so rather than switching silently.
-      handle!.update({ view: setFilter(initialViewState(relocation), { hiddenAlternatives: ['montreal', 'seoul', 'taipei'] }) });
-      await expect.poll(() => panel()!.querySelector('[data-scope-dropped]')?.textContent).toBe(
-        'The group "Asia" is no longer offered: the matrix shows none of its options, so every option is compared.',
-      );
+    });
+
+    it('lets go of a group the arrangement withdraws, says so, and does not bring it back when its members reappear', async () => {
+      await open(relocation, hiding('montreal'));
+      await userEvent.selectOptions(scope()!, 'g-asia');
+      await expect.poll(rows).toEqual(['taipei', 'seoul']);
+      expect(dropped()).toBe('');
+      handle!.update({ view: hiding('montreal', 'seoul', 'taipei') });
+      await expect.poll(dropped).toBe('The group "Asia" is no longer offered: the matrix shows none of its options, so every option is compared.');
+      expect(panel()!.querySelector('[data-scope-dropped]')!.getAttribute('role')).toBe('status');
       expect(scope()!.value).toBe('');
+      handle!.update({ view: hiding() });
+      await expect.poll(() => Array.from(scope()!.options, (o) => o.value)).toContain('g-asia');
+      expect(scope()!.value).toBe('');
+      expect(rows()).toHaveLength(5);
+      // Picking again clears what was said.
+      await userEvent.selectOptions(scope()!, 'g-europe');
+      await expect.poll(dropped).toBe('');
+    });
+
+    it('says a group the document tombstoned is no longer in the analysis', async () => {
+      await open(relocation);
+      await userEvent.selectOptions(scope()!, 'g-asia');
+      await expect.poll(rows).toEqual(['taipei', 'seoul']);
+      const doc = structuredClone(relocation);
+      doc.groups.find((g) => g.id === 'g-asia')!.tombstoned = true;
+      handle!.update({ analysis: doc });
+      await expect.poll(dropped).toBe('The group "Asia" is no longer in this analysis, so every option is compared.');
     });
 
     it('says in words why there is no group to pick, where there is none', async () => {
@@ -206,30 +242,38 @@ describe('the scatter panel', () => {
 
     it('applies the practical tolerance when the reader turns it on, and the basis sentence says which thresholds it used', async () => {
       await open(tolerant());
-      await userEvent.selectOptions(Array.from(panel()!.querySelectorAll('select'))[1]!, 'flight-hours');
+      await axis(1, 'flight-hours');
+      await expect.poll(() => row('lisbon')[2]).toBe('non-dominated');
       expect(tolerance().checked).toBe(false);
-      expect(row('lisbon')[2]).toBe('non-dominated');
       expect(panel()!.querySelector(`#${CSS.escape(tolerance().getAttribute('aria-describedby')!)}`)!.textContent).toMatch(/^Counts a difference at or below a criterion's declared indifference threshold as none/);
       tolerance().focus();
       await userEvent.keyboard(' ');
+      await expect.poll(() => row('lisbon')[2]).toBe('dominated by Berlin');
       expect(tolerance().checked).toBe(true);
-      expect(row('lisbon')[2]).toBe('dominated by Berlin');
       expect(basis()).toBe(
         'Compared across every option (5), with the practical tolerance: a difference at or below a criterion\'s indifference threshold counts as none ' +
-        '(Rent: 600 USD/month; Flight hours to family: none declared, so compared strictly; 1 of the 6 criteria across every criterion declares one).',
+        '(Rent: 600 USD/month; Flight hours to family: none declared, so compared strictly; 1 of the 6 criteria compared across every criterion declares one).',
       );
       await userEvent.click(tolerance());
-      expect(row('lisbon')[2]).toBe('non-dominated');
+      await expect.poll(() => row('lisbon')[2]).toBe('non-dominated');
       expect(basis()).toMatch(/strictly: any difference counts\.$/);
+    });
+
+    it('applies a group scope and the tolerance together, and names both', async () => {
+      await open(tolerant());
+      await axis(1, 'flight-hours');
+      await userEvent.selectOptions(scope()!, 'g-europe');
+      await userEvent.click(tolerance());
+      await expect.poll(rows).toEqual(['lisbon', 'berlin']);
+      await expect.poll(() => row('lisbon')[2]).toBe('dominated by Berlin');
+      expect(basis()).toMatch(/^Compared within the group "Europe": 2 options, with the practical tolerance: .*\(Rent: 600 USD\/month; /);
     });
 
     it('says the tolerance would change nothing where no criterion declares a threshold, and refuses it rather than do nothing silently', async () => {
       await open(relocation);
       const box = tolerance();
       expect(box.getAttribute('aria-disabled')).toBe('true');
-      expect(panel()!.querySelector('[data-tolerance-hint]')!.textContent).toBe(
-        'Unavailable: none of the 6 criteria compared declares an indifference threshold, so the practical tolerance would change nothing.',
-      );
+      expect(hint()).toBe('Unavailable: none of the 6 criteria compared declares an indifference threshold, so the practical tolerance would change nothing.');
       // Still focusable, so the reason is heard; a toggle does not land.
       box.focus();
       expect(document.activeElement).toBe(box);
@@ -241,12 +285,24 @@ describe('the scatter panel', () => {
       expect(basis()).toMatch(/strictly: any difference counts\.$/);
     });
 
+    it('words a tolerance left on after the document lost its thresholds as on and changing nothing, and lets it be turned off', async () => {
+      await open(tolerant());
+      await userEvent.click(tolerance());
+      await expect.poll(() => tolerance().checked).toBe(true);
+      handle!.update({ analysis: relocation });
+      await expect.poll(hint).toBe('On, but none of the 6 criteria compared declares an indifference threshold, so it changes nothing: the comparison is strict.');
+      expect(tolerance().getAttribute('aria-disabled')).toBeNull();
+      await userEvent.click(tolerance());
+      await expect.poll(hint).toMatch(/^Unavailable: /);
+      expect(tolerance().checked).toBe(false);
+    });
+
     it('says when neither axis declares a threshold, so the tolerance changes only the tier across every criterion', async () => {
       await open(tolerant());
-      await userEvent.selectOptions(Array.from(panel()!.querySelectorAll('select'))[0]!, 'income-tax');
-      await userEvent.selectOptions(Array.from(panel()!.querySelectorAll('select'))[1]!, 'flight-hours');
-      expect(panel()!.querySelector('[data-tolerance-hint]')!.textContent).toBe(
-        'Neither Income tax burden nor Flight hours to family declares an indifference threshold, so here the tolerance changes only the tier across every criterion (1 of 6 declares one).',
+      await axis(0, 'income-tax');
+      await axis(1, 'flight-hours');
+      await expect.poll(hint).toBe(
+        'Neither Income tax burden nor Flight hours to family declares an indifference threshold, so here the tolerance changes only the tier across every criterion (1 of the 6 criteria compared declares one).',
       );
     });
   });

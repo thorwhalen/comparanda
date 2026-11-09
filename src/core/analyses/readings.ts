@@ -64,7 +64,3 @@ export function widenedCells(
   return n;
 }
 
-/** The criterion's declared indifference threshold; 0 (exact) when none is declared. */
-export function indifferenceOf(m: Measurement): number {
-  return m.thresholds?.indifference ?? 0;
-}

@@ -395,6 +395,25 @@ export const Measurement = z.strictObject({
 });
 export type Measurement = z.infer<typeof Measurement>;
 
+/**
+ * A measurement's indifference threshold as a tolerance: the one rule every
+ * comparison reads (dominance's practical tolerance, Pugh's "same", the
+ * non-discriminating screen, the detail panel's standing, #286). `undefined`
+ * when none is declared, or when the declared one is not above zero: zero is
+ * exact comparison already, and a negative threshold would make two equal
+ * values differ, so neither is a tolerance. On an ordinal scale it counts
+ * levels (`Thresholds`).
+ */
+export function declaredIndifference(m: Pick<Measurement, 'thresholds'> | undefined): number | undefined {
+  const q = m?.thresholds?.indifference;
+  return q !== undefined && q > 0 ? q : undefined;
+}
+
+/** The tolerance a comparison applies: the declared indifference threshold, or 0 (exact) when there is none (`declaredIndifference`). */
+export function indifferenceOf(m: Pick<Measurement, 'thresholds'> | undefined): number {
+  return declaredIndifference(m) ?? 0;
+}
+
 export interface MeasurementProblem {
   path: string;
   message: string;

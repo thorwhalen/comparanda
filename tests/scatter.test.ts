@@ -102,21 +102,32 @@ describe('scatterModel', () => {
     // Lisbon's rent is 150 below Berlin's, within the 600 that counts as none, and its flight half an hour longer: dominated, but only under the tolerance.
     expect([tierOf(strict, 'lisbon'), tierOf(practical, 'lisbon')]).toEqual(['non-dominated', 'dominated']);
     expect(practical.points.find((p) => p.alternativeId === 'lisbon')!.dominatedBy).toEqual(['berlin']);
-    expect(practical.points.map((p) => p.here)).toEqual(
-      ['lisbon', 'berlin', 'taipei', 'seoul', 'montreal'].map((id) => {
-        const r = dominance(doc, { measure: 'score', criterionIds: criteria, usePracticalTolerance: true });
-        return r.dominated.includes(id) ? 'dominated' : r.provisional.includes(id) ? 'possibly-dominated' : 'non-dominated';
-      }),
-    );
-    expect(practical.axes.map((a) => a.indifference)).toEqual([600, undefined]);
-    expect(practical.tolerance).toEqual({ applied: true, overall: { declared: 1, of: 6 } });
+    // The tiers are dominance's, with the tolerance passed through.
+    expect(practical.notes).toEqual(dominance(doc, { measure: 'score', criterionIds: criteria, usePracticalTolerance: true }).notes);
+    expect(practical.axes.map((a) => [a.indifference, a.indifferenceWords])).toEqual([[600, '600 USD/month'], [undefined, undefined]]);
+    // Counted over the criteria compared (6), not every criterion (8: two are nominal, so not compared).
+    expect(doc.criteria).toHaveLength(8);
+    expect(practical.tolerance).toMatchObject({ applied: true, overall: { declared: 1, of: 6 }, effect: 'both' });
     expect(practical.basis).toBe(
       'compared across every option (5), with the practical tolerance: a difference at or below a criterion\'s indifference threshold counts as none ' +
-      '(Rent: 600 USD/month; Flight hours to family: none declared, so compared strictly; 1 of the 6 criteria across every criterion declares one).',
+      '(Rent: 600 USD/month; Flight hours to family: none declared, so compared strictly; 1 of the 6 criteria compared across every criterion declares one).',
     );
-    // Off by default; and where nothing declares a threshold, the model says so, so a view can.
+    // Off by default; and where nothing declares a threshold, the model says so, in words worded for whether it is on.
     expect(strict.tolerance.applied).toBe(false);
-    expect(usable(scatterModel(relocation, { measure: 'score', criteria, usePracticalTolerance: true })).tolerance.overall).toEqual({ declared: 0, of: 6 });
+    const none = (on: boolean) => usable(scatterModel(relocation, { measure: 'score', criteria, usePracticalTolerance: on })).tolerance;
+    expect(none(false)).toMatchObject({ overall: { declared: 0, of: 6 }, effect: 'none' });
+    expect(none(false).said).toBe('Unavailable: none of the 6 criteria compared declares an indifference threshold, so the practical tolerance would change nothing.');
+    expect(none(true).said).toBe('On, but none of the 6 criteria compared declares an indifference threshold, so it changes nothing: the comparison is strict.');
+    // A threshold off the two axes moves only the outer mark, and the hint says so.
+    const off = usable(scatterModel(doc, { measure: 'score', criteria: ['income-tax', 'flight-hours'] })).tolerance;
+    expect(off.effect).toBe('outer-only');
+    expect(off.said).toBe('Neither Income tax burden nor Flight hours to family declares an indifference threshold, so here the tolerance changes only the tier across every criterion (1 of the 6 criteria compared declares one).');
+    // On an ordinal scale a threshold counts levels: the range's unit names the scale, and is not said after it.
+    const ordinal = doc.criteria.find((c) => c.id === 'income-tax')!.defaultMeasurement!;
+    ordinal.range = { ...ordinal.range!, unit: '1-5' };
+    ordinal.thresholds = { indifference: 1 };
+    expect(usable(scatterModel(doc, { measure: 'score', criteria: ['income-tax', 'flight-hours'], usePracticalTolerance: true })).basis)
+      .toContain('(Income tax burden: 1 level; Flight hours to family: none declared');
     // A threshold of zero changes nothing, so it is not counted as declared.
     doc.criteria.find((c) => c.id === 'rent')!.defaultMeasurement!.thresholds = { indifference: 0 };
     expect(usable(scatterModel(doc, { measure: 'score', criteria })).axes[0].indifference).toBeUndefined();

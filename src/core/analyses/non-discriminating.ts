@@ -21,8 +21,8 @@
  */
 import type { Analysis } from '../schema/analysis.js';
 import { measurementFor } from '../schema/structure.js';
-import { isOrdered } from '../schema/measurement.js';
-import { indifferenceOf, makeReadings, widenedCells } from './readings.js';
+import { indifferenceOf, isOrdered } from '../schema/measurement.js';
+import { makeReadings, widenedCells } from './readings.js';
 import type { AnalysisResult } from './registry.js';
 
 /** What every result of this analysis rests on, carried with it (#87, ADR-0015). */

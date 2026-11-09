@@ -26,7 +26,7 @@ import { describeAssertionSet, type AssertionSetDescription } from './assertion-
 import { makeReadings } from './analyses/readings.js';
 import { cellIndex, cellKey, isInapplicable, reducedValue, type Analysis } from './schema/analysis.js';
 import type { CheckStanding, CitationCheck, EvidenceRef } from './schema/evidence.js';
-import { isOrdered, type Measurement } from './schema/measurement.js';
+import { indifferenceOf, isOrdered, type Measurement } from './schema/measurement.js';
 import { assertionVisibility, standingInSet, standInIds, withoutAuthor, type ViewerContext } from './schema/redaction.js';
 import { absenceStanding, NOT_APPLICABLE, NOT_ASSESSED, type AbsenceStanding, type MissingnessVocabulary } from './schema/missingness.js';
 import type { Author } from './schema/provenance.js';
@@ -322,7 +322,7 @@ export function alternativeStanding(a: Analysis, alternativeId: string, measure:
       excluded.push({ criterionId: criterion.id, reason: 'no-value' });
       continue;
     }
-    const q = m!.thresholds?.indifference ?? 0;
+    const q = indifferenceOf(m);
     const sign = m!.preference === 'decreasing' ? -1 : 1;
     let better = 0;
     let worse = 0;

@@ -30,12 +30,14 @@
  * presentation attributes in `currentColor`, so it adds nothing to the
  * matrix's stylesheet.
  */
-import { useId, useMemo, useState } from 'preact/hooks';
+import { useEffect, useId, useMemo, useState } from 'preact/hooks';
 
-import { scatterCriteria, scatterModel, type DominanceTier, type ScatterAxis, type ScatterModel, type ScatterPoint, type UsableScatterModel } from '../core/analyses/scatter.js';
+import {
+  scatterCriteria, scatterModel, type DominanceTier, type ScatterAxis, type ScatterModel, type ScatterPoint, type ScatterTolerance, type UsableScatterModel,
+} from '../core/analyses/scatter.js';
 import { scopeGroups, type ScopeGroup } from '../core/analyses/scope.js';
 import type { Analysis } from '../core/schema/analysis.js';
-import { aliasesOf, type Aliases } from '../core/schema/structure.js';
+import { aliasesOf } from '../core/schema/structure.js';
 import { capitalise } from './words.js';
 import type { AnalysisPanelProps } from './agreement.js';
 import { hiddenOf, inShownOrder, type Shown } from '../core/layout.js';
@@ -118,6 +120,13 @@ function ScatterBody({ analysis, measure, shown }: Pick<AnalysisPanelProps, 'ana
   const groups = useMemo(() => scopeGroups(analysis, { shownAlternatives: shown?.alternatives }), [analysis, altOrder]);
   const [groupChosen, setGroupChosen] = useState<string | undefined>(undefined);
   const groupId = groups.some((g) => g.id === groupChosen) ? groupChosen : undefined;
+  // A group the arrangement or the document withdrew is let go, not held: showing its members again does not bring the scope back unasked.
+  const [withdrawn, setWithdrawn] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (groupChosen === undefined || groupId !== undefined) return;
+    setWithdrawn(withdrawnWords(analysis, groupChosen));
+    setGroupChosen(undefined);
+  }, [groupChosen, groupId]);
   const [tolerant, setTolerant] = useState(false);
   const model = useMemo(
     () => (usable.length < 2 ? undefined : scatterModel(analysis, { measure, criteria: [xId, yId], groupId, usePracticalTolerance: tolerant })),
@@ -154,10 +163,13 @@ function ScatterBody({ analysis, measure, shown }: Pick<AnalysisPanelProps, 'ana
       <fieldset>
         <legend>What is compared</legend>
         <ScopePicker
-          id={`${id}-scope`} analysis={analysis} groups={groups} value={groupId} dropped={groupChosen === groupId ? undefined : groupChosen}
-          onPick={setGroupChosen}
+          id={`${id}-scope`} analysis={analysis} groups={groups} value={groupId}
+          onPick={(picked) => { setGroupChosen(picked); setWithdrawn(undefined); }}
         />
-        <TolerancePicker id={`${id}-tolerance`} model={model} on={tolerant} onToggle={setTolerant} words={aliasesOf(analysis)} />
+        {/* A withdrawn choice is said here, in a region present before anything is said into it, so the first one is heard. */}
+        <p class="comparanda-panel-hint" role="status" data-scope-dropped="">{withdrawn ?? ''}</p>
+        {/* Only a drawn scatter has criteria to declare a threshold; a refused one says why below, and there is nothing to tolerate. */}
+        {model.usable && <TolerancePicker id={`${id}-tolerance`} tolerance={model.tolerance} on={tolerant} onToggle={setTolerant} />}
       </fieldset>
       {/* In a group's scope, what is not listed for being out of it is not "hidden": only its own hidden members are counted. */}
       <HiddenNote {...hiddenOf({ alternatives: inScopeOf(analysis, model), criteria: analysis.criteria }, shown)} words={aliasesOf(analysis)} />
@@ -173,22 +185,28 @@ function inScopeOf(analysis: Analysis, model: ScatterModel): Analysis['alternati
   return analysis.alternatives.filter((x) => ids.has(x.id));
 }
 
+/** Why a chosen group is no longer offered, in words: gone from the document, left with no live members, or every member hidden. */
+function withdrawnWords(analysis: Analysis, groupId: string): string {
+  const words = aliasesOf(analysis);
+  const group = analysis.groups.find((g) => g.id === groupId);
+  const every = `so every ${words.alternative} is compared`;
+  if (!group || group.tombstoned) return `The group "${group?.label ?? groupId}" is no longer in this analysis, ${every}.`;
+  const live = scopeGroups(analysis).some((g) => g.id === groupId);
+  return live
+    ? `The group "${group.label}" is no longer offered: the matrix shows none of its ${words.alternatives}, ${every}.`
+    : `The group "${group.label}" no longer has any ${words.alternatives}, ${every}.`;
+}
+
 /**
  * The scope: every alternative, or one group's. A native select, labelled, with
  * the members each option holds; where no group can be offered, a sentence says
- * why in its place, and a choice the arrangement withdrew is named.
+ * why in its place.
  */
-function ScopePicker({ id, analysis, groups, value, dropped, onPick }: {
-  id: string; analysis: Analysis; groups: readonly ScopeGroup[]; value: string | undefined; dropped: string | undefined;
+function ScopePicker({ id, analysis, groups, value, onPick }: {
+  id: string; analysis: Analysis; groups: readonly ScopeGroup[]; value: string | undefined;
   onPick: (groupId: string | undefined) => void;
 }) {
   const words = aliasesOf(analysis);
-  const droppedLabel = dropped === undefined ? undefined : analysis.groups.find((g) => g.id === dropped)?.label ?? dropped;
-  const withdrawn = droppedLabel !== undefined && (
-    <p class="comparanda-panel-hint" data-scope-dropped="">
-      {`The group "${droppedLabel}" is no longer offered: the matrix shows none of its ${words.alternatives}, so every ${words.alternative} is compared.`}
-    </p>
-  );
   if (groups.length === 0) {
     const declared = analysis.groups.some((g) => g.axis === 'alternatives' && !g.tombstoned);
     return (
@@ -196,7 +214,6 @@ function ScopePicker({ id, analysis, groups, value, dropped, onPick }: {
         <p class="comparanda-panel-hint" data-scope-unavailable="">
           {`Every ${words.alternative} is compared: ${declared ? `none of the groups of ${words.alternatives} has one the matrix shows` : `this analysis declares no groups of ${words.alternatives}`}, so there is no group to compare within.`}
         </p>
-        {withdrawn}
       </>
     );
   }
@@ -214,30 +231,8 @@ function ScopePicker({ id, analysis, groups, value, dropped, onPick }: {
       <p class="comparanda-panel-hint" id={`${id}-hint`}>
         {`Within one group of ${words.alternatives}, a criterion declared not to apply to it applies to none of them alike.`}
       </p>
-      {withdrawn}
     </>
   );
-}
-
-/** Why the practical tolerance would change nothing, or what it changes; `unavailable` when no criterion declares a threshold. */
-function toleranceSaid(model: ScatterModel, words: Aliases): { said: string; unavailable: boolean } {
-  const general = `Counts a difference at or below a ${words.criterion}'s declared indifference threshold as none; it is not transitive, so any cycle it makes is reported.`;
-  if (!model.usable) return { said: general, unavailable: false };
-  const { overall } = model.tolerance;
-  if (overall.declared === 0) {
-    return {
-      said: `Unavailable: none of the ${overall.of} ${overall.of === 1 ? words.criterion : words.criteria} compared declares an indifference threshold, so the practical tolerance would change nothing.`,
-      unavailable: true,
-    };
-  }
-  const [ax, ay] = model.axes;
-  if (ax.indifference === undefined && ay.indifference === undefined) {
-    return {
-      said: `Neither ${ax.label} nor ${ay.label} declares an indifference threshold, so here the tolerance changes only the tier across every ${words.criterion} (${overall.declared} of ${overall.of} ${overall.declared === 1 ? 'declares' : 'declare'} one).`,
-      unavailable: false,
-    };
-  }
-  return { said: general, unavailable: false };
 }
 
 /**
@@ -245,11 +240,11 @@ function toleranceSaid(model: ScatterModel, words: Aliases): { said: string; una
  * stays focusable, marked unavailable and saying why, rather than a silent no-op;
  * it can still be turned off, should a document change leave it on.
  */
-function TolerancePicker({ id, model, on, onToggle, words }: {
-  id: string; model: ScatterModel; on: boolean; onToggle: (on: boolean) => void; words: Aliases;
+function TolerancePicker({ id, tolerance, on, onToggle }: {
+  id: string; tolerance: ScatterTolerance; on: boolean; onToggle: (on: boolean) => void;
 }) {
-  const { said, unavailable } = toleranceSaid(model, words);
-  const refused = unavailable && !on;
+  const { said, effect } = tolerance;
+  const refused = effect === 'none' && !on;
   return (
     <p>
       <label>
