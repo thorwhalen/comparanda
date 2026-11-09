@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 import { Analysis, SCHEMA_VERSION, validateAnalysis } from '../src/core/schema/analysis.js';
-import { REJECT_REASON_CODES } from '../src/core/schema/structure.js';
+import { REJECT_REASON_CODES, REJECT_REASON_GLOSSES } from '../src/core/schema/structure.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const readJson = (p: string) => JSON.parse(readFileSync(join(root, p), 'utf8'));
@@ -19,17 +19,27 @@ const withCode = (reasonCode: string) => {
   return doc;
 };
 
+/** The companion's five (rubricator ADR-0016) and where each lands here. */
+const COMPANION_TO_HERE: Record<string, string> = {
+  'merged-into': 'merged', 'means-objective': 'means-objective', 'not-controllable': 'not-controllable',
+  'no-discrimination-expected': 'no-discrimination-expected', 'user-rejected': 'user-rejected',
+};
+
 describe('rejectedCriteria[].reasonCode', () => {
-  it('carries the shipped codes and the four of rubricator ADR-0016, in zod, the artifact and the validator', () => {
-    for (const code of ['means-objective', 'not-controllable', 'no-discrimination-expected', 'user-rejected', 'merged', 'not-discriminating']) {
-      expect(REJECT_REASON_CODES, code).toContain(code);
+  it('accepts every code, in zod, the artifact and the validator, and glosses each in the artifact', () => {
+    for (const code of REJECT_REASON_CODES) {
       expect(Analysis.safeParse(withCode(code)).success, code).toBe(true);
       expect(ajv(withCode(code)), code).toBe(true);
       expect(validateAnalysis(withCode(code)).ok, code).toBe(true);
     }
+    const description = JSON.stringify(readJson(`schema/comparanda.v${SCHEMA_VERSION}.json`)).match(/Why it was rejected\.[^"]*/)?.[0] ?? '';
+    for (const code of REJECT_REASON_CODES) expect(description, code).toContain(`${code}: ${REJECT_REASON_GLOSSES[code]}`);
   });
 
-  it('spells a merge once: the companion\'s merged-into is refused here', () => {
+  it('takes in all five of the companion\'s codes, with merged-into spelled merged', () => {
+    for (const [theirs, ours] of Object.entries(COMPANION_TO_HERE)) {
+      expect(REJECT_REASON_CODES, theirs).toContain(ours);
+    }
     expect(REJECT_REASON_CODES).not.toContain('merged-into');
     expect(Analysis.safeParse(withCode('merged-into')).success).toBe(false);
     expect(ajv(withCode('merged-into'))).toBe(false);

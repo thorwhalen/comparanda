@@ -169,13 +169,13 @@ export function createMigrationChain(
  * Version 2 adds `Assertion.confidence` (request 17) -- optional, so a version-1
  * document is already a version-2 document and the step changes nothing but the
  * version the chain stamps. Version 2 is the home for the other additive
- * requests queued for the next version (`Measurement.neutral`, the reject-reason
- * codes), which need no further step while version 2 is the current one. Data
+ * requests queued for the next version (`Measurement.neutral`; the four reject-reason
+ * codes have landed), which need no further step while version 2 is the current one. Data
  * rather than a registration call at module scope, so a bundler under
  * `sideEffects: false` cannot drop it.
  */
 export const DOCUMENT_MIGRATIONS: readonly Migration[] = Object.freeze([
-  { from: 1, describes: 'adds the optional Assertion.confidence (high | medium | low) and four rejectedCriteria[].reasonCode members; no existing field changes', migrate: (doc) => doc },
+  { from: 1, describes: 'adds the optional Assertion.confidence (high | medium | low) and widens rejectedCriteria[].reasonCode by four codes; every version-1 document is valid unchanged', migrate: (doc) => doc },
 ]);
 
 /** The analysis document's chain, towards `SCHEMA_VERSION`. */

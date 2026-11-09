@@ -1467,8 +1467,8 @@
       "at": "2026-08-22T09:00:00Z"
     },
     {
-      "label": "Weather in July",
-      "reason": "Ana would rather not let the weather decide; it is a means to the winter-daylight objective already scored, not a goal of its own.",
+      "label": "Direct flights",
+      "reason": "Serves the family-visit objective already scored as flight hours: flying direct matters only through the hours it saves, so it is not a goal of its own.",
       "reasonCode": "means-objective",
       "proposedBy": "ana",
       "at": "2026-08-22T09:00:00Z"

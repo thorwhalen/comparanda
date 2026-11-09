@@ -169,25 +169,42 @@ export function measurementFor(criterion: Criterion, measure: string): Measureme
 }
 
 /**
+ * Why a proposed criterion was rejected: the shipped codes, and the companion's four (request 19, #315; version 2).
+ * Its `merged-into` is this set's `merged`, spelled once, with `mergedIntoId` naming the target; a `means-objective`
+ * reject says in `reason` which objective it serves, since the shape has no field for it.
+ */
+export const REJECT_REASON_CODES = Object.freeze([
+  'redundant', 'not-discriminating', 'out-of-scope', 'not-assessable', 'merged',
+  'means-objective', 'not-controllable', 'no-discrimination-expected', 'user-rejected',
+  'other',
+] as const);
+export type RejectReasonCode = (typeof REJECT_REASON_CODES)[number];
+export const REJECT_REASON_GLOSSES: Readonly<Record<RejectReasonCode, string>> = Object.freeze({
+  redundant: 'says what another criterion already says.',
+  'not-discriminating': 'was found not to separate the alternatives: they would score alike.',
+  'out-of-scope': 'is outside the question being decided.',
+  'not-assessable': 'cannot be assessed with the evidence available.',
+  merged: 'was folded into another criterion (mergedIntoId).',
+  'means-objective': 'is a means to an objective already scored, not a goal of its own.',
+  'not-controllable': 'is not something the decider can influence.',
+  'no-discrimination-expected': 'the decider cares, but nothing suggests, before any scoring, that the alternatives could differ on it.',
+  'user-rejected': 'the person deciding rejected it.',
+  other: 'none of the above; the reason says why.',
+});
+
+/**
  * A criterion that was proposed and rejected, retained with its reason.
  *
  * Kept in the analysis because "why isn't cost in here?" is asked in every
  * review, and an answer that lives only in someone's memory gets re-litigated
  * every time.
  */
-export const REJECT_REASON_CODES = Object.freeze([
-  'redundant', 'not-discriminating', 'out-of-scope', 'not-assessable', 'merged',
-  // The companion's closed reject vocabulary (request 19, rubricator ADR-0016), added in version 2. Its
-  // `merged-into` is this set's `merged`: one spelling, with `mergedIntoId` naming the target.
-  'means-objective', 'not-controllable', 'no-discrimination-expected', 'user-rejected',
-  'other',
-] as const);
-export type RejectReasonCode = (typeof REJECT_REASON_CODES)[number];
-
 export const RejectedCriterion = z.strictObject({
   label: z.string(),
   reason: z.string(),
-  reasonCode: z.optional(z.enum(REJECT_REASON_CODES)),
+  reasonCode: z.optional(z.enum(REJECT_REASON_CODES).check(z.describe(
+    'Why it was rejected. ' + REJECT_REASON_CODES.map((c) => `${c}: ${REJECT_REASON_GLOSSES[c]}`).join(' '),
+  ))),
   /** For `merged` and `redundant`: the criterion it was folded into. */
   mergedIntoId: z.optional(z.string()),
   proposedBy: z.optional(z.string()),
