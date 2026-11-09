@@ -39,4 +39,8 @@ export const PROPERTY_DESCRIPTIONS: Readonly<Record<string, string>> = Object.fr
   neutral:
     'The level a diverging bar is centred on: a declared neutral, never inferred (a range midpoint is the undeclared midpoint ADR-0010 forbids). '
     + 'Ordinal measurements only, and one of their levels. Absent means none is declared, and the bar is not centred.',
+  mergedIntoId:
+    'The criterion a rejected criterion was folded into. Required when reasonCode is merged; optional otherwise. '
+    + 'Must be the id of a criterion in this document (a tombstoned one counts). '
+    + 'Checked by validateAnalysis (rule merged-into-resolves), not by this schema.',
 });

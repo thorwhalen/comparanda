@@ -195,6 +195,7 @@ export const RULE_SOURCES = Object.freeze({
   'group-exists': 'ADR-0008',
   'group-on-its-axis': 'ADR-0008',
   'group-nesting-acyclic': 'ADR-0008',
+  'merged-into-resolves': 'ADR-0003',
   // Measurement: level, preference, range, thresholds.
   'criterion-has-a-measurement': 'ADR-0018',
   'measurement-well-formed': 'ADR-0018',
@@ -858,6 +859,22 @@ export function validateAnalysis(
         'add the group, or remove the inapplicable block.');
     }
   }
+
+  // A merged reject names its target, and any target is a criterion here, tombstoned or not (#335).
+  a.rejectedCriteria.forEach((r, i) => {
+    const into = r.mergedIntoId;
+    const merged = r.reasonCode === 'merged';
+    if (into === undefined ? merged : !critIds.has(into)) {
+      err(
+        'merged-into-resolves', `rejectedCriteria[${i}].mergedIntoId`,
+        into === undefined
+          ? `rejected "${r.label}" is merged but does not say into which criterion`
+          : `rejected "${r.label}" names "${into}", which is not a criterion here`,
+        'set mergedIntoId to the id of a criterion in this analysis (a tombstoned one counts)' +
+          `${!merged ? ', or remove mergedIntoId' : into === undefined ? ', or use another reasonCode' : ''}.`,
+      );
+    }
+  });
 
   // The same redeclaration rule, for the two vocabularies that just gained it.
   // Written as a loop over (list, core table, field) rather than three times,

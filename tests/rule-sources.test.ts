@@ -134,6 +134,8 @@ const hostile = {
     { alternativeId: 'nobody', criterionId: 'nothing', measure: 'score', assertions: [] },
     { alternativeId: 'x', criterionId: 'bare', measure: 'score', assertions: [] },
   ],
+  // A merge into nothing (#335).
+  rejectedCriteria: [{ label: 'Upkeep', reason: 'folded in', reasonCode: 'merged' }],
   // A comment by nobody the document describes (#204).
   threads: [{
     id: 't1', anchor: { scope: 'analysis' },
