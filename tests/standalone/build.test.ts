@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -32,6 +32,27 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await rm(dir, { recursive: true, force: true });
+});
+
+describe('a temp dir reached through a symlink (#319)', () => {
+  // macOS keeps its temp dir at /var/folders -> /private/var/folders; os.tmpdir() reads TMPDIR on
+  // every call, so a symlinked TMPDIR reproduces that on any platform.
+  it('still builds', async () => {
+    const real = await mkdtemp(join(tmpdir(), 'comparanda-real-'));
+    const link = `${real}-link`;
+    await symlink(real, link, 'dir');
+    const before = process.env.TMPDIR;
+    process.env.TMPDIR = link;
+    try {
+      const again = await buildStandalone(relocationJson);
+      expect(again.html).toContain(ANALYSIS_ELEMENT_ID);
+    } finally {
+      if (before === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = before;
+      await rm(link, { force: true });
+      await rm(real, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 /** The JSON inlined in a built page, parsed. */
