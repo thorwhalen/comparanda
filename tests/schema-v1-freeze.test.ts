@@ -56,8 +56,8 @@ describe('the shape is closed', () => {
     expect(loose).toEqual([]);
   });
 
-  it('refuses a schemaVersion other than 1 in both validators, and an own __proto__ key in zod as Ajv does', () => {
-    for (const v of [0, -1, 0.5, 2]) {
+  it('refuses a schemaVersion other than the current one in both validators, and an own __proto__ key in zod as Ajv does', () => {
+    for (const v of [0, -1, 0.5, 1, SCHEMA_VERSION + 1]) {
       const d = { ...relocation(), schemaVersion: v };
       expect(ajv(d), String(v)).toBe(false);
       expect(validateAnalysis(d).problems.map((p) => p.ruleId), String(v)).toContain('schema-version-readable');
@@ -172,9 +172,9 @@ describe('every pulled-forward field is exercised (docs/schema-v1.md)', () => {
 });
 
 describe('the freeze is an event', () => {
-  it('is at version 1, with a complete migration chain and no step from a version 0', () => {
-    expect(SCHEMA_VERSION).toBe(1);
-    expect(DOCUMENT_MIGRATIONS).toEqual([]);
+  it('is at version 2, with a complete migration chain: one additive step from 1, none from a version 0', () => {
+    expect(SCHEMA_VERSION).toBe(2);
+    expect(DOCUMENT_MIGRATIONS.map((m) => m.from)).toEqual([1]);
     expect(missingMigrationSteps()).toEqual([]);
   });
 

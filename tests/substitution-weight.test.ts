@@ -20,7 +20,7 @@ const NOMINAL = { level: 'nominal' as const, preference: 'none' as const, levels
 
 const doc = (criterion: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
   id: 'a1',
-  schemaVersion: 1,
+  schemaVersion: 2,
   subject: { question: 'which one?' },
   authors: [{ id: 'ana', displayName: 'Ana', kind: 'human' }],
   alternatives: [{ id: 'alt-1', label: 'A' }],

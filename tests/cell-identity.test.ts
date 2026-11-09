@@ -33,7 +33,7 @@ const cell = (value: number, id: string): Cell => ({
 const analysisWith = (cells: Cell[]) =>
   Analysis.parse({
     id: 'a1',
-    schemaVersion: 1,
+    schemaVersion: 2,
     subject: { question: 'which one?' },
     authors: [{ id: 'ana', displayName: 'Ana', kind: 'human' }],
     alternatives: [{ id: 'alt-1', label: 'A' }],

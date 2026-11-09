@@ -192,7 +192,7 @@ An analysis with validation errors is refused, with every error named. `vite`, `
 
 ## The schema, for the agent side
 
-An analysis is JSON. Its contract is [`schema/comparanda.v1.json`](./schema/comparanda.v1.json) (JSON Schema, emitted from the Zod schema by `pnpm emit-schema`), with the extensible vocabularies in [`schema/vocabularies.v1.json`](./schema/vocabularies.v1.json); [docs/schema-v1.md](./docs/schema-v1.md) says what v1 freezes and why. A producer such as rubricator validates against the JSON Schema, then runs `validateAnalysis` for the rules a JSON Schema cannot state: no bare nulls, attributed assertions, an admitted value on every scale. Each problem it reports carries a stable `ruleId`, the ADR that decided the rule, and a fix. Breaking the schema is a coordinated change across both repositories.
+An analysis is JSON. Its contract is [`schema/comparanda.v2.json`](./schema/comparanda.v2.json) (JSON Schema, emitted from the Zod schema by `pnpm emit-schema`), with the extensible vocabularies in [`schema/vocabularies.v2.json`](./schema/vocabularies.v2.json); [docs/schema-v1.md](./docs/schema-v1.md) says what v1 froze and why, and what version 2 added. A producer such as rubricator validates against the JSON Schema, then runs `validateAnalysis` for the rules a JSON Schema cannot state: no bare nulls, attributed assertions, an admitted value on every scale. Each problem it reports carries a stable `ruleId`, the ADR that decided the rule, and a fix. Breaking the schema is a coordinated change across both repositories.
 
 ## Status
 

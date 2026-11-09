@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { Aliases, aliasesOf } from '../src/core/schema/structure.js';
-import { Analysis, validateAnalysis } from '../src/core/schema/analysis.js';
+import { Analysis, SCHEMA_VERSION, validateAnalysis } from '../src/core/schema/analysis.js';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,7 +44,7 @@ describe('display aliases', () => {
 
   it('the emitted JSON Schema says the same, for a validator in another language', () => {
     const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-    const schema = JSON.parse(readFileSync(join(root, 'schema', 'comparanda.v1.json'), 'utf8'));
+    const schema = JSON.parse(readFileSync(join(root, 'schema', `comparanda.v${SCHEMA_VERSION}.json`), 'utf8'));
     expect(schema.properties.aliases.dependentRequired).toEqual({
       alternative: ['alternatives'], alternatives: ['alternative'], criterion: ['criteria'], criteria: ['criterion'],
     });

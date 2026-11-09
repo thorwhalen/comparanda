@@ -60,6 +60,15 @@ The originating sketch described a third axis called "metric", with `score`, `co
 Collapsing them into one axis would mean the schema has to store a value for a thing that is
 computed, and the view has to special-case one member of an otherwise uniform dimension.
 
+### `confidence`, the measure, and `Assertion.confidence`, the field (request 17, #307)
+
+Two things carry the word, and they are not the same quantity.
+
+- **`Assertion.confidence`** (`high | medium | low`, optional, no default) is the **evidence quality of one assertion**: how well its cited source supports it. It is a closed ordinal, never a number, never called `certainty` (that word is for evaluation runs and does not appear in a delivered analysis), and absent means none recorded. Its glosses are the field's schema description.
+- **A measure named `confidence`** is a quantity an analysis may choose to *score*: its own declaration, scale, assertions, authors and missingness, one cell per alternative and criterion.
+
+Both may exist in one analysis, and neither is a stand-in for the other. For a pair that has both, **the measure is the one the view's confidence layer reads** (its hatch and suppression encodings read the stored `confidence` measure, as they always have), and the field is read only by what asks for evidence quality. The field is never interpreted as the measure and the measure never as the field; `validateAnalysis` therefore has no rule joining them, because a rule that refused the pair would forbid a producer from adding the measure the view needs to draw confidence at all. Whether the view should also read the field when no measure exists is a separate question (a view encoding, not a stored thing): [#330](https://github.com/thorwhalen/comparanda/issues/330).
+
 So the model is:
 
 - **Measures** are a real dimension of the data. The matrix is a tensor of shape

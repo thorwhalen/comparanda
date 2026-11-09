@@ -30,6 +30,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
+import { carriedForward } from '../core/migrations.js';
 import { unknownMeasure, validateAnalysis } from '../core/schema/analysis.js';
 import {
   attribute, BudgetExceeded, chargeBudget, lengthsByPackage, PREBUNDLED_SUFFIX, STANDALONE_BUDGET,
@@ -129,7 +130,8 @@ export async function buildStandalone(input: unknown, options: BuildOptions = {}
   }
   // Serialised once: what is validated is exactly what is inlined, whatever
   // `toJSON` or non-JSON values the caller's object carried.
-  const wire: unknown = JSON.parse(JSON.stringify(input) ?? 'null');
+  // An earlier version is carried forward first (a producer still on version 1 builds), and the carried document is what is inlined.
+  const wire: unknown = carriedForward(JSON.parse(JSON.stringify(input) ?? 'null'));
   const checked = validateAnalysis(wire, { includeCompleteness: false });
   if (!checked.ok) {
     const errors = checked.problems.filter((p) => p.severity === 'error');

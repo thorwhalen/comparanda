@@ -38,7 +38,7 @@ import { Rendition, validateEvidence, type EvidenceRuleId } from './evidence.js'
  * harness retrofitted after the first breaking change has to reconstruct what
  * the old shape was from memory.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** The question being decided. One per analysis. */
 export const Subject = z.strictObject({
@@ -314,20 +314,26 @@ export function validateAnalysis(
   const rawVersion = (input as { schemaVersion?: unknown } | null)?.schemaVersion;
   let toParse = input;
   if (rawVersion !== undefined && rawVersion !== SCHEMA_VERSION && input && typeof input === 'object') {
-    const later = typeof rawVersion === 'number' && Number.isInteger(rawVersion) && rawVersion > SCHEMA_VERSION;
+    const whole = typeof rawVersion === 'number' && Number.isInteger(rawVersion) && rawVersion >= 1;
+    const later = whole && rawVersion > SCHEMA_VERSION;
+    const earlier = whole && rawVersion < SCHEMA_VERSION;
     early.push({
       path: 'schemaVersion',
       message: citeRule(
         later
           ? `document is version ${rawVersion}; this build reads up to ${SCHEMA_VERSION}`
-          : `document declares schemaVersion ${JSON.stringify(rawVersion)}, which is not a version this build can read or migrate`,
+          : earlier
+            ? `document is version ${rawVersion}; this build reads version ${SCHEMA_VERSION}, and carries an earlier one forward with \`migrate\``
+            : `document declares schemaVersion ${JSON.stringify(rawVersion)}, which is not a version this build can read or migrate`,
         'schema-version-readable',
       ),
       severity: 'error', family: 'schema', ruleId: 'schema-version-readable',
       adr: RULE_SOURCES['schema-version-readable'],
       fix: later
         ? 'upgrade the reader, or ask the producer to emit an earlier schema version.'
-        : 'migrate an earlier document with `migrate` before validating it; a version is a positive integer.',
+        : earlier
+          ? 'run `migrate` on the document first (it is a no-op for an additive step), then validate it.'
+          : 'migrate an earlier document with `migrate` before validating it; a version is a positive integer.',
     });
     toParse = { ...(input as object), schemaVersion: SCHEMA_VERSION };
   }

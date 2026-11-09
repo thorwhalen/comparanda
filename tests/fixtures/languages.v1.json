@@ -1,0 +1,581 @@
+{
+  "id": "languages",
+  "schemaVersion": 1,
+  "title": "Choosing a language for the ingest service",
+  "subject": {
+    "question": "Which language should the new ingest service be written in?",
+    "decision": "a service two people will maintain for at least three years",
+    "ambiguities": []
+  },
+  "measures": [
+    {
+      "name": "score",
+      "label": "Score"
+    }
+  ],
+  "defaultReduction": "single",
+  "groups": [],
+  "inapplicable": [],
+  "rejectedCriteria": [],
+  "alternatives": [
+    {
+      "id": "go",
+      "label": "Go",
+      "groupIds": []
+    },
+    {
+      "id": "rust",
+      "label": "Rust",
+      "groupIds": []
+    },
+    {
+      "id": "python",
+      "label": "Python",
+      "groupIds": []
+    },
+    {
+      "id": "typescript",
+      "label": "TypeScript",
+      "groupIds": []
+    }
+  ],
+  "criteria": [
+    {
+      "id": "ecosystem",
+      "label": "Ecosystem maturity",
+      "groupIds": [],
+      "defaultMeasurement": {
+        "level": "ordinal",
+        "preference": "increasing",
+        "range": {
+          "min": 1,
+          "max": 5
+        },
+        "levels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "scale": "ordinal-1-5-anchored",
+        "anchors": {
+          "levels": {
+            "1": "few maintained libraries for our domain",
+            "3": "the common needs are covered; the specialised ones are not",
+            "5": "a maintained library exists for every need we listed"
+          },
+          "contentHash": "sha256:fixture",
+          "requires": [
+            "1",
+            "3",
+            "5"
+          ]
+        }
+      }
+    },
+    {
+      "id": "performance",
+      "label": "Runtime performance",
+      "groupIds": [],
+      "defaultMeasurement": {
+        "level": "ordinal",
+        "preference": "increasing",
+        "range": {
+          "min": 1,
+          "max": 5
+        },
+        "levels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "scale": "ordinal-1-5-anchored",
+        "anchors": {
+          "levels": {
+            "1": "an order of magnitude slower than our budget",
+            "3": "within a small factor of our budget",
+            "5": "comfortably inside our budget on the workload we measured"
+          },
+          "contentHash": "sha256:fixture",
+          "requires": [
+            "1",
+            "3",
+            "5"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hiring",
+      "label": "Hiring pool",
+      "groupIds": [],
+      "defaultMeasurement": {
+        "level": "ordinal",
+        "preference": "increasing",
+        "range": {
+          "min": 1,
+          "max": 5
+        },
+        "levels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "scale": "ordinal-1-5-anchored",
+        "anchors": {
+          "levels": {
+            "1": "fewer than five candidates found in our market",
+            "3": "a workable pool, with a wait",
+            "5": "a deep pool we could hire from this quarter"
+          },
+          "contentHash": "sha256:fixture",
+          "requires": [
+            "1",
+            "3",
+            "5"
+          ]
+        }
+      }
+    },
+    {
+      "id": "learning-curve",
+      "label": "Learning curve",
+      "groupIds": [],
+      "defaultMeasurement": {
+        "level": "ordinal",
+        "preference": "increasing",
+        "range": {
+          "min": 1,
+          "max": 5
+        },
+        "levels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "scale": "ordinal-1-5-anchored",
+        "anchors": {
+          "levels": {
+            "1": "a term before the team is productive",
+            "3": "productive in weeks, fluent in months",
+            "5": "the team is productive in days"
+          },
+          "contentHash": "sha256:fixture",
+          "requires": [
+            "1",
+            "3",
+            "5"
+          ]
+        }
+      }
+    },
+    {
+      "id": "tooling",
+      "label": "Tooling",
+      "groupIds": [],
+      "defaultMeasurement": {
+        "level": "ordinal",
+        "preference": "increasing",
+        "range": {
+          "min": 1,
+          "max": 5
+        },
+        "levels": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "scale": "ordinal-1-5-anchored",
+        "anchors": {
+          "levels": {
+            "1": "no formatter, no language server worth using",
+            "3": "the essentials exist and are maintained",
+            "5": "formatter, language server and debugger are all first-rate"
+          },
+          "contentHash": "sha256:fixture",
+          "requires": [
+            "1",
+            "3",
+            "5"
+          ]
+        }
+      }
+    }
+  ],
+  "authors": [
+    {
+      "id": "ana",
+      "displayName": "Ana Ruiz",
+      "kind": "human",
+      "attestation": {
+        "method": "unverified"
+      }
+    }
+  ],
+  "scales": [
+    {
+      "id": "ordinal-1-5-anchored",
+      "broader": "stevens",
+      "means": "Five ordinal levels with written evidence conditions at 1, 3 and 5.",
+      "params": {}
+    }
+  ],
+  "missingCodes": [],
+  "reductions": [],
+  "renditions": [],
+  "procedures": [],
+  "rounds": [],
+  "threads": [],
+  "suggestions": [],
+  "cells": [
+    {
+      "alternativeId": "go",
+      "criterionId": "ecosystem",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "go-ecosystem",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 4,
+          "justification": "the standard library covers most of what we listed",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "go",
+      "criterionId": "performance",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "go-performance",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 4,
+          "justification": "well inside budget on the benchmark we ran",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "go",
+      "criterionId": "hiring",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "go-hiring",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 4,
+          "justification": "a workable pool locally",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "go",
+      "criterionId": "learning-curve",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "go-learning-curve",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 5,
+          "justification": "two of the team were productive in three days",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "go",
+      "criterionId": "tooling",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "go-tooling",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 5,
+          "justification": "gofmt and gopls are first-rate",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "rust",
+      "criterionId": "ecosystem",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "rust-ecosystem",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 3,
+          "justification": "crates exist for the common needs; two specialised ones do not",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "rust",
+      "criterionId": "performance",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "rust-performance",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 5,
+          "justification": "fastest of the four on our benchmark",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "rust",
+      "criterionId": "hiring",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "rust-hiring",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 2,
+          "justification": "four candidates found in our market",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "rust",
+      "criterionId": "learning-curve",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "rust-learning-curve",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 1,
+          "justification": "the borrow checker cost us most of a term last time",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "rust",
+      "criterionId": "tooling",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "rust-tooling",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 5,
+          "justification": "cargo, rust-analyzer and the formatter are excellent",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "python",
+      "criterionId": "ecosystem",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "python-ecosystem",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 5,
+          "justification": "a maintained library for every need on the list",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "python",
+      "criterionId": "performance",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "python-performance",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 2,
+          "justification": "roughly six times our budget on the same benchmark",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "python",
+      "criterionId": "hiring",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "python-hiring",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 5,
+          "justification": "we could hire this quarter",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "python",
+      "criterionId": "learning-curve",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "python-learning-curve",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 5,
+          "justification": "everyone on the team already writes it",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "python",
+      "criterionId": "tooling",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "python-tooling",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 4,
+          "justification": "ruff and pyright are good; the debugger is adequate",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "typescript",
+      "criterionId": "ecosystem",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "typescript-ecosystem",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 4,
+          "justification": "covered, with two gaps we would wrap ourselves",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "typescript",
+      "criterionId": "performance",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "typescript-performance",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 3,
+          "justification": "within a small factor of budget",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "typescript",
+      "criterionId": "hiring",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "typescript-hiring",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 5,
+          "justification": "the deepest pool of the four",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "typescript",
+      "criterionId": "learning-curve",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "typescript-learning-curve",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 4,
+          "justification": "productive in a fortnight",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    },
+    {
+      "alternativeId": "typescript",
+      "criterionId": "tooling",
+      "measure": "score",
+      "assertions": [
+        {
+          "id": "typescript-tooling",
+          "authorId": "ana",
+          "at": "2026-08-22T09:00:00Z",
+          "value": 5,
+          "justification": "the language server is the best of the four",
+          "evidence": [],
+          "version": 1,
+          "independence": "independent"
+        }
+      ]
+    }
+  ]
+}

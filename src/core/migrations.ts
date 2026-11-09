@@ -166,13 +166,17 @@ export function createMigrationChain(
 /**
  * The analysis document's shipped migration steps, one per version bump.
  *
- * Empty at version 1, because there is no version 0 to migrate from: a
- * document with no `schemaVersion` reads as 1. The first entry arrives with the
- * first bump, `{ from: 1, ... }`, and the completeness test fails the build
- * until it does. Data rather than a registration call at module scope, so a
- * bundler under `sideEffects: false` cannot drop it.
+ * Version 2 adds `Assertion.confidence` (request 17) -- optional, so a version-1
+ * document is already a version-2 document and the step changes nothing but the
+ * version the chain stamps. Version 2 is the home for the other additive
+ * requests queued for the next version (`Measurement.neutral`, the reject-reason
+ * codes), which need no further step while version 2 is the current one. Data
+ * rather than a registration call at module scope, so a bundler under
+ * `sideEffects: false` cannot drop it.
  */
-export const DOCUMENT_MIGRATIONS: readonly Migration[] = Object.freeze([]);
+export const DOCUMENT_MIGRATIONS: readonly Migration[] = Object.freeze([
+  { from: 1, describes: 'adds the optional Assertion.confidence (high | medium | low); no existing field changes', migrate: (doc) => doc },
+]);
 
 /** The analysis document's chain, towards `SCHEMA_VERSION`. */
 const documentChain = createMigrationChain({ currentVersion: SCHEMA_VERSION, steps: DOCUMENT_MIGRATIONS });
@@ -208,4 +212,19 @@ export function missingMigrationSteps(): number[] {
 /** Whether a document needs migrating. Cheap; safe to call on every load. */
 export function needsMigration(doc: VersionedDocument): boolean {
   return documentChain.needsMigration(doc);
+}
+
+/**
+ * The document at the current version, if it is an earlier one this build can carry forward; otherwise as given.
+ *
+ * For a consumer that takes a producer's document as it finds it (the standalone build): a version-1 document
+ * becomes a version-2 one by the registered steps. Anything `migrate` would refuse or misread -- a later version, a
+ * `schemaVersion` that is not a whole number, a non-object -- is returned untouched, so `validateAnalysis` says what
+ * is wrong with it rather than the chain stamping a bad version as good. A document without `schemaVersion` reads as 1.
+ */
+export function carriedForward<T>(doc: T): T {
+  if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) return doc;
+  const v = (doc as VersionedDocument).schemaVersion;
+  if (v !== undefined && !(typeof v === 'number' && Number.isInteger(v) && v >= 1)) return doc;
+  return needsMigration(doc as VersionedDocument) ? (migrate(doc as VersionedDocument).document as T) : doc;
 }

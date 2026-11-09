@@ -13,7 +13,7 @@
  * single-value cells is a migration through every stored analysis.
  */
 import * as z from 'zod/mini';
-import { EvidenceRef } from './evidence.js';
+import { Confidence, EvidenceRef } from './evidence.js';
 import { Missing } from './missingness.js';
 import {
   Independence, Perturbation, effectiveIndependence,
@@ -92,6 +92,8 @@ export const Assertion = z.strictObject({
    */
   independence: z.optional(Independence),
   perturbation: z.optional(Perturbation),
+  /** Evidence quality, optional with no default: absent means none recorded. See `Confidence`. */
+  confidence: z.optional(Confidence),
   /** The round this belongs to, for multi-round elicitation. */
   roundId: z.optional(z.string()),
   /** The procedure that produced it, for agent runs. */
