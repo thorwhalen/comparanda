@@ -80,8 +80,7 @@ import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.
 import { startPointerDrag } from './pointer-reorder.js';
 import { activeElementOf, messageOf } from './dom.js';
 import { describeOrder, describePlace } from '../core/reorder.js';
-import { makeInapplicableDeclarations, type Axis } from '../core/schema/groups.js';
-import { pickableGroups } from '../core/analyses/scope.js';
+import { makeInapplicableDeclarations, pickableGroups, type Axis } from '../core/schema/groups.js';
 import { resolveAnchor } from '../core/schema/anchors.js';
 
 const anonymous = () => 'anonymous';
@@ -305,9 +304,16 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     <button type="button" onClick={() => onArrange!(change, said)}>{label}</button>
   );
   // The axes the reader can band, by the top-level groups it can pick (#342): one nesting level is rendered (ADR-0008).
-  const groupable = (['alternatives', 'criteria'] as const)
+  // Hidden members still count, unlike the scatter's scope: here a hidden group can be selected, and shown again.
+  // Worked out only for a matrix that has group controls.
+  const groupable = onArrange ? (['alternatives', 'criteria'] as const)
     .map((axis) => ({ axis, tops: pickableGroups(analysis, axis, { topLevel: true }) }))
-    .filter((x) => x.tops.length > 0);
+    .filter((x) => x.tops.length > 0) : [];
+  // A picked group no longer offered is let go, as the scatter's scope is: its return does not bring the pick back unasked.
+  useLayoutEffect(() => {
+    const kept = groupable.flatMap(({ axis, tops }) => tops.some((g) => g.id === picked[axis]) ? [[axis, picked[axis]]] : []);
+    if (kept.length < Object.keys(picked).length) setPicked(Object.fromEntries(kept));
+  });
   const at = grid.positionOf(view.session.focus);
   /** The omitted block the reader is on, for the details panel (#280): its two bands, by axis, with their members and reason. */
   const panelBlock = (): PanelBlock | undefined => {

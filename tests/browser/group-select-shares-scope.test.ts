@@ -54,6 +54,20 @@ describe('the matrix\'s group select and the scatter\'s scope (#342)', () => {
     expect(options(pick('criteria'))).toEqual(['g-cost', 'g-climate', 'g-logistics', 'g-eu']);
   });
 
+  it('lets go of a picked group that stops being offered, so its return does not bring the pick back', async () => {
+    const doc = edited();
+    handle = mountMatrix(el, { analysis: doc, measure: 'score' });
+    await userEvent.selectOptions(pick('alternatives')!, 'g-asia');
+    expect(pick('alternatives')!.value).toBe('g-asia');
+    const withoutAsia = structuredClone(doc);
+    for (const a of withoutAsia.alternatives) if (a.groupIds.includes('g-asia')) a.tombstoned = true;
+    handle.update({ analysis: Analysis.parse(withoutAsia) });
+    await expect.poll(() => pick('alternatives')!.value).toBe('g-europe');
+    handle.update({ analysis: doc });
+    await expect.poll(() => options(pick('alternatives'))).toEqual(['g-europe', 'g-asia']);
+    expect(pick('alternatives')!.value).toBe('g-europe');
+  });
+
   it('bands only by the groups it offers, and names only those', async () => {
     const doc = edited();
     const views: ViewState[] = [];

@@ -3,8 +3,7 @@
  * and which groups a reader can pick, one answer for the scatter's scope and the matrix's group controls (#342).
  */
 import type { Analysis } from '../schema/analysis.js';
-import { axisGroups, membersOfGroup, type Axis } from '../schema/groups.js';
-import type { Group } from '../schema/structure.js';
+import { axisGroups, membersOfGroup, pickableGroups } from '../schema/groups.js';
 
 /** The options every analysis that can be scoped to a set of alternatives accepts. */
 export interface AlternativeScopeOptions {
@@ -31,29 +30,8 @@ export function alternativeScope(a: Analysis, opts: AlternativeScopeOptions): st
   return membersOfGroup(ag, opts.groupId);
 }
 
-/**
- * A group a reader can pick, with its live members, sub-groups' included, in
- * document order: the scope `groupId` resolves to, and what picking it selects
- * or hides. The matrix's group controls and layout offer these (#342), and the
- * scatter's scope picker builds on them (`scopeGroups`).
- */
-export type PickableGroup = Group & { members: string[] };
-
-/**
- * The groups a reader can pick on an axis: every live one, in document order,
- * with a live member. A group with none is not offered: scoping to it would
- * draw nothing, banding by it would draw no band, and selecting or hiding it
- * would change nothing. `topLevel` keeps only the groups with no parent: the
- * matrix renders one nesting level (ADR-0008).
- */
-export function pickableGroups(a: Analysis, axis: Axis = 'alternatives', { topLevel = false } = {}): PickableGroup[] {
-  const ag = axisGroups(a, axis);
-  return a.groups.flatMap((g) => {
-    if (g.axis !== axis || g.tombstoned || (topLevel && g.parentId !== undefined)) return [];
-    const members = membersOfGroup(ag, g.id);
-    return members.length ? [{ ...g, members }] : [];
-  });
-}
+// The groups a reader can pick live with the other group helpers; the scope picker builds on them.
+export { pickableGroups, type PickableGroup } from '../schema/groups.js';
 
 /** An alternatives group a comparison can be scoped to, as a picker offers it. */
 export interface ScopeGroup {
@@ -72,11 +50,15 @@ export interface ScopeGroup {
  * (`pickableGroups`) that have a member the reader shows (`shownAlternatives`,
  * the matrix's arrangement; absent, every live member counts as shown). A group
  * whose members are all hidden is not offered: scoping to it would draw nothing.
+ * The matrix's group controls, which read `pickableGroups` directly, still offer
+ * it: there a hidden group can be selected, and its members shown again.
  */
 export function scopeGroups(a: Analysis, { shownAlternatives }: { shownAlternatives?: readonly string[] | undefined } = {}): ScopeGroup[] {
-  const labelOf = new Map(a.groups.filter((g) => g.axis === 'alternatives' && !g.tombstoned).map((g) => [g.id, g.label]));
+  const groups = pickableGroups(a);
+  // A live parent of a pickable sub-group is pickable itself: its members include the sub-group's.
+  const labelOf = new Map(groups.map((g) => [g.id, g.label]));
   const showing = shownAlternatives === undefined ? undefined : new Set(shownAlternatives);
-  return pickableGroups(a).flatMap(({ id, label, parentId, members }) => {
+  return groups.flatMap(({ id, label, parentId, members }) => {
     const shown = showing === undefined ? members.length : members.filter((m) => showing.has(m)).length;
     return shown > 0 ? [{ id, label, parentLabel: parentId === undefined ? undefined : labelOf.get(parentId), members, shown }] : [];
   });

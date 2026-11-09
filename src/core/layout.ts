@@ -26,8 +26,7 @@
  * repeated.
  */
 import type { Analysis } from './schema/analysis.js';
-import type { Axis } from './schema/groups.js';
-import { pickableGroups } from './analyses/scope.js';
+import { pickableGroups, type Axis } from './schema/groups.js';
 import type { InapplicableBlock } from './schema/structure.js';
 import type { ViewState } from './view-state.js';
 
@@ -88,7 +87,8 @@ function axisLayout(
   const shown = [...placed].filter((id) => !hide.has(id));
 
   // The groups a band can be drawn for are the ones the reader can pick (#342): live, with a live member.
-  const groups = new Map(pickableGroups(a, axis).map((g) => [g.id, g]));
+  // Read only when the axis is grouped: membership is not worked out for a view that bands nothing.
+  const groups = new Map(grouping.length > 0 ? pickableGroups(a, axis).map((g) => [g.id, g]) : []);
   const chosen = [...new Set(grouping)].filter((id) => groups.has(id));
   if (chosen.length === 0) {
     return { axis, entries: shown.map((id) => ({ id, label: live.get(id)!, alsoIn: [] })), bands: undefined };

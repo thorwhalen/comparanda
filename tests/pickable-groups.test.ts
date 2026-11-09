@@ -40,9 +40,19 @@ describe('pickableGroups', () => {
     expect(ids(pickableGroups(doc, 'criteria', { topLevel: true }))).not.toContain('g-paperwork');
   });
 
-  it('is what the scatter\'s scope is drawn from: with nothing hidden, the same groups and members', () => {
+  it('stands a sub-group of a tombstoned parent at the top level, and names no parent for it', () => {
     const doc = edited();
-    expect(scopeGroups(doc).map((g) => [g.id, g.members])).toEqual(pickableGroups(doc).map((g) => [g.id, g.members]));
+    doc.groups.find((g) => g.id === 'g-europe')!.tombstoned = true;
+    const parsed = Analysis.parse(doc);
+    expect(ids(pickableGroups(parsed, 'alternatives', { topLevel: true }))).toEqual(['g-asia', 'g-iberia']);
+    expect(scopeGroups(parsed).find((g) => g.id === 'g-iberia')).toMatchObject({ parentLabel: undefined, members: ['lisbon'] });
+  });
+
+  it('still offers a group whose members are all hidden, which the scatter\'s scope leaves out', () => {
+    const doc = edited();
+    // Asia's two members hidden: nothing of it to compare, but the matrix can still select it or show it again.
+    expect(ids(scopeGroups(doc, { shownAlternatives: ['lisbon', 'berlin'] }))).toEqual(['g-europe', 'g-iberia']);
+    expect(ids(pickableGroups(doc))).toEqual(['g-europe', 'g-asia', 'g-iberia']);
   });
 
   it('is what the layout bands by: a grouping of only groups with no live member draws no bands', () => {
