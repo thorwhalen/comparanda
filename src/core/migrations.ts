@@ -175,7 +175,7 @@ export function createMigrationChain(
  * `sideEffects: false` cannot drop it.
  */
 export const DOCUMENT_MIGRATIONS: readonly Migration[] = Object.freeze([
-  { from: 1, describes: 'adds the optional Assertion.confidence (high | medium | low) and widens rejectedCriteria[].reasonCode by four codes; every version-1 document is valid unchanged', migrate: (doc) => doc },
+  { from: 1, describes: 'adds Assertion.confidence and four reject codes; version-1 documents stay valid', migrate: (doc) => doc },
 ]);
 
 /** The analysis document's chain, towards `SCHEMA_VERSION`. */

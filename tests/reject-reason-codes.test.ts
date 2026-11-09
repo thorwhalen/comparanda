@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 import { Analysis, SCHEMA_VERSION, validateAnalysis } from '../src/core/schema/analysis.js';
-import { REJECT_REASON_CODES, REJECT_REASON_GLOSSES } from '../src/core/schema/structure.js';
+import { REJECT_REASON_CODES } from '../src/core/schema/structure.js';
+import { REJECT_REASON_GLOSSES } from '../src/core/schema/schema-descriptions.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const readJson = (p: string) => JSON.parse(readFileSync(join(root, p), 'utf8'));
