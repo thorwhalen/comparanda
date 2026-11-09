@@ -223,6 +223,18 @@ interface Prepared {
   tolerance: (cid: string) => number;
 }
 
+/**
+ * The indifference tolerance the practical tolerance applies on a criterion: its
+ * measurement's declared `thresholds.indifference` when that is above zero, else
+ * `undefined` -- nothing declared, so the criterion is compared strictly either
+ * way. The one rule, so a view saying what the tolerance would change reads it
+ * as the comparison does.
+ */
+export function declaredIndifference(m: Measurement | undefined): number | undefined {
+  const q = m?.thresholds?.indifference;
+  return q !== undefined && q > 0 ? q : undefined;
+}
+
 function prepare(a: Analysis, opts: DominanceOptions): Prepared {
   const excluded: ExcludedCriterion[] = [];
   const altIds = dominanceScope(a, opts);
@@ -267,7 +279,7 @@ function prepare(a: Analysis, opts: DominanceOptions): Prepared {
 
   const tolerance = (cid: string): number => {
     if (!opts.usePracticalTolerance) return 0;
-    return measurements.get(cid)?.thresholds?.indifference ?? 0;
+    return declaredIndifference(measurements.get(cid)) ?? 0;
   };
 
   return { altIds, groupLabel, basis, excluded, measurements, rows, tolerance };

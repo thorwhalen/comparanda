@@ -14,6 +14,14 @@
  * once over the two criteria and once over all of them; nothing here compares
  * values itself.
  *
+ * Both comparisons share one scope and one tolerance, both named in `basis`
+ * (ADR-0019: a result that does not name its basis is not interpretable). The
+ * scope is every live alternative, or one alternatives group's members
+ * (`groupId`, clause 3's natural scope); the tolerance is strict, or the
+ * practical one (`usePracticalTolerance`, clause 8), which counts a difference
+ * at or below a criterion's declared indifference threshold as none. Neither is
+ * a default: each is the reader's visible act.
+ *
  * No DOM. A point is placed only where both of its values are numbers; one
  * that is not is listed, with the tiers it still has and why each value is
  * absent (ADR-0009: no bare nulls), so it never vanishes.
@@ -22,8 +30,8 @@ import type { Analysis } from '../schema/analysis.js';
 import { makeCellReader, vocabularyOf } from '../schema/analysis.js';
 import { makeInapplicability } from '../schema/groups.js';
 import { cellWords } from '../cell-words.js';
-import { measurementFor } from '../schema/structure.js';
-import { dominance, EXCLUSION_WORDS, type DominanceResult, type ExcludedCriterion } from './dominance.js';
+import { aliasesOf, measurementFor } from '../schema/structure.js';
+import { declaredIndifference, dominance, dominanceScope, EXCLUSION_WORDS, type DominanceResult, type ExcludedCriterion } from './dominance.js';
 
 export type DominanceTier = 'non-dominated' | 'possibly-dominated' | 'dominated';
 
@@ -33,7 +41,27 @@ export interface ScatterAxis {
   label: string;
   /** The declared range: the axis's extent. Every criterion a dominance comparison uses has one. */
   range: { min: number; max: number };
+  /** The declared range's unit, when it has one: words only, never parsed. */
+  unit: string | undefined;
   preference: string | undefined;
+  /** The indifference threshold the practical tolerance would apply on it (`declaredIndifference`); `undefined` when none is declared. */
+  indifference: number | undefined;
+}
+
+/** The alternatives both comparisons ran over. */
+export interface ScatterScope {
+  /** The alternatives group, when the scope is one; `undefined` for every live alternative. */
+  groupId: string | undefined;
+  label: string | undefined;
+  /** How many alternatives are in it, hidden ones included: the comparison counts them. */
+  size: number;
+}
+
+/** The practical tolerance: whether it was applied, and how much it could change. */
+export interface ScatterTolerance {
+  applied: boolean;
+  /** Of the criteria the comparison across every criterion uses, how many declare an indifference threshold. */
+  overall: { declared: number; of: number };
 }
 
 /** One alternative on the scatter. */
@@ -62,7 +90,12 @@ export interface UsableScatterModel {
   usable: true;
   measure: string;
   axes: readonly [ScatterAxis, ScatterAxis];
+  /** The alternatives in scope, in document order. */
   points: ScatterPoint[];
+  scope: ScatterScope;
+  tolerance: ScatterTolerance;
+  /** Which scope and tolerance both comparisons used, in words: one sentence, ending with a full stop. */
+  basis: string;
   /** What the view must call the front it draws: on these two criteria, not overall. */
   caption: string;
   /** The full-criteria comparison's basis, in words (ADR-0019: a result that does not name its basis is not interpretable). */
@@ -83,6 +116,10 @@ export interface ScatterOptions {
   measure: string;
   /** The two criteria: horizontal, then vertical. */
   criteria: readonly [string, string];
+  /** Compare only this alternatives group's members, sub-groups' included (ADR-0019 clause 3). Default: every live alternative. */
+  groupId?: string | undefined;
+  /** Count a difference at or below a criterion's declared indifference threshold as none (ADR-0019 clause 8). Default: strict. */
+  usePracticalTolerance?: boolean | undefined;
 }
 
 /** The words the view puts on the front it draws (ADR-0026). */
@@ -99,30 +136,71 @@ function tierIn(result: DominanceResult, id: string): DominanceTier {
   return result.provisional.includes(id) ? 'possibly-dominated' : 'non-dominated';
 }
 
+/** "1 option", "3 options": a count in the analysis's own words. */
+function counted(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/**
+ * The scope and the tolerance, in words: "compared across every alternative
+ * (5), strictly: any difference counts." The tolerance names each axis's
+ * threshold, or that it declares none and is compared strictly, and how many of
+ * the criteria behind the outer mark declare one.
+ */
+function basisWords(a: Analysis, axes: readonly [ScatterAxis, ScatterAxis], scope: ScatterScope, tolerance: ScatterTolerance): string {
+  const al = aliasesOf(a);
+  const where = scope.groupId === undefined
+    ? `compared across every ${al.alternative} (${scope.size})`
+    : `compared within the group "${scope.label}": ${counted(scope.size, al.alternative, al.alternatives)}`;
+  if (!tolerance.applied) return `${where}, strictly: any difference counts.`;
+  const onAxis = (x: ScatterAxis) => (x.indifference === undefined
+    ? `${x.label}: none declared, so compared strictly`
+    : `${x.label}: ${x.indifference}${x.unit === undefined ? '' : ` ${x.unit}`}`);
+  const { declared, of } = tolerance.overall;
+  const across = `${declared} of the ${counted(of, al.criterion, al.criteria)} across every ${al.criterion} ${declared === 1 ? 'declares' : 'declare'} one`;
+  return `${where}, with the practical tolerance: a difference at or below a ${al.criterion}'s indifference threshold counts as none ` +
+    `(${axes.map(onAxis).join('; ')}; ${across}).`;
+}
+
 /**
  * The scatter over two criteria, or why there is none: the same criterion
- * twice, an unknown one, or one that admits no dominance comparison (nominal,
- * no direction, a target, no range), named with its reason.
+ * twice, an unknown one, one that admits no dominance comparison (nominal, no
+ * direction, a target, no range), named with its reason, or a `groupId` that is
+ * not a live alternatives group.
  */
-export function scatterModel(a: Analysis, { measure, criteria }: ScatterOptions): ScatterModel {
+export function scatterModel(a: Analysis, { measure, criteria, groupId, usePracticalTolerance = false }: ScatterOptions): ScatterModel {
   const [xId, yId] = criteria;
   if (xId === yId) return { usable: false, reason: 'a scatter needs two different criteria.' };
   const crit = (id: string) => a.criteria.find((c) => c.id === id && !c.tombstoned);
   const missing = criteria.find((id) => !crit(id));
   if (missing !== undefined) return { usable: false, reason: `"${missing}" is not a criterion of this analysis.` };
+  const group = groupId === undefined ? undefined : a.groups.find((g) => g.id === groupId && g.axis === 'alternatives' && !g.tombstoned);
+  if (groupId !== undefined && !group) return { usable: false, reason: `"${groupId}" is not a group of ${aliasesOf(a).alternatives} in this analysis.` };
 
-  const here = dominance(a, { measure, criterionIds: criteria });
+  const scoped = { measure, usePracticalTolerance, ...(groupId === undefined ? {} : { groupId }) };
+  const here = dominance(a, { ...scoped, criterionIds: criteria });
   const out = here.excluded.find((e: ExcludedCriterion) => criteria.includes(e.criterionId));
   if (out) {
     return { usable: false, reason: `${crit(out.criterionId)!.label} cannot be compared for dominance (${EXCLUSION_WORDS[out.reason]}).` };
   }
-  const overall = dominance(a, { measure });
+  const overall = dominance(a, scoped);
 
+  // Every id here is a live criterion: the two axes, checked above, and the basis, which dominance draws from the live ones.
+  const measurementOf = (id: string) => measurementFor(crit(id)!, measure);
   const axis = (id: string): ScatterAxis => {
-    const c = crit(id)!;
-    const m = measurementFor(c, measure);
+    const m = measurementOf(id)!;
     // In the basis, so it has a range and a direction (dominance's own rule, ADR-0019 clause 7).
-    return { criterionId: id, label: c.label, range: { min: m!.range!.min, max: m!.range!.max }, preference: m!.preference };
+    return {
+      criterionId: id, label: crit(id)!.label, range: { min: m.range!.min, max: m.range!.max }, unit: m.range!.unit,
+      preference: m.preference, indifference: declaredIndifference(m),
+    };
+  };
+  const axes = [axis(xId), axis(yId)] as const;
+  const inScope = new Set(dominanceScope(a, scoped));
+  const scope: ScatterScope = { groupId, label: group?.label, size: inScope.size };
+  const tolerance: ScatterTolerance = {
+    applied: usePracticalTolerance,
+    overall: { declared: overall.basis.filter((id) => declaredIndifference(measurementOf(id)) !== undefined).length, of: overall.basis.length },
   };
   const reader = makeCellReader(a, measure);
   const vocabulary = vocabularyOf(a);
@@ -137,7 +215,7 @@ export function scatterModel(a: Analysis, { measure, criteria }: ScatterOptions)
     const { text, absentCode, refused } = cellWords(r, { inapplicable: inapplicable(alt, id), vocabulary, criterionId: id });
     return refused || absentCode !== undefined || typeof r?.value === 'number' ? text : `Not a number: ${text}.`;
   };
-  const points = a.alternatives.filter((x) => !x.tombstoned).map((alt): ScatterPoint => ({
+  const points = a.alternatives.filter((x) => !x.tombstoned && inScope.has(x.id)).map((alt): ScatterPoint => ({
     alternativeId: alt.id,
     label: alt.label,
     x: numberAt(alt.id, xId),
@@ -151,8 +229,11 @@ export function scatterModel(a: Analysis, { measure, criteria }: ScatterOptions)
   return {
     usable: true,
     measure,
-    axes: [axis(xId), axis(yId)],
+    axes,
     points,
+    scope,
+    tolerance,
+    basis: basisWords(a, axes, scope, tolerance),
     caption: SCATTER_CAPTION,
     overallBasis: overall.basisDescription,
     notes: here.notes,

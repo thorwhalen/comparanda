@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { Analysis } from '../src/core/schema/analysis.js';
 import { dominance } from '../src/core/analyses/dominance.js';
 import { SCATTER_CAPTION, scatterCriteria, scatterModel, type ScatterModel } from '../src/core/analyses/scatter.js';
+import { scopeGroups } from '../src/core/analyses/scope.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
 const example = (name: string) => Analysis.parse(JSON.parse(readFileSync(join(examples, `${name}.json`), 'utf8')));
@@ -74,5 +75,74 @@ describe('scatterModel', () => {
     const doc = structuredClone(relocation);
     doc.criteria.find((c) => c.id === 'flight-hours')!.tombstoned = true;
     expect(scatterModel(doc, { measure: 'score', criteria: ['rent', 'flight-hours'] })).toEqual({ usable: false, reason: '"flight-hours" is not a criterion of this analysis.' });
+  });
+
+  it('scopes both comparisons to one group of alternatives, and names the scope (#286, ADR-0019 clause 3)', () => {
+    const criteria = ['rent', 'flight-hours'] as const;
+    const m = usable(scatterModel(relocation, { measure: 'score', criteria, groupId: 'g-asia' }));
+    expect(m.points.map((p) => p.alternativeId)).toEqual(['taipei', 'seoul']);
+    expect(m.scope).toEqual({ groupId: 'g-asia', label: 'Asia', size: 2 });
+    const here = dominance(relocation, { measure: 'score', criterionIds: criteria, groupId: 'g-asia' });
+    expect(m.notes).toEqual(here.notes);
+    expect(m.overallBasis).toBe(dominance(relocation, { measure: 'score', groupId: 'g-asia' }).basisDescription);
+    expect(m.basis).toBe('compared within the group "Asia": 2 options, strictly: any difference counts.');
+    // The default is every live alternative, and says so.
+    expect(usable(scatterModel(relocation, { measure: 'score', criteria })).basis).toBe('compared across every option (5), strictly: any difference counts.');
+    // A group that is not a live group of alternatives is refused, never thrown.
+    expect(scatterModel(relocation, { measure: 'score', criteria, groupId: 'g-cost' })).toEqual({ usable: false, reason: '"g-cost" is not a group of options in this analysis.' });
+  });
+
+  it('applies the practical tolerance where a criterion declares an indifference threshold, and says which (#286, ADR-0019 clause 8)', () => {
+    const criteria = ['rent', 'flight-hours'] as const;
+    const doc = structuredClone(relocation);
+    doc.criteria.find((c) => c.id === 'rent')!.defaultMeasurement!.thresholds = { indifference: 600 };
+    const strict = usable(scatterModel(doc, { measure: 'score', criteria }));
+    const practical = usable(scatterModel(doc, { measure: 'score', criteria, usePracticalTolerance: true }));
+    const tierOf = (m: typeof strict, id: string) => m.points.find((p) => p.alternativeId === id)!.here;
+    // Lisbon's rent is 150 below Berlin's, within the 600 that counts as none, and its flight half an hour longer: dominated, but only under the tolerance.
+    expect([tierOf(strict, 'lisbon'), tierOf(practical, 'lisbon')]).toEqual(['non-dominated', 'dominated']);
+    expect(practical.points.find((p) => p.alternativeId === 'lisbon')!.dominatedBy).toEqual(['berlin']);
+    expect(practical.points.map((p) => p.here)).toEqual(
+      ['lisbon', 'berlin', 'taipei', 'seoul', 'montreal'].map((id) => {
+        const r = dominance(doc, { measure: 'score', criterionIds: criteria, usePracticalTolerance: true });
+        return r.dominated.includes(id) ? 'dominated' : r.provisional.includes(id) ? 'possibly-dominated' : 'non-dominated';
+      }),
+    );
+    expect(practical.axes.map((a) => a.indifference)).toEqual([600, undefined]);
+    expect(practical.tolerance).toEqual({ applied: true, overall: { declared: 1, of: 6 } });
+    expect(practical.basis).toBe(
+      'compared across every option (5), with the practical tolerance: a difference at or below a criterion\'s indifference threshold counts as none ' +
+      '(Rent: 600 USD/month; Flight hours to family: none declared, so compared strictly; 1 of the 6 criteria across every criterion declares one).',
+    );
+    // Off by default; and where nothing declares a threshold, the model says so, so a view can.
+    expect(strict.tolerance.applied).toBe(false);
+    expect(usable(scatterModel(relocation, { measure: 'score', criteria, usePracticalTolerance: true })).tolerance.overall).toEqual({ declared: 0, of: 6 });
+    // A threshold of zero changes nothing, so it is not counted as declared.
+    doc.criteria.find((c) => c.id === 'rent')!.defaultMeasurement!.thresholds = { indifference: 0 };
+    expect(usable(scatterModel(doc, { measure: 'score', criteria })).axes[0].indifference).toBeUndefined();
+  });
+});
+
+describe('scopeGroups', () => {
+  it('offers the live groups of alternatives that have a member the reader shows, in document order', () => {
+    expect(scopeGroups(relocation).map((g) => [g.id, g.members, g.shown])).toEqual([
+      ['g-europe', ['lisbon', 'berlin'], 2], ['g-asia', ['taipei', 'seoul'], 2], ['g-americas', ['montreal'], 1],
+    ]);
+    // Montreal hidden: the Americas have nothing shown, so are not offered; Asia has one of two shown.
+    const shownAlternatives = ['lisbon', 'berlin', 'taipei'];
+    expect(scopeGroups(relocation, { shownAlternatives }).map((g) => [g.id, g.shown])).toEqual([['g-europe', 2], ['g-asia', 1]]);
+    // A tombstoned group, and a group of criteria, are never offered.
+    const doc = structuredClone(relocation);
+    doc.groups.find((g) => g.id === 'g-europe')!.tombstoned = true;
+    expect(scopeGroups(doc).map((g) => g.id)).toEqual(['g-asia', 'g-americas']);
+  });
+
+  it('names a sub-group\'s parent, and counts its members in the parent', () => {
+    const doc = structuredClone(relocation);
+    doc.groups.push({ id: 'g-iberia', label: 'Iberia', axis: 'alternatives', parentId: 'g-europe' });
+    doc.alternatives.find((a) => a.id === 'lisbon')!.groupIds = ['g-iberia'];
+    const groups = scopeGroups(Analysis.parse(doc));
+    expect(groups.find((g) => g.id === 'g-iberia')).toMatchObject({ label: 'Iberia', parentLabel: 'Europe', members: ['lisbon'] });
+    expect(groups.find((g) => g.id === 'g-europe')!.members).toEqual(['lisbon', 'berlin']);
   });
 });
