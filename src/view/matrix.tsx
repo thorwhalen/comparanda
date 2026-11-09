@@ -79,7 +79,7 @@ import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.
 import { startPointerDrag } from './pointer-reorder.js';
 import { activeElementOf, messageOf } from './dom.js';
 import { describeOrder, describePlace } from '../core/reorder.js';
-import { axisGroups, membersOfGroup, type Axis } from '../core/schema/groups.js';
+import { axisGroups, makeInapplicableDeclarations, membersOfGroup, type Axis } from '../core/schema/groups.js';
 import { resolveAnchor } from '../core/schema/anchors.js';
 
 const anonymous = () => 'anonymous';
@@ -282,10 +282,12 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
 
   // A block with nothing in it to show is one cell (#93): every cell structurally absent, with no reading,
   // no thread and no mark of its own. Its cells then look alike to an encoding, so the first one's swatch is the block's.
+  // Declarations overlap (groups are tags): a block's pair is the one declaration that covers all of it (#323).
+  const declaredAt = makeInapplicableDeclarations(analysis);
   const blocks = omittedBlocks(layout, (alt, crit) => {
     const { badge, strip } = prepared.mark(alt, crit);
     return read(alt, crit) === undefined && !openHere.has(`${alt}\u0000${crit}`) && !badge && !strip
-      ? affordances.inapplicableBlock(alt, crit) : undefined;
+      ? declaredAt(alt, crit) : [];
   });
   const grid = gridOf(rows.entries, columns.entries, transposed, blocks);
   /** The group each axis's picker shows, until the reader picks another. */

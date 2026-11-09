@@ -7,7 +7,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { focusInLayout, hiddenOf, inShownOrder, matrixLayout, omittedBlocks, shownOf } from '../src/core/layout.js';
-import { makeInapplicableBlocks, makeInapplicability } from '../src/core/schema/groups.js';
+import type { InapplicableBlock } from '../src/core/schema/structure.js';
+import { makeInapplicableBlocks, makeInapplicableDeclarations, makeInapplicability } from '../src/core/schema/groups.js';
 import { Analysis } from '../src/core/schema/analysis.js';
 import { applyOrder, initialViewState, setFilter, setGrouping, transpose, type ViewState } from '../src/core/view-state.js';
 
@@ -111,25 +112,30 @@ describe('omittedBlocks (#93)', () => {
   const both = (v = initialViewState(relocation)) =>
     setGrouping(setGrouping(v, 'alternatives', ['g-europe', 'g-asia', 'g-americas']), 'criteria', ['g-eu', 'g-cost']);
   const blockOf = makeInapplicableBlocks(relocation);
+  /** What `omittedBlocks` asks: every declaration of a cell that shows nothing of its own. */
+  const declared = (one: (alt: string, crit: string) => InapplicableBlock | undefined) => (alt: string, crit: string) => {
+    const d = one(alt, crit);
+    return d ? [d] : [];
+  };
   const at = (b: ReturnType<typeof omittedBlocks>[number]) => [b.rowBand.groupId, b.columnBand.groupId, b.rows, b.columns, b.cells];
 
   it('finds every band-by-band block of two cells or more whose every cell is declared inapplicable, with its span and reason', () => {
-    const blocks = omittedBlocks(matrixLayout(relocation, both()), blockOf);
+    const blocks = omittedBlocks(matrixLayout(relocation, both()), declared(blockOf));
     // Spans index the layout's entries. The Americas' block is one cell (Montreal): that cell, not a block.
     expect(blocks.map(at)).toEqual([['g-asia', 'g-eu', { first: 2, last: 3 }, { first: 0, last: 0 }, 2]]);
     expect(blocks[0]!.reason).toBe('not an EU destination, so EU residency rules do not apply');
   });
 
   it('reads the same blocks, axes swapped, when transposed', () => {
-    const blocks = omittedBlocks(matrixLayout(relocation, transpose(both())), blockOf);
+    const blocks = omittedBlocks(matrixLayout(relocation, transpose(both())), declared(blockOf));
     expect(blocks.map(at)).toEqual([['g-eu', 'g-asia', { first: 0, last: 0 }, { first: 2, last: 3 }, 2]]);
   });
 
   it('omits nothing unless both axes are banded, or when one cell of a block shows anything', () => {
-    expect(omittedBlocks(matrixLayout(relocation, setGrouping(initialViewState(relocation), 'alternatives', ['g-asia'])), blockOf)).toEqual([]);
+    expect(omittedBlocks(matrixLayout(relocation, setGrouping(initialViewState(relocation), 'alternatives', ['g-asia'])), declared(blockOf))).toEqual([]);
     // Seoul's cell is kept (a value, a thread, its own absence): the whole Asia block is drawn cell by cell.
     const keepSeoul = (alt: string, crit: string) => (alt === 'seoul' ? undefined : blockOf(alt, crit));
-    expect(omittedBlocks(matrixLayout(relocation, both()), keepSeoul)).toEqual([]);
+    expect(omittedBlocks(matrixLayout(relocation, both()), declared(keepSeoul))).toEqual([]);
   });
 
   it('gives no reason when the declarations behind one block disagree', () => {
@@ -139,19 +145,49 @@ describe('omittedBlocks (#93)', () => {
     doc.groups.push({ ...structuredClone(doc.groups.find((g) => g.id === 'g-asia')!), id: 'g-far', label: 'Far' });
     for (const alt of doc.alternatives) if (['taipei', 'seoul', 'montreal'].includes(alt.id)) alt.groupIds = [...alt.groupIds, 'g-far'];
     const v = setGrouping(setGrouping(initialViewState(doc), 'alternatives', ['g-far']), 'criteria', ['g-eu']);
-    const [far] = omittedBlocks(matrixLayout(doc, v), makeInapplicableBlocks(doc));
+    const [far] = omittedBlocks(matrixLayout(doc, v), makeInapplicableDeclarations(doc));
     expect([far!.rowBand.groupId, far!.cells, far!.reason]).toEqual(['g-far', 3, undefined]);
   });
 
   it('gives the block its group pair, and none when the declarations behind it name different pairs (#303)', () => {
-    expect(omittedBlocks(matrixLayout(relocation, both()), blockOf)[0]!.pair).toEqual(['g-asia', 'g-eu']);
+    expect(omittedBlocks(matrixLayout(relocation, both()), declared(blockOf))[0]!.pair).toEqual(['g-asia', 'g-eu']);
     // A remainder band holding Asia and the Americas, each declared against EU, with the same reason: one reason, no one pair.
     const v = setGrouping(setGrouping(initialViewState(relocation), 'alternatives', ['g-europe']), 'criteria', ['g-eu']);
-    const merged = omittedBlocks(matrixLayout(relocation, v), blockOf).find((b) => b.rowBand.groupId === undefined)!;
+    const merged = omittedBlocks(matrixLayout(relocation, v), declared(blockOf)).find((b) => b.rowBand.groupId === undefined)!;
     expect([merged.cells, merged.reason, merged.pair]).toEqual([3, 'not an EU destination, so EU residency rules do not apply', undefined]);
     // Transposed, the same: the pair is the declarations', whichever axis the rows are.
-    const t = omittedBlocks(matrixLayout(relocation, transpose(both())), blockOf)[0]!;
+    const t = omittedBlocks(matrixLayout(relocation, transpose(both())), declared(blockOf))[0]!;
     expect(t.pair).toEqual(['g-asia', 'g-eu']);
+  });
+
+  it('takes the pair and reason of the declaration that covers the whole block, though groups overlap (#323)', () => {
+    // Taipei is also an island, and "island x EU" is declared before "Asia x EU" with another reason: the first match differs by cell.
+    const doc = structuredClone(relocation);
+    doc.groups.push({ id: 'g-island', label: 'Islands', axis: 'alternatives' } as (typeof doc.groups)[number]);
+    doc.alternatives.find((a) => a.id === 'taipei')!.groupIds.push('g-island');
+    doc.inapplicable.unshift({ alternativeGroupId: 'g-island', criterionGroupId: 'g-eu', reason: 'islands have their own residency regime' });
+    const asia = (blocks: ReturnType<typeof omittedBlocks>) => blocks.find((b) => b.rowBand.groupId === 'g-asia' || b.columnBand.groupId === 'g-asia')!;
+    const read = (d: typeof doc, view = both(initialViewState(d))) => asia(omittedBlocks(matrixLayout(d, view), makeInapplicableDeclarations(d)));
+
+    // Read by each cell's first match alone, the cells disagree: no pair, no reason.
+    const firstOnly = asia(omittedBlocks(matrixLayout(doc, both(initialViewState(doc))), declared(makeInapplicableBlocks(doc))));
+    expect([firstOnly.pair, firstOnly.reason]).toEqual([undefined, undefined]);
+
+    // Read by every declaration, the block is exactly the one that covers every cell of it, whichever way round the matrix is.
+    const covered = read(doc);
+    expect([covered.pair, covered.reason]).toEqual([['g-asia', 'g-eu'], 'not an EU destination, so EU residency rules do not apply']);
+    const t = read(doc, transpose(both(initialViewState(doc))));
+    expect([t.pair, t.reason]).toEqual([covered.pair, covered.reason]);
+  });
+
+  it('prefers the pair of the bands the block is drawn under when a parent group is declared too (#323)', () => {
+    // "world x EU" covers Asia's block as well as "Asia x EU", and is declared first: declaration order must not decide.
+    const doc = structuredClone(relocation);
+    doc.groups.push({ id: 'g-world', label: 'World', axis: 'alternatives' } as (typeof doc.groups)[number]);
+    for (const alt of doc.alternatives) alt.groupIds.push('g-world');
+    doc.inapplicable.unshift({ alternativeGroupId: 'g-world', criterionGroupId: 'g-eu', reason: 'everywhere outside the EU' });
+    const asia = omittedBlocks(matrixLayout(doc, both(initialViewState(doc))), makeInapplicableDeclarations(doc)).find((b) => b.rowBand.groupId === 'g-asia')!;
+    expect([asia.pair, asia.reason]).toEqual([['g-asia', 'g-eu'], 'not an EU destination, so EU residency rules do not apply']);
   });
 
   it('makeInapplicability is the blocks reader, asked yes or no', () => {

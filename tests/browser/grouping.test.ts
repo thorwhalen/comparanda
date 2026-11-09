@@ -346,6 +346,23 @@ describe('the details of an omitted block (#280)', () => {
     expect(threads.querySelector(`label[for="${box.id}"]`)!.textContent).toMatch(/^Start a thread on this cell/);
   });
 
+  it('starts the thread on the declaration that covers the whole block, though another overlaps it (#323)', async () => {
+    // Taipei is also an island, and "islands x EU" is declared before "Asia x EU": the first match differs by cell,
+    // but "Asia x EU" covers both cells of the block.
+    const raw = structuredClone(relocationJson) as unknown as { groups: object[]; alternatives: { id: string; groupIds: string[] }[]; inapplicable: object[] };
+    raw.groups.push({ id: 'g-island', label: 'Islands', axis: 'alternatives' });
+    raw.alternatives.find((a) => a.id === 'taipei')!.groupIds.push('g-island');
+    raw.inapplicable.unshift({ alternativeGroupId: 'g-island', criterionGroupId: 'g-eu', reason: 'islands have their own regime' });
+    const doc = Analysis.parse(raw);
+    const view = setDetailPanel(setFocus(both(initialViewState(doc)), { alternativeId: 'seoul', criterionId: 'eu-residency-path' }), true);
+    mount({ analysis: doc, measure: 'score', source: inMemoryAnalysisSource(doc), identity: anonymousIdentity({ id: 'dana', displayName: 'Dana' }), view });
+    const panel = el.querySelector<HTMLElement>('aside.comparanda-panel')!;
+    expect(panel.getAttribute('data-panel')).toBe('block');
+    const threads = panel.querySelector<HTMLElement>('[data-detail="threads"]')!;
+    const box = threads.querySelector('textarea')!;
+    expect(threads.querySelector(`label[for="${box.id}"]`)!.textContent).toMatch(/^Start a thread on the block Asia \u00d7 EU/);
+  });
+
   it('keeps the cell first when the host allows no thread on the block, rather than offering none', async () => {
     const noBlocks: MountMatrixProps['authorize'] = (r) => !('target' in r && r.target?.kind === 'group-pair') || { enabled: false, reason: 'blocks are not discussed here.' };
     const { threads, box } = await startOnBlock(setFocus(both(), { alternativeId: 'taipei', criterionId: 'eu-residency-path' }), noBlocks);

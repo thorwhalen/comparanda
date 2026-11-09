@@ -139,26 +139,27 @@ export interface OmittedBlock {
   rowBand: Band;
   columnBand: Band;
   cells: number;
-  /** The declarations' reason, when every cell's declaration gives the same one. */
+  /** The reason of the declaration that covers the whole block, else the one every cell's declaration gives alike. */
   reason: string | undefined;
   /**
-   * The declarations' group pair, `[alternativeGroupId, criterionGroupId]`, when every cell's declaration names the same
-   * one (#303): a block a band merges from several declarations is about none of them alone.
+   * The group pair, `[alternativeGroupId, criterionGroupId]`, of the declaration that covers the whole block (#323), else
+   * the one every cell's declaration names (#303): a block a band merges from several declarations is about none of them alone.
    */
   pair: readonly [string, string] | undefined;
 }
 
 /**
  * The blocks of a matrix banded on both axes in which every cell is omitted:
- * `omits(alternativeId, criterionId)` gives the declared block a cell is in
- * when the cell shows nothing but that (no value, no recorded absence of its
- * own, nothing anchored on it), and nothing otherwise. One cell that shows
- * anything keeps its whole block drawn cell by cell, and a block of one cell
- * is that cell: there is nothing to gather.
+ * `omits(alternativeId, criterionId)` gives the declared blocks a cell is in
+ * (every one, in declaration order, since groups overlap) when the cell shows
+ * nothing but that (no value, no recorded absence of its own, nothing anchored
+ * on it), and none otherwise. One cell that shows anything keeps its whole
+ * block drawn cell by cell, and a block of one cell is that cell: there is
+ * nothing to gather.
  */
 export function omittedBlocks(
   layout: MatrixLayout,
-  omits: (alternativeId: string, criterionId: string) => InapplicableBlock | undefined,
+  omits: (alternativeId: string, criterionId: string) => readonly InapplicableBlock[],
 ): OmittedBlock[] {
   const { rows, columns, transposed } = layout;
   if (!rows.bands || !columns.bands) return [];
@@ -166,22 +167,29 @@ export function omittedBlocks(
     let next = 0;
     return bands.map((band) => ({ band, first: next, last: (next += band.entries.length) - 1 }));
   };
+  const pairKey = (d: InapplicableBlock) => `${d.alternativeGroupId}\u0000${d.criterionGroupId}`;
   const blocks: OmittedBlock[] = [];
   for (const r of spans(rows.bands)) {
     for (const c of spans(columns.bands)) {
-      const declared = r.band.entries.flatMap((re) => c.band.entries.map((ce) => (transposed ? omits(ce.id, re.id) : omits(re.id, ce.id))));
-      const declarations = declared.filter((d): d is InapplicableBlock => d !== undefined);
-      if (declarations.length < 2 || declarations.length !== declared.length) continue;
+      /** Each cell's declarations, empty when the cell shows anything of its own. */
+      const lists = r.band.entries.flatMap((re) => c.band.entries.map((ce) => (transposed ? omits(ce.id, re.id) : omits(re.id, ce.id))));
+      if (lists.length < 2 || lists.some((l) => l.length === 0)) continue;
+      const declarations = lists.map((l) => l[0]!);
       /** What every declaration says alike, by `key`; nothing when any two differ. */
       const shared = (key: (d: InapplicableBlock) => string | undefined) => {
         const said = new Set(declarations.map(key));
         return said.size === 1 ? [...said][0] : undefined;
       };
-      const { alternativeGroupId, criterionGroupId } = declarations[0]!;
-      const onePair = shared((d) => `${d.alternativeGroupId}\u0000${d.criterionGroupId}`) !== undefined;
+      // The declarations that cover the whole block, by pair (not identity: a reader may rebuild its objects). When
+      // several do (a parent group declared beside a child's), the block is the one for the bands it is drawn under.
+      const common = lists.reduce((all, l) => all.filter((d) => l.some((x) => pairKey(x) === pairKey(d))));
+      const [alternativeBand, criterionBand] = transposed ? [c.band, r.band] : [r.band, c.band];
+      const covering = common.find((d) => d.alternativeGroupId === alternativeBand.groupId && d.criterionGroupId === criterionBand.groupId) ?? common[0];
+      const { alternativeGroupId, criterionGroupId } = covering ?? declarations[0]!;
+      const onePair = covering !== undefined || shared(pairKey) !== undefined;
       blocks.push({
         rows: { first: r.first, last: r.last }, columns: { first: c.first, last: c.last }, rowBand: r.band, columnBand: c.band,
-        cells: declared.length, reason: shared((d) => d.reason),
+        cells: lists.length, reason: covering ? covering.reason : shared((d) => d.reason),
         pair: onePair ? [alternativeGroupId, criterionGroupId] : undefined,
       });
     }
