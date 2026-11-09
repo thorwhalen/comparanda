@@ -19,13 +19,18 @@ export interface CheckSpec {
   readonly runtime: Runtime;
   /** Other runtimes that implement a second half of the same check: the mounted DOM as well as the source (#213). */
   readonly alsoIn?: readonly Runtime[];
+  /** Surfaces swept by a pass of their own after the grid's, each with its own fixture (#292). */
+  readonly over?: readonly string[];
 }
+
+/** The analysis panels, as a surface a check sweeps. */
+export const PANELS_SURFACE = 'the analysis panels';
 
 /** The automated set. Titles are the research section's, shortened. */
 export const AUTOMATED = [
   { id: 'A1', runtime: 'standalone', title: 'No axe-core violations on the standalone bundle, light and dark' },
   { id: 'A2', runtime: 'browser', title: 'Exactly one tab stop in the grid, after every key' },
-  { id: 'A3', runtime: 'browser', title: 'No cell is announced as blank' },
+  { id: 'A3', runtime: 'browser', over: [PANELS_SURFACE], title: 'No cell is announced as blank' },
   { id: 'A4', runtime: 'browser', title: 'Every missing cell says its reason code\'s phrase' },
   { id: 'A5', runtime: 'node', title: 'describeMove: start, middle, end, single-element axis, cancel' },
   { id: 'A6', runtime: 'browser', title: 'Keyboard reorder by arrow round-trips, focus kept on the handle' },
@@ -35,12 +40,12 @@ export const AUTOMATED = [
   { id: 'A10', runtime: 'browser', title: 'A focused edge cell is never under the sticky headers' },
   { id: 'A11', runtime: 'browser', title: 'Tooltip: Escape closes it, focus stays, nothing auto-dismisses' },
   { id: 'A12', runtime: 'browser', title: 'A tooltip holds no focusable element' },
-  { id: 'A13', runtime: 'browser', title: 'Composited contrast per encoding per theme' },
+  { id: 'A13', runtime: 'browser', over: [PANELS_SURFACE], title: 'Composited contrast per encoding per theme' },
   { id: 'A14', runtime: 'browser', title: 'Palette steps stay apart under protan, deutan and tritan simulation' },
-  { id: 'A15', runtime: 'browser', title: 'Forced colors: numeral, glyph and border survive' },
+  { id: 'A15', runtime: 'browser', over: [PANELS_SURFACE], title: 'Forced colors: numeral, glyph and border survive' },
   { id: 'A16', runtime: 'node', alsoIn: ['browser'], title: 'No background-image carries meaning' },
   { id: 'A17', runtime: 'node', alsoIn: ['browser'], title: 'No aria-grabbed, no aria-dropeffect, no title= on a cell' },
-  { id: 'A18', runtime: 'browser', title: 'Print: numeral and glyph present with backgrounds suppressed' },
+  { id: 'A18', runtime: 'browser', over: [PANELS_SURFACE], title: 'Print: numeral and glyph present with backgrounds suppressed' },
   { id: 'A19', runtime: 'standalone', title: 'The standalone bundle makes zero network requests' },
   { id: 'A20', runtime: 'browser', title: 'prefers-reduced-motion disables animation and smooth scroll' },
 ] as const satisfies readonly CheckSpec[];
@@ -50,3 +55,10 @@ export type CheckId = (typeof AUTOMATED)[number]['id'];
 /** The ids a runtime must implement, in order. */
 export const idsFor = (runtime: Runtime): CheckId[] =>
   AUTOMATED.filter((c) => c.runtime === runtime || (c as CheckSpec).alsoIn?.includes(runtime)).map((c) => c.id);
+
+/** A pass's name: its number, and the surface it sweeps when it is not the grid. */
+export const passName = (id: CheckId, over?: string): string => (over ? `${id} over ${over}` : id);
+
+/** Every pass the ids must be implemented as, in order: each number's grid pass, then one per surface it lists. */
+export const passesFor = (ids: readonly CheckId[]): string[] =>
+  ids.flatMap((id) => [passName(id), ...((AUTOMATED.find((c) => c.id === id) as CheckSpec).over ?? []).map((o) => passName(id, o))]);

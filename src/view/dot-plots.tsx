@@ -36,6 +36,9 @@ import { HiddenNote } from './shown.js';
 const glyphOf = (lane: string): GlyphKey => ((GLYPH_KEYS as readonly string[]).includes(lane) ? lane as GlyphKey : 'undeclared');
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/** What a cell with nothing drawn in it says, to the ear only: a blank cell is announced as nothing at all (#292). */
+const Nothing = ({ said }: { said: string }) => <span class="comparanda-sr">{said}</span>;
+
 /**
  * The panel's own rules, above the matrix's in every medium: no rule through the levels, nothing sticky.
  * The class twice outranks the matrix's most specific cell rule (`tbody th[scope="row"]`).
@@ -99,18 +102,21 @@ export function DotPlotsPanel({ analysis, measure, vouched, viewer, shown }: Ana
                     <tr key={r.alternativeId} data-row={r.alternativeId}>
                       <th scope="row">{r.label}</th>
                       {r.levels.map((level, i) => <Dots key={i} level={level} names={names} />)}
-                      {p.lanes.map((lane) => (
-                        <td key={lane} data-lane={lane}>
-                          {r.missing.filter((m) => m.lane === lane).map((m) => (
-                            <span key={`${m.means}\u0000${m.reason ?? ''}`}>
-                              <Glyph reason={glyphOf(lane)} />
-                              {`${m.count > 1 ? ` ×${m.count}` : ''} `}
-                              <span class="comparanda-sr">{`${plural(m.count, 'mark')}: ${m.means}${m.reason ? ` ${capitalise(m.reason)}.` : ''}`}</span>
-                            </span>
-                          ))}
-                        </td>
-                      ))}
-                      {notDrawn && <td>{[r.unseen && `${r.unseen} not shown to you`, r.offTicks && `${r.offTicks} off the levels`].filter(Boolean).join('; ')}</td>}
+                      {p.lanes.map((lane) => {
+                        const marks = r.missing.filter((m) => m.lane === lane);
+                        return (
+                          <td key={lane} data-lane={lane}>
+                            {marks.length === 0 ? <Nothing said="no marks" /> : marks.map((m) => (
+                              <span key={`${m.means}\u0000${m.reason ?? ''}`}>
+                                <Glyph reason={glyphOf(lane)} />
+                                {`${m.count > 1 ? ` ×${m.count}` : ''} `}
+                                <span class="comparanda-sr">{`${plural(m.count, 'mark')}: ${m.means}${m.reason ? ` ${capitalise(m.reason)}.` : ''}`}</span>
+                              </span>
+                            ))}
+                          </td>
+                        );
+                      })}
+                      {notDrawn && <td>{[r.unseen && `${r.unseen} not shown to you`, r.offTicks && `${r.offTicks} off the levels`].filter(Boolean).join('; ') || <Nothing said="none" />}</td>}
                     </tr>
                   ))}
                 </tbody>
@@ -133,7 +139,7 @@ export function DotPlotsPanel({ analysis, measure, vouched, viewer, shown }: Ana
 /** The dots at one level: seen, and said with who put them there. */
 function Dots({ level: { named, unnamed }, names }: { level: DotPlotRow['levels'][number]; names: Map<string, string> }) {
   const n = named.length + unnamed;
-  if (n === 0) return <td />;
+  if (n === 0) return <td><Nothing said="no raters" /></td>;
   const who = [
     ...named.map((id) => names.get(id) ?? id),
     ...(unnamed > 0 ? [plural(unnamed, 'rater not named to you', 'raters not named to you')] : []),
