@@ -48,8 +48,12 @@ export type Texture =
 
 /** What a cell shows under an encoding, beyond its text. Every field optional: no mark is a mark. */
 export interface CellMark {
-  /** A palette entry -- the static table's, or one the preparation adds -- whose fill and ink are the palette's. */
-  readonly swatch?: SwatchId | VsupSwatchId;
+  /**
+   * A palette entry -- the static table's, `VSUP_PALETTE`'s, or one the preparation's `palette` adds --
+   * whose fill and ink are the palette's. A string, so a third party's own ids need no cast; the matrix
+   * refuses a palette that would recolour a shipped id or draw an illegible pair.
+   */
+  readonly swatch?: SwatchId | VsupSwatchId | (string & {});
   /** Hatch density, 1 (sparse) to 3 (dense), for an encoding whose texture is `hatch`. */
   readonly hatch?: 1 | 2 | 3;
   /** A short visible mark beside the value, so the encoding never rests on colour. */
@@ -64,7 +68,7 @@ export interface CellMark {
 
 /** One line of a legend: a sample, what it means, and how many shown cells carry it. */
 export interface LegendEntry {
-  readonly swatch?: SwatchId | VsupSwatchId;
+  readonly swatch?: SwatchId | VsupSwatchId | (string & {});
   readonly badge?: string;
   readonly label: string;
   readonly count?: number;

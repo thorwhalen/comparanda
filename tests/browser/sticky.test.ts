@@ -8,7 +8,7 @@
  * scrolls; geometry from the rendered boxes, not from the stylesheet.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { userEvent } from '@vitest/browser/context';
+import { commands, userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, setFocus, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
@@ -201,5 +201,32 @@ describe('a focused cell is never under the sticky headers (#103)', () => {
     const after = scroller().style.getPropertyValue('--cmp-sticky-block');
     expect(parseFloat(after)).toBeGreaterThan(parseFloat(before));
     expect(parseFloat(getComputedStyle(scroller()).scrollPaddingTop)).toBeCloseTo(parseFloat(after), 0);
+  });
+});
+
+describe('forced colors keeps the measured band height (#208)', () => {
+  let style: HTMLStyleElement | undefined;
+  afterEach(async () => {
+    style?.remove();
+    style = undefined;
+    await commands.emulateMedia({ forcedColors: 'none' });
+  });
+
+  it('the header row sticks under a band row of the host\'s own padding, not at a constant', async () => {
+    await commands.emulateMedia({ forcedColors: 'active' });
+    expect(matchMedia('(forced-colors: active)').matches).toBe(true);
+    // A host whose band headers are taller than the stylesheet's: the constant would put the header row over them.
+    style = document.createElement('style');
+    style.textContent = '.comparanda-matrix thead tr.comparanda-band th { padding-block: 1em; }';
+    document.head.append(style);
+    const view = setGrouping(initialViewState(video), 'criteria', video.groups.filter((g) => g.axis === 'criteria').map((g) => g.id));
+    handle = mountMatrix(el, { analysis: video, measure: 'score', view });
+    // Scrolled down, so both rows are stuck and the header row sits where its `top` puts it.
+    scroller().scrollTop = scroller().scrollHeight;
+    await new Promise(requestAnimationFrame);
+    expect(scroller().scrollTop).toBeGreaterThan(0);
+    const band = el.querySelector('thead tr.comparanda-band th:not(.comparanda-corner)')!.getBoundingClientRect();
+    const header = el.querySelector('thead tr:not(.comparanda-band) th')!.getBoundingClientRect();
+    expect(Math.abs(header.top - band.bottom)).toBeLessThanOrEqual(1);
   });
 });

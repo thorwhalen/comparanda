@@ -6,6 +6,7 @@
  *
  * In a real browser because themes and contrast are about rendered colours.
  */
+import { commands } from '@vitest/browser/context';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Analysis, vocabularyOf } from '../../src/core/schema/analysis.js';
@@ -120,6 +121,78 @@ describe('the messy fixture, both themes, both orientations', () => {
     } finally {
       delete document.documentElement.dataset.theme;
     }
+  });
+
+  describe('inside a shadow root, where `:root` matches nothing (#208)', () => {
+    let host: HTMLElement;
+    let inner: HTMLElement;
+    let shadowed: MatrixHandle | undefined;
+    const bg = () => luminance(getComputedStyle(inner.querySelector('td')!).backgroundColor);
+    const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+    beforeEach(() => {
+      host = document.createElement('div');
+      document.body.append(host);
+      inner = document.createElement('div');
+      host.attachShadow({ mode: 'open' }).append(inner);
+    });
+    afterEach(async () => {
+      shadowed?.destroy();
+      shadowed = undefined;
+      host.remove();
+      delete document.documentElement.dataset.theme;
+      await commands.emulateMedia({ colorScheme: null });
+    });
+
+    it('takes the theme on <html>, and follows it when it changes', async () => {
+      document.documentElement.dataset.theme = 'dark';
+      shadowed = mountMatrix(inner, { analysis: relocation, measure: 'score' });
+      expect(bg()).toBeLessThan(0.05);
+      document.documentElement.dataset.theme = 'light';
+      await settled();
+      expect(bg()).toBeGreaterThan(0.8);
+      document.documentElement.dataset.theme = 'dark';
+      await settled();
+      expect(bg()).toBeLessThan(0.05);
+      // Destroyed, it takes back the attribute it wrote, and nothing else.
+      shadowed.destroy();
+      shadowed = undefined;
+      expect(inner.hasAttribute('data-theme')).toBe(false);
+    });
+
+    it('takes the OS preference when <html> names no theme, and <html> still overrides it', async () => {
+      await commands.emulateMedia({ colorScheme: 'dark' });
+      expect(matchMedia('(prefers-color-scheme: dark)').matches).toBe(true);
+      shadowed = mountMatrix(inner, { analysis: relocation, measure: 'score' });
+      expect(bg()).toBeLessThan(0.05);
+      document.documentElement.dataset.theme = 'light';
+      await settled();
+      expect(bg()).toBeGreaterThan(0.8);
+    });
+
+    it('a theme the mount element says itself wins, and is never touched', async () => {
+      document.documentElement.dataset.theme = 'dark';
+      inner.dataset.theme = 'light';
+      shadowed = mountMatrix(inner, { analysis: relocation, measure: 'score' });
+      expect(bg()).toBeGreaterThan(0.8);
+      document.documentElement.dataset.theme = 'light';
+      await settled();
+      document.documentElement.dataset.theme = 'dark';
+      await settled();
+      expect(inner.dataset.theme).toBe('light');
+      expect(bg()).toBeGreaterThan(0.8);
+      shadowed.destroy();
+      shadowed = undefined;
+      expect(inner.dataset.theme).toBe('light');
+    });
+
+    it('a theme the host sets after mount ends the mirroring', async () => {
+      shadowed = mountMatrix(inner, { analysis: relocation, measure: 'score' });
+      inner.dataset.theme = 'dark';
+      document.documentElement.dataset.theme = 'light';
+      await settled();
+      expect(inner.dataset.theme).toBe('dark');
+      expect(bg()).toBeLessThan(0.05);
+    });
   });
 
   it('says so when every criterion is hidden, rather than drawing an empty table', () => {

@@ -45,7 +45,7 @@ import { textOnly } from './encodings/shipped.js';
 import { Matrix, TEXT_ONLY, type Arrangement, type MatrixViewProps } from './matrix.js';
 import type { MatrixPropsUpdate, MountMatrixProps, SavedViewsProp } from './props.js';
 import { trackStickyExtents } from './sticky.js';
-import { activeElementOf, messageOf } from './dom.js';
+import { activeElementOf, messageOf, mirrorPageTheme } from './dom.js';
 
 /** What `mountMatrix` returns. */
 export interface MatrixHandle {
@@ -163,6 +163,8 @@ export function mountMatrix(
   let destroyed = false;
   /** The sticky header's extents, as the scroll padding focus is kept clear of (#103). */
   const sticky = trackStickyExtents(el);
+  /** In a shadow root, the page's theme, which the stylesheet cannot read from there (#208). */
+  const unmirror = mirrorPageTheme(el);
   /**
    * Where the reader moved, and whether they opened the detail panel, since the
    * host last said: the matrix's own session state, laid over the host's
@@ -584,6 +586,7 @@ export function mountMatrix(
     destroyed = true;
     unsubscribe?.();
     sticky.release();
+    unmirror();
     render(null, el);
     mounted.delete(el);
     throw error;
@@ -669,6 +672,7 @@ export function mountMatrix(
       unsubscribe = undefined;
       viewsStatus.off?.();
       sticky.release();
+      unmirror();
       render(null, el);
       mounted.delete(el);
     },

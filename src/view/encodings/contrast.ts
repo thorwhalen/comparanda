@@ -1,8 +1,9 @@
 /**
- * WCAG 2.x contrast, for the build-time palette test (ADR-0010 clause 6).
- *
- * Not called on the render path: the palette is finite, so its legibility is
- * asserted in CI rather than computed per cell. The APCA tie-break and the
+ * WCAG 2.x contrast, for the build-time palette test (ADR-0010 clause 6), and
+ * for the one check the render path makes: a third party's palette, once per
+ * prepare, before it may become a stylesheet (#208). The shipped palettes are
+ * finite, so their legibility is asserted in CI; no ink is ever chosen per
+ * cell. The APCA tie-break and the
  * compositing helpers arrive with the value-suppressing palette (#91), as
  * separate functions that share no code with these.
  */

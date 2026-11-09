@@ -144,6 +144,29 @@ describe('value', () => {
     for (const alt of ctx.alternatives) expect(p.mark(alt, 'visa-free').swatch).toBeUndefined();
   });
 
+  it('says its step in words, toward each criterion\'s preferred end, so the step is not told by colour alone (#208)', () => {
+    const ctx = contextOf(relocation);
+    const p = prepared(value, ctx);
+    const words = ['worst step', 'second step', 'middle step', 'fourth step', 'best step'];
+    const down = new Set(['rent', 'flight-hours']);
+    let marked = 0;
+    for (const [alt, crit] of cells(ctx)) {
+      const { swatch, said } = p.mark(alt, crit);
+      if (swatch === undefined) {
+        expect(said, `${alt} ${crit}`).toBeUndefined();
+        continue;
+      }
+      marked += 1;
+      const step = Number(swatch.slice('seq-'.length)) - 1;
+      expect(said, `${alt} ${crit}`).toBe(`, ${words[step]} for this criterion${down.has(crit) ? ', where lower is better' : ''}`);
+    }
+    expect(marked).toBeGreaterThan(0);
+    // The cheapest rent is heard as the best, and why: on rent, lower is better.
+    const rents = ctx.alternatives.filter((alt) => typeof ctx.read(alt, 'rent')?.value === 'number')
+      .sort((x, y) => (ctx.read(x, 'rent')!.value as number) - (ctx.read(y, 'rent')!.value as number));
+    expect(p.mark(rents[0]!, 'rent').said).toBe(', best step for this criterion, where lower is better');
+  });
+
   it('a 1-5 rating spans the ramp end to end', () => {
     const ctx = contextOf(languages);
     const p = prepared(value, ctx);

@@ -26,6 +26,33 @@ export function activeElementOf(node: Node): Element | null {
   return treeOf(node).activeElement ?? null;
 }
 
+/**
+ * Mirror `<html data-theme>` onto `el` while `el` is in a shadow root, where the
+ * stylesheet's `:root` rules cannot see the page (#208), and keep it current;
+ * returns the stop. A theme `el` says itself wins: one present at mount, or one
+ * the host sets later, ends the mirroring and is left as it is. In a document,
+ * or where there is no `MutationObserver`, it does nothing.
+ */
+export function mirrorPageTheme(el: Element): () => void {
+  const T = 'data-theme';
+  const html = el.ownerDocument.documentElement;
+  const Observer = globalThis.MutationObserver;
+  if (!Observer || !(treeOf(el) as ShadowRoot).host) return () => {};
+  let said: string | null = null;
+  const copy = () => {
+    if (el.getAttribute(T) !== said) return observer.disconnect();
+    said = html.getAttribute(T);
+    if (said === null) el.removeAttribute(T); else el.setAttribute(T, said);
+  };
+  const observer = new Observer(copy);
+  observer.observe(html, { attributeFilter: [T] });
+  copy();
+  return () => {
+    observer.disconnect();
+    if (said !== null && el.getAttribute(T) === said) el.removeAttribute(T);
+  };
+}
+
 /** What a thrown value says: an `Error`'s message, else the value as text. */
 export function messageOf(e: unknown): string {
   return e instanceof Error ? e.message : String(e);

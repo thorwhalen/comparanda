@@ -264,10 +264,37 @@ describe('uncertainty-suppressed', () => {
     // rust's learning-curve 1 at medium is, on a decreasing scale, one of its two best levels.
     expect(mark('rust', 'learning-curve')).toEqual({ swatch: 'vsup-5x3-1-2', hatch: 2 });
     const medium = legend.entries.filter((e) => e.swatch === 'vsup-5x3-1-2').map((e) => e.label).sort();
-    expect(medium).toEqual(['1 or 2, medium confidence', '4 or 5, medium confidence']);
+    // Each label is also another colour's in the other direction, so each names where it is drawn (#208).
+    expect(medium).toEqual(['1 or 2, medium confidence (Learning curve)', '4 or 5, medium confidence (Ecosystem maturity)']);
+    expect(legend.entries.find((e) => e.swatch === 'vsup-5x3-1-0' && e.label.startsWith('1 or 2, medium'))!.label)
+      .toBe('1 or 2, medium confidence (Runtime performance)');
     // Every entry's count is of cells that read as its label.
     const total = legend.entries.reduce((n, e) => n + (e.count ?? 0), 0);
     expect(total).toBe(15);
+  });
+
+  it('one label for two colours names the criteria each colour is drawn in, so no colour is told by colour alone (#208)', () => {
+    const a = languagesWithConfidence();
+    // Tooling's confidence has two levels, the rest three: a different tree, so "any score, low" is another colour.
+    const mixed = {
+      ...a,
+      criteria: a.criteria.map((c) => c.id !== 'tooling' ? c : {
+        ...c, measurements: { ...c.measurements, confidence: { level: 'ordinal', preference: 'increasing', levels: ['low', 'high'] } },
+      }),
+    } as Analysis;
+    const { legend, mark } = ready(mixed);
+    expect(mark('python', 'tooling').swatch).toBe('vsup-5x2-0-0');
+    expect(mark('python', 'ecosystem').swatch).toBe('vsup-5x3-0-0');
+    const low = legend.entries.filter((e) => e.label.startsWith('Any score, low confidence'));
+    expect(low.map((e) => [e.swatch, e.label]).sort()).toEqual([
+      ['vsup-5x2-0-0', 'Any score, low confidence (Tooling)'],
+      ['vsup-5x3-0-0', 'Any score, low confidence (Ecosystem maturity, Runtime performance, Hiring pool)'],
+    ]);
+    // No two lines say the same words, and none is a colour and words said twice.
+    const labels = legend.entries.map((e) => e.label);
+    expect(new Set(labels).size).toBe(labels.length);
+    // A label one colour has to itself stays plain.
+    expect(labels).toContain('3, high confidence');
   });
 
   it('a confidence declared as a range is read in three layers, whatever its level', () => {
