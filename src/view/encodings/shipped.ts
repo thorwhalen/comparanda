@@ -56,17 +56,21 @@ export const value = /* @__PURE__ */ defineEncoding({
       return { unavailable: `no criterion places a ${ctx.measure} on a range or a list of levels with a preferred direction.` };
     }
     const counts = new Map<SwatchId, number>();
+    const word = ['Worst fifth', 'Second fifth', 'Middle fifth', 'Fourth fifth', 'Best fifth'];
     const mark = (alt: string, crit: string): CellMark => {
       const m = placed.get(crit);
       const v = ctx.read(alt, crit)?.value;
       const t = m && v !== undefined ? towardBest(v, m) : undefined;
       if (t === undefined || t === null) return NO_MARK;
-      const swatch = STEPS[Math.min(STEPS.length - 1, Math.floor(t * STEPS.length))]!;
+      const step = Math.min(STEPS.length - 1, Math.floor(t * STEPS.length));
+      const swatch = STEPS[step]!;
       counts.set(swatch, (counts.get(swatch) ?? 0) + 1);
-      return { swatch };
+      // The step in words, so it is not told by colour alone (#208). "Best" is toward the criterion's
+      // preferred end, so a decreasing one says so: its best fifth holds its lowest values.
+      const lower = m!.preference === 'decreasing' ? ', where lower is better' : '';
+      return { swatch, said: `, ${word[step]!.toLowerCase()} for this criterion${lower}` };
     };
     for (const alt of ctx.alternatives) for (const crit of ctx.criteria) mark(alt, crit);
-    const word = ['Worst fifth', 'Second fifth', 'Middle fifth', 'Fourth fifth', 'Best fifth'];
     return {
       mark,
       legend: {
@@ -356,9 +360,10 @@ interface SuppressionSpec {
 function suppressedBy(ctx: EncodingContext, spec: SuppressionSpec): PreparedEncoding | { unavailable: string } {
     const columns = new Map(ctx.criteria.map((id) => [id, spec.columnOf(id)] as const));
     const marks = new Map<string, CellMark>();
-    // Keyed by the swatch *and* the column's words: two columns with one tree share a colour, but
-    // when their levels read differently (other words, the other direction) each gets its own line.
-    const used = new Map<string, { swatch: VsupSwatchId; column: SuppressedColumn; layer: number; node: number; count: number }>();
+    // A legend line per swatch *and* words: two columns with one tree share a colour, but when their
+    // levels read differently (other words, the other direction) each gets its own line; and one line
+    // per pair, however many columns say it, so no two lines repeat (#208).
+    const used = new Map<string, { swatch: VsupSwatchId; label: string; column: SuppressedColumn; layer: number; node: number; count: number; criteria: Set<string> }>();
     let unplaced = false;
     for (const alt of ctx.alternatives) {
       for (const crit of ctx.criteria) {
@@ -375,9 +380,12 @@ function suppressedBy(ctx: EncodingContext, spec: SuppressionSpec): PreparedEnco
         // Density says how far from the most confident layer, on one scale for every column: 3 is the root.
         const hatch = Math.round((3 * (m - 1 - layer)) / (m - 1));
         marks.set(`${alt}\u0000${crit}`, hatch > 0 ? { swatch, hatch: hatch as 1 | 2 | 3 } : { swatch });
-        const key = [swatch, ...column.levelWords, '', ...column.layerWords].join('\u0000');
-        const seen = used.get(key);
-        if (seen) seen.count += 1; else used.set(key, { swatch, column, layer, node, count: 1 });
+        const label = `${capitalise(groupWords(column.tree.layers[layer]![node]!, column).replace(/^any$/, `any ${ctx.measure}`))}, ${column.layerWords[layer]} ${spec.noun}`;
+        const key = `${swatch}\u0000${label}`;
+        const seen = used.get(key) ?? { swatch, label, column, layer, node, count: 0, criteria: new Set<string>() };
+        seen.count += 1;
+        seen.criteria.add(crit);
+        used.set(key, seen);
       }
     }
     if (used.size === 0) {
@@ -391,9 +399,16 @@ function suppressedBy(ctx: EncodingContext, spec: SuppressionSpec): PreparedEnco
     for (const { swatch } of used.values()) palette[swatch] = VSUP_PALETTE[swatch]!;
     // Most confident first (on one scale across columns), then worst to best: the rows of the wedge.
     const confident = (u: { column: SuppressedColumn; layer: number }) => u.layer / (u.column.tree.confidenceLevels - 1);
-    const entries = [...used.values()].sort((a, b) => (confident(b) - confident(a)) || (a.node - b.node)).map((u) => ({
+    const lines = [...used.values()].sort((a, b) => (confident(b) - confident(a)) || (a.node - b.node));
+    // Two columns of different arities, or directions, can word different colours alike ("Any score, low
+    // confidence"): such a label names the criteria it is drawn in, in shown order, so which colour means
+    // what is said in words.
+    const criterionLabel = new Map(ctx.analysis.criteria.map((c) => [c.id, c.label]));
+    const entries = lines.map((u) => ({
       swatch: u.swatch,
-      label: `${capitalise(groupWords(u.column.tree.layers[u.layer]![u.node]!, u.column).replace(/^any$/, `any ${ctx.measure}`))}, ${u.column.layerWords[u.layer]} ${spec.noun}`,
+      label: lines.some((o) => o.label === u.label && o.swatch !== u.swatch)
+        ? `${u.label} (${ctx.criteria.filter((id) => u.criteria.has(id)).map((id) => criterionLabel.get(id) ?? id).join(', ')})`
+        : u.label,
       count: u.count,
     }));
     const aliasing = new Set<string>();

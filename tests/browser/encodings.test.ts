@@ -141,17 +141,79 @@ describe('an encoding\'s own palette', () => {
     id: 'own-palette', label: 'Own palette', texture: { channel: 'none', because: 'a test.' },
     prepare: () => ({ legend: { title: 'Own', entries: [], notes: [] }, mark: () => ({}), palette: palette as never }),
   });
-  const cases: [string, unknown][] = [
-    ['a static swatch\'s id, which would repaint it page-wide', { 'seq-5': { light: ['#ff0000', '#000000'], dark: ['#ff0000', '#000000'] } }],
-    ['a colour that is not #rrggbb', { 'mine-1': { light: ['red; } body { display: none', '#000000'], dark: ['#000000', '#ffffff'] } }],
+  const legible = { light: ['#ffe8a8', '#1b1d21'], dark: ['#4a3d14', '#e6e8eb'] } as const;
+  // Each case with the words the refusal says why in (#208): a refusal the reader cannot read is no reason.
+  const cases: [string, unknown, RegExp][] = [
+    ['a static swatch\'s id, which would repaint it page-wide', { 'seq-5': { light: ['#ff0000', '#000000'], dark: ['#ff0000', '#000000'] } },
+      /recolours "seq-5", a shipped swatch's name, in every matrix on the page/],
+    ['a colour that is not #rrggbb', { 'mine-1': { light: ['red; } body { display: none', '#000000'], dark: ['#000000', '#ffffff'] } },
+      /is not a table of swatch ids to #rrggbb/],
+    // #777777 on white is 4.48:1: the threshold, not a rounding of it.
+    ['an ink under 4.5:1 on its fill', { 'mine-1': { light: ['#ffffff', '#777777'], dark: legible.dark } },
+      /draws "mine-1" light as #777777 on #ffffff, under 4.5:1 contrast/],
+    ['an illegible pair in the dark theme only', { 'mine-1': { light: legible.light, dark: ['#15171b', '#3a3d43'] } },
+      /draws "mine-1" dark as #3a3d43 on #15171b, under 4.5:1 contrast/],
+    ['a value-suppressing id in its own colours, which would repaint that node page-wide', { 'vsup-5x3-1-0': legible },
+      /recolours "vsup-5x3-1-0", a shipped swatch's name/],
+    ['a value-suppressing id the shipped palette does not define', { 'vsup-9x9-0-0': legible },
+      /recolours "vsup-9x9-0-0", a shipped swatch's name/],
+    ['a copy of a shipped value-suppressing entry, rather than the entry', { 'vsup-5x3-1-0': structuredClone(VSUP_PALETTE['vsup-5x3-1-0']) },
+      /recolours "vsup-5x3-1-0"/],
   ];
-  for (const [what, palette] of cases) {
-    it(`with ${what} falls back to text, and no stylesheet is written for it`, () => {
+  for (const [what, palette, why] of cases) {
+    it(`with ${what} falls back to text, says why, and no stylesheet is written for it`, () => {
       mount({ analysis: relocation, measure: 'score', encoding: 'own-palette' }, createEncodingRegistry([...SHIPPED_ENCODINGS, withPalette(palette)]));
       expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-encoding')).toBe('text-only');
+      expect(el.querySelector('.comparanda-degraded')!.textContent).toMatch(why);
       expect(el.querySelectorAll('.comparanda-matrix style')).toHaveLength(1);
     });
   }
+
+  it('a legible palette of its own ids is drawn, its swatch ids plain strings with no cast (#208)', () => {
+    const own = defineEncoding({
+      id: 'own-palette', label: 'Own palette', texture: { channel: 'none', because: 'a test.' },
+      prepare: () => ({
+        legend: { title: 'Own', entries: [{ swatch: 'mine-1', label: 'Mine' }], notes: [] },
+        mark: () => ({ swatch: 'mine-1' }),
+        palette: { 'mine-1': legible },
+      }),
+    });
+    mount({ analysis: relocation, measure: 'score', encoding: 'own-palette' }, createEncodingRegistry([...SHIPPED_ENCODINGS, own]));
+    expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-encoding')).toBe('own-palette');
+    expect(el.querySelector('.comparanda-degraded')).toBeNull();
+    expect(getComputedStyle(painted()[0]!).backgroundColor).toBe('rgb(255, 232, 168)');
+  });
+});
+
+describe('the value encoding says its step (#208)', () => {
+  it('in each painted cell\'s words, toward the criterion\'s preferred end', () => {
+    mount({ analysis: relocation, measure: 'score', encoding: 'value' });
+    const heard = (td: HTMLElement) => Array.from(td.querySelectorAll('.comparanda-sr')).map((s) => s.textContent).join('');
+    expect(painted().length).toBeGreaterThan(0);
+    for (const td of painted()) expect(heard(td), td.dataset['pair']).toMatch(/, (worst|second|middle|fourth|best) fifth for this criterion/);
+    // Rent is decreasing: its darkest step is heard as the best, with the direction that makes it so.
+    const best = painted().filter((td) => td.dataset['pair']!.endsWith('\u0000rent') && td.dataset['swatch'] === 'seq-5');
+    expect(best.length).toBeGreaterThan(0);
+    for (const td of best) expect(heard(td)).toMatch(/best fifth for this criterion, where lower is better$/);
+  });
+});
+
+describe('the value-suppressing legend, drawn', () => {
+  it('a label two colours share names the criteria each is drawn in, so neither is told by colour alone (#208)', () => {
+    const a = languagesWithConfidence();
+    const mixed = Analysis.parse({
+      ...a,
+      criteria: a.criteria.map((c) => c.id !== 'tooling' ? c : {
+        ...c, measurements: { ...c.measurements, confidence: { level: 'ordinal', preference: 'increasing', levels: ['low', 'high'] } },
+      }),
+    });
+    mount({ analysis: mixed, measure: 'score', encoding: 'uncertainty-suppressed' });
+    const lines = Array.from(legend().querySelectorAll('li')).filter((li) => /Any score, low confidence/.test(li.textContent!));
+    expect(lines.map((li) => [li.querySelector<HTMLElement>('.comparanda-swatch')!.dataset['swatch'], li.textContent!.replace(/\s*\(\d+\)$/, '').trim()]).sort()).toEqual([
+      ['vsup-5x2-0-0', 'Any score, low confidence (Tooling)'],
+      ['vsup-5x3-0-0', 'Any score, low confidence (Ecosystem maturity, Runtime performance, Hiring pool)'],
+    ]);
+  });
 });
 
 describe('an encoding that throws', () => {

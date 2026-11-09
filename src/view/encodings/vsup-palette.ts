@@ -4,9 +4,10 @@
  * The value-suppressing palette (ADR-0010 clauses 2, 3, 6): per merge-tree node
  * `vsup-<k>x<m>-<layer>-<node>`, the light- and dark-theme fill and the ink
  * that clears 4.5:1 on it. `tests/vsup.test.ts` asserts this file equals the
- * derivation and that every entry is legible.
+ * derivation and that every entry is legible. Each entry is entered in
+ * `DERIVED_SWATCHES`, so the matrix accepts a `vsup-` id only as one of these.
  */
-import type { Swatch } from './palette.js';
+import { DERIVED_SWATCHES, type Swatch } from './palette.js';
 
 export const VSUP_PALETTE: Readonly<Record<string, Swatch>> = /* @__PURE__ */ Object.freeze({
   'vsup-2x2-0-0': { light: ['#c6e9d3', '#1b1d21'], dark: ['#1f3731', '#e6e8eb'] },
@@ -92,3 +93,4 @@ export const VSUP_PALETTE: Readonly<Record<string, Swatch>> = /* @__PURE__ */ Ob
   'vsup-5x4-3-3': { light: ['#76bbba', '#1b1d21'], dark: ['#26606e', '#e6e8eb'] },
   'vsup-5x4-3-4': { light: ['#5aa3cb', '#1b1d21'], dark: ['#1a6794', '#e6e8eb'] },
 });
+for (const s of Object.values(VSUP_PALETTE)) DERIVED_SWATCHES.add(s);

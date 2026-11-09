@@ -66,7 +66,8 @@ import { Glyph, GLYPH_KEYS, glyphName, Hatch, isHatchLevel, Strip, type GlyphKey
 import { isRaterStrip, raterStripInView } from '../core/rater-strip.js';
 import type { ScalarValue } from '../core/schema/values.js';
 import { derivedPaletteCss, MATRIX_CSS, stripCss } from './matrix-css.js';
-import { PALETTE } from './encodings/palette.js';
+import { DERIVED_SWATCHES, PALETTE, type Swatch } from './encodings/palette.js';
+import { TEXT_CONTRAST_MIN, wcagContrastRatio } from './encodings/contrast.js';
 import { revealClear } from './sticky.js';
 import { capitalise, outOf, STANDING_SAID } from './words.js';
 import { DetailPanel, type PanelBlock } from './detail-panel.js';
@@ -934,11 +935,10 @@ function chooseEncoding(
       !legend.entries.every(entryOk) || !legend.notes.every((n) => typeof n === 'string')) {
       return cannot('its legend is not a { title, entries: { label }[], notes: string[] }.');
     }
-    // The palette becomes a stylesheet: ids and colours are checked for shape, so nothing else reaches it.
+    // The palette becomes a page-wide stylesheet: checked for shape, ids and legibility, so nothing else reaches it.
     const { palette } = prepared;
-    if (palette !== undefined && !paletteOk(palette)) {
-      return cannot('its palette is not a table of swatch ids to #rrggbb light and dark [fill, ink] pairs.');
-    }
+    const bad = palette && paletteProblem(palette);
+    if (bad) return cannot(`its palette ${bad}.`);
     // The thresholds become a stylesheet and a strip becomes a drawing: each is checked for shape first.
     const { strip } = prepared;
     if (strip !== undefined && !stripThresholdsOk(strip)) {
@@ -964,11 +964,27 @@ function stripThresholdsOk(t: unknown): boolean {
 
 const HEX = /^#[0-9a-f]{6}$/i;
 const pairOk = (pair: unknown) => Array.isArray(pair) && pair.length === 2 && pair.every((c) => typeof c === 'string' && HEX.test(c));
-function paletteOk(palette: unknown): boolean {
-  return palette !== null && typeof palette === 'object' && Object.entries(palette).every(([id, swatch]) =>
-    // Never a static swatch's id: its stylesheet is page-wide, and would repaint a tested swatch in every matrix.
-    /^[a-z0-9-]+$/i.test(id) && !Object.prototype.hasOwnProperty.call(PALETTE, id) && swatch !== null && typeof swatch === 'object' &&
-    pairOk((swatch as { light?: unknown }).light) && pairOk((swatch as { dark?: unknown }).dark));
+/**
+ * Why an encoding's palette may not become a stylesheet, in words, or nothing.
+ * Its rules are page-wide, so an id may not be a static swatch's, nor a `vsup-`
+ * one whose entry is not `VSUP_PALETTE`'s own (`DERIVED_SWATCHES`): either would
+ * repaint a tested swatch in every matrix on the page. And a third party's pairs are held to the
+ * shipped ones' test (ADR-0010: a render never chooses an ink), by the same
+ * contrast computation, so an illegible pair is refused rather than drawn.
+ */
+function paletteProblem(palette: object): string | undefined {
+  const shape = 'is not a table of swatch ids to #rrggbb light and dark [fill, ink] pairs';
+  if (typeof palette !== 'object') return shape;
+  for (const [id, s] of Object.entries(palette) as [string, Swatch][]) {
+    if (!/^[a-z0-9-]+$/i.test(id) || !pairOk(s?.light) || !pairOk(s?.dark)) return shape;
+    if (Object.prototype.hasOwnProperty.call(PALETTE, id) || id.startsWith('vsup-') && !DERIVED_SWATCHES.has(s)) {
+      return `recolours "${id}", a shipped swatch's name, in every matrix on the page`;
+    }
+    for (const theme of ['light', 'dark'] as const) {
+      const [fill, ink] = s[theme];
+      if (wcagContrastRatio(fill, ink) < TEXT_CONTRAST_MIN) return `draws "${id}" ${theme} as ${ink} on ${fill}, under ${TEXT_CONTRAST_MIN}:1 contrast`;
+    }
+  }
 }
 
 /** The words for each hatch density, by what the hatch carries: denser is less settled. */
@@ -994,7 +1010,8 @@ function Legend({ definition, legend, glyphs, hatches }: {
       {legend.entries.length > 0 && (
         <ul>
           {legend.entries.map((e) => (
-            <li key={e.label}>
+            // By sample and words: an encoding may say one label for two colours, or one colour twice.
+            <li key={`${e.swatch}\u0000${e.label}`}>
               <span class="comparanda-swatch" data-swatch={e.swatch} aria-hidden="true">{e.badge ?? '\u00a0'}</span>
               {' '}{e.label}{e.count !== undefined && <span class="comparanda-count">{` (${e.count})`}</span>}
             </li>

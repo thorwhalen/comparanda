@@ -51,25 +51,35 @@ function tokens(theme: Theme): string {
  * Declarations per theme, under the selectors that choose a theme: the light
  * ones on the matrix, the dark ones where a dark theme is asked for. Used for
  * the tokens below and for the swatches an encoding derives per render.
+ *
+ * The dark ones are for `screen` only, so print is the light theme with no
+ * second copy of the light declarations to restore it.
+ *
+ * In a shadow root `:root` matches nothing: there the OS preference is read
+ * through `:host`, and `<html data-theme>` arrives as the mount element's own
+ * attribute, mirrored by `mountMatrix` (`mirrorPageTheme`, #208).
+ * `:host-context()` would read it directly, but Firefox and Safari do not
+ * implement it, so a stylesheet relying on it is dark in Chromium alone.
  */
 export function themed(light: string, dark: string): string {
   return `
 .comparanda-matrix {${light}
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) :not([data-theme="light"]) > .comparanda-matrix {${dark}
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :not([data-theme="light"]) > .comparanda-matrix,
+  :host :not([data-theme="light"]) > .comparanda-matrix {${dark}
   }
 }
-:root[data-theme="dark"] :not([data-theme="light"]) > .comparanda-matrix,
-[data-theme="dark"] > .comparanda-matrix {${dark}
+@media screen {
+  :root[data-theme="dark"] :not([data-theme="light"]) > .comparanda-matrix,
+  [data-theme="dark"] > .comparanda-matrix {${dark}
+  }
 }`;
 }
 
 /** The stylesheet for swatches an encoding adds to the static palette: their variables per theme, and their rules. */
 export function derivedPaletteCss(palette: Readonly<Record<string, Swatch>>): string {
   return `${themed(paletteVars(palette, 'light'), paletteVars(palette, 'dark'))}
-@media print {${themed(paletteVars(palette, 'light'), paletteVars(palette, 'light'))}
-}
 ${paletteRules(palette, '.comparanda-matrix')}`;
 }
 
@@ -109,9 +119,9 @@ export function stripCss({ bracketBelow, hiddenBelow }: { bracketBelow: number; 
  * - Held in grab mode: a shape, not only a colour -- a thick dashed frame.
  * - Where a pointer drop would land: a thick rule on that side, drawn as a border so forced colors keeps it.
  * - A sticky header is its own stacking context, so the menu's z-index counts only inside it: lift the header holding an open menu above its siblings, or the next rows' headers paint over the menu.
- * - Width and colour only: the style is each cell's terminal channel (ADR-0028 amendment).
+ * - Width and colour only: the style is each cell's terminal channel (ADR-0028 amendment). The band row's measured height, borders included, still places the row under it (#208); the constant is only for a matrix nobody measures.
  * - The one exemption: the legend's samples, whose only job is to show the palette.
- * - Backgrounds off, whatever the printer does: the cells' fills go, their ink returns to the page's.
+ * - Print is the light theme because the dark declarations are for `screen` (`themed`). Backgrounds off, whatever the printer does: the cells' fills go, their ink returns to the page's.
  */
 export const MATRIX_CSS = `${themed(tokens('light'), tokens('dark'))}
 & { color: var(--cmp-ink); background: var(--cmp-surface); }
@@ -276,13 +286,13 @@ ${paletteRules(PALETTE, '&')}
 & .comparanda-arrange button:focus-visible { outline: 2px solid var(--cmp-focus); outline-offset: 1px; }
 @media (forced-colors: active) {
   & th, & td { box-shadow: none; border-width: 1px; border-color: CanvasText; }
-  & thead tr.comparanda-band + tr th { top: calc(2.1em + 2px); }
+  & thead tr.comparanda-band + tr th { top: var(--cmp-band-block, calc(2.1em + 2px)); }
   & .comparanda-swatch { forced-color-adjust: none; }
   & .comparanda-forced-only { display: block; }
   & .comparanda-panel, & .comparanda-bar span { border-width: 1px; border-color: CanvasText; }
   & th[data-drop] { border-color: Highlight; }
 }
-@media print {${themed(tokens('light'), tokens('light'))}
+@media print {
   & .comparanda-scroll { overflow: visible; max-height: none; }
   & thead th, & tbody th { position: static; }
   & th, & :is(td, tr.comparanda-band th) {

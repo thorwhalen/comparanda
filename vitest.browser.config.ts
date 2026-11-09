@@ -2,11 +2,14 @@ import type { BrowserCommand } from 'vitest/node';
 import { defineConfig } from 'vitest/config';
 
 /**
- * Emulate a display mode the page cannot set for itself: forced colors, or the
- * print medium (#102, ADR-0028). Chromium applies forced colors for real under
+ * Emulate a display mode the page cannot set for itself: forced colors, the
+ * print medium (#102, ADR-0028), or the OS colour scheme (#208). Chromium applies forced colors for real under
  * this emulation, so a test reads what such a reader sees, not a stylesheet.
  */
-const emulateMedia: BrowserCommand<[{ forcedColors?: 'active' | 'none'; media?: 'print' | 'screen' | null; reducedMotion?: 'reduce' | 'no-preference' }]> = async (ctx, options) => {
+const emulateMedia: BrowserCommand<[{
+  forcedColors?: 'active' | 'none'; media?: 'print' | 'screen' | null; reducedMotion?: 'reduce' | 'no-preference';
+  colorScheme?: 'light' | 'dark' | 'no-preference' | null;
+}]> = async (ctx, options) => {
   if (ctx.provider.name !== 'playwright') throw new Error('emulateMedia needs the playwright provider');
   await (ctx as unknown as { page: { emulateMedia(o: object): Promise<void> } }).page.emulateMedia(options);
 };
@@ -22,7 +25,7 @@ const emulateMedia: BrowserCommand<[{ forcedColors?: 'active' | 'none'; media?: 
 export default defineConfig({
   // Discovered late, a dependency makes Vite reload mid-run and fail the tests
   // already in flight; name the view's runtime imports up front.
-  optimizeDeps: { include: ['preact', 'preact/hooks', 'preact/jsx-runtime'] },
+  optimizeDeps: { include: ['preact', 'preact/hooks', 'preact/jsx-runtime', 'preact/debug'] },
   test: {
     include: ['tests/browser/**/*.test.ts'],
     browser: {

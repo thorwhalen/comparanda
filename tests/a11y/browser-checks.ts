@@ -32,7 +32,7 @@ import { everyCode, heard } from '../support/every-code.js';
 import { obscured } from '../support/sticky-geometry.js';
 import { reversal, weighted } from '../support/weighted.js';
 import { PLACE_CHANGES } from '../../src/core/analyses/rank-flow.js';
-import { FIXTURES, ownSetTimeout, PANELS, THEMES, tick, type BrowserEnv } from './browser-env.js';
+import { FIXTURES, ILLEGIBLE_THIRD_PARTY, ownSetTimeout, PANELS, THEMES, tick, type BrowserEnv } from './browser-env.js';
 import type { Check } from './gate.js';
 import { PANELS_SURFACE, RANK_FLOW_SURFACE } from './spec.js';
 
@@ -689,6 +689,9 @@ const a13: Check<BrowserEnv> = {
           }
         }
       }
+      // A third party's palette is held to the same line (#208): a pair under it is refused, never drawn.
+      const { el } = env.mount({ analysis: relocation, measure: 'score', encoding: ILLEGIBLE_THIRD_PARTY.id }, { theme });
+      for (const cell of Array.from(el.querySelectorAll('tbody td'))) found.push(...contrastFaults(cell, `${ILLEGIBLE_THIRD_PARTY.id} / ${theme}`));
     }
     return cap(found);
   },

@@ -12,7 +12,8 @@ import { Analysis } from '../../src/core/schema/analysis.js';
 import { sensitivity } from '../../src/core/analyses/sensitivity.js';
 import { weightedSum } from '../../src/core/analyses/weighted-sum.js';
 import {
-  AgreementPanel, createEncodingRegistry, DotPlotsPanel, mountMatrix, rankFlowPanel, ScatterPanel, SHIPPED_ENCODINGS, type MatrixHandle, type MountMatrixProps,
+  AgreementPanel, createEncodingRegistry, defineEncoding, DotPlotsPanel, mountMatrix, rankFlowPanel, ScatterPanel, SHIPPED_ENCODINGS,
+  type MatrixHandle, type MountMatrixProps,
 } from '../../src/view/index.js';
 import type { Theme } from '../../src/view/theme.js';
 import languagesJson from '../../examples/languages.json';
@@ -25,6 +26,7 @@ export interface MediaOptions {
   forcedColors?: 'active' | 'none';
   media?: 'print' | 'screen' | null;
   reducedMotion?: 'reduce' | 'no-preference';
+  colorScheme?: 'light' | 'dark' | 'no-preference' | null;
 }
 
 // Declared here for every browser test: the command is defined in vitest.browser.config.ts.
@@ -41,7 +43,20 @@ export const FIXTURES: Readonly<Record<string, Analysis>> = {
   'video-generation': Analysis.parse(videoJson),
   'languages with confidence': languagesWithConfidence(),
 };
-export const ENCODINGS = createEncodingRegistry(SHIPPED_ENCODINGS);
+/**
+ * A third party's encoding, as `defineEncoding` lets anyone write one, whose palette draws a grey ink
+ * under 4.5:1 on its fill in both themes (#777777 on white is 4.48:1). Registered beside the shipped
+ * ones so A13 can show the matrix refuses it rather than drawing it (#208).
+ */
+export const ILLEGIBLE_THIRD_PARTY = defineEncoding({
+  id: 'third-party-illegible', label: 'A third party\'s', texture: { channel: 'none', because: 'a gate fixture.' },
+  prepare: () => ({
+    legend: { title: 'Grey on white', entries: [{ swatch: 'third-party-grey', label: 'Every cell' }], notes: [] },
+    mark: () => ({ swatch: 'third-party-grey' }),
+    palette: { 'third-party-grey': { light: ['#ffffff', '#777777'], dark: ['#15171b', '#555555'] } },
+  }),
+});
+export const ENCODINGS = createEncodingRegistry([...SHIPPED_ENCODINGS, ILLEGIBLE_THIRD_PARTY]);
 export const THEMES = ['light', 'dark'] as const satisfies readonly Theme[];
 /**
  * The analysis panels the package ships, registered as a composition root would (#292). The rank-flow is made from

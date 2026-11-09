@@ -55,6 +55,14 @@ export const PALETTE = /* @__PURE__ */ Object.freeze({
   'datum-self': { light: ['#d6e2f5', INK_LIGHT], dark: ['#263a57', INK_DARK] },
 } as const satisfies Record<string, Swatch>);
 
+/**
+ * The derived palettes' entries, by identity (`vsup-palette.ts` enters its own).
+ * A prepared palette may name a `vsup-` id only with one of these: the derived
+ * stylesheet is page-wide, so another colour under that id would repaint it in
+ * every matrix on the page (#208).
+ */
+export const DERIVED_SWATCHES: WeakSet<Swatch> = /* @__PURE__ */ new WeakSet();
+
 export type SwatchId = keyof typeof PALETTE;
 export type { Theme };
 
