@@ -51,6 +51,10 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
   const [staged, setStaged] = useState<SuggestionChoice[]>([]);
   const [said, setSaid] = useState('');
   const [busy, setBusy] = useState(false);
+  // The name field holds a draft: the panel stays drawn for it, though no suggestion is left to show (#321).
+  const [nameHeld, setNameHeld] = useState(false);
+  // Only while the matrix still offers a name: once it is taken, the panel closes in the render that took it, where focus is settled.
+  const held = nameHeld && !!writes?.name;
   useLayoutEffect(() => {
     if (focusNext.current) root.current?.querySelector<HTMLElement>(focusNext.current)?.focus();
     focusNext.current = undefined;
@@ -58,7 +62,7 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
   const open = describeOpenSuggestions(analysis, { viewer, vouched });
   // A suggestion decided elsewhere meanwhile is no longer staged here.
   const live = staged.filter((c) => open.some((o) => o.id === c.suggestionId));
-  if (open.length === 0 && said === '') return null;
+  if (open.length === 0 && said === '' && !held) return null;
 
   const refusal = (sid: string, d: SuggestionDecision): string | undefined => {
     const may = affordances.decideSuggestion(sid, d);
@@ -116,7 +120,7 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
       <h2 id={id} tabIndex={-1} data-panel-heading="">{`Open suggestions (${open.length})`}</h2>
       <p class="comparanda-panel-hint">Accepting writes the proposed value into its cell as its proposer&apos;s; declining records only the decision. Decisions are staged here, each undoable, and written together.</p>
       {/* Before every decision it names the author of. */}
-      {writes?.name && maySign && <NameForm name={writes.name} idBase={id} />}
+      {writes?.name && (maySign || held) && <NameForm name={writes.name} idBase={id} onHold={setNameHeld} />}
       <ol class="comparanda-thread-list">
         {open.map((o) => {
           const choice = live.find((c) => c.suggestionId === o.id);

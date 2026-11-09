@@ -180,6 +180,48 @@ describe('naming a local identity before its first decision (#274)', () => {
     expect(nameForm()).not.toBeNull();
   });
 
+  it('keeps a name being typed when the last open suggestion is decided elsewhere, and focus with it (#321)', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', source, identity: localIdentity({ storage: memory() }) }, at);
+    await settled();
+    const box = nameForm()!.querySelector('input')!;
+    await userEvent.click(box);
+    await userEvent.keyboard('Ad');
+    // Another tab decides both open suggestions through the source.
+    const decider = { by: { id: 'dana', displayName: 'Dana', kind: 'human' as const }, at: '2026-10-20T12:00:00.000Z' };
+    const ids = relocation.suggestions.map((x) => ({ suggestionId: x.id, decision: 'decline' as const }));
+    await source.update(relocation.id, decideSuggestions(relocation, ids, decider).analysis);
+    await settled();
+    expect(panel()).not.toBeNull();
+    expect(panel()!.querySelector('h2')!.textContent).toBe('Open suggestions (0)');
+    const kept = nameForm()!.querySelector('input')!;
+    expect(kept.value).toBe('Ad');
+    expect(document.activeElement).toBe(kept);
+    // Taking the name closes the panel: nothing is left in it.
+    await userEvent.keyboard('a{Enter}');
+    await settled();
+    expect(panel()).toBeNull();
+    // Focus was settled in the render that took the name, never dropped to the page.
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('lets a held panel go once its emptied name field is left (#321)', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', source, identity: localIdentity({ storage: memory() }) }, at);
+    await settled();
+    await userEvent.click(nameForm()!.querySelector('input')!);
+    await userEvent.keyboard('A{Backspace}');
+    const decider = { by: { id: 'dana', displayName: 'Dana', kind: 'human' as const }, at: '2026-10-20T12:00:00.000Z' };
+    const ids = relocation.suggestions.map((x) => ({ suggestionId: x.id, decision: 'decline' as const }));
+    await source.update(relocation.id, decideSuggestions(relocation, ids, decider).analysis);
+    await settled();
+    // Still drawn, focus in the box: emptying it does not pull the panel out from under the reader.
+    expect(panel()).not.toBeNull();
+    (document.activeElement as HTMLElement).blur();
+    await settled();
+    expect(panel()).toBeNull();
+  });
+
   it('is not asked of an identity that has a name, takes none, or has no way to write decisions', async () => {
     const storage = memory();
     await localIdentity({ storage }).name('Ada');
