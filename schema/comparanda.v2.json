@@ -696,6 +696,10 @@
               "out-of-scope",
               "not-assessable",
               "merged",
+              "means-objective",
+              "not-controllable",
+              "no-discrimination-expected",
+              "user-rejected",
               "other"
             ]
           },

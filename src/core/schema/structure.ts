@@ -175,12 +175,19 @@ export function measurementFor(criterion: Criterion, measure: string): Measureme
  * review, and an answer that lives only in someone's memory gets re-litigated
  * every time.
  */
+export const REJECT_REASON_CODES = Object.freeze([
+  'redundant', 'not-discriminating', 'out-of-scope', 'not-assessable', 'merged',
+  // The companion's closed reject vocabulary (request 19, rubricator ADR-0016), added in version 2. Its
+  // `merged-into` is this set's `merged`: one spelling, with `mergedIntoId` naming the target.
+  'means-objective', 'not-controllable', 'no-discrimination-expected', 'user-rejected',
+  'other',
+] as const);
+export type RejectReasonCode = (typeof REJECT_REASON_CODES)[number];
+
 export const RejectedCriterion = z.strictObject({
   label: z.string(),
   reason: z.string(),
-  reasonCode: z.optional(
-    z.enum(['redundant', 'not-discriminating', 'out-of-scope', 'not-assessable', 'merged', 'other']),
-  ),
+  reasonCode: z.optional(z.enum(REJECT_REASON_CODES)),
   /** For `merged` and `redundant`: the criterion it was folded into. */
   mergedIntoId: z.optional(z.string()),
   proposedBy: z.optional(z.string()),
