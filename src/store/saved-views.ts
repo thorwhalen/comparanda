@@ -14,11 +14,26 @@
  * nothing. The same answers are read before anything is offered
  * (`affordances`, `saveAffordance`), so a view never offers a control the
  * store would refuse, and never refuses one without the reason the store
- * gives. Writes go one at a time through this store, each built on the
- * record as it stands when its turn comes, so a lock and an update sent
- * together cannot lose the lock. That is within one store: several clients
- * writing one shared provider need its versioned write (#290). There is no
- * autosave: nothing here is called unless a person asked to save.
+ * gives. There is no autosave: nothing here is called unless a person asked
+ * to save.
+ *
+ * Writes go one at a time through this store, each built on the record as it
+ * stands when its turn comes, so a lock and an update sent together through one
+ * store cannot lose the lock: the update is refused, as any write to a locked
+ * view is. Several clients write one shared provider, and there
+ * `DataProvider.update` would be last-write-wins, which ADR-0011 clause 6 and
+ * ADR-0006 (2026-08-22, clause 3) rule out. So shared and locked views, and
+ * sequences, are read with their version and written only against it, through
+ * the versioned port the analysis uses (`VersionedCollection`,
+ * `versioned-source.ts`): a write another client made in between rejects with a
+ * `WriteConflict` that names what moved, and nothing is written. A lock racing
+ * an update ends locked, or one of the two is told it lost; never shared and
+ * updated with the lock gone. `savedViewStore` versions a plain provider it is
+ * given (`asVersioned`, once per provider object, so every store in the page
+ * over it checks the others); a provider other pages write must honour the
+ * port itself, over its own revisions. Personal views have one writer, their
+ * owner, and are written plainly. The version lives in the provider, never in
+ * the record, so a stored view's shape is unchanged (no migration).
  *
  * What it hands out is a copy, read through the schema (and the view-state
  * migrations) on the way out: a caller who edits what it was given edits
@@ -34,18 +49,28 @@ import {
 import { parseViewState, snapshotOf, type SavedViewState, type ViewState } from '../core/view-state.js';
 import { affordanceOf, type EditAction, type IdentityStorage } from './index.js';
 import { localCollectionProvider, memoryCollection, type LocalCollection } from './local-collection.js';
+import { asVersioned, isVersionedCollection, type VersionedCollection } from './versioned-source.js';
 
 export interface SavedViewStoreOptions {
   /** The owner's own store, for personal views. Default: in memory. */
   personal?: DataProvider<SavedView>;
-  /** The analysis's store, for shared and locked views. Default: in memory. */
+  /**
+   * The analysis's store, for shared and locked views. Several clients write it, so it is written through the
+   * versioned port: a plain provider is versioned here (`asVersioned`). Default: in memory, versioned.
+   */
   shared?: DataProvider<SavedView>;
-  /** The analysis's store for sequences. Default: in memory. */
+  /** The analysis's store for sequences, written as `shared` is. Default: in memory, versioned. */
   sequences?: DataProvider<ViewSequence>;
   /** The host's say over each write (ADR-0012). Default: whatever the mode allows. */
   authorize?: AuthorizeView;
   /** Makes a new view's or sequence's id. */
   newId?: () => string;
+}
+
+/** `versionedSavedViewStore`'s options: the shared providers already honour the versioned port, so nothing here makes them. */
+export interface VersionedSavedViewStoreOptions extends Omit<SavedViewStoreOptions, 'shared' | 'sequences'> {
+  shared: VersionedCollection<SavedView>;
+  sequences: VersionedCollection<ViewSequence>;
 }
 
 /** What may be done to one saved view here: each write, and saving as new, each refused with its reason. */
@@ -106,13 +131,13 @@ function fromStore(raw: SavedView): SavedView {
 }
 
 /**
- * One record, or `undefined` when the provider has none. Only "has none":
- * a provider that fails for another reason (offline) is not taken for an
- * empty one, so an id is never thought free nor a view thought gone.
+ * What `read` gives for one record, or `undefined` when the provider has none.
+ * Only "has none": a provider that fails for another reason (offline) is not
+ * taken for an empty one, so an id is never thought free nor a view thought gone.
  */
-async function maybe<T extends { id: string }>(p: DataProvider<T>, id: string): Promise<T | undefined> {
+async function held<T extends { id: string }, R>(p: DataProvider<T>, id: string, read: () => Promise<R>): Promise<R | undefined> {
   try {
-    return await p.getOne(id);
+    return await read();
   } catch (error) {
     const listed = await p.getList({});
     if (listed.data.some((x) => x.id === id)) throw error;
@@ -120,30 +145,72 @@ async function maybe<T extends { id: string }>(p: DataProvider<T>, id: string): 
   }
 }
 
+/** One record, or `undefined` when the provider has none (`held`). */
+const maybe = <T extends { id: string }>(p: DataProvider<T>, id: string) => held(p, id, () => p.getOne(id));
+
+/** How a conflict names what it is about: the record as it stands, or as it was read when it is gone. */
+const viewNamed = (v: SavedView | undefined) => (v ? `the view "${v.name}"` : 'this view');
+const sequenceNamed = (s: ViewSequence | undefined) => (s ? `the sequence "${s.name}"` : 'this sequence');
+
 /** A refusal, as the rejection a write gives: the reason, and nothing changed. */
 function refused(what: string, a: Affordance): never {
   throw new Error(`${what}: ${a.reason ?? 'not allowed here.'}`);
 }
 
+/**
+ * The saved-view store, over any providers: a plain `shared` or `sequences`
+ * provider is versioned here (`asVersioned`), and each defaults to one in memory.
+ */
 export function savedViewStore({
-  personal = memoryCollection<SavedView>(),
   shared = memoryCollection<SavedView>(),
   sequences = memoryCollection<ViewSequence>(),
+  ...rest
+}: SavedViewStoreOptions = {}): SavedViewStore {
+  return versionedSavedViewStore({
+    ...rest,
+    shared: asVersioned(shared, { describe: viewNamed }),
+    sequences: asVersioned(sequences, { describe: sequenceNamed }),
+  });
+}
+
+/**
+ * The saved-view store over shared providers that already honour the versioned
+ * port (`VersionedCollection`): a deployed store's, over its own revisions, or
+ * one that takes no writes at all (`emptyReadOnlyProvider`, the standalone
+ * page's). `savedViewStore` is this with the versioning done for you; this one
+ * leaves it out, so a page that never writes a shared view does not carry it.
+ */
+export function versionedSavedViewStore({
+  personal = memoryCollection<SavedView>(),
+  shared,
+  sequences,
   authorize,
   newId = randomId,
-}: SavedViewStoreOptions = {}): SavedViewStore {
-  const home = (mode: SavedViewMode) => (mode === 'personal' ? personal : shared);
-  const found = async (id: string) => {
-    const raw = (await maybe(personal, id)) ?? (await maybe(shared, id));
-    return raw && fromStore(raw);
+}: VersionedSavedViewStoreOptions): SavedViewStore {
+  const versioned = (name: string, p: DataProvider<SavedView> | DataProvider<ViewSequence>) => {
+    if (!isVersionedCollection<unknown>(p as DataProvider<unknown>)) {
+      // Kept short: this ships in the standalone page, whose byte budget is tight.
+      throw new TypeError(`"${name}" must be a versioned collection (markVersioned); savedViewStore versions a plain one.`);
+    }
   };
+  versioned('shared', shared);
+  versioned('sequences', sequences);
+  const home = (mode: SavedViewMode) => (mode === 'personal' ? personal : shared);
+  /** A view and, for a shared or locked one, the version it was read at: what its write is checked against. */
+  const located = async (id: string): Promise<{ view: SavedView; version?: number } | undefined> => {
+    const mine = await maybe(personal, id);
+    if (mine) return { view: fromStore(mine) };
+    const ours = await held(shared, id, () => shared.getVersioned(id));
+    return ours && { view: fromStore(ours.item), version: ours.version };
+  };
+  const found = async (id: string) => (await located(id))?.view;
   /** Who may be told a view exists: anyone, for a shared one; its owner only, for a personal one. */
   const visible = (v: SavedView | undefined, actorId: string | undefined) => (v && (v.mode !== 'personal' || v.ownerId === actorId) ? v : undefined);
   /** A view this actor may write to, or the same "no such view" an unknown id gets: another's personal view is not confirmed to exist. */
   const existing = async (id: string, actorId: string) => {
-    const v = visible(await found(id), actorId);
-    if (!v) throw new Error(`there is no saved view "${id}".`);
-    return v;
+    const at = await located(id);
+    if (!at || !visible(at.view, actorId)) throw new Error(`there is no saved view "${id}".`);
+    return at;
   };
   /**
    * Each answer gated on the provider that keeps the view: the first refusal is the one given, and the host is not
@@ -181,12 +248,15 @@ export function savedViewStore({
     chain = next.catch(() => undefined);
     return next;
   };
-  /** A change to one view, asked and written on the record as it stands now. Lock and unlock keep it beside the analysis. */
+  /**
+   * A change to one view, asked and written on the record as it stands now. Lock and unlock keep it beside the
+   * analysis, where the write is checked against the version read: another client's write in between is a conflict.
+   */
   const change = (act: SavedViewAct, apply: (v: SavedView, a: Act) => SavedView) => (id: string, a: Act) => serial(async () => {
-    const v = await existing(id, a.by);
+    const { view: v, version } = await existing(id, a.by);
     may(v, act, a.by);
     const after = apply(v, a);
-    return fromStore(await home(after.mode).update(after.id, after));
+    return fromStore(version === undefined ? await personal.update(after.id, after) : (await shared.updateIfVersion(after.id, after, version)).item);
   });
   const freshId = async () => {
     const id = newId();
@@ -205,6 +275,12 @@ export function savedViewStore({
       if (raw && fromStore(raw).analysisId === analysisId) continue;
       throw new Error(`a sequence can name only this analysis's shared views; "${viewId}" is not one.`);
     }
+  };
+  /** A sequence and the version it was read at, or the refusal an unknown id gets. */
+  const sequenceAt = async (id: string) => {
+    const at = await held(sequences, id, () => sequences.getVersioned(id));
+    if (!at) throw new Error(`there is no view sequence "${id}".`);
+    return at;
   };
   const maySequence = (sequence: ViewSequence, by: string, action: EditAction) => {
     const store = affordanceOf(sequences, action, { what: `the sequence "${sequence.name}"` });
@@ -232,9 +308,9 @@ export function savedViewStore({
     update: (id, current, a) => change('update', (v, x) => updateView(v, current, x))(id, a),
     rename: (id, name, a) => change('rename', (v, x) => renameView(v, name, x))(id, a),
     delete: (id, a) => serial(async () => {
-      const v = await existing(id, a.by);
+      const { view: v, version } = await existing(id, a.by);
       may(v, 'delete', a.by);
-      await home(v.mode).delete(id);
+      await (version === undefined ? personal.delete(id) : shared.deleteIfVersion(id, version));
     }),
     lock: change('lock', lockView),
     unlock: change('unlock', unlockView),
@@ -253,18 +329,16 @@ export function savedViewStore({
         return ViewSequence.parse(structuredClone(await sequences.create(s)));
       }),
       update: (id, changes, a) => serial(async () => {
-        const before = await maybe(sequences, id);
-        if (!before) throw new Error(`there is no view sequence "${id}".`);
+        const { item: before, version } = await sequenceAt(id);
         const s = ViewSequence.parse({ ...structuredClone(before), ...changes });
         maySequence(s, a.by, 'update');
         await checkSteps(s.analysisId, s.steps, before.steps);
-        return ViewSequence.parse(structuredClone(await sequences.update(id, s)));
+        return ViewSequence.parse(structuredClone((await sequences.updateIfVersion(id, s, version)).item));
       }),
       delete: (id, a) => serial(async () => {
-        const s = await maybe(sequences, id);
-        if (!s) throw new Error(`there is no view sequence "${id}".`);
+        const { item: s, version } = await sequenceAt(id);
         maySequence(ViewSequence.parse(s), a.by, 'delete');
-        await sequences.delete(id);
+        await sequences.deleteIfVersion(id, version);
       }),
     },
   };

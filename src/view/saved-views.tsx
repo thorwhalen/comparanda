@@ -27,6 +27,10 @@
  * closed, by its buttons or Escape, hands focus to the control that follows;
  * a write refused puts it back where it was.
  *
+ * Shared views are written against the version read (#290): when another
+ * reader's write landed first, the refusal says so in words, nothing is
+ * written, and the list is read again so the reader sees what is there now.
+ *
  * What the storage behind the views has to tell the reader (nothing it keeps
  * will outlive the tab, a write was refused) is the matrix's acknowledged
  * notice, not this panel's (`MountMatrixProps.savedViews.status`).
@@ -104,7 +108,11 @@ function Offered({ may, label, onPress, reasonId, ...data }: {
   );
 }
 
-/** A write, said either way; on success the list is read again. Resolves whether it was made. */
+/**
+ * A write, said either way, and the list read again either way: a write refused because another reader's landed
+ * first (a `WriteConflict`, #290) is said in its words, and the list then shows what is stored now, never the copy
+ * the write lost against. Resolves whether it was made.
+ */
 type Write = (run: () => Promise<unknown>, done: string, failed: string, focus?: { then?: string; back?: string }) => Promise<boolean>;
 
 const HEADING = '[data-panel-heading]';
@@ -127,7 +135,8 @@ export function SavedViewsPanel({ port, analysis, view }: { port: SavedViewsPort
 
   const write: Write = (run, done, failed, { then, back } = {}) => run().then(
     async () => { await refresh(); setSaid(done); focusNext.current = then; return true; },
-    (e: unknown) => { setSaid(`${failed}: ${sentenceOf(e)}`); focusNext.current = back; return false; },
+    // Read again first, then said and focused: a control the list no longer holds hands focus to the heading (`useFocusNext`).
+    async (e: unknown) => { await refresh(); setSaid(`${failed}: ${sentenceOf(e)}`); focusNext.current = back; return false; },
   );
 
   const save = useSend(async (name) => {
@@ -227,7 +236,9 @@ function ViewItem({ view: v, may, shown, idBase, port, write, refresh, say, onSh
         <RenameForm
           view={v} idBase={idBase} cancel={() => close('[data-rename]')}
           rename={async (name) => {
-            await port.rename(v.id, name.trim());
+            // Refused, it is said in the panel before the list is read again: if another reader removed the view, the
+            // form and its own alert leave with it, and the panel's words are what remains.
+            await port.rename(v.id, name.trim()).catch(async (e: unknown) => { say(`Not renamed: ${sentenceOf(e)}`); await refresh(); throw e; });
             await refresh();
             say(`Renamed to “${name.trim()}”.`);
             close('[data-rename]');

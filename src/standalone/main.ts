@@ -13,10 +13,12 @@
  * reader's personal saved views (`localSavedViews`, #117). Shared views and
  * sequences live beside the analysis, and the file carries none (#291): their
  * providers take nothing, so the panel refuses them with that reason rather
- * than keeping them where nobody else would see them.
+ * than keeping them where nobody else would see them. Taking no writes, they
+ * need no versions, so the page uses `versionedSavedViewStore` and carries none
+ * of the versioning code (#290).
  */
 import { Analysis } from '../core/schema/analysis.js';
-import { emptyReadOnlyProvider, localSavedViews, savedViewStore } from '../store/index.js';
+import { emptyReadOnlyProvider, localSavedViews, versionedSavedViewStore } from '../store/index.js';
 import { mountPersistedMatrix } from '../view/persist.js';
 import {
   ANALYSIS_ELEMENT_ID, ROOT_ELEMENT_ID, SETTINGS_ELEMENT_ID, type StandaloneSettings,
@@ -29,7 +31,7 @@ async function start(): Promise<void> {
     const analysis = Analysis.parse(JSON.parse(inlined(ANALYSIS_ELEMENT_ID)));
     const settings = JSON.parse(inlined(SETTINGS_ELEMENT_ID)) as StandaloneSettings;
     const personal = localSavedViews(analysis.id);
-    const store = savedViewStore({ personal: personal.provider, shared: emptyReadOnlyProvider(), sequences: emptyReadOnlyProvider() });
+    const store = versionedSavedViewStore({ personal: personal.provider, shared: emptyReadOnlyProvider(), sequences: emptyReadOnlyProvider() });
     await mountPersistedMatrix(root, {
       analysis, measure: settings.measure, ...(settings.encoding !== undefined ? { encoding: settings.encoding } : {}),
       savedViews: { store, status: personal },

@@ -36,6 +36,7 @@ import type { DataChangeEvent, DataProvider, ProviderCapabilities } from '@zodal
 
 import type { Analysis } from '../core/schema/analysis.js';
 import { memoryStorage } from './browser-storage.js';
+import { markVersioned, type VersionedCollection } from './versioned-source.js';
 import { revisionProblems } from '../core/revision.js';
 import {
   cellPolicy, makeAffordances, requireDecision, requireDoing, threadDoing, requireCommentFor, type Affordance, type Affordances, type Authorize, type WriteAffordance,
@@ -222,11 +223,14 @@ export const READ_ONLY_CAPABILITIES: ProviderCapabilities = Object.freeze({
  * store for a collection at all (the standalone page's shared views, which live
  * beside the analysis, #291). It reports `READ_ONLY_CAPABILITIES`, so every
  * control asked of it is refused with the reason `affordanceOf` gives, and a
- * write that reaches it anyway rejects.
+ * write that reaches it anyway rejects. Holding nothing, it honours the
+ * versioned port trivially (ADR-0011 clause 6): every checked read and write is
+ * refused as its plain one is, so it can stand where several clients' writes
+ * would need versions (`versionedSavedViewStore`) without the versioning code.
  */
-export function emptyReadOnlyProvider<T>(): DataProvider<T> {
+export function emptyReadOnlyProvider<T>(): VersionedCollection<T> {
   const refuse = async (): Promise<never> => { throw new Error('this source is read-only.'); };
-  return {
+  return markVersioned({
     getList: async () => ({ data: [], total: 0 }),
     getOne: refuse,
     create: refuse,
@@ -234,8 +238,11 @@ export function emptyReadOnlyProvider<T>(): DataProvider<T> {
     updateMany: refuse,
     delete: refuse,
     deleteMany: refuse,
+    getVersioned: refuse,
+    updateIfVersion: refuse,
+    deleteIfVersion: refuse,
     getCapabilities: () => ({ ...READ_ONLY_CAPABILITIES }),
-  };
+  });
 }
 
 export interface OneItemProviderOptions {
