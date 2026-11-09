@@ -262,17 +262,17 @@ function Distribution({ distribution: d }: { distribution: LevelDistribution }) 
   const shown = d.levels.filter((l) => l.count > 0);
   const said = shown.map((l) => `${String(l.level)}: ${l.count}`);
   const at = d.neutral === undefined ? -1 : d.levels.findIndex((l) => l.level === d.neutral);
-  const side = (from: number, to: number) => d.levels.slice(from, to).reduce((n, l) => n + l.count, 0);
-  const [below, above] = at < 0 ? [0, 0] : [side(0, at), side(at + 1, d.levels.length)];
-  const gap = (grow: number) => grow > 0 && <span data-gap="" style={{ flexGrow: grow }} />;
+  /** What lies above the neutral less what lies below it: the side that needs the empty gap, and how long. */
+  const tilt = at < 0 ? 0 : d.levels.reduce((n, l, i) => n + Math.sign(i - at) * l.count, 0);
+  const gap = (grow: number) => grow > 0 && <span style={{ flexGrow: grow }} />;
   return (
     <figure class="comparanda-distribution" data-detail="distribution">
       <div class="comparanda-bar" aria-hidden="true">
-        {gap(above - below)}
+        {gap(tilt)}
         {shown.map((l) => (
-          <span key={String(l.level)} style={{ flexGrow: l.count }} data-neutral={d.levels[at]?.level === l.level ? '' : undefined}>{String(l.level)}</span>
+          <span key={String(l.level)} style={{ flexGrow: l.count }} data-neutral={l.level === d.neutral || undefined}>{String(l.level)}</span>
         ))}
-        {gap(below - above)}
+        {gap(-tilt)}
       </div>
       <figcaption>
         {`${d.n} values by level${d.ordered ? ', lowest first' : ''}: ${said.join('; ')}.`}

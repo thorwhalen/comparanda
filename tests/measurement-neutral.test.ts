@@ -50,16 +50,21 @@ describe('Measurement.neutral', () => {
   it('is the same in the artifact: a number parses, a non-scalar is refused, and the description travels', () => {
     expect(ajv(withNeutral(3))).toBe(true);
     expect(ajv(withNeutral([3]))).toBe(false);
-    const found: string[] = [];
+    // The description is the emitter's, written wherever an object has a `neutral` property; the name must mean one
+    // thing in the schema, which is checkable: every such object is a measurement, and has `levels` beside it.
+    const owners: { properties: Record<string, { description?: string }> }[] = [];
     const walk = (o: unknown): void => {
       if (Array.isArray(o)) return o.forEach(walk);
       if (o === null || typeof o !== 'object') return;
       const props = (o as { properties?: Record<string, { description?: string }> }).properties;
-      if (props?.neutral?.description) found.push(props.neutral.description);
+      if (props?.neutral) owners.push(o as (typeof owners)[number]);
       Object.values(o).forEach(walk);
     };
     walk(artifact);
-    expect(found.length).toBeGreaterThan(0);
-    for (const d of found) expect(d).toBe(PROPERTY_DESCRIPTIONS.neutral);
+    expect(owners.length).toBeGreaterThan(0);
+    for (const o of owners) {
+      expect(o.properties.neutral!.description).toBe(PROPERTY_DESCRIPTIONS.neutral);
+      expect(Object.keys(o.properties), 'a neutral belongs to a measurement').toEqual(expect.arrayContaining(['levels', 'level', 'preference']));
+    }
   });
 });

@@ -217,7 +217,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   flex-basis: 0; min-width: 0; overflow: hidden; white-space: nowrap; text-align: center; background: var(--cmp-header); color: var(--cmp-ink);
   box-shadow: inset 0 0 0 1px var(--cmp-rule); padding: 0.1em 0; border: 0 solid transparent;
 }
-.comparanda-matrix .comparanda-bar span[data-gap] { background: none; box-shadow: none; border-width: 0; }
+.comparanda-matrix .comparanda-bar span:empty { visibility: hidden; }
 .comparanda-matrix .comparanda-bar span[data-neutral] { font-weight: 700; text-decoration: underline; }
 .comparanda-matrix .comparanda-thread-mark { margin-inline-start: 0.35em; font-size: 0.85em; font-weight: 600; white-space: nowrap; }
 .comparanda-matrix .comparanda-thread-icon { display: inline-block; width: 0.9em; height: 0.9em; vertical-align: -0.1em; margin-inline-end: 0.1em; }

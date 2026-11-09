@@ -215,8 +215,13 @@ describe('what it carries', () => {
     const dist = panel()!.querySelector('[data-detail="distribution"]')!;
     // Berlin: two ratings of 1 (below the neutral 3) and one of 3 (the neutral): the right side is padded to match.
     const parts = Array.from(dist.querySelectorAll('.comparanda-bar > span'));
-    expect(parts.map((s) => s.hasAttribute('data-gap') ? 'gap' : s.textContent)).toEqual(['1', '3', 'gap']);
+    expect(parts.map((s) => s.matches(':empty') ? 'gap' : s.textContent)).toEqual(['1', '3', 'gap']);
     expect(parts[1]!.hasAttribute('data-neutral')).toBe(true);
+    expect((parts[2] as HTMLElement).style.flexGrow).toBe('2');
+    // The neutral segment's midpoint is the bar's.
+    const bar = dist.querySelector('.comparanda-bar')!.getBoundingClientRect();
+    const mid = parts[1]!.getBoundingClientRect();
+    expect(Math.abs((mid.left + mid.right) / 2 - (bar.left + bar.right) / 2)).toBeLessThan(1.5);
     expect(dist.querySelector('figcaption')!.textContent).toContain('Centred on the declared neutral level 3.');
     expect(dist.querySelector('figcaption')!.textContent).not.toContain('Not centred');
   });
@@ -225,7 +230,7 @@ describe('what it carries', () => {
     mount({ analysis: relocation, measure: 'score', view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'seoul', criterionId: 'school-quality' }), true) });
     const dist = panel()!.querySelector('[data-detail="distribution"]');
     expect(dist?.querySelector('figcaption')?.textContent).toContain('Not centred: this scale declares no neutral level.');
-    expect(dist?.querySelector('.comparanda-bar [data-gap]')).toBeNull();
+    expect(dist?.querySelector('.comparanda-bar span:empty')).toBeNull();
   });
 
   it("an alternative's header names its strongest and weakest criteria", () => {

@@ -671,7 +671,7 @@ filed as a batch rather than discovered during implementation.
 | 15 | `validateAnalysis` takes injected rule families; `ValidationProblem` gains `family`, `fix`, `ruleId` | yes |
 | 16 | `Suggestion.proposed` typed as a partial `Assertion` — it is `z.unknown()` today, so no honesty rule can reach suggestion mode | no — before suggestions ship |
 | 17 | `Assertion.confidence`: optional, a closed ordinal enum `high \| medium \| low` carrying the evidence-quality glosses as its description; never numeric, never named or modelled as `certainty` | no — additive and optional; a v1 document reaches v2 by a registered no-op step |
-| 18 | `Measurement.neutral`: optional `ScalarValue`, one of `levels` or inside `range`, ordinal only, so the detail panel's diverging bar can be centred on a declared neutral (ADR-0010) | no — additive; landed in version 2 |
+| 18 | `Measurement.neutral`: optional `ScalarValue`, ordinal only and one of the declared `levels` (as landed; the filed text also allowed inside `range`, but an ordinal scale must list its levels), so the detail panel's diverging bar can be centred on a declared neutral (ADR-0010) | no — additive; landed in version 2 |
 | 19 | `rejectedCriteria[].reasonCode` carries the five codes of the companion's ADR-0016 (`merged-into`, `means-objective`, `not-controllable`, `no-discrimination-expected`, `user-rejected`) | no — additive. Landed 2026-11-09 as four new codes, `merged-into` being the shipped `merged`; the companion keeps its `other` workaround until the `schema-v2` tag is cut |
 
 **On request 17.** Filed after the other sixteen, on the owner's decision of 2026-10-30

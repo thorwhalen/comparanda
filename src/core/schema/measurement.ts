@@ -355,6 +355,8 @@ function anchorLevelProblems(m: Measurement, anchors: AnchorSet, path: string): 
  * and they are not the same scale. A per-criterion default keeps the common case
  * terse -- see `Criterion.defaultMeasurement`.
  */
+/** A declared level, or the neutral among them. */
+const Level = z.union([z.string(), z.number(), z.boolean()]);
 export const Measurement = z.strictObject({
   level: LevelOfMeasurement,
   preference: Preference,
@@ -374,7 +376,7 @@ export const Measurement = z.strictObject({
   /** The evidence conditions earning each level. Ordinal scales only. */
   anchors: z.optional(AnchorSet),
   /** The level a diverging bar is centred on (request 18, #311): a declared neutral, never inferred. Ordinal only. */
-  neutral: z.optional(z.union([z.string(), z.number(), z.boolean()])),
+  neutral: z.optional(Level),
   /** Required whenever `level` is ordered; validated by `validateMeasurement`. */
   range: z.optional(Range),
   thresholds: z.optional(Thresholds),
@@ -389,7 +391,7 @@ export const Measurement = z.strictObject({
    * *asserted* and could not be *declared*, which is the kind of contradiction
    * that only shows up when someone writes the document the README asked for.
    */
-  levels: z.optional(z.array(z.union([z.string(), z.number(), z.boolean()]))),
+  levels: z.optional(z.array(Level)),
 });
 export type Measurement = z.infer<typeof Measurement>;
 
