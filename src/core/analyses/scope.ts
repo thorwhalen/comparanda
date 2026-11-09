@@ -1,8 +1,10 @@
 /**
- * Which alternatives an analysis compares: one resolver shared by dominance, Pugh and seriation (#239).
+ * Which alternatives an analysis compares: one resolver shared by dominance, Pugh and seriation (#239);
+ * and which groups a reader can pick, one answer for the scatter's scope and the matrix's group controls (#342).
  */
 import type { Analysis } from '../schema/analysis.js';
-import { axisGroups, membersOfGroup } from '../schema/groups.js';
+import { axisGroups, membersOfGroup, type Axis } from '../schema/groups.js';
+import type { Group } from '../schema/structure.js';
 
 /** The options every analysis that can be scoped to a set of alternatives accepts. */
 export interface AlternativeScopeOptions {
@@ -29,6 +31,30 @@ export function alternativeScope(a: Analysis, opts: AlternativeScopeOptions): st
   return membersOfGroup(ag, opts.groupId);
 }
 
+/**
+ * A group a reader can pick, with its live members, sub-groups' included, in
+ * document order: the scope `groupId` resolves to, and what picking it selects
+ * or hides. The matrix's group controls and layout offer these (#342), and the
+ * scatter's scope picker builds on them (`scopeGroups`).
+ */
+export type PickableGroup = Group & { members: string[] };
+
+/**
+ * The groups a reader can pick on an axis: every live one, in document order,
+ * with a live member. A group with none is not offered: scoping to it would
+ * draw nothing, banding by it would draw no band, and selecting or hiding it
+ * would change nothing. `topLevel` keeps only the groups with no parent: the
+ * matrix renders one nesting level (ADR-0008).
+ */
+export function pickableGroups(a: Analysis, axis: Axis = 'alternatives', { topLevel = false } = {}): PickableGroup[] {
+  const ag = axisGroups(a, axis);
+  return a.groups.flatMap((g) => {
+    if (g.axis !== axis || g.tombstoned || (topLevel && g.parentId !== undefined)) return [];
+    const members = membersOfGroup(ag, g.id);
+    return members.length ? [{ ...g, members }] : [];
+  });
+}
+
 /** An alternatives group a comparison can be scoped to, as a picker offers it. */
 export interface ScopeGroup {
   id: string;
@@ -42,24 +68,16 @@ export interface ScopeGroup {
 }
 
 /**
- * The alternatives groups a comparison can be scoped to: every live one, in
- * document order, that has a member the reader shows (`shownAlternatives`, the
- * matrix's arrangement; absent, every live member counts as shown). A group
- * whose members are all hidden, or that has none, is not offered: scoping to it
- * would draw nothing.
+ * The alternatives groups a comparison can be scoped to: the pickable ones
+ * (`pickableGroups`) that have a member the reader shows (`shownAlternatives`,
+ * the matrix's arrangement; absent, every live member counts as shown). A group
+ * whose members are all hidden is not offered: scoping to it would draw nothing.
  */
 export function scopeGroups(a: Analysis, { shownAlternatives }: { shownAlternatives?: readonly string[] | undefined } = {}): ScopeGroup[] {
-  const ag = axisGroups(a, 'alternatives');
-  const live = a.groups.filter((g) => g.axis === 'alternatives' && !g.tombstoned);
-  const labelOf = new Map(live.map((g) => [g.id, g.label]));
+  const labelOf = new Map(a.groups.filter((g) => g.axis === 'alternatives' && !g.tombstoned).map((g) => [g.id, g.label]));
   const showing = shownAlternatives === undefined ? undefined : new Set(shownAlternatives);
-  return live
-    .map((g): ScopeGroup => {
-      const members = membersOfGroup(ag, g.id);
-      return {
-        id: g.id, label: g.label, parentLabel: g.parentId === undefined ? undefined : labelOf.get(g.parentId), members,
-        shown: showing === undefined ? members.length : members.filter((id) => showing.has(id)).length,
-      };
-    })
-    .filter((g) => g.shown > 0);
+  return pickableGroups(a).flatMap(({ id, label, parentId, members }) => {
+    const shown = showing === undefined ? members.length : members.filter((m) => showing.has(m)).length;
+    return shown > 0 ? [{ id, label, parentLabel: parentId === undefined ? undefined : labelOf.get(parentId), members, shown }] : [];
+  });
 }

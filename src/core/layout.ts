@@ -26,7 +26,8 @@
  * repeated.
  */
 import type { Analysis } from './schema/analysis.js';
-import { axisGroups, membersOfGroup, type Axis } from './schema/groups.js';
+import type { Axis } from './schema/groups.js';
+import { pickableGroups } from './analyses/scope.js';
 import type { InapplicableBlock } from './schema/structure.js';
 import type { ViewState } from './view-state.js';
 
@@ -51,7 +52,7 @@ export interface Band {
 export interface AxisLayout {
   axis: Axis;
   entries: LayoutEntry[];
-  /** Absent when the axis is not grouped, none of its chosen groups exists, or nothing is shown. */
+  /** Absent when the axis is not grouped, none of its chosen groups exists with a live member, or nothing is shown. */
   bands: Band[] | undefined;
 }
 
@@ -86,22 +87,22 @@ function axisLayout(
   const hide = new Set(hidden);
   const shown = [...placed].filter((id) => !hide.has(id));
 
-  const groups = new Map(a.groups.filter((g) => g.axis === axis && !g.tombstoned).map((g) => [g.id, g.label]));
+  // The groups a band can be drawn for are the ones the reader can pick (#342): live, with a live member.
+  const groups = new Map(pickableGroups(a, axis).map((g) => [g.id, g]));
   const chosen = [...new Set(grouping)].filter((id) => groups.has(id));
   if (chosen.length === 0) {
     return { axis, entries: shown.map((id) => ({ id, label: live.get(id)!, alsoIn: [] })), bands: undefined };
   }
 
-  const space = axisGroups(a, axis);
   const memberships = new Map<string, string[]>();
   for (const g of chosen) {
-    for (const id of membersOfGroup(space, g)) memberships.set(id, [...(memberships.get(id) ?? []), g]);
+    for (const id of groups.get(g)!.members) memberships.set(id, [...(memberships.get(id) ?? []), g]);
   }
   const entry = (id: string): LayoutEntry => ({ id, label: live.get(id)!, alsoIn: (memberships.get(id) ?? []).slice(1) });
   const bands: Band[] = [
     ...chosen.map((g) => ({
       groupId: g as string | undefined,
-      label: groups.get(g) as string | undefined,
+      label: groups.get(g)!.label as string | undefined,
       entries: shown.filter((id) => memberships.get(id)?.[0] === g).map(entry),
     })),
     { groupId: undefined, label: undefined, entries: shown.filter((id) => !memberships.has(id)).map(entry) },

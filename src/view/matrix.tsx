@@ -80,7 +80,8 @@ import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.
 import { startPointerDrag } from './pointer-reorder.js';
 import { activeElementOf, messageOf } from './dom.js';
 import { describeOrder, describePlace } from '../core/reorder.js';
-import { axisGroups, makeInapplicableDeclarations, membersOfGroup, type Axis } from '../core/schema/groups.js';
+import { makeInapplicableDeclarations, type Axis } from '../core/schema/groups.js';
+import { pickableGroups } from '../core/analyses/scope.js';
 import { resolveAnchor } from '../core/schema/anchors.js';
 
 const anonymous = () => 'anonymous';
@@ -251,7 +252,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const groupLabel = new Map(analysis.groups.map((g) => [g.id, g.label]));
   const openHere = openThreadCounts(analysis);
   const rowWord = transposed ? words.criterion : words.alternative;
-  const plural = (axis: AxisLayout) => (axis.axis === 'alternatives' ? words.alternatives : words.criteria);
+  const plural = (axis: AxisLayout) => words[axis.axis];
   const hiddenAxis = [rows, columns].find((axis) => axis.entries.length === 0);
   // An axis with nothing shown leaves a table of headers and no cells; say why.
   const empty = hiddenAxis && `No ${plural(hiddenAxis)} are shown: every one is hidden in this view, or there are none.`;
@@ -294,7 +295,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   /** The group each axis's picker shows, until the reader picks another. */
   const [picked, setPicked] = useState<Partial<Record<Axis, string>>>({});
   /** The ids each axis holds alive: what a selection or a hide is counted, and made, over. */
-  const live = (axis: Axis) => new Set((axis === 'alternatives' ? analysis.alternatives : analysis.criteria).filter((x) => !x.tombstoned).map((x) => x.id));
+  const live = (axis: Axis) => new Set(analysis[axis].filter((x) => !x.tombstoned).map((x) => x.id));
   const [liveAlternatives, liveCriteria] = [live('alternatives'), live('criteria')];
   const count = (ids: readonly string[], among: Set<string>) => ids.filter((id) => among.has(id)).length;
   const selected = count(view.selection.alternatives, liveAlternatives) + count(view.selection.criteria, liveCriteria);
@@ -303,9 +304,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const act = (label: string, change: Arrangement, said: string) => (
     <button type="button" onClick={() => onArrange!(change, said)}>{label}</button>
   );
-  // The axes the reader can band, by their top-level groups: one nesting level is rendered (ADR-0008).
+  // The axes the reader can band, by the top-level groups it can pick (#342): one nesting level is rendered (ADR-0008).
   const groupable = (['alternatives', 'criteria'] as const)
-    .map((axis) => ({ axis, tops: analysis.groups.filter((g) => g.axis === axis && !g.tombstoned && g.parentId === undefined) }))
+    .map((axis) => ({ axis, tops: pickableGroups(analysis, axis, { topLevel: true }) }))
     .filter((x) => x.tops.length > 0);
   const at = grid.positionOf(view.session.focus);
   /** The omitted block the reader is on, for the details panel (#280): its two bands, by axis, with their members and reason. */
@@ -352,7 +353,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   // A layout effect, so it is registered before any destroy can come, however soon after mount.
   useLayoutEffect(() => () => endDrag.current?.(), []);
   const labelOf = (axis: Axis) => (id: string) =>
-    (axis === 'alternatives' ? analysis.alternatives : analysis.criteria).find((x) => x.id === id)?.label ?? id;
+    analysis[axis].find((x) => x.id === id)?.label ?? id;
 
   /** What a cell's tooltip says: the first justification this reader may see, then the confidence flag. */
   const tipText = (altId: string, critId: string) => {
@@ -673,7 +674,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
                   }
                 }}
               >
-                {`Arrange ${axis === 'alternatives' ? words.alternatives : words.criteria} to reveal structure`}
+                {`Arrange ${words[axis]} to reveal structure`}
               </button>
               )}
             </p>
@@ -683,11 +684,11 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
       {onArrange && groupable.length > 0 && (
         <div class="comparanda-grouping">
           {groupable.map(({ axis, tops }) => {
-            const name = axis === 'alternatives' ? words.alternatives : words.criteria;
+            const name = words[axis];
             const id = `${helpId}-g-${axis}`;
             const group = tops.find((g) => g.id === picked[axis]) ?? tops[0]!;
             // Its members by closure, as everywhere membership is read (a tombstoned entity is in none): the bridge from a group to a selection (ADR-0008).
-            const members = membersOfGroup(axisGroups(analysis, axis), group.id);
+            const { members } = group;
             const hidden = axis === 'alternatives' ? 'hiddenAlternatives' : 'hiddenCriteria';
             return (
               <p key={axis}>
