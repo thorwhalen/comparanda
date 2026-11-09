@@ -179,6 +179,33 @@ export function membersOfGroup(
 }
 
 /**
+ * A group a reader can pick, with its live members, sub-groups' included, in
+ * document order: what picking it scopes to, bands, selects or hides. The
+ * matrix's group controls and layout offer these (#342), and the scatter's
+ * scope picker builds on them (`scopeGroups`).
+ */
+export type PickableGroup = Group & { members: string[] };
+
+/**
+ * The groups a reader can pick on an axis: every live one, in document order,
+ * with a live member. A group with none is not offered: scoping to it would
+ * draw nothing, banding by it would draw no band, and selecting or hiding it
+ * would change nothing. `topLevel` keeps only the groups with no live parent on
+ * the axis (a tombstoned parent groups nothing, so its sub-groups stand at the
+ * top): the matrix renders one nesting level (ADR-0008).
+ */
+export function pickableGroups(a: Analysis, axis: Axis = 'alternatives', { topLevel = false } = {}): PickableGroup[] {
+  const ag = axisGroups(a, axis);
+  const live = a.groups.filter((g) => g.axis === axis && !g.tombstoned);
+  const liveIds = new Set(live.map((g) => g.id));
+  return live.flatMap((g) => {
+    if (topLevel && g.parentId !== undefined && liveIds.has(g.parentId)) return [];
+    const members = membersOfGroup(ag, g.id);
+    return members.length ? [{ ...g, members }] : [];
+  });
+}
+
+/**
  * The filter that selects a group's rows from a store, by their stored `groupIds`.
  *
  * The library's `scopeFilter`, with the namespacing stripped: `value` is the
