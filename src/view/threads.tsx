@@ -61,11 +61,18 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   const choices = first > 0 ? [offered[first]!, ...offered.filter((_, i) => i !== first)] : offered;
   const allowed = affordances.comment(commentTarget(choices[0]!.anchor), 'start');
   const names = attributions(analysis.authors, { vouched });
+  // The name is asked for only when some form drawn here is one this reader may send (#320): a field for a name nothing can use is a false promise.
+  const maySign = allowed.enabled || (showResolved ? all : open).some(({ thread: t }) => {
+    const target = commentTarget(t.anchor);
+    const on = { threadId: t.id };
+    return affordances.comment(target, 'reply', on).enabled || affordances.comment(target, t.resolved ? 'reopen' : 'resolve', on).enabled
+      || t.comments.some((c) => affordances.comment(target, 'edit', { ...on, commentId: c.id }).enabled);
+  });
   return (
     <section class="comparanda-threads" aria-labelledby={`${idBase}-threads`} data-detail="threads">
       <h3 id={`${idBase}-threads`}>{`Discussion (${open.length} open${resolved.length ? `, ${resolved.length} resolved` : ''})`}</h3>
       {/* Before every form it names the author of: the first write here is one of them. */}
-      {writes?.name && <NameForm name={writes.name} idBase={idBase} />}
+      {writes?.name && maySign && <NameForm name={writes.name} idBase={idBase} />}
       {open.length === 0 && <p class="comparanda-panel-hint">No open threads here.</p>}
       {open.length > 0 && (
         <ol class="comparanda-thread-list">
