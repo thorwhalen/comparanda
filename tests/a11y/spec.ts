@@ -26,6 +26,13 @@ export interface CheckSpec {
 /** The analysis panels, as a surface a check sweeps. */
 export const PANELS_SURFACE = 'the analysis panels';
 
+/**
+ * The rank-flow's lines (#98): where movement and missingness are told by line
+ * style, end labels and a glyph instead of a hue, so what forced colors leaves
+ * is what must still say them.
+ */
+export const RANK_FLOW_SURFACE = 'the rank-flow lines';
+
 /** The automated set. Titles are the research section's, shortened. */
 export const AUTOMATED = [
   { id: 'A1', runtime: 'standalone', title: 'No axe-core violations on the standalone bundle, light and dark' },
@@ -42,7 +49,7 @@ export const AUTOMATED = [
   { id: 'A12', runtime: 'browser', title: 'A tooltip holds no focusable element' },
   { id: 'A13', runtime: 'browser', over: [PANELS_SURFACE], title: 'Composited contrast per encoding per theme' },
   { id: 'A14', runtime: 'browser', title: 'Palette steps stay apart under protan, deutan and tritan simulation' },
-  { id: 'A15', runtime: 'browser', over: [PANELS_SURFACE], title: 'Forced colors: numeral, glyph and border survive' },
+  { id: 'A15', runtime: 'browser', over: [PANELS_SURFACE, RANK_FLOW_SURFACE], title: 'Forced colors: numeral, glyph and border survive' },
   { id: 'A16', runtime: 'node', alsoIn: ['browser'], title: 'No background-image carries meaning' },
   { id: 'A17', runtime: 'node', alsoIn: ['browser'], title: 'No aria-grabbed, no aria-dropeffect, no title= on a cell' },
   { id: 'A18', runtime: 'browser', over: [PANELS_SURFACE], title: 'Print: numeral and glyph present with backgrounds suppressed' },

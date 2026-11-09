@@ -74,6 +74,8 @@ describe('every example fixture builds within the budget', () => {
       // No reservation is held (ADR-0008 amendment, #190): the page is charged for what it carries.
       expect(budget.reserved).toEqual([]);
       expect(budget.charged).toBe(budget.shellBytes);
+      // The page registers no analysis panel, so the rank-flow (#98), gated behind the weights opt-in, is not in it at all.
+      expect(built.html).not.toMatch(/rank-flow|A rank-flow ranks at most/);
     });
   }
 });

@@ -11,7 +11,10 @@
  *
  * A3, A13, A15 and A18 have a second pass over the shipped analysis panels,
  * opened (#292), scoped to `details.comparanda-analysis` so the panels' tables
- * are not swept into the grid's passes, and with a fixture of its own.
+ * are not swept into the grid's passes, and with a fixture of its own. The
+ * panels are opened over analyses that declare weights, so the rank-flow, which
+ * is gated behind them (#98), is drawn and swept too; A15 has a third pass over
+ * the rank-flow's lines, where movement and missingness are told by shape.
  */
 import { userEvent } from '@vitest/browser/context';
 
@@ -27,9 +30,11 @@ import { vsupGrid } from '../fixtures/vsup-grid.js';
 import { treeFailures } from '../support/cvd-browser.js';
 import { everyCode, heard } from '../support/every-code.js';
 import { obscured } from '../support/sticky-geometry.js';
+import { reversal, weighted } from '../support/weighted.js';
+import { PLACE_CHANGES } from '../../src/core/analyses/rank-flow.js';
 import { FIXTURES, ownSetTimeout, PANELS, THEMES, tick, type BrowserEnv } from './browser-env.js';
 import type { Check } from './gate.js';
-import { PANELS_SURFACE } from './spec.js';
+import { PANELS_SURFACE, RANK_FLOW_SURFACE } from './spec.js';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => ownSetTimeout(resolve, ms));
 const languages = FIXTURES['languages']!;
@@ -835,8 +840,12 @@ const a18: Check<BrowserEnv> = {
 
 // ---- A3, A13, A15, A18 over the analysis panels (#292) ------------------------------------------
 
-/** What the panels are opened over: two raters (agreement, a dot on every level used), and every reason code in a lane of its own. */
-const PANEL_CASES: readonly (readonly [string, Analysis])[] = [['relocation', relocation], ['every code', EVERY_CODE]];
+/**
+ * What the panels are opened over: two raters (agreement, a dot on every level used), and every reason code in a lane
+ * of its own -- each with weights declared, so the rank-flow is drawn: ranked rows over the one, rows the coverage gate
+ * leaves unscored over the other.
+ */
+const PANEL_CASES: readonly (readonly [string, Analysis])[] = [['relocation', weighted(relocation)], ['every code', weighted(EVERY_CODE)]];
 
 /** Where a panel's cell is: its plot (for a dot plot), its row, its column. */
 const cellAt = (cell: HTMLTableCellElement) =>
@@ -870,7 +879,8 @@ const a3panels: Check<BrowserEnv> = {
     .filter((cell) => heard(cell) === '').map((cell) => `${where}: the ${cell.tagName.toLowerCase()} at ${cellAt(cell)} is announced as blank`)),
   broken: {
     what: 'a dot-plot cell with dots in it is emptied of everything, hidden text included',
-    sabotage: (env) => env.afterOpen((panels) => panels.map((p) => p.querySelector('td[data-dots]')).find(Boolean)!.replaceChildren()),
+    // A mount with no dot plot (the rank-flow pass's all-ratio case, #98) has nothing for it to break.
+    sabotage: (env) => env.afterOpen((panels) => panels.map((p) => p.querySelector('td[data-dots]')).find(Boolean)?.replaceChildren()),
   },
 };
 
@@ -908,6 +918,68 @@ const a15panels: Check<BrowserEnv> = {
     return panelPass(env, (panel, where) => marksSurvive(panel, `forced colors / ${where}`));
   },
   broken: { what: 'the panels\' drawings lose their stroke under forced colors only', sabotage: unstrokePanelMarksIn('(forced-colors: active)'), mustSay: /lost its/ },
+};
+
+/**
+ * What the rank-flow must still say once every hue is gone (#98): that a line changes place (its dash, never its
+ * slope alone), whose line it is (a label at both ends), and which rows are not ranked (a cross per unscored row).
+ */
+function rankFlowFaults(panel: Element, at: string, { mustMove }: { mustMove: boolean }): string[] {
+  const found: string[] = [];
+  const lines = Array.from(panel.querySelectorAll<SVGPathElement>('path[data-flow]'));
+  const moves = (l: SVGPathElement) => (PLACE_CHANGES as readonly string[]).includes(l.dataset['move']!);
+  if (mustMove && !lines.some(moves)) found.push(`${at}: no line changes place in this case, so nothing here shows how movement is drawn`);
+  for (const l of lines) {
+    const dashed = getComputedStyle(l).strokeDasharray !== 'none';
+    if (moves(l) && !dashed) found.push(`${at}: the line of ${l.dataset['flow']} changes place and is drawn solid, so nothing but its slope says it moved`);
+    if (!moves(l) && dashed) found.push(`${at}: the line of ${l.dataset['flow']} keeps its place (${l.dataset['move']}) and is drawn dashed`);
+  }
+  const columns = Array.from(panel.querySelectorAll('[data-column]'));
+  for (const column of [columns[0], columns[columns.length - 1]]) {
+    for (const rank of Array.from(column?.querySelectorAll('[data-rank]') ?? [])) {
+      const label = rank.querySelector('[data-end-label]');
+      if (!label || getComputedStyle(label).display === 'none' || label.textContent!.trim() === '') {
+        found.push(`${at}: rank ${rank.getAttribute('data-rank')} in "${column!.getAttribute('data-column')}" is not named at its end`);
+      }
+    }
+  }
+  // One cross per row the table says is not ranked, column by column.
+  columns.forEach((column, i) => {
+    const said = Array.from(panel.querySelectorAll('tr[data-row]')).filter((tr) => tr.children[i + 1]?.textContent!.startsWith('not ranked')).length;
+    const drawn = column.querySelectorAll('[data-unranked] path').length;
+    if (drawn !== said) found.push(`${at}: "${column.getAttribute('data-column')}" draws ${drawn} not-ranked marks for the ${said} rows its table says are not ranked`);
+  });
+  return [...found, ...marksSurvive(panel, at)];
+}
+
+/** The case whose weighting change makes two rows pass each other: where a dashed line must be. */
+const REVERSAL_CASE = 'a pass';
+
+const a15rankFlow: Check<BrowserEnv> = {
+  id: 'A15', over: RANK_FLOW_SURFACE,
+  async run(env) {
+    await env.media({ forcedColors: 'active' });
+    if (!matchMedia('(forced-colors: active)').matches) return ['this browser does not honour forcedColors emulation, so the check cannot see what a forced-colors reader sees'];
+    const found: string[] = [];
+    // The panel cases for separability lost (relocation) and rows left unscored (every code); one where two rows pass each other, for the dash.
+    for (const [name, analysis] of [...PANEL_CASES, [REVERSAL_CASE, reversal()] as const]) {
+      const { panels } = await env.mountPanels({ analysis, measure: 'score' });
+      const panel = panels.find((p) => p.dataset['analysis'] === 'rank-flow');
+      const at = `forced colors / ${name} / the rank-flow`;
+      if (!panel?.querySelector('svg')) found.push(`${at}: opened, it drew nothing`);
+      else found.push(...rankFlowFaults(panel, at, { mustMove: name === REVERSAL_CASE }));
+    }
+    return cap(found);
+  },
+  broken: {
+    what: 'the rank-flow\'s moved lines lose their dash under forced colors only',
+    sabotage: (env) => env.afterMount((el) => {
+      const style = document.createElement('style');
+      style.textContent = '@media (forced-colors: active) { .comparanda-analysis [data-flow] { stroke-dasharray: none !important; } }';
+      el.append(style);
+    }),
+    mustSay: /nothing but its slope says it moved/,
+  },
 };
 
 const a18panels: Check<BrowserEnv> = {
@@ -1092,5 +1164,5 @@ const a20: Check<BrowserEnv> = {
 
 /** In number order; a number's grid pass first, then its pass over the panels. */
 export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [
-  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a16twin, a17twin, a18, a18panels, a20,
+  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20,
 ];

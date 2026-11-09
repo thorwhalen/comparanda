@@ -53,6 +53,9 @@ export const FIVE_PERCENT = 0.05;
 /** Floating-point slack, in weight units and in score units. */
 const EPS = 1e-9;
 
+/** How far either side of a candidate boundary the order is probed, as a share of the larger of the weights and 1. */
+const PROBE = 1e-6;
+
 export interface SensitivityOptions extends WeightedSumOptions {
   /**
    * Treat a movement smaller than this share of the total weight as fragile.
@@ -420,7 +423,7 @@ export function sensitivity(a: Analysis, opts: SensitivityOptions): SensitivityR
     let up: OrderChange | undefined;
     let down: OrderChange | undefined;
     for (const t of candidates) {
-      const step = Math.max(Math.abs(t), weight, 1) * 1e-6;
+      const step = Math.max(Math.abs(t), weight, 1) * PROBE;
       const below = snapshotAt(Math.max(t - step, 0));
       const above = snapshotAt(t + step);
       const here = snapshotAt(t);
@@ -523,6 +526,37 @@ export function sensitivity(a: Analysis, opts: SensitivityOptions): SensitivityR
     warnings,
     widenedByDisclosure: base.widenedByDisclosure,
   };
+}
+
+/** A changed weighting: one criterion's substitution weight, set to `weight`. */
+export interface WeightChange { criterionId: string; weight: number }
+
+/**
+ * The changed weighting a rank-flow opens on (#98): just past the smallest
+ * movement of one weight that this analysis found changes the order -- of
+ * `criterionId`'s weight when one is named, of any weight otherwise -- so the
+ * chart shows the first change there is (`opening: 'first-change'`). Where that
+ * weight's movement changes nothing, or changes it only by taking every weight
+ * to zero (which leaves nothing to rank), it is raised instead by the share this
+ * analysis calls fragile, ADR-0015's 5% of the total weight (`'fragile-share'`).
+ * Nothing when the weighted sum refused, or `criterionId` is not in the sum.
+ *
+ * `past` is how far past the change, as a share of the larger of the weights and
+ * 1: by default the probe `sensitivity` itself checks the order with on either
+ * side of a boundary, so "just past" means the same thing in both.
+ */
+export function firstOrderChange(
+  s: SensitivityResult, { criterionId, past = PROBE }: { criterionId?: string; past?: number } = {},
+): (WeightChange & { opening: 'first-change' | 'fragile-share' }) | undefined {
+  const { smallest, criteria, fragileBelow, totalWeight } = s.weightPerturbation;
+  const c = criteria.find((x) => x.criterionId === (criterionId ?? smallest?.criterionId)) ?? (criterionId === undefined ? criteria[0] : undefined);
+  if (!c) return undefined;
+  const near = c.nearest;
+  const raised = { criterionId: c.criterionId, weight: c.weight + fragileBelow * totalWeight, opening: 'fragile-share' as const };
+  if (!near) return raised;
+  const step = Math.max(Math.abs(near.at), c.weight, 1) * past;
+  const weight = near.direction === 'up' ? near.at + step : Math.max(near.at - step, 0);
+  return totalWeight - c.weight + weight > 0 ? { criterionId: c.criterionId, weight, opening: 'first-change' } : raised;
 }
 
 function round(x: number): string {
