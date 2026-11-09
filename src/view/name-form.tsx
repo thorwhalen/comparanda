@@ -4,6 +4,8 @@
  * panel's discussion and the suggestions panel (#274). One component, so the
  * field reads, refuses and is described the same way in both.
  */
+import { useEffect } from 'preact/hooks';
+
 import { refusedField, useSend } from './send.js';
 
 /**
@@ -17,9 +19,19 @@ export type TakeName = (typed: string) => Promise<void>;
  * It says where the name is kept and that others see it as unverified,
  * because both are true and neither is obvious.
  */
-export function NameForm({ name, idBase }: { name: TakeName; idBase: string }) {
+export function NameForm({ name, idBase, onHold }: {
+  name: TakeName; idBase: string;
+  /**
+   * Told `true` once the reader has typed something, and `false` when the form leaves the tree (the name was taken):
+   * a host panel that would otherwise unmount, because nothing else is left in it, stays drawn while it is held (#321).
+   */
+  onHold?: (held: boolean) => void;
+}) {
   // Once the name is taken the form leaves the tree, and the matrix puts focus on its region's heading (#275).
   const { draft, setDraft, error, busy, submit } = useSend(name, 'type a name first.');
+  const typed = draft !== '';
+  useEffect(() => { if (typed) onHold?.(true); }, [typed]);
+  useEffect(() => () => onHold?.(false), []);
   return (
     <form class="comparanda-compose" onSubmit={submit} data-detail="name">
       <label for={`${idBase}-name`}>Your name</label>
