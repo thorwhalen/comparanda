@@ -65,6 +65,8 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
     if (!may.enabled) return may.reason || 'not possible here.';
     return writes ? undefined : NO_WRITES;
   };
+  // The name is asked for only when some decision here is one this reader may make (#320): the rule the buttons follow.
+  const maySign = open.some((o) => (['accept', 'decline'] as const).some((d) => refusal(o.id, d) === undefined));
   const stage = (choices: SuggestionChoice[], sentence: string) => {
     setStaged([...live.filter((c) => !choices.some((x) => x.suggestionId === c.suggestionId)), ...choices]);
     setSaid(sentence);
@@ -114,7 +116,7 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
       <h2 id={id} tabIndex={-1} data-panel-heading="">{`Open suggestions (${open.length})`}</h2>
       <p class="comparanda-panel-hint">Accepting writes the proposed value into its cell as its proposer&apos;s; declining records only the decision. Decisions are staged here, each undoable, and written together.</p>
       {/* Before every decision it names the author of. */}
-      {writes?.name && <NameForm name={writes.name} idBase={id} />}
+      {writes?.name && maySign && <NameForm name={writes.name} idBase={id} />}
       <ol class="comparanda-thread-list">
         {open.map((o) => {
           const choice = live.find((c) => c.suggestionId === o.id);

@@ -61,11 +61,17 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   const choices = first > 0 ? [offered[first]!, ...offered.filter((_, i) => i !== first)] : offered;
   const allowed = affordances.comment(commentTarget(choices[0]!.anchor), 'start');
   const names = attributions(analysis.authors, { vouched });
+  // The name is asked for only when some form drawn here is one this reader may send (#320): a field for a name nothing can use is a false promise.
+  // Over every thread, resolved ones too: expanding them must not make the field appear or vanish under a reader who is typing in it.
+  const maySign = allowed.enabled || all.some(({ thread }) => {
+    const { reply, toggle, edits } = threadActs(thread, affordances);
+    return reply.enabled || toggle.enabled || edits.some((e) => e.enabled);
+  });
   return (
     <section class="comparanda-threads" aria-labelledby={`${idBase}-threads`} data-detail="threads">
       <h3 id={`${idBase}-threads`}>{`Discussion (${open.length} open${resolved.length ? `, ${resolved.length} resolved` : ''})`}</h3>
       {/* Before every form it names the author of: the first write here is one of them. */}
-      {writes?.name && <NameForm name={writes.name} idBase={idBase} />}
+      {writes?.name && maySign && <NameForm name={writes.name} idBase={idBase} />}
       {open.length === 0 && <p class="comparanda-panel-hint">No open threads here.</p>}
       {open.length > 0 && (
         <ol class="comparanda-thread-list">
@@ -103,16 +109,25 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
   );
 }
 
+/** What the host lets this reader do to one thread: each act is its own question (#194, #206). The one place they are asked, for the thread and for the name field's need. */
+function threadActs(thread: Thread, affordances: Affordances) {
+  const target = commentTarget(thread.anchor);
+  const on = { threadId: thread.id };
+  return {
+    target,
+    reply: affordances.comment(target, 'reply', on),
+    toggle: affordances.comment(target, thread.resolved ? 'reopen' : 'resolve', on),
+    edits: thread.comments.map((c) => affordances.comment(target, 'edit', { ...on, commentId: c.id })),
+  };
+}
+
 function ThreadItem({ at, analysis, names, writes, affordances, idBase }: {
   at: ThreadAt; analysis: Analysis; names: Map<string, string>; writes?: ThreadWrites | undefined; affordances: Affordances; idBase: string;
 }) {
   const { thread, relation } = at;
   // Asked about the thread's own anchor, not the reader's position: a group's thread listed at a member is the group's.
-  const target = commentTarget(thread.anchor);
   // Each act is its own question to the host (#194): a reader may answer where only the owner resolves.
-  // Asked about this thread (#206): the document half refuses what its state rules out.
-  const mayReply = affordances.comment(target, 'reply', { threadId: thread.id });
-  const mayToggle = affordances.comment(target, thread.resolved ? 'reopen' : 'resolve', { threadId: thread.id });
+  const { target, reply: mayReply, toggle: mayToggle } = threadActs(thread, affordances);
   const [error, setError] = useFailure();
   // The reply form's ids from Preact, not from the thread's id: a thread id is a free string (spaces, "name", "new") and would collide or split.
   const replyId = useId();
