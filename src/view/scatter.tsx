@@ -16,6 +16,13 @@
  * No line is drawn through the front: between two non-dominated alternatives
  * there is nothing, and a line would draw a continuum the data does not have.
  *
+ * The reader picks what is compared, and the panel says what it picked: a
+ * group of alternatives as the scope (ADR-0019's natural scope; only groups
+ * with an alternative the matrix shows are offered), and the practical
+ * tolerance (a checkbox; unavailable, and saying why, when no criterion
+ * declares an indifference threshold). The basis sentence under the caption
+ * names both. Every choice is the panel's own, for this session.
+ *
  * An `AnalysisPanel` the composition root registers
  * (`mountMatrix(el, props, { panels: [ScatterPanel] })`), like `AgreementPanel`:
  * the matrix never imports it, so the standalone page does not pay for it.
@@ -23,9 +30,13 @@
  * presentation attributes in `currentColor`, so it adds nothing to the
  * matrix's stylesheet.
  */
-import { useId, useMemo, useState } from 'preact/hooks';
+import { useEffect, useId, useMemo, useState } from 'preact/hooks';
 
-import { scatterCriteria, scatterModel, type DominanceTier, type ScatterAxis, type ScatterPoint, type UsableScatterModel } from '../core/analyses/scatter.js';
+import {
+  scatterCriteria, scatterModel, type DominanceTier, type ScatterAxis, type ScatterModel, type ScatterPoint, type ScatterTolerance, type UsableScatterModel,
+} from '../core/analyses/scatter.js';
+import { scopeGroups, type ScopeGroup } from '../core/analyses/scope.js';
+import type { Analysis } from '../core/schema/analysis.js';
 import { aliasesOf } from '../core/schema/structure.js';
 import { capitalise } from './words.js';
 import type { AnalysisPanelProps } from './agreement.js';
@@ -104,7 +115,23 @@ function ScatterBody({ analysis, measure, shown }: Pick<AnalysisPanelProps, 'ana
     const nx = keepX ?? usable.find((c) => c !== keepY) ?? '';
     return [nx, keepY ?? usable.find((c) => c !== nx) ?? ''];
   }, [chosen, usable]);
-  const model = useMemo(() => (usable.length < 2 ? undefined : scatterModel(analysis, { measure, criteria: [xId, yId] })), [analysis, measure, xId, yId, usable.length]);
+  // The scope offered: the groups with an alternative the matrix shows (#324). A choice the arrangement no longer offers falls back to every alternative, and says so.
+  const altOrder = shown?.alternatives.join('\u0000');
+  const groups = useMemo(() => scopeGroups(analysis, { shownAlternatives: shown?.alternatives }), [analysis, altOrder]);
+  const [groupChosen, setGroupChosen] = useState<string | undefined>(undefined);
+  const groupId = groups.some((g) => g.id === groupChosen) ? groupChosen : undefined;
+  // A group the arrangement or the document withdrew is let go, not held: showing its members again does not bring the scope back unasked.
+  const [withdrawn, setWithdrawn] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (groupChosen === undefined || groupId !== undefined) return;
+    setWithdrawn(withdrawnWords(analysis, groupChosen));
+    setGroupChosen(undefined);
+  }, [groupChosen, groupId]);
+  const [tolerant, setTolerant] = useState(false);
+  const model = useMemo(
+    () => (usable.length < 2 ? undefined : scatterModel(analysis, { measure, criteria: [xId, yId], groupId, usePracticalTolerance: tolerant })),
+    [analysis, measure, xId, yId, usable.length, groupId, tolerant],
+  );
   if (!model) {
     const short = `A two-criterion scatter needs two criteria that admit a dominance comparison; this analysis has ${comparable.length}`;
     return <p role="note">{comparable.length >= 2 ? `${short}, and the matrix shows ${usable.length} of them: show another to compare.` : `${short}.`}</p>;
@@ -133,9 +160,104 @@ function ScatterBody({ analysis, measure, shown }: Pick<AnalysisPanelProps, 'ana
         {picker(0, xId)}
         {picker(1, yId)}
       </fieldset>
-      <HiddenNote {...hiddenOf(analysis, shown)} words={aliasesOf(analysis)} />
+      <fieldset>
+        <legend>What is compared</legend>
+        <ScopePicker
+          id={`${id}-scope`} analysis={analysis} groups={groups} value={groupId}
+          onPick={(picked) => { setGroupChosen(picked); setWithdrawn(undefined); }}
+        />
+        {/* A withdrawn choice is said here, in a region present before anything is said into it, so the first one is heard. */}
+        <p class="comparanda-panel-hint" role="status" data-scope-dropped="">{withdrawn ?? ''}</p>
+        {/* Only a drawn scatter has criteria to declare a threshold; a refused one says why below, and there is nothing to tolerate. */}
+        {model.usable && <TolerancePicker id={`${id}-tolerance`} tolerance={model.tolerance} on={tolerant} onToggle={setTolerant} />}
+      </fieldset>
+      {/* In a group's scope, what is not listed for being out of it is not "hidden": only its own hidden members are counted. */}
+      <HiddenNote {...hiddenOf({ alternatives: inScopeOf(analysis, model), criteria: analysis.criteria }, shown)} words={aliasesOf(analysis)} />
       {model.usable ? <Plot model={model} id={id} rowWord={capitalise(aliasesOf(analysis).alternative)} shown={shown} /> : <p role="note">{model.reason}</p>}
     </>
+  );
+}
+
+/** The alternatives the model compared: its points, when it has any; else every one. */
+function inScopeOf(analysis: Analysis, model: ScatterModel): Analysis['alternatives'] {
+  if (!model.usable) return analysis.alternatives;
+  const ids = new Set(model.points.map((p) => p.alternativeId));
+  return analysis.alternatives.filter((x) => ids.has(x.id));
+}
+
+/** Why a chosen group is no longer offered, in words: gone from the document, left with no live members, or every member hidden. */
+function withdrawnWords(analysis: Analysis, groupId: string): string {
+  const words = aliasesOf(analysis);
+  const group = analysis.groups.find((g) => g.id === groupId);
+  const every = `so every ${words.alternative} is compared`;
+  if (!group || group.tombstoned) return `The group "${group?.label ?? groupId}" is no longer in this analysis, ${every}.`;
+  const live = scopeGroups(analysis).some((g) => g.id === groupId);
+  return live
+    ? `The group "${group.label}" is no longer offered: the matrix shows none of its ${words.alternatives}, ${every}.`
+    : `The group "${group.label}" no longer has any ${words.alternatives}, ${every}.`;
+}
+
+/**
+ * The scope: every alternative, or one group's. A native select, labelled, with
+ * the members each option holds; where no group can be offered, a sentence says
+ * why in its place.
+ */
+function ScopePicker({ id, analysis, groups, value, onPick }: {
+  id: string; analysis: Analysis; groups: readonly ScopeGroup[]; value: string | undefined;
+  onPick: (groupId: string | undefined) => void;
+}) {
+  const words = aliasesOf(analysis);
+  if (groups.length === 0) {
+    const declared = analysis.groups.some((g) => g.axis === 'alternatives' && !g.tombstoned);
+    return (
+      <>
+        <p class="comparanda-panel-hint" data-scope-unavailable="">
+          {`Every ${words.alternative} is compared: ${declared ? `none of the groups of ${words.alternatives} has one the matrix shows` : `this analysis declares no groups of ${words.alternatives}`}, so there is no group to compare within.`}
+        </p>
+      </>
+    );
+  }
+  const every = analysis.alternatives.filter((x) => !x.tombstoned).length;
+  return (
+    <>
+      <label for={id}>Compare</label>{' '}
+      <select
+        id={id} value={value ?? ''} aria-describedby={`${id}-hint`}
+        onChange={(e) => { const picked = (e.currentTarget as HTMLSelectElement).value; onPick(picked === '' ? undefined : picked); }}
+      >
+        <option value="">{`Every ${words.alternative} (${every})`}</option>
+        {groups.map((g) => <option key={g.id} value={g.id}>{`${g.label}${g.parentLabel === undefined ? '' : `, in ${g.parentLabel}`} (${g.members.length})`}</option>)}
+      </select>
+      <p class="comparanda-panel-hint" id={`${id}-hint`}>
+        {`Within one group of ${words.alternatives}, a criterion declared not to apply to it applies to none of them alike.`}
+      </p>
+    </>
+  );
+}
+
+/**
+ * The practical tolerance, a labelled checkbox. Where it would change nothing it
+ * stays focusable, marked unavailable and saying why, rather than a silent no-op;
+ * it can still be turned off, should a document change leave it on.
+ */
+function TolerancePicker({ id, tolerance, on, onToggle }: {
+  id: string; tolerance: ScatterTolerance; on: boolean; onToggle: (on: boolean) => void;
+}) {
+  const { said, effect } = tolerance;
+  const refused = effect === 'none' && !on;
+  return (
+    <p>
+      <label>
+        <input
+          type="checkbox" id={id} checked={on} aria-describedby={`${id}-hint`} aria-disabled={refused ? 'true' : undefined}
+          // A refused toggle is undone before it lands, by keyboard or pointer alike.
+          onClick={refused ? (e) => e.preventDefault() : undefined}
+          onChange={(e) => { if (!refused) onToggle((e.currentTarget as HTMLInputElement).checked); }}
+        />
+        {' Use the practical tolerance'}
+      </label>{' '}
+      <span class="comparanda-panel-hint" id={`${id}-hint`} data-tolerance-hint="">{said}</span>
+    </p>
   );
 }
 
@@ -159,6 +281,8 @@ function Plot({ model, id, rowWord, shown }: { model: UsableScatterModel; id: st
         <strong>{capitalise(caption)}</strong>
         {`: ${front.length > 0 ? front.join(', ') : 'none'}. This is not the frontier across every criterion; the outer mark says where each one stands there. Measure: ${measure}.`}
       </figcaption>
+      {/* The scope and tolerance both comparisons used, under the caption, so a reading of the front carries them (ADR-0019). */}
+      <p class="comparanda-panel-hint" data-basis="">{capitalise(model.basis)}</p>
       <svg
         viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" style={{ maxWidth: '100%', height: 'auto' }}
         // The ink the marks are drawn in, declared on the drawing: left to the default it is black, whatever the theme (#292).

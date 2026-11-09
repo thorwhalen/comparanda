@@ -34,7 +34,7 @@ import { isWidenedByDisclosure } from '../schema/values.js';
 import { makeInapplicability } from '../schema/groups.js';
 import { alternativeScope } from './scope.js';
 import { aliasesOf, measurementFor } from '../schema/structure.js';
-import { admitsDominance, isOrdered, type Measurement } from '../schema/measurement.js';
+import { admitsDominance, indifferenceOf, isOrdered, type Measurement } from '../schema/measurement.js';
 import type { AnalysisResult } from './registry.js';
 
 /** What every result of this analysis rests on, carried with it (#87, ADR-0015). */
@@ -267,7 +267,7 @@ function prepare(a: Analysis, opts: DominanceOptions): Prepared {
 
   const tolerance = (cid: string): number => {
     if (!opts.usePracticalTolerance) return 0;
-    return measurements.get(cid)?.thresholds?.indifference ?? 0;
+    return indifferenceOf(measurements.get(cid));
   };
 
   return { altIds, groupLabel, basis, excluded, measurements, rows, tolerance };

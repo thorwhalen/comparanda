@@ -10,6 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { Analysis } from '../src/core/schema/analysis.js';
 import { findNonDiscriminatingCriteria } from '../src/core/analyses/non-discriminating.js';
 import { pughTally } from '../src/core/analyses/pugh.js';
+import { dominance } from '../src/core/analyses/dominance.js';
+import { alternativeStanding } from '../src/core/detail.js';
+import { declaredIndifference, indifferenceOf } from '../src/core/schema/measurement.js';
 import { projectForReader } from '../src/core/schema/disclosure.js';
 
 const examples = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
@@ -225,5 +228,24 @@ describe('dominance, Pugh and completeness read a criterion-scoped code the same
     expect(completeness(a, { measure: 'score' }).structural).toBe(1);
     const c1 = pughTally(a, { measure: 'score', datum: 'd' }).rows[0]!.criteria.find((c) => c.criterionId === 'c1')!;
     expect(c1.standing).toBe('not-comparable');
+  });
+});
+
+describe('the indifference threshold is one rule, wherever it is read (#286)', () => {
+  it('reads zero and a negative threshold as none: exact comparison, never equal values made to differ', () => {
+    for (const q of [0, -1]) expect([declaredIndifference({ thresholds: { indifference: q } }), indifferenceOf({ thresholds: { indifference: q } })]).toEqual([undefined, 0]);
+    expect([declaredIndifference({ thresholds: { indifference: 1 } }), declaredIndifference({}), indifferenceOf(undefined)]).toEqual([1, undefined, 0]);
+  });
+
+  it('gives Pugh, the screen, the detail panel\'s standing and dominance the same answer for a negative threshold as for none', () => {
+    const negative = doc([{ ...ORD, thresholds: { indifference: -1 } }, ORD], { d: [3, 3], x: [3, 4] });
+    // Pugh: equal values are the same (a negative q used to call an equal value better: 3 > 3 + q).
+    expect(pughTally(negative, { measure: 'score', datum: 'd' }).rows[0]!.criteria[0]!.standing).toBe('same');
+    // The screen: two equal values do no work, at tolerance 0 (a negative q used to call them discriminating).
+    expect(findNonDiscriminatingCriteria(negative, { measure: 'score' }).criteria[0]).toMatchObject({ status: 'non-discriminating', tolerance: 0 });
+    // The detail panel: equal is neither better nor worse (a negative q used to count it as better).
+    expect(alternativeStanding(negative, 'x', 'score').standings[0]).toMatchObject({ better: 0, worse: 0, compared: 1 });
+    // Dominance under the practical tolerance: x beats d on c1 and ties on c0, as with no threshold.
+    expect(dominance(negative, { measure: 'score', usePracticalTolerance: true }).dominated).toEqual(['d']);
   });
 });

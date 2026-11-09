@@ -29,8 +29,8 @@
  */
 import type { Analysis } from '../schema/analysis.js';
 import { measurementFor } from '../schema/structure.js';
-import { isOrdered, type Measurement } from '../schema/measurement.js';
-import { indifferenceOf, makeReadings, widenedCells, type Reading } from './readings.js';
+import { indifferenceOf, isOrdered, type Measurement } from '../schema/measurement.js';
+import { makeReadings, widenedCells, type Reading } from './readings.js';
 import type { AnalysisResult } from './registry.js';
 import { alternativeScope } from './scope.js';
 

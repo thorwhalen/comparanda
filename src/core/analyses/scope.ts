@@ -28,3 +28,38 @@ export function alternativeScope(a: Analysis, opts: AlternativeScopeOptions): st
   // Live members only: a tombstoned alternative is in no group (axisGroups, #284).
   return membersOfGroup(ag, opts.groupId);
 }
+
+/** An alternatives group a comparison can be scoped to, as a picker offers it. */
+export interface ScopeGroup {
+  id: string;
+  label: string;
+  /** The parent group's label, for a sub-group: two groups may share a label under different parents. */
+  parentLabel: string | undefined;
+  /** Its live members, sub-groups' included, in document order: the scope `groupId` resolves to. */
+  members: string[];
+  /** How many of them the reader shows; every member, without an arrangement. */
+  shown: number;
+}
+
+/**
+ * The alternatives groups a comparison can be scoped to: every live one, in
+ * document order, that has a member the reader shows (`shownAlternatives`, the
+ * matrix's arrangement; absent, every live member counts as shown). A group
+ * whose members are all hidden, or that has none, is not offered: scoping to it
+ * would draw nothing.
+ */
+export function scopeGroups(a: Analysis, { shownAlternatives }: { shownAlternatives?: readonly string[] | undefined } = {}): ScopeGroup[] {
+  const ag = axisGroups(a, 'alternatives');
+  const live = a.groups.filter((g) => g.axis === 'alternatives' && !g.tombstoned);
+  const labelOf = new Map(live.map((g) => [g.id, g.label]));
+  const showing = shownAlternatives === undefined ? undefined : new Set(shownAlternatives);
+  return live
+    .map((g): ScopeGroup => {
+      const members = membersOfGroup(ag, g.id);
+      return {
+        id: g.id, label: g.label, parentLabel: g.parentId === undefined ? undefined : labelOf.get(g.parentId), members,
+        shown: showing === undefined ? members.length : members.filter((id) => showing.has(id)).length,
+      };
+    })
+    .filter((g) => g.shown > 0);
+}
