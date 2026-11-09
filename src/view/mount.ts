@@ -35,7 +35,7 @@ import { commentTarget, editComment, reopenThread, replyToThread, resolveThread,
 import type { Anchor } from '../core/schema/annotations.js';
 import type { ThreadWrites } from './threads.js';
 import type { SuggestionWrites } from './suggestions.js';
-import type { TakeName } from './name-form.js';
+import type { NameWrites } from './name-form.js';
 import type { ReattachWrite } from './orphans.js';
 import type { SavedViewsPort } from './saved-views.js';
 import { reattach } from '../core/orphans.js';
@@ -444,8 +444,8 @@ export function mountMatrix(
     reopen: (threadId) => writeThread('reopen', anchorIn(threadId), (a, by, at) => reopenThread(a, threadId, { id: newId(), by, at }), threadId),
   };
 
-  /** A panel's writes, with the name field offered while one is asked for (#193, #274): one `takeName` behind every panel that signs. */
-  const askingName = <W extends { name?: TakeName }>(w: W): W => (drawnAskingName ? { ...w, name: takeName } : w);
+  /** A panel's writes, with the name field offered while one is asked for (#193, #274): one `takeName` behind every panel that signs; `Matrix` holds the draft. */
+  const askingName = <W extends NameWrites>(w: W): W => (drawnAskingName ? { ...w, name: takeName } : w);
 
   const draw = () => {
     const { measure, vocabulary, encoding, view, standing, source, authorize } = current;
