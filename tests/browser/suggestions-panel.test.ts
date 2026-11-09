@@ -238,6 +238,25 @@ describe('naming a local identity before its first decision (#274)', () => {
     expect(nameForm()!.querySelector('input')!.value).toBe('Ada');
   });
 
+  it('does not bring back a name the reader emptied in the other field (#328)', async () => {
+    handle = mountMatrix(el, {
+      analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }),
+      view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true),
+    }, at);
+    await settled();
+    const here = () => nameForm()!.querySelector('input')!;
+    const there = () => el.querySelector<HTMLInputElement>('[data-detail="threads"] [data-detail="name"] input')!;
+    await userEvent.click(here());
+    await userEvent.keyboard('Ad');
+    await userEvent.click(there());
+    expect(there().value).toBe('Ad');
+    await userEvent.click(here());
+    await userEvent.keyboard('{Backspace}{Backspace}');
+    await userEvent.click(there());
+    await settled();
+    expect(there().value).toBe('');
+  });
+
   it('is not asked of an identity that has a name, takes none, or has no way to write decisions', async () => {
     const storage = memory();
     await localIdentity({ storage }).name('Ada');

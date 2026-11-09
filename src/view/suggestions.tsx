@@ -114,7 +114,7 @@ export function SuggestionsPanel({ analysis, affordances, writes, viewer, vouche
       <h2 id={id} tabIndex={-1} data-panel-heading="">{`Open suggestions (${open.length})`}</h2>
       <p class="comparanda-panel-hint">Accepting writes the proposed value into its cell as its proposer&apos;s; declining records only the decision. Decisions are staged here, each undoable, and written together.</p>
       {/* Before every decision it names the author of. */}
-      {writes?.name && (maySign || held) && <NameForm name={writes.name} idBase={id} held={writes.nameDraft} />}
+      {writes?.name && (maySign || held) && <NameForm name={writes.name} idBase={id} draft={writes.nameDraft} />}
       <ol class="comparanda-thread-list">
         {open.map((o) => {
           const choice = live.find((c) => c.suggestionId === o.id);

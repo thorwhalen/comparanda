@@ -71,7 +71,7 @@ export function Threads({ analysis, measure, position, affordances, writes, idBa
     <section class="comparanda-threads" aria-labelledby={`${idBase}-threads`} data-detail="threads">
       <h3 id={`${idBase}-threads`}>{`Discussion (${open.length} open${resolved.length ? `, ${resolved.length} resolved` : ''})`}</h3>
       {/* Before every form it names the author of: the first write here is one of them. */}
-      {writes?.name && (maySign || nameHeld) && <NameForm name={writes.name} idBase={idBase} held={writes.nameDraft} />}
+      {writes?.name && (maySign || nameHeld) && <NameForm name={writes.name} idBase={idBase} draft={writes.nameDraft} />}
       {open.length === 0 && <p class="comparanda-panel-hint">No open threads here.</p>}
       {open.length > 0 && (
         <ol class="comparanda-thread-list">

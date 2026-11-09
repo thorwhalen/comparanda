@@ -75,6 +75,7 @@ import { OrphanTray, type ReattachWrite } from './orphans.js';
 import type { AnalysisPanelProps } from './agreement.js';
 import type { ThreadWrites } from './threads.js';
 import { SuggestionsPanel, type SuggestionWrites } from './suggestions.js';
+import { useNameDraft, type NameWrites } from './name-form.js';
 import { SavedViewsPanel, type SavedViewsPort } from './saved-views.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
 import { startPointerDrag } from './pointer-reorder.js';
@@ -193,6 +194,9 @@ export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' 
 export type CellAbsence = AbsenceStanding | 'undeclared';
 
 export function Matrix({ analysis, measure, vocabulary, encoding, encodings, view, standing, viewer, vouched, affordances, onFocusChange, onPanelChange, threadWrites, suggestionWrites, reattachWrite, savedViews, onReorder, onEncodingChange, onArrange, onJoinGroup, announcement, notice, actor = anonymous, arrange, panels = [] }: MatrixViewProps) {
+  // One name draft behind both panels' fields (#328), unless the host gave its own.
+  const nameDraft = useNameDraft(threadWrites?.name || suggestionWrites?.name);
+  const drafted = <W extends NameWrites>(w?: W) => (w?.name ? { nameDraft, ...w } : w);
   const reader = makeCellReader(analysis, measure);
   const reads = new Map<string, ReturnType<typeof reader.read>>();
   const read = (alt: string, crit: string) => {
@@ -650,7 +654,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         </div>
       )}
       <OrphanTray analysis={analysis} vouched={vouched} affordances={affordances} reattach={reattachWrite} />
-      <SuggestionsPanel analysis={analysis} affordances={affordances} writes={suggestionWrites} viewer={viewer} vouched={vouched} />
+      <SuggestionsPanel analysis={analysis} affordances={affordances} writes={drafted(suggestionWrites)} viewer={viewer} vouched={vouched} />
       <RefusedEdits
         analysis={analysis} measure={measure} affordances={affordances}
         rows={rows.entries} columns={columns.entries} transposed={transposed}
@@ -809,7 +813,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           analysis={analysis} measure={measure} vocabulary={vocabulary} standing={standing} viewer={viewer} vouched={vouched}
           // Where the grid's stop actually is: a hidden or removed id has fallen back to its header.
           focus={grid.focusAt(at.r, at.c)}
-          headingId={`${helpId}-panel`} affordances={affordances} writes={threadWrites} block={panelBlock()}
+          headingId={`${helpId}-panel`} affordances={affordances} writes={drafted(threadWrites)} block={panelBlock()}
           onClose={() => onPanelChange(false)}
           onReturn={() => root.current?.querySelector<HTMLElement>('[role="grid"] [tabindex="0"]')?.focus()}
         />
