@@ -34,7 +34,7 @@ import { reversal, weighted } from '../support/weighted.js';
 import { PLACE_CHANGES } from '../../src/core/analyses/rank-flow.js';
 import { FIXTURES, ILLEGIBLE_THIRD_PARTY, ownSetTimeout, PANELS, THEMES, tick, type BrowserEnv } from './browser-env.js';
 import type { Check } from './gate.js';
-import { PANELS_SURFACE, RANK_FLOW_SURFACE } from './spec.js';
+import { FORCED_SURFACE, PANELS_SURFACE, PRINT_SURFACE, RANK_FLOW_SURFACE } from './spec.js';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => ownSetTimeout(resolve, ms));
 const languages = FIXTURES['languages']!;
@@ -1226,29 +1226,33 @@ const stepsShown = (el: HTMLElement, where: string): string[] => {
     .map((td) => `${where}: cell ${td.dataset['cell']} does not show its step`);
 };
 
-const a22: Check<BrowserEnv> = {
-  id: 'A22',
+/** Each medium alone, the other's emulation put back: Playwright's `emulateMedia` changes only what it is given. */
+const A22_MEDIA = [
+  { over: FORCED_SURFACE, name: 'forced colors', emulate: { forcedColors: 'active', media: null }, hidden: '@media (forced-colors: active)' },
+  { over: PRINT_SURFACE, name: 'print', emulate: { forcedColors: 'none', media: 'print' }, hidden: '@media print' },
+] as const;
+
+const a22 = A22_MEDIA.map(({ over, name, emulate, hidden }): Check<BrowserEnv> => ({
+  id: 'A22', over,
   async run(env) {
-    const found: string[] = [];
-    for (const [medium, emulate] of [['forced colors', { forcedColors: 'active' }], ['print', { media: 'print' }]] as const) {
-      await env.media(emulate);
-      const { el } = env.mount({ analysis: relocation, measure: 'score', encoding: 'value' });
-      found.push(...stepsShown(el, `${medium} / value`));
-    }
-    return cap(found);
+    await env.media(emulate);
+    if (!matchMedia(name === 'print' ? 'print' : '(forced-colors: active)').matches) return [`${name} was not emulated`];
+    if (name === 'print' && matchMedia('(forced-colors: active)').matches) return ['forced colors was still on in the print pass'];
+    const { el } = env.mount({ analysis: relocation, measure: 'score', encoding: 'value' });
+    return cap(stepsShown(el, `${name} / value`));
   },
   broken: {
-    what: 'the step words are hidden in forced colors and print only',
+    what: `the step words are hidden in ${name} only`,
     mustSay: /does not show its step/,
     sabotage: (env) => env.afterMount((el) => {
       const style = document.createElement('style');
-      style.textContent = '@media (forced-colors: active), print { .comparanda-matrix .comparanda-plain { display: none !important; } }';
+      style.textContent = `${hidden} { .comparanda-matrix .comparanda-plain { display: none !important; } }`;
       el.append(style);
     }),
   },
-};
+}));
 
 /** In number order; a number's grid pass first, then its pass over the panels. */
 export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [
-  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20, a21, a22,
+  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20, a21, ...a22,
 ];

@@ -58,7 +58,7 @@ export const value = /* @__PURE__ */ defineEncoding({
       return { unavailable: `no criterion places a ${ctx.measure} on a range or a list of levels with a preferred direction.` };
     }
     const counts = new Map<SwatchId, number>();
-        // Said per cell, and in the legend, as a step of the five-step ramp, not a fifth: a three-level scale lands on steps 1, 3 and 5.
+    // Said per cell, and in the legend, as a step of the five-step ramp, not a fifth: a three-level scale lands on steps 1, 3 and 5.
     const said = ['worst', 'second', 'middle', 'fourth', 'best'];
     const mark = (alt: string, crit: string): CellMark => {
       const m = placed.get(crit);
