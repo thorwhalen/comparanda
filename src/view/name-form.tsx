@@ -50,7 +50,7 @@ export function useNameDraft(asked: unknown): NameDraft {
     get: () => typed.current,
     // Typing redraws only the fields that listen; only letting a hold go (`undefined`) redraws the matrix, so a panel kept for it alone can close.
     set: (t) => { typed.current = t; if (t === undefined) redraw({}); else listeners.current.forEach((l) => l(t)); },
-    subscribe: (listener) => { listeners.current.add(listener); return () => { listeners.current.delete(listener); }; },
+    subscribe: (listener) => { listeners.current.add(listener); return () => listeners.current.delete(listener); },
   };
   if (!asked) typed.current = undefined;
   return draft.current;
@@ -66,13 +66,12 @@ export function NameForm({ name, idBase, draft }: { name: TakeName; idBase: stri
   // Left empty, by focus or by leaving the tree, the hold goes; never on emptying the box, which would drop focus out from under the reader.
   const release = () => { if (draft?.get() === '') draft.set(undefined); };
   // Where focus is, or is going, is a name form (this one or the other panel's): the hold is not let go from under it.
-  const inNameForm = (n: unknown) => !!(n as Element | null)?.closest?.('[data-detail="name"]');
+  const inNameForm = (n: unknown) => (n as Element | null)?.closest?.('[data-detail="name"]');
   useLayoutEffect(() => () => { if (!inNameForm(document.activeElement)) release(); }, []);
   // Another field's typing shows here at once (#353), without the matrix being drawn again, and a refusal shown here is stale.
   useLayoutEffect(() => draft?.subscribe((t) => { if (t !== undefined) { setText(t); clearError(); } }), [draft]);
   // Focus moving within a name form (the box to its own button, or to the other panel's box) keeps the hold; leaving lets it go (#352).
-  // Not while the window itself lost focus: the reader is away, not done.
-  const leaving = (e: FocusEvent) => { if (!inNameForm(e.relatedTarget) && document.hasFocus()) release(); };
+  const leaving = (e: FocusEvent) => { if (!inNameForm(e.relatedTarget)) release(); };
   return (
     <form class="comparanda-compose" onSubmit={submit} onFocusOut={leaving} data-detail="name">
       <label for={`${idBase}-name`}>Your name</label>
@@ -83,7 +82,8 @@ export function NameForm({ name, idBase, draft }: { name: TakeName; idBase: stri
       <p id={`${idBase}-name-hint`} class="comparanda-panel-hint">
         Saved on this device, not in an account. It is shown beside what you write, marked unverified: nobody checks it.
       </p>
-      <button type="submit" aria-disabled={busy}>Use this name</button>
+      {/* Safari does not focus a button on click, so the box would blur to nothing and let the hold go before the click lands (#363): the button takes focus itself, on the press. */}
+      <button type="submit" aria-disabled={busy} onPointerDown={(e) => e.currentTarget.focus()}>Use this name</button>
       {error && <p role="alert" id={`${idBase}-name-error`} key={error.attempt}>{`Name not kept: ${error.text}`}</p>}
     </form>
   );

@@ -312,6 +312,24 @@ describe('naming a local identity before its first decision (#274)', () => {
     expect(there().querySelector('input')!.hasAttribute('aria-invalid')).toBe(false);
   });
 
+  it('hands focus to "Use this name" on the press, so a browser that does not focus a clicked button does not let the hold go (#363)', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', source, identity: localIdentity({ storage: memory() }) }, at);
+    await settled();
+    await userEvent.click(nameForm()!.querySelector('input')!);
+    await userEvent.keyboard('A{Backspace}');
+    const decider = { by: { id: 'dana', displayName: 'Dana', kind: 'human' as const }, at: '2026-10-20T12:00:00.000Z' };
+    const ids = relocation.suggestions.map((x) => ({ suggestionId: x.id, decision: 'decline' as const }));
+    await source.update(relocation.id, decideSuggestions(relocation, ids, decider).analysis);
+    await settled();
+    const use = button(nameForm()!, 'Use this name');
+    // A synthetic press has no default action: where Safari would leave focus on the box, the handler must move it.
+    use.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(document.activeElement).toBe(use);
+    await settled();
+    expect(panel()).not.toBeNull();
+  });
+
   it('does not bring back a name the reader emptied in the other field (#328)', async () => {
     handle = mountMatrix(el, {
       analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }),
