@@ -6,7 +6,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { Analysis } from '../src/core/schema/analysis.js';
-import { rankShare, seededRandom } from '../src/core/analyses/rank-share.js';
+import { rankShare } from '../src/core/analyses/rank-share.js';
+import { seededRandom } from '../src/core/analyses/seeded-random.js';
 import { rankShareAnalysis } from '../src/core/analyses/definitions.js';
 import { reversal, weighted } from './support/weighted.js';
 import relocationJson from '../examples/relocation.json';

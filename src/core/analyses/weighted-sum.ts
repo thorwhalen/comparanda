@@ -43,7 +43,7 @@
 import type { Analysis } from '../schema/analysis.js';
 import { measurementFor } from '../schema/structure.js';
 import { isOrdered, type Measurement } from '../schema/measurement.js';
-import { makeReadings, widenedCells } from './readings.js';
+import { makePlacements, widenedCells } from './readings.js';
 import type { AnalysisResult } from './registry.js';
 
 /** The working default of the coverage floor (ADR-0015). Provisional; see `coverageFloor`. */
@@ -172,13 +172,6 @@ function refusalOf(m: Measurement | undefined, weight: number, cid: string): Wei
   return undefined;
 }
 
-/** A value's position in its declared range, oriented so 1 is best. Shared with `rankShare`, which sums the same positions under sampled weights. */
-export function positionInRange(v: number, m: Measurement): number {
-  const { min, max } = m.range!;
-  const u = (v - min) / (max - min);
-  return m.preference === 'decreasing' ? 1 - u : u;
-}
-
 export function weightedSum(a: Analysis, opts: WeightedSumOptions): WeightedSumResult {
   const coverageFloor = opts.coverageFloor ?? DEFAULT_COVERAGE_FLOOR;
   const altIds = (opts.alternativeIds ?? a.alternatives.filter((x) => !x.tombstoned).map((x) => x.id)).slice();
@@ -234,7 +227,7 @@ export function weightedSum(a: Analysis, opts: WeightedSumOptions): WeightedSumR
   const warnings: string[] = [];
   if (basis.some((b) => b.m.level === 'ordinal')) warnings.push(ORDINAL_WARNING);
 
-  const read = makeReadings(a, opts.measure);
+  const place = makePlacements(a, opts.measure);
   const rows: WeightedSumRow[] = [];
   let anyRenormalised = false;
   for (const alt of altIds) {
@@ -245,14 +238,13 @@ export function weightedSum(a: Analysis, opts: WeightedSumOptions): WeightedSumR
     const blankCriteria: string[] = [];
     const notApplicable: string[] = [];
     for (const { criterionId, weight, m } of basis) {
-      const r = read(alt, criterionId, m);
+      const r = place(alt, criterionId, m);
       if (r.kind === 'structural') { notApplicable.push(criterionId); continue; }
       applicable += weight;
-      if (r.kind === 'value' && r.numeric !== undefined) {
-        const p = positionInRange(r.numeric, m);
+      if (r.kind === 'position') {
         observed += weight;
-        lo += weight * p;
-        hi += weight * p;
+        lo += weight * r.at;
+        hi += weight * r.at;
       } else {
         // A contingent blank, or a value this criterion cannot place (a string
         // level): anything in the declared range, so [0, 1] of it.

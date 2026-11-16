@@ -64,3 +64,28 @@ export function widenedCells(
   return n;
 }
 
+
+/** A value's position in its declared range, oriented so 1 is best: what the weighted sum, its sensitivity and `rankShare` all sum. */
+export function positionInRange(v: number, m: Measurement): number {
+  const { min, max } = m.range!;
+  const u = (v - min) / (max - min);
+  return m.preference === 'decreasing' ? 1 - u : u;
+}
+
+/** One cell as a weighted aggregation reads it: a position in [0, 1], a blank (anywhere in it), or not applicable. */
+export type Placed = { kind: 'position'; at: number } | { kind: 'blank' } | { kind: 'structural' };
+
+/**
+ * A prepared reader over one analysis and one measure that places each cell for a weighted aggregation, so the three
+ * (`weightedSum`, `sensitivity`, `rankShare`) read a cell one way. The criterion's measurement must declare a range
+ * and a preference direction: the weighted sum refuses a weighted criterion that does not.
+ */
+export function makePlacements(a: Analysis, measure: string): (altId: string, critId: string, m: Measurement) => Placed {
+  const read = makeReadings(a, measure);
+  return (altId, critId, m) => {
+    const r = read(altId, critId, m);
+    if (r.kind === 'structural') return { kind: 'structural' };
+    // A value this criterion cannot place (a string level) reads as a blank: anywhere in the declared range.
+    return r.kind === 'value' && r.numeric !== undefined ? { kind: 'position', at: positionInRange(r.numeric, m) } : { kind: 'blank' };
+  };
+}
