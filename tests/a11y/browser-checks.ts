@@ -782,15 +782,6 @@ const paintedBackgrounds = (root: Element, where: string): string[] => Array.fro
   .filter((node) => parseColour(getComputedStyle(node).backgroundColor)[3] !== 0)
   .map((node) => `${where}: ${node.tagName.toLowerCase()} "${node.textContent!.trim().slice(0, 20)}" still paints a background`);
 
-/** The value encoding's step is a colour; where the fills are gone each coloured cell must show it in words (#345). */
-const stepsShown = (el: HTMLElement, where: string): string[] => {
-  const painted = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-swatch]'));
-  if (painted.length === 0) return [`${where}: no cell was coloured, so no step could be checked`];
-  return painted
-    .filter((td) => { const p = td.querySelector('.comparanda-plain'); return !p || getComputedStyle(p).display === 'none' || !/step/.test(p.textContent ?? ''); })
-    .map((td) => `${where}: cell ${td.dataset['cell']} does not show its step`);
-};
-
 /** Every reason code in force on a cell of its own, so a code added without its glyph fails here (ADR-0009, ADR-0029). */
 const EVERY_CODE = everyCode().analysis;
 const BANDED = viewsOf(relocation)[1]!.view!;
@@ -815,7 +806,6 @@ const a15: Check<BrowserEnv> = {
     for (const [encoding, analysis, view] of MEDIUM_CASES) {
       const { el } = env.mount({ analysis, measure: 'score', encoding, ...(view ? { view } : {}) });
       found.push(...channelsSurvive(el, `forced colors / ${caseName(encoding, analysis, view)}`));
-      if (encoding === 'value') found.push(...stepsShown(el, `forced colors / ${encoding}`));
       if (encoding !== 'text-only' && el.querySelector('td svg') === null) found.push(`forced colors / ${encoding}: no glyph or hatch was drawn at all`);
     }
     return cap(found);
@@ -842,7 +832,6 @@ const a18: Check<BrowserEnv> = {
         const { el } = env.mount({ analysis, measure: 'score', encoding, ...(view ? { view } : {}) }, { theme });
         // A printer may drop backgrounds: the ink and the marks must hold against paper, wherever the cells' own fills were.
         found.push(...channelsSurvive(el, where, { paper: PAPER }), ...paintedBackgrounds(el, where));
-        if (encoding === 'value') found.push(...stepsShown(el, where));
       }
     }
     return cap(found);
@@ -1222,7 +1211,44 @@ const a21: Check<BrowserEnv> = {
   },
 };
 
+// ---- A22 (a colour-carried step is shown where the fills are gone) --------------------------------
+
+/**
+ * The `value` encoding's fill means "this step of the criterion's range, toward its preferred end", which the cell's
+ * text alone does not say. Where the fills are gone (forced colors, print) each coloured cell must show that step in
+ * words beside its value (`CellMark.plain`, #345); a screen reader hears it in the cell's hidden words either way.
+ */
+const stepsShown = (el: HTMLElement, where: string): string[] => {
+  const painted = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-swatch]'));
+  if (painted.length === 0) return [`${where}: no cell was coloured, so no step could be checked`];
+  return painted
+    .filter((td) => { const p = td.querySelector('.comparanda-plain'); return !p || getComputedStyle(p).display === 'none' || !/step/.test(p.textContent ?? ''); })
+    .map((td) => `${where}: cell ${td.dataset['cell']} does not show its step`);
+};
+
+const a22: Check<BrowserEnv> = {
+  id: 'A22',
+  async run(env) {
+    const found: string[] = [];
+    for (const [medium, emulate] of [['forced colors', { forcedColors: 'active' }], ['print', { media: 'print' }]] as const) {
+      await env.media(emulate);
+      const { el } = env.mount({ analysis: relocation, measure: 'score', encoding: 'value' });
+      found.push(...stepsShown(el, `${medium} / value`));
+    }
+    return cap(found);
+  },
+  broken: {
+    what: 'the step words are hidden in forced colors and print only',
+    mustSay: /does not show its step/,
+    sabotage: (env) => env.afterMount((el) => {
+      const style = document.createElement('style');
+      style.textContent = '@media (forced-colors: active), print { .comparanda-matrix .comparanda-plain { display: none !important; } }';
+      el.append(style);
+    }),
+  },
+};
+
 /** In number order; a number's grid pass first, then its pass over the panels. */
 export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [
-  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20, a21,
+  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20, a21, a22,
 ];

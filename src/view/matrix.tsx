@@ -497,6 +497,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         {glyph && <Glyph reason={glyph} />}
         <span class="comparanda-shown">{text}</span>
         <span class="comparanda-block-note">{` All ${b.cells} cells${b.reason ? `: ${b.reason}` : ''}.`}</span>
+        {mark.plain && <span class="comparanda-plain" aria-hidden="true">{` (${mark.plain})`}</span>}
         {said && <span class="comparanda-sr">{` ${said}`}</span>}
       </td>
     );

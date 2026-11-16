@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 import browser from './vitest.browser.config.js';
 
 /**
- * The accessibility merge gate (ADR-0029, #105): the A1-A21 checks, each with a
+ * The accessibility merge gate (ADR-0029, #105): the A1-A22 checks, each with a
  * deliberately broken fixture, in the three runtimes their mechanisms need.
  *
  * Kept out of the other suites' globs (`*.gate.ts`, not `*.test.ts`) so a
