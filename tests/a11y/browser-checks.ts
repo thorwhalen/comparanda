@@ -21,6 +21,7 @@ import { userEvent } from '@vitest/browser/context';
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, setDetailPanel, setFocus, setGrouping, type ViewState } from '../../src/core/view-state.js';
 import { CORE_MISSING_CODES, vocabularyOf } from '../../src/index.js';
+import { measurementFor } from '../../src/core/schema/structure.js';
 import { anonymousIdentity } from '../../src/store/index.js';
 import { SHIPPED_ENCODINGS, type MountMatrixProps } from '../../src/view/index.js';
 import { vsupTrees } from '../../src/view/encodings/vsup-derive.js';
@@ -34,7 +35,7 @@ import { reversal, weighted } from '../support/weighted.js';
 import { PLACE_CHANGES } from '../../src/core/analyses/rank-flow.js';
 import { FIXTURES, ILLEGIBLE_THIRD_PARTY, ownSetTimeout, PANELS, THEMES, tick, type BrowserEnv } from './browser-env.js';
 import type { Check } from './gate.js';
-import { PANELS_SURFACE, PRINT_SURFACE, RANK_FLOW_SURFACE } from './spec.js';
+import { DENSITY_SURFACE, PANELS_SURFACE, PRINT_SURFACE, RANK_FLOW_SURFACE } from './spec.js';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => ownSetTimeout(resolve, ms));
 const languages = FIXTURES['languages']!;
@@ -1181,28 +1182,62 @@ const a20: Check<BrowserEnv> = {
 const HATCH_ENCODINGS = SHIPPED_ENCODINGS.filter((e) => e.texture.channel === 'hatch').map((e) => e.id);
 const LEVEL_WORDS = /\b(confidence|agreement)\s+(low|medium|high|\d+)\b/i;
 
-const a21: Check<BrowserEnv> = {
-  id: 'A21',
-  run(env) {
-    const found: string[] = [];
-    for (const encoding of HATCH_ENCODINGS) {
-      let hatchedAnywhere = false;
-      for (const [name, analysis] of Object.entries(FIXTURES)) {
-        const { el } = env.mount({ analysis, measure: 'score', encoding });
-        for (const td of Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-hatch]'))) {
-          hatchedAnywhere = true;
-          // After the label span ("Criterion, Alternative, "): a criterion named "Confidence interval" must not say it.
-          const said = Array.from(td.querySelectorAll('.comparanda-sr')).slice(1).map((n) => n.textContent).join('');
-          if (!LEVEL_WORDS.test(said)) found.push(`${encoding} / ${name}: cell ${td.dataset['cell']} is hatched (level ${td.dataset['hatch']}) and says no level in words`);
+/** A level as a number to order by: its word, or the digits it was said in; undefined for a level this check cannot order. */
+const levelRank = (level: string): number | undefined => ({ low: 1, medium: 2, high: 3 } as Record<string, number>)[level.toLowerCase()] ?? (/^\d+(\.\d+)?$/.test(level) ? Number(level) : undefined);
+
+/** The word a hatched cell must say its level after, from what the hatch carries: a disagreement hatch is told as agreement. */
+const NOUN_OF: Readonly<Record<string, string>> = { confidence: 'confidence', disagreement: 'agreement' };
+const HATCH_NOUN = new Map(SHIPPED_ENCODINGS.flatMap((e) => (e.texture.channel === 'hatch' ? [[e.id, NOUN_OF[e.texture.carries]!] as const] : [])));
+
+/** What A21 reads in each hatched cell: that it says a level (the grid's pass), and that the level agrees with the density (the pass over `DENSITY_SURFACE`). */
+function hatchFindings(env: BrowserEnv, mode: 'present' | 'agrees'): string[] {
+  const found: string[] = [];
+  for (const encoding of HATCH_ENCODINGS) {
+    const noun = HATCH_NOUN.get(encoding)!;
+    let hatchedAnywhere = false;
+    for (const [name, analysis] of Object.entries(FIXTURES)) {
+      const { el } = env.mount({ analysis, measure: 'score', encoding });
+      /** Per column (words are per column, on its own scale): what each density was said to be. */
+      const saidAt = new Map<string, Map<string, Set<string>>>();
+      for (const td of Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-hatch]'))) {
+        hatchedAnywhere = true;
+        // After the label span ("Criterion, Alternative, "): a criterion named "Confidence interval" must not say it.
+        const said = Array.from(td.querySelectorAll('.comparanda-sr')).slice(1).map((n) => n.textContent).join('');
+        // The noun the hatch carries, not the first of two: a confidence measure's words are the matrix's, not the hatch's.
+        const level = new RegExp(`\\b${noun}\\s+(low|medium|high|\\d+(?:\\.\\d+)?)(?![\\d.])`, 'i').exec(said)?.[1];
+        if (level === undefined) {
+          if (mode === 'present') found.push(`${encoding} / ${name}: cell ${td.dataset['cell']} is hatched (level ${td.dataset['hatch']}) and says no ${noun} level in words`);
+          continue;
+        }
+        const column = td.dataset['pair']!.split('\u0000')[1]!;
+        const density = td.dataset['hatch']!;
+        const byDensity = saidAt.get(column) ?? new Map<string, Set<string>>();
+        byDensity.set(density, (byDensity.get(density) ?? new Set()).add(level.toLowerCase()));
+        saidAt.set(column, byDensity);
+      }
+      if (mode === 'present') continue;
+      for (const [column, byDensity] of saidAt) {
+        for (const [density, levels] of byDensity) {
+          if (levels.size > 1) found.push(`${encoding} / ${name} / ${column}: hatch density ${density} is said as ${[...levels].join(' and ')}, not one level`);
+        }
+        // A denser hatch is a lower confidence or agreement: strictly, within one column's words.
+        const ordered = [...byDensity].map(([d, l]) => [Number(d), levelRank([...l][0]!)] as const).filter((x): x is readonly [number, number] => x[1] !== undefined).sort((x, y) => x[0] - y[0]);
+        for (let i = 1; i < ordered.length; i += 1) {
+          if (!(ordered[i]![1] < ordered[i - 1]![1])) found.push(`${encoding} / ${name} / ${column}: a denser hatch (${ordered[i]![0]}) is not said as a lower level than a sparser one (${ordered[i - 1]![0]})`);
         }
       }
-      if (!hatchedAnywhere) found.push(`${encoding}: no fixture drew a hatch, so its words could not be checked`);
     }
-    return cap(found);
-  },
+    if (!hatchedAnywhere) found.push(`${encoding}: no fixture drew a hatch, so its words could not be checked`);
+  }
+  return cap(found);
+}
+
+const a21: Check<BrowserEnv> = {
+  id: 'A21',
+  run: (env) => hatchFindings(env, 'present'),
   broken: {
     what: 'one hatched cell\'s words are removed, its hatch kept',
-    mustSay: /says no level in words/,
+    mustSay: /says no \w+ level in words/,
     sabotage: (env) => env.afterMount((el) => {
       // Applied to every check's mount in the cross-fixture run: a mount with no hatched cell is left as it is.
       const sr = Array.from(el.querySelectorAll('tbody td[data-hatch] .comparanda-sr')).find((n) => LEVEL_WORDS.test(n.textContent ?? ''));
@@ -1253,7 +1288,65 @@ const a22 = A22_MEDIA.map(({ over, name, emulate, hidden }): Check<BrowserEnv> =
   },
 }));
 
+
+const a21density: Check<BrowserEnv> = {
+  id: 'A21', over: DENSITY_SURFACE,
+  run: (env) => hatchFindings(env, 'agrees'),
+  broken: {
+    what: 'the words of the sparsest and the densest hatch are swapped, each said at the other\'s level',
+    mustSay: /not said as a lower level|not one level/,
+    sabotage: (env) => env.afterMount((el) => {
+      const words = (td: Element) => Array.from(td.querySelectorAll('.comparanda-sr')).find((n) => LEVEL_WORDS.test(n.textContent ?? ''));
+      const hatched = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-hatch]')).filter((td) => words(td));
+      // Words are per column: swap within one column that has two densities.
+      for (const column of new Set(hatched.map((td) => td.dataset['pair']!.split('\u0000')[1]))) {
+        const cells = hatched.filter((td) => td.dataset['pair']!.split('\u0000')[1] === column).sort((x, y) => Number(x.dataset['hatch']) - Number(y.dataset['hatch']));
+        const [sparse, dense] = [cells[0]!, cells[cells.length - 1]!];
+        if (sparse.dataset['hatch'] === dense.dataset['hatch']) continue;
+        const [a, b] = [words(sparse)!, words(dense)!];
+        [a.textContent, b.textContent] = [b.textContent, a.textContent];
+        return;
+      }
+    }),
+  },
+};
+
+// ---- A23 (a rating says what it is out of) ---------------------------------------------------------
+
+/**
+ * A rating on an ordinal scale with a declared range is heard with its top ("5 of 5", ADR-0027): "4" alone is not
+ * a rating anyone can place. A3 only asks that a cell is not blank, so a cell that lost its scale would pass it (#361).
+ */
+const a23: Check<BrowserEnv> = {
+  id: 'A23',
+  run(env) {
+    const found: string[] = [];
+    for (const [name, analysis] of Object.entries(FIXTURES)) {
+      const { el } = env.mount({ analysis, measure: 'score', encoding: 'text-only' });
+      let rated = 0;
+      for (const td of Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-state="value"]'))) {
+        const critId = td.dataset['pair']!.split('\u0000')[1]!;
+        const crit = analysis.criteria.find((c) => c.id === critId);
+        const m = crit && measurementFor(crit, 'score');
+        if (!m || m.level !== 'ordinal' || !m.range || !/^-?\d/.test(td.querySelector('.comparanda-shown')?.textContent ?? '')) continue;
+        rated += 1;
+        const said = Array.from(td.querySelectorAll('.comparanda-sr')).slice(1).map((n) => n.textContent).join('');
+        if (!new RegExp(`\\bof ${m.range.max}\\b`).test(said)) found.push(`${name}: cell ${td.dataset['cell']} is a rating and does not say its scale ("of ${m.range.max}")`);
+      }
+      if (rated === 0 && name === 'languages') found.push(`${name}: no rating was found, so no scale could be checked`);
+    }
+    return cap(found);
+  },
+  broken: {
+    what: 'a rating loses its scale in the words, keeping its value and its other words',
+    mustSay: /does not say its scale/,
+    sabotage: (env) => env.afterMount((el) => {
+      for (const n of Array.from(el.querySelectorAll('tbody td[data-state="value"] .comparanda-sr'))) n.textContent = (n.textContent ?? '').replace(/ of \d+/, '');
+    }),
+  },
+};
+
 /** In number order; a number's grid pass first, then its pass over the panels. */
 export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [
-  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20, a21, ...a22,
+  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20, a21, a21density, ...a22, a23,
 ];
