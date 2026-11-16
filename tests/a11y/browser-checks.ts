@@ -1181,7 +1181,45 @@ const a20: Check<BrowserEnv> = {
   alsoTrips: { A14: 'a fade still running when the screenshot is taken is the colour it captures' },
 };
 
+// ---- A21 (a hatch is told in words) ---------------------------------------------------------------
+
+/**
+ * A hatch is `aria-hidden`: it is safe only because the cell says its level in words ("5 of 5, confidence low").
+ * Every hatched cell, under every hatch-carrying encoding the fixtures can draw, must have visually hidden text
+ * that names the level after the word for what the hatch carries (#355). `uncertainty-suppressed` is drawn over
+ * the confidence fixtures; `consensus-suppressed` needs rated cells none of the gate's fixtures has yet.
+ */
+const HATCH_CASES: readonly (readonly [string, Analysis])[] = [['uncertainty-suppressed', confident], ['uncertainty-suppressed', evidenced]];
+const LEVEL_WORDS = /\b(confidence|agreement|disagreement)\s+[^\s,.]+/i;
+
+const a21: Check<BrowserEnv> = {
+  id: 'A21',
+  run(env) {
+    const found: string[] = [];
+    for (const [encoding, analysis] of HATCH_CASES) {
+      const where = `${encoding} / ${caseName(encoding, analysis)}`;
+      const { el } = env.mount({ analysis, measure: 'score', encoding });
+      const hatched = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-hatch]'));
+      if (hatched.length === 0) found.push(`${where}: no cell was hatched, so no words could be checked`);
+      for (const td of hatched) {
+        const hidden = Array.from(td.querySelectorAll('.comparanda-sr')).map((n) => n.textContent).join('');
+        if (!LEVEL_WORDS.test(hidden)) found.push(`${where}: cell ${td.dataset['cell']} is hatched (level ${td.dataset['hatch']}) and says no level in words`);
+      }
+    }
+    return cap(found);
+  },
+  broken: {
+    what: 'one hatched cell\'s words are removed, its hatch kept',
+    mustSay: /says no level in words/,
+    sabotage: (env) => env.afterMount((el) => {
+      // Applied to every check's mount in the cross-fixture run: a mount with no hatched cell is left as it is.
+      const sr = el.querySelector('tbody td[data-hatch] .comparanda-sr:last-of-type');
+      if (sr) sr.textContent = '';
+    }),
+  },
+};
+
 /** In number order; a number's grid pass first, then its pass over the panels. */
 export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [
-  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20,
+  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20, a21,
 ];
