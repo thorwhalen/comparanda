@@ -3,7 +3,8 @@
  * interval, or a reason it cannot take part.
  *
  * Shared by `findNonDiscriminatingCriteria` and `pughTally` so the two agree
- * about what a blank means. The rules are dominance's (ADR-0019): a contingent
+ * about what a blank means, and, placed on a criterion's range (`makePlacements`), by
+ * the weighted sum, its sensitivity and `rankShare`. The rules are dominance's (ADR-0019): a contingent
  * blank widens to the criterion's declared range, a structural absence (a
  * structural missingness code, or a declared inapplicable group pair) leaves the
  * comparison. Missingness is read through the vocabulary's flags, never by
@@ -64,9 +65,8 @@ export function widenedCells(
   return n;
 }
 
-
 /** A value's position in its declared range, oriented so 1 is best: what the weighted sum, its sensitivity and `rankShare` all sum. */
-export function positionInRange(v: number, m: Measurement): number {
+function positionInRange(v: number, m: Measurement): number {
   const { min, max } = m.range!;
   const u = (v - min) / (max - min);
   return m.preference === 'decreasing' ? 1 - u : u;

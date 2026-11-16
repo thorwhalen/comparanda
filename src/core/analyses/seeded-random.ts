@@ -3,7 +3,6 @@
  * seed. Internal to the analyses (not re-exported): a caller who wants another generator hands `rankShare` its own
  * `random`.
  */
-/** A small seeded generator (mulberry32): uniform in [0, 1), reproducible. */
 export function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
