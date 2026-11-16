@@ -262,6 +262,23 @@ stated job and is already behind the same weighted-aggregation opt-in.
 columns shown beside the realised ranking. ADR-0026's roster stays at five views. The justifying
 sentence is corrected to that extent and to no other.
 
+### 2026-11-16 — `rankShare` is built: the rules it keeps, and what it states (#343)
+
+- **Status:** accepted
+- **Date:** 2026-11-16
+- **Deciders:** Thor Whalen (the rules below were chosen where the 2026-08-21 amendments leave a choice; reversible)
+
+`rankShare(analysis, { measure, alternativeIds, samples, seed, random })` is in `src/core/analyses/rank-share.ts`, and the rank-flow panel draws it when `rankFlowPanel({ weightedSum, sensitivity, rankShare })` is given it (the same opt-in, extended; without it the panel is as before).
+
+- **Where it renders replaces one sentence of the 2026-08-21 amendment.** That one says the distribution is "shown beside the realised ranking, across the rank columns"; it is built as a figure of its own under the rank-flow, in the selection's order, because the rank-flow's columns are two rankings and the shares are one distribution. It is still inside the panel, behind the same opt-in, and still has no view of its own.
+- **Weights are sampled uniformly from the simplex** over the criteria with a positive substitution weight (`basis` reports exactly those). The declared weights decide only which rows take part.
+- **The coverage gate is applied once, at the declared weights.** A row it does not score takes no share and is listed with its label, as in `rankFlow`. It is not re-gated per sample.
+- **Intervals take no midpoint.** Under each sampled weighting a row's aggregate is the weighted sum's interval over every completion of its blanks, and rows are ordered by the same rule as `separability` (strictly above, beyond a 1e-9 tolerance so a tie is not split by float noise). A row the data leave open between ranks `rank` and `lowest` spreads its unit of that sample evenly over those ranks, a stated rule and not a tie-break. `unsettled` is the share of samples where a blank left it open, `tied` the share where it shared a rank with complete rows only. Shares sum to one per alternative, not per rank.
+- **The caption is a stability statement and blames the weights only for what they cause.** A row *holds* when one rank takes at least 90% (`holdsAtShare`) of the samples that settle its rank; the caption counts holds among the rows the data settle, and says separately how many rows the data leave open (a blank, or a tie) in at least half of the weightings. It is carried by the result, so a view cannot recaption it, and never names a first.
+- **The central weight vector** of a row is the mean of the sampled weightings under which it is *settled* first; absent if there was none.
+- **Seams**: `samples` (default 10 000) and the generator (`random`, else a seeded mulberry32, `seed` default 1, a whole number), so a result reproduces; a generator outside [0, 1) is refused. With one weighted criterion there is one weighting, drawn once.
+- **The drawing** is a bar per alternative and rank, its length the share inside an outlined cell that is the whole (no colour); a table says every share in words.
+
 ### 2026-08-22 — The ELECTRE quotation is verified, and the citation caveat is lifted
 
 - **Status:** accepted

@@ -47,6 +47,7 @@ import {
   type RankColumn, type RankFlow, type RankMove, type RankPlace, type RankScenario, type RowWords,
 } from '../core/analyses/rank-flow.js';
 import { raterCriteria, raterRanking } from '../core/analyses/rater-ranking.js';
+import type { rankShare } from '../core/analyses/rank-share.js';
 import { firstOrderChange, type sensitivity, type WeightChange } from '../core/analyses/sensitivity.js';
 import { withSubstitutionWeight, type weightedSum } from '../core/analyses/weighted-sum.js';
 import type { Analysis } from '../core/schema/analysis.js';
@@ -54,6 +55,7 @@ import { aliasesOf, type Aliases } from '../core/schema/structure.js';
 import { attributions } from '../core/identity.js';
 import { hiddenOf, inShownOrder } from '../core/layout.js';
 import type { AnalysisPanelProps } from './agreement.js';
+import { RankShareFigure } from './rank-share-figure.js';
 import { HiddenNote } from './shown.js';
 import { capitalise } from './words.js';
 
@@ -67,11 +69,15 @@ import { capitalise } from './words.js';
 export interface WeightingOptIn {
   weightedSum: typeof weightedSum;
   sensitivity: typeof sensitivity;
+  /** The joint answer (#343): how the ranks spread across every weighting. Without it the panel draws the one-at-a-time comparison alone. */
+  rankShare?: typeof rankShare;
 }
 
 export interface RankFlowPanelOptions {
   /** The most alternatives it ranks; above it, it refuses and says why. Default `RANK_FLOW_MAX_ROWS` (30, ADR-0026). */
   maxRows?: number;
+  /** Weightings `rankShare` samples, when it is opted into. Default: the analysis's own. */
+  samples?: number;
 }
 
 /**
@@ -87,7 +93,7 @@ const MOVED_DASH = '6 4';
  * Make the rank-flow panel, given the weighted aggregation the composition root
  * opted into: `mountMatrix(el, props, { panels: [rankFlowPanel({ weightedSum, sensitivity })] })`.
  */
-export function rankFlowPanel(optIn: WeightingOptIn, { maxRows = RANK_FLOW_MAX_ROWS }: RankFlowPanelOptions = {}): ComponentType<AnalysisPanelProps> {
+export function rankFlowPanel(optIn: WeightingOptIn, { maxRows = RANK_FLOW_MAX_ROWS, samples }: RankFlowPanelOptions = {}): ComponentType<AnalysisPanelProps> {
   if (typeof optIn?.weightedSum !== 'function' || typeof optIn?.sensitivity !== 'function') {
     throw new TypeError(
       'a rank-flow presupposes a ranking, and a ranking presupposes a weighted aggregation, which is opt-in (ADR-0015, ADR-0026): '
@@ -102,7 +108,7 @@ export function rankFlowPanel(optIn: WeightingOptIn, { maxRows = RANK_FLOW_MAX_R
     return (
       <details class="comparanda-analysis" data-analysis="rank-flow" open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
         <summary>{`Whether the order of the ${words.alternatives} holds under a change of weighting, or between two raters`}</summary>
-        {open && <RankFlowBody {...{ analysis, measure, shown, viewer, vouched, optIn, maxRows, words }} />}
+        {open && <RankFlowBody {...{ analysis, measure, shown, viewer, vouched, optIn, maxRows, words, samples }} />}
       </details>
     );
   };
@@ -119,8 +125,8 @@ interface Context {
   rank: (scenarios: readonly RankScenario[]) => RankFlow;
 }
 
-function RankFlowBody({ analysis, measure, shown, viewer, vouched, optIn, maxRows, words }: AnalysisPanelProps & {
-  optIn: WeightingOptIn; maxRows: number; words: Aliases;
+function RankFlowBody({ analysis, measure, shown, viewer, vouched, optIn, maxRows, words, samples }: AnalysisPanelProps & {
+  optIn: WeightingOptIn; maxRows: number; words: Aliases; samples: number | undefined;
 }) {
   const id = useId();
   const [mode, setMode] = useState<'weighting' | 'raters'>('weighting');
@@ -157,7 +163,7 @@ function RankFlowBody({ analysis, measure, shown, viewer, vouched, optIn, maxRow
             {radio('raters', 'of two raters, on one criterion')}
           </fieldset>
           {mode === 'weighting'
-            ? <WeightingFlow ctx={ctx} selection={selection} optIn={optIn} />
+            ? <WeightingFlow ctx={ctx} selection={selection} optIn={optIn} samples={samples} />
             : <RaterFlow ctx={ctx} viewer={viewer} vouched={vouched} shown={shown} />}
         </>
       )}
@@ -168,7 +174,7 @@ function RankFlowBody({ analysis, measure, shown, viewer, vouched, optIn, maxRow
 /** A weight as a person reads it: at most six decimals, which keeps "just past" visibly past. */
 const weightSaid = (w: number) => String(Math.round(w * 1e6) / 1e6);
 
-function WeightingFlow({ ctx, selection, optIn }: { ctx: Context; selection: string[]; optIn: WeightingOptIn }) {
+function WeightingFlow({ ctx, selection, optIn, samples }: { ctx: Context; selection: string[]; optIn: WeightingOptIn; samples: number | undefined }) {
   const { analysis, measure, id } = ctx;
   const key = selection.join('\u0000');
   const sens = useMemo(() => optIn.sensitivity(analysis, { measure, alternativeIds: selection }), [analysis, measure, key]);
@@ -223,6 +229,7 @@ function WeightingFlow({ ctx, selection, optIn }: { ctx: Context; selection: str
       {model
         ? <RankFlowFigure ctx={ctx} model={model} lead={sens.caption} rankOne="Rank 1 is the highest weighted sum." />
         : <p role="note" data-refused="">{`The changed weighting is refused: ${changed.refused!.message}`}</p>}
+      {optIn.rankShare && <RankShareFigure analysis={analysis} measure={measure} id={id} names={ctx.names} words={ctx.rowWords} selection={selection} run={optIn.rankShare} samples={samples} />}
       <p class="comparanda-panel-hint" data-finding="">{`As declared: ${sens.finding}`}</p>
       {[...sens.warnings, ...extra].map((w) => <p key={w} class="comparanda-panel-hint" role="note" data-warning="">{w}</p>)}
       <ul class="comparanda-panel-hint" aria-label="What this ranking assumes">

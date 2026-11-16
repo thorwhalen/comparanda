@@ -172,8 +172,8 @@ function refusalOf(m: Measurement | undefined, weight: number, cid: string): Wei
   return undefined;
 }
 
-/** A value's position in its declared range, oriented so 1 is best. */
-function position(v: number, m: Measurement): number {
+/** A value's position in its declared range, oriented so 1 is best. Shared with `rankShare`, which sums the same positions under sampled weights. */
+export function positionInRange(v: number, m: Measurement): number {
   const { min, max } = m.range!;
   const u = (v - min) / (max - min);
   return m.preference === 'decreasing' ? 1 - u : u;
@@ -249,7 +249,7 @@ export function weightedSum(a: Analysis, opts: WeightedSumOptions): WeightedSumR
       if (r.kind === 'structural') { notApplicable.push(criterionId); continue; }
       applicable += weight;
       if (r.kind === 'value' && r.numeric !== undefined) {
-        const p = position(r.numeric, m);
+        const p = positionInRange(r.numeric, m);
         observed += weight;
         lo += weight * p;
         hi += weight * p;

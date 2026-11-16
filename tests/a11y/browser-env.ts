@@ -9,6 +9,7 @@
 import { commands } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
+import { rankShare } from '../../src/core/analyses/rank-share.js';
 import { sensitivity } from '../../src/core/analyses/sensitivity.js';
 import { weightedSum } from '../../src/core/analyses/weighted-sum.js';
 import {
@@ -63,7 +64,7 @@ export const THEMES = ['light', 'dark'] as const satisfies readonly Theme[];
  * The analysis panels the package ships, registered as a composition root would (#292). The rank-flow is made from
  * the weighted aggregation it is gated behind (#98), and draws only over an analysis that declares weights.
  */
-export const PANELS = [AgreementPanel, ScatterPanel, DotPlotsPanel, rankFlowPanel({ weightedSum, sensitivity })] as const;
+export const PANELS = [AgreementPanel, ScatterPanel, DotPlotsPanel, rankFlowPanel({ weightedSum, sensitivity, rankShare }, { samples: 500 })] as const;
 
 export interface MountOptions {
   readonly theme?: Theme;

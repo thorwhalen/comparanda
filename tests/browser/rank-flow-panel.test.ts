@@ -9,6 +9,7 @@ import { userEvent } from '@vitest/browser/context';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { sensitivity } from '../../src/core/analyses/sensitivity.js';
+import { rankShare } from '../../src/core/analyses/rank-share.js';
 import { weightedSum } from '../../src/core/analyses/weighted-sum.js';
 import { initialViewState, setFilter } from '../../src/core/view-state.js';
 import { mountMatrix, rankFlowPanel, type MatrixHandle, type WeightingOptIn } from '../../src/view/index.js';
@@ -18,6 +19,7 @@ import { reversal, weighted } from '../support/weighted.js';
 const relocation = Analysis.parse(relocationJson);
 const weightedRelocation = weighted(relocation);
 const RankFlow = rankFlowPanel({ weightedSum, sensitivity });
+const RankFlowWithShares = rankFlowPanel({ weightedSum, sensitivity, rankShare }, { samples: 2_000 });
 
 let el: HTMLElement;
 let handle: MatrixHandle | undefined;
@@ -197,5 +199,54 @@ describe('a keyboard path for every control', () => {
     const [, left, right] = Array.from(panel()!.querySelectorAll<HTMLSelectElement>('select'));
     await userEvent.selectOptions(left!, 'ben');
     expect([left!.value, right!.value]).toEqual(['ben', 'ana']);
+  });
+});
+
+describe('rankShare, inside the panel behind the same opt-in (#343)', () => {
+  const openWithShares = async (analysis: Analysis) => {
+    handle = mountMatrix(el, { analysis, measure: 'score' }, { panels: [RankFlowWithShares] });
+    await userEvent.click(panel()!.querySelector('summary')!);
+  };
+  const figure = () => panel()!.querySelector<HTMLElement>('figure[data-rank-share]')!;
+
+  it('is not drawn unless it is opted into', async () => {
+    await open(reversal());
+    expect(panel()!.querySelector('[data-rank-share]')).toBeNull();
+  });
+
+  it('says its caption as a stability statement, never a winner, and keeps the rank-flow\'s own caption first', async () => {
+    await openWithShares(reversal());
+    expect(caption()).toMatch(/^Stability of the reported order/);
+    const said = figure().querySelector('figcaption')!.textContent!;
+    expect(said).toMatch(/^Across 2,000 random weightings of the 2 weighted criteria, /);
+    expect(said).toMatch(/the order is (not )?stable under joint changes of weight\./);
+    expect(said).not.toMatch(ENDORSEMENT);
+  });
+
+  it('tells each share in the table in words, and the rank the data leave open and the central weighting', async () => {
+    await openWithShares(reversal());
+    for (const id of ['oak', 'pine', 'steel']) {
+      const cells = Array.from(figure().querySelectorAll(`tr[data-row="${id}"] td`), (td) => td.textContent!);
+      expect(cells).toHaveLength(6);
+      for (const c of cells.slice(0, 5)) expect(c).toMatch(/^(\d+%|under 1%|over 99%)$/);
+    }
+    const central = Array.from(figure().querySelectorAll('[data-central]'), (td) => td.textContent!);
+    expect(central.some((c) => /^Grip \d+%, Cost \d+%$/.test(c))).toBe(true);
+  });
+
+  it('draws a bar per share by length in the ink, never by colour, and none where the share is none', async () => {
+    await openWithShares(reversal());
+    const bars = Array.from(figure().querySelectorAll<SVGRectElement>('rect[data-bar]'));
+    expect(bars.length).toBeGreaterThan(0);
+    for (const b of bars) expect(b.getAttribute('fill')).toBe('currentColor');
+    // Steel is far below both, whatever the weights: only its third rank has a bar.
+    const steel = Array.from(figure().querySelectorAll<SVGRectElement>('g[data-share-row="steel"] rect[data-bar]'), (r) => r.parentElement!.dataset['rank']);
+    expect(steel).toEqual(['3']);
+    expect(figure().querySelector('svg')!.getAttribute('aria-label')).toMatch(/table below says the same in words/);
+  });
+
+  it('states what it assumes, beside the shares', async () => {
+    await openWithShares(reversal());
+    expect(Array.from(figure().querySelectorAll('ul[aria-label="What these shares assume"] li'), (li) => li.textContent).join(' ')).toMatch(/drawn uniformly/);
   });
 });
