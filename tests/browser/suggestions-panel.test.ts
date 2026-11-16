@@ -238,6 +238,80 @@ describe('naming a local identity before its first decision (#274)', () => {
     expect(nameForm()!.querySelector('input')!.value).toBe('Ada');
   });
 
+  it('shows the draft in the other field as it is typed, without that field being focused (#353)', async () => {
+    handle = mountMatrix(el, {
+      analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }),
+      view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true),
+    }, at);
+    await settled();
+    const here = () => nameForm()!.querySelector('input')!;
+    const there = () => el.querySelector<HTMLInputElement>('[data-detail="threads"] [data-detail="name"] input')!;
+    await userEvent.click(here());
+    await userEvent.keyboard('Ada');
+    expect(there().value).toBe('Ada');
+    expect(document.activeElement).toBe(here());
+    await userEvent.keyboard('{Backspace}{Backspace}{Backspace}');
+    expect(there().value).toBe('');
+  });
+
+  it('keeps a held panel when Tab moves from its emptied name field to its own button, and lets it go on leaving the form (#352)', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    handle = mountMatrix(el, { analysis: relocation, measure: 'score', source, identity: localIdentity({ storage: memory() }) }, at);
+    await settled();
+    await userEvent.click(nameForm()!.querySelector('input')!);
+    await userEvent.keyboard('A{Backspace}');
+    const decider = { by: { id: 'dana', displayName: 'Dana', kind: 'human' as const }, at: '2026-10-20T12:00:00.000Z' };
+    const ids = relocation.suggestions.map((x) => ({ suggestionId: x.id, decision: 'decline' as const }));
+    await source.update(relocation.id, decideSuggestions(relocation, ids, decider).analysis);
+    await settled();
+    await userEvent.tab();
+    await settled();
+    // Still drawn, and focus on the form's own button, never dropped to the page.
+    expect(panel()).not.toBeNull();
+    expect(document.activeElement).toBe(button(nameForm()!, 'Use this name'));
+    // Leaving the form lets the hold go.
+    (document.activeElement as HTMLElement).blur();
+    await settled();
+    expect(panel()).toBeNull();
+  });
+
+  it('keeps a panel held for an emptied name when focus moves to the other panel\'s name field (#352)', async () => {
+    const source = inMemoryAnalysisSource(relocation);
+    handle = mountMatrix(el, {
+      analysis: relocation, measure: 'score', source, identity: localIdentity({ storage: memory() }),
+      view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true),
+    }, at);
+    await settled();
+    const there = () => el.querySelector<HTMLInputElement>('[data-detail="threads"] [data-detail="name"] input')!;
+    await userEvent.click(there());
+    await userEvent.keyboard('A{Backspace}');
+    const decider = { by: { id: 'dana', displayName: 'Dana', kind: 'human' as const }, at: '2026-10-20T12:00:00.000Z' };
+    const ids = relocation.suggestions.map((x) => ({ suggestionId: x.id, decision: 'decline' as const }));
+    await source.update(relocation.id, decideSuggestions(relocation, ids, decider).analysis);
+    await settled();
+    expect(panel()).not.toBeNull();
+    await userEvent.click(nameForm()!.querySelector('input')!);
+    await settled();
+    expect(panel()).not.toBeNull();
+    expect(document.activeElement).toBe(nameForm()!.querySelector('input'));
+  });
+
+  it('clears a refusal on the other field when a name is typed here (#353)', async () => {
+    handle = mountMatrix(el, {
+      analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }),
+      view: setDetailPanel(setFocus(initialViewState(relocation), { alternativeId: 'berlin', criterionId: 'winter-daylight' }), true),
+    }, at);
+    await settled();
+    const there = () => el.querySelector<HTMLElement>('[data-detail="threads"] [data-detail="name"]')!;
+    await userEvent.click(button(there(), 'Use this name'));
+    await settled();
+    expect(there().querySelector('[role="alert"]')).not.toBeNull();
+    await userEvent.click(nameForm()!.querySelector('input')!);
+    await userEvent.keyboard('A');
+    expect(there().querySelector('[role="alert"]')).toBeNull();
+    expect(there().querySelector('input')!.hasAttribute('aria-invalid')).toBe(false);
+  });
+
   it('does not bring back a name the reader emptied in the other field (#328)', async () => {
     handle = mountMatrix(el, {
       analysis: relocation, measure: 'score', source: inMemoryAnalysisSource(relocation), identity: localIdentity({ storage: memory() }),

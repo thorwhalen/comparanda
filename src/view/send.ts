@@ -57,7 +57,7 @@ export function useSend(send: (text: string) => Promise<void>, empty: string, in
       setBusy(false);
     }
   };
-  return { draft, setDraft, error, busy, submit };
+  return { draft, setDraft, error, busy, submit, clearError: () => setError(undefined) };
 }
 
 /**
