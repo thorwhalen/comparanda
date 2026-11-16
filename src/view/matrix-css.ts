@@ -61,26 +61,31 @@ function tokens(theme: Theme): string {
  * `:host-context()` would read it directly, but Firefox and Safari do not
  * implement it, so a stylesheet relying on it is dark in Chromium alone.
  */
-export function themed(light: string, dark: string): string {
+export function themed(light: string, dark: string, scope = '.comparanda-matrix'): string {
   return `
-.comparanda-matrix {${light}
+${scope} {${light}
 }
 @media screen and (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) :not([data-theme="light"]) > .comparanda-matrix,
-  :host :not([data-theme="light"]) > .comparanda-matrix {${dark}
+  :root:not([data-theme="light"]) :not([data-theme="light"]) > ${scope},
+  :host :not([data-theme="light"]) > ${scope} {${dark}
   }
 }
 @media screen {
-  :root[data-theme="dark"] :not([data-theme="light"]) > .comparanda-matrix,
-  [data-theme="dark"] > .comparanda-matrix {${dark}
+  :root[data-theme="dark"] :not([data-theme="light"]) > ${scope},
+  [data-theme="dark"] > ${scope} {${dark}
   }
 }`;
 }
 
-/** The stylesheet for swatches an encoding adds to the static palette: their variables per theme, and their rules. */
-export function derivedPaletteCss(palette: Readonly<Record<string, Swatch>>): string {
-  return `${themed(paletteVars(palette, 'light'), paletteVars(palette, 'dark'))}
-${paletteRules(palette, '.comparanda-matrix')}`;
+/**
+ * The stylesheet for swatches an encoding adds to the static palette: their variables per theme, and their rules,
+ * scoped to the one matrix whose `data-palette` is `owner` (#346), so two matrices' encodings may define one id
+ * in different colours. `:where` adds no specificity, so the rules tie the muted-ink and print rules as before.
+ */
+export function derivedPaletteCss(palette: Readonly<Record<string, Swatch>>, owner: string): string {
+  const scope = `.comparanda-matrix:where([data-palette="${owner}"])`;
+  return `${themed(paletteVars(palette, 'light'), paletteVars(palette, 'dark'), scope)}
+${paletteRules(palette, scope)}`;
 }
 
 /**

@@ -21,7 +21,7 @@ describe('no background image in the shipped stylesheets (ADR-0028)', () => {
   });
 
   it('an encoding\'s derived palette stylesheet has none', () => {
-    expect(derivedPaletteCss(VSUP_PALETTE)).not.toMatch(BACKGROUND_IMAGE);
+    expect(derivedPaletteCss(VSUP_PALETTE, 'm')).not.toMatch(BACKGROUND_IMAGE);
   });
 
   it('the forced-colors block restores border width and colour, never style', () => {

@@ -218,6 +218,32 @@ describe('an encoding\'s own palette', () => {
   });
 });
 
+describe('a derived palette paints only the matrix that wrote it (#346)', () => {
+  it('two matrices, two encodings, one swatch id in two colours: each paints its own', () => {
+    const encodingWith = (id: string, fill: readonly [string, string]) => defineEncoding({
+      id, label: id, texture: { channel: 'none', because: 'a test.' },
+      prepare: () => ({
+        legend: { title: id, entries: [{ swatch: 'shared-1', label: id }], notes: [] },
+        mark: () => ({ swatch: 'shared-1' }),
+        palette: { 'shared-1': { light: fill, dark: fill } },
+      }),
+    });
+    const [a, b] = [encodingWith('own-a', ['#ffe8a8', '#1b1d21']), encodingWith('own-b', ['#bee1ff', '#1b1d21'])];
+    const registry = createEncodingRegistry([...SHIPPED_ENCODINGS, a, b]);
+    const second = document.createElement('div');
+    document.body.append(second);
+    try {
+      mount({ analysis: relocation, measure: 'score', encoding: 'own-a' }, registry);
+      handles.push(mountMatrix(second, { analysis: relocation, measure: 'score', encoding: 'own-b' }, { encodings: registry }));
+      const fillOf = (root: HTMLElement) => getComputedStyle(root.querySelector<HTMLElement>('td[data-swatch]')!).backgroundColor;
+      expect(fillOf(el)).toBe('rgb(255, 232, 168)');
+      expect(fillOf(second)).toBe('rgb(190, 225, 255)');
+    } finally {
+      second.remove();
+    }
+  });
+});
+
 describe('the value encoding says its step (#208)', () => {
   it('in each painted cell\'s words, toward the criterion\'s preferred end', () => {
     mount({ analysis: relocation, measure: 'score', encoding: 'value' });

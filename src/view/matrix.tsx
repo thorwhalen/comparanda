@@ -184,6 +184,10 @@ export interface MatrixViewProps {
  */
 export type CellState = 'value' | 'missing' | 'not-applicable' | 'not-assessed' | 'refused';
 
+let paletteOwners = 0;
+/** A name no other matrix of this module has (#346): `useId` counts per render root, so it cannot tell two mounted matrices apart. */
+const nextPaletteOwner = () => `m${++paletteOwners}`;
+
 /**
  * What an absent cell says about the work, beside its code's meaning: read from
  * the code's flags (`absenceStanding`), so a deployment's extension is heard the
@@ -219,6 +223,9 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     return cell && raterStripInView(analysis, cell, { levels, viewer, means: (code) => vocabulary.means(code, crit) });
   };
   const helpId = useId();
+  // Names this matrix to the stylesheet of the palette its encoding derived, so no other matrix on the page takes it (#346).
+  // Not `useId`: that counts per render root, so two mounted matrices would share a name.
+  const [paletteOwner] = useState(nextPaletteOwner);
   /**
    * What a pointer last pressed, until the focus it gives (or a key) uses it up:
    * the focus that lands there is the pointer's. One-shot, because a touch's
@@ -636,6 +643,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     <div
       class="comparanda-matrix" ref={root}
       data-encoding={active.id}
+      data-palette={prepared.palette ? paletteOwner : undefined}
       // Every encoding this view was composed with, so a host -- or the build's zero-network check -- can
       // know what the page can draw without importing its registry.
       data-encodings={encodings.ids.join(' ')}
@@ -645,7 +653,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     >
       <style>{MATRIX_CSS}</style>
       {/* After MATRIX_CSS: its swatch rules tie the muted-ink rules on specificity, and win by order. */}
-      {prepared.palette && <style>{derivedPaletteCss(prepared.palette)}</style>}
+      {prepared.palette && <style>{derivedPaletteCss(prepared.palette, paletteOwner)}</style>}
       {prepared.strip && <style>{stripCss(prepared.strip)}</style>}
       {fallback && <p class="comparanda-degraded" role="note">{fallback}</p>}
       {notice && (
