@@ -120,7 +120,7 @@ jobs:
   a11y-gate:
     env:
       PW_ENGINES: chromium firefox
-    # The accessibility merge gate (ADR-0029, #105): the automated set A1-A20,
+    # The accessibility merge gate (ADR-0029, #105): the automated set A1-A23,
     # each check shown to hold on the shipped view and to fail on its own
     # deliberately broken fixture. Its own job, so that the status a branch
     # protection rule requires is named for what it protects and a red here
@@ -173,8 +173,10 @@ jobs:
         # A healthy install takes seconds; a throttled mirror took 17 minutes (#305). Short tries, retried, recover in minutes.
         run: for i in 1 2 3; do timeout 5m pnpm exec playwright install-deps $PW_ENGINES && break; done
 
-      - name: A1-A20, and the broken fixture for each
-        timeout-minutes: 20
+      - name: A1-A23, and the broken fixture for each
+        # About 13 minutes locally and 12 to 21 on a runner: every check's broken fixture is run against every other check, so
+        # the run grows with the square of the checks (#375). The job's 45-minute ceiling still holds the install and this together.
+        timeout-minutes: 30
         run: pnpm test:a11y
 
   hygiene:
