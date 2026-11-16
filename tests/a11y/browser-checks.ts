@@ -1253,11 +1253,15 @@ const a21: Check<BrowserEnv> = {
  * text alone does not say. Where the fills are gone (forced colors, print) each coloured cell must show that step in
  * words beside its value (`CellMark.plain`, #345); a screen reader hears it in the cell's hidden words either way.
  */
-const stepsShown = (el: HTMLElement, where: string): string[] => {
+const stepsShown = (el: HTMLElement, where: string, { required = false }: { required?: boolean } = {}): string[] => {
   const painted = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-swatch]'));
-  if (painted.length === 0) return [`${where}: no cell was coloured, so no step could be checked`];
+  const hasPlain = (td: Element) => td.querySelector('.comparanda-plain') !== null;
+  // An encoding opts in by setting `plain` on a cell: from then on every coloured cell of it must show one (#367). `required`
+  // is for the encoding this check exists for, which must colour cells and opt in, or the check would pass on nothing.
+  if (required && !painted.some(hasPlain)) return [`${where}: no coloured cell carries step words, so none could be checked`];
+  if (!painted.some(hasPlain)) return [];
   return painted
-    .filter((td) => { const p = td.querySelector('.comparanda-plain'); return !p || getComputedStyle(p).display === 'none' || !/step/.test(p.textContent ?? ''); })
+    .filter((td) => { const p = td.querySelector('.comparanda-plain'); return !p || getComputedStyle(p).display === 'none' || (p.textContent ?? '').trim() === ''; })
     .map((td) => `${where}: cell ${td.dataset['cell']} does not show its step`);
 };
 
@@ -1274,8 +1278,8 @@ const a22 = A22_MEDIA.map(({ over, name, emulate, hidden }): Check<BrowserEnv> =
     await env.media(emulate);
     if (!matchMedia(name === 'print' ? 'print' : '(forced-colors: active)').matches) return [`${name} was not emulated`];
     if (name === 'print' && matchMedia('(forced-colors: active)').matches) return ['forced colors was still on in the print pass'];
-    const { el } = env.mount({ analysis: relocation, measure: 'score', encoding: 'value' });
-    return cap(stepsShown(el, `${name} / value`));
+    // Every shipped encoding: one that opts into `plain` shows it on every coloured cell, and `value` must (it is what this is for).
+    return cap(ENCODING_IDS.flatMap((encoding) => stepsShown(env.mount({ analysis: relocation, measure: 'score', encoding }).el, `${name} / ${encoding}`, { required: encoding === 'value' })));
   },
   broken: {
     what: `the step words are hidden in ${name} only`,
