@@ -73,7 +73,8 @@ export const value = /* @__PURE__ */ defineEncoding({
       // preferred end, so a decreasing one says so: its best step holds its lowest values.
       const lower = m!.preference === 'decreasing' ? ', where lower is better' : '';
       // Shown only where the fills are gone (print, forced colors): a 1 on a decreasing criterion would read the wrong way round (#345).
-      return { swatch, said: `, ${said[step]} step for this criterion${lower}`, plain: `${said[step]} step${lower}` };
+      const named = `${said[step]} step`;
+      return { swatch, said: `, ${named} for this criterion${lower}`, plain: `${named}${lower}` };
     };
     for (const alt of ctx.alternatives) for (const crit of ctx.criteria) mark(alt, crit);
     return {
