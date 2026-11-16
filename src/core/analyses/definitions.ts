@@ -19,6 +19,7 @@ import { stabilityTrace, type StabilityOptions } from './stability.js';
 import { weightedSum, type WeightedSumOptions } from './weighted-sum.js';
 import { seriate, type SeriationOptions } from './seriation.js';
 import { sensitivity, type SensitivityOptions } from './sensitivity.js';
+import { rankShare, type RankShareOptions } from './rank-share.js';
 
 export const dominanceAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'dominance', label: 'Dominance',
@@ -61,4 +62,9 @@ export const seriationAnalysis = /* @__PURE__ */ defineAnalysis({
 export const sensitivityAnalysis = /* @__PURE__ */ defineAnalysis({
   id: 'sensitivity', label: 'Stability of the weighted order (opt-in)',
   run: (a, o: SensitivityOptions) => sensitivity(a, o),
+});
+
+export const rankShareAnalysis = /* @__PURE__ */ defineAnalysis({
+  id: 'rank-share', label: 'How the ranks spread across every weighting (opt-in)',
+  run: (a, o: RankShareOptions) => rankShare(a, o),
 });

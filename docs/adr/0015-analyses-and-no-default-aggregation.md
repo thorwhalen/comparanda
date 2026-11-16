@@ -262,6 +262,21 @@ stated job and is already behind the same weighted-aggregation opt-in.
 columns shown beside the realised ranking. ADR-0026's roster stays at five views. The justifying
 sentence is corrected to that extent and to no other.
 
+### 2026-11-16 — `rankShare` is built: the rules it keeps, and what it states (#343)
+
+- **Status:** accepted
+- **Date:** 2026-11-16
+- **Deciders:** Thor Whalen (the rules below were chosen where the 2026-08-21 amendments leave a choice; reversible)
+
+`rankShare(analysis, { measure, alternativeIds, samples, seed, random })` is in `src/core/analyses/rank-share.ts`, and the rank-flow panel draws it when `rankFlowPanel({ weightedSum, sensitivity, rankShare })` is given it (the same opt-in, extended; without it the panel is as before).
+
+- **Weights are sampled uniformly from the simplex** over the criteria with a positive substitution weight. The declared weights decide only which rows take part.
+- **The coverage gate is applied once, at the declared weights.** A row it does not score takes no share and is listed with its label, as in `rankFlow`. It is not re-gated per sample.
+- **Intervals take no midpoint.** Under each sampled weighting a row's aggregate is the weighted sum's interval over every completion of its blanks, and rows are ordered by `separability`. A row the data leave open between ranks `rank` and `lowest` spreads its unit of that sample evenly over those ranks, a stated rule and not a tie-break, and `unsettled` reports the share of samples where it applied. Shares sum to one per alternative, not per rank.
+- **The central weight vector** of a row is the mean of the sampled weightings under which it is *settled* first; absent if there was none.
+- **Seams**: `samples` (default 10 000) and the generator (`random`, else a seeded mulberry32, `seed` default 1), so a result reproduces. The assumptions travel in the result.
+- **The panel's caption is a stability statement**: how many rows keep one rank in at least 90% of the weightings, never which row is first. The drawing is a bar per alternative and rank whose length is the share (no colour), and a table says every share in words.
+
 ### 2026-08-22 — The ELECTRE quotation is verified, and the citation caveat is lifted
 
 - **Status:** accepted
