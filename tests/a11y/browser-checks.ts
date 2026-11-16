@@ -1181,7 +1181,48 @@ const a20: Check<BrowserEnv> = {
   alsoTrips: { A14: 'a fade still running when the screenshot is taken is the colour it captures' },
 };
 
+// ---- A21 (a hatch is told in words) ---------------------------------------------------------------
+
+/**
+ * A hatch is `aria-hidden`: it is safe only because the cell says its level in words ("5 of 5, confidence low").
+ * Every hatched cell, under every hatch-carrying shipped encoding, over every fixture, must have visually hidden
+ * text, after the cell's own label, that says the word for what the hatch carries and a level (#355). An encoding
+ * that hatches and is drawn over no fixture fails too, so a hatch-carrying encoding added later cannot go unchecked.
+ */
+const HATCH_ENCODINGS = SHIPPED_ENCODINGS.filter((e) => e.texture.channel === 'hatch').map((e) => e.id);
+const LEVEL_WORDS = /\b(confidence|agreement)\s+(low|medium|high|\d+)\b/i;
+
+const a21: Check<BrowserEnv> = {
+  id: 'A21',
+  run(env) {
+    const found: string[] = [];
+    for (const encoding of HATCH_ENCODINGS) {
+      let hatchedAnywhere = false;
+      for (const [name, analysis] of Object.entries(FIXTURES)) {
+        const { el } = env.mount({ analysis, measure: 'score', encoding });
+        for (const td of Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-hatch]'))) {
+          hatchedAnywhere = true;
+          // After the label span ("Criterion, Alternative, "): a criterion named "Confidence interval" must not say it.
+          const said = Array.from(td.querySelectorAll('.comparanda-sr')).slice(1).map((n) => n.textContent).join('');
+          if (!LEVEL_WORDS.test(said)) found.push(`${encoding} / ${name}: cell ${td.dataset['cell']} is hatched (level ${td.dataset['hatch']}) and says no level in words`);
+        }
+      }
+      if (!hatchedAnywhere) found.push(`${encoding}: no fixture drew a hatch, so its words could not be checked`);
+    }
+    return cap(found);
+  },
+  broken: {
+    what: 'one hatched cell\'s words are removed, its hatch kept',
+    mustSay: /says no level in words/,
+    sabotage: (env) => env.afterMount((el) => {
+      // Applied to every check's mount in the cross-fixture run: a mount with no hatched cell is left as it is.
+      const sr = Array.from(el.querySelectorAll('tbody td[data-hatch] .comparanda-sr')).find((n) => LEVEL_WORDS.test(n.textContent ?? ''));
+      if (sr) sr.textContent = '';
+    }),
+  },
+};
+
 /** In number order; a number's grid pass first, then its pass over the panels. */
 export const BROWSER_CHECKS: readonly Check<BrowserEnv>[] = [
-  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20,
+  a2, a3, a3panels, a4, a6, a7, a8, a9, a10, a11, a12, a13, a13panels, a14, a15, a15panels, a15rankFlow, a16twin, a17twin, a18, a18panels, a20, a21,
 ];
