@@ -33,8 +33,7 @@ export const PANELS_SURFACE = 'the analysis panels';
  */
 export const RANK_FLOW_SURFACE = 'the rank-flow lines';
 
-/** The media A22 is passed under, each as a pass of its own with its own fixture (#357). */
-export const FORCED_SURFACE = 'forced colors';
+/** A22's second pass (#357): the grid's pass is under forced colors, this one under print, each with its own fixture. */
 export const PRINT_SURFACE = 'print';
 
 /** The automated set. Titles are the research section's, shortened. */
@@ -60,7 +59,7 @@ export const AUTOMATED = [
   { id: 'A19', runtime: 'standalone', title: 'The standalone bundle makes zero network requests' },
   { id: 'A20', runtime: 'browser', title: 'prefers-reduced-motion disables animation and smooth scroll' },
   { id: 'A21', runtime: 'browser', title: 'Every hatched cell says its level in words' },
-  { id: 'A22', runtime: 'browser', over: [FORCED_SURFACE, PRINT_SURFACE], title: 'A step carried by colour is shown in words in forced colors and print' },
+  { id: 'A22', runtime: 'browser', over: [PRINT_SURFACE], title: 'A step carried by colour is shown in words in forced colors and print' },
 ] as const satisfies readonly CheckSpec[];
 
 export type CheckId = (typeof AUTOMATED)[number]['id'];

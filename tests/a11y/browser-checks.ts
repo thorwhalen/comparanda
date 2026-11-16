@@ -34,7 +34,7 @@ import { reversal, weighted } from '../support/weighted.js';
 import { PLACE_CHANGES } from '../../src/core/analyses/rank-flow.js';
 import { FIXTURES, ILLEGIBLE_THIRD_PARTY, ownSetTimeout, PANELS, THEMES, tick, type BrowserEnv } from './browser-env.js';
 import type { Check } from './gate.js';
-import { FORCED_SURFACE, PANELS_SURFACE, PRINT_SURFACE, RANK_FLOW_SURFACE } from './spec.js';
+import { PANELS_SURFACE, PRINT_SURFACE, RANK_FLOW_SURFACE } from './spec.js';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => ownSetTimeout(resolve, ms));
 const languages = FIXTURES['languages']!;
@@ -250,7 +250,7 @@ const a3: Check<BrowserEnv> = {
     sabotage: (env) => env.afterMount((el) => el.querySelector('td[data-state="value"]')!.replaceChildren()),
     // Emptied, the cell has no numeral either: the channels' checks see that too.
   },
-  alsoTrips: { A15: 'an emptied cell has no numeral under forced colors either', A18: 'nor in print' },
+  alsoTrips: { A15: 'an emptied cell has no numeral under forced colors either', A18: 'nor in print', A22: 'nor the step words of a coloured value cell' },
 };
 
 const a4: Check<BrowserEnv> = {
@@ -1228,12 +1228,13 @@ const stepsShown = (el: HTMLElement, where: string): string[] => {
 
 /** Each medium alone, the other's emulation put back: Playwright's `emulateMedia` changes only what it is given. */
 const A22_MEDIA = [
-  { over: FORCED_SURFACE, name: 'forced colors', emulate: { forcedColors: 'active', media: null }, hidden: '@media (forced-colors: active)' },
+  // The grid's pass is forced colors; print is the pass over its own surface (a number's first pass has no `over`).
+  { over: undefined, name: 'forced colors', emulate: { forcedColors: 'active', media: null }, hidden: '@media (forced-colors: active)' },
   { over: PRINT_SURFACE, name: 'print', emulate: { forcedColors: 'none', media: 'print' }, hidden: '@media print' },
 ] as const;
 
 const a22 = A22_MEDIA.map(({ over, name, emulate, hidden }): Check<BrowserEnv> => ({
-  id: 'A22', over,
+  id: 'A22', ...(over ? { over } : {}),
   async run(env) {
     await env.media(emulate);
     if (!matchMedia(name === 'print' ? 'print' : '(forced-colors: active)').matches) return [`${name} was not emulated`];
