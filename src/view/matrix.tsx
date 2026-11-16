@@ -290,8 +290,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   // Declarations overlap (groups are tags): a block's pair is the one declaration that covers all of it (#323).
   const declaredAt = makeInapplicableDeclarations(analysis);
   const blocks = omittedBlocks(layout, (alt, crit) => {
-    const { badge, strip } = prepared.mark(alt, crit);
-    return read(alt, crit) === undefined && !openHere.has(`${alt}\u0000${crit}`) && !badge && !strip
+    const { badge, strip, plain } = prepared.mark(alt, crit);
+    return read(alt, crit) === undefined && !openHere.has(`${alt}\u0000${crit}`) && !badge && !strip && !plain
       ? declaredAt(alt, crit) : [];
   });
   const grid = gridOf(rows.entries, columns.entries, transposed, blocks);

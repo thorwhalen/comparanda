@@ -1255,14 +1255,19 @@ const a21: Check<BrowserEnv> = {
  */
 const stepsShown = (el: HTMLElement, where: string, { required = false }: { required?: boolean } = {}): string[] => {
   const painted = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-swatch]'));
-  const hasPlain = (td: Element) => td.querySelector('.comparanda-plain') !== null;
-  // An encoding opts in by setting `plain` on a cell: from then on every coloured cell of it must show one (#367). `required`
-  // is for the encoding this check exists for, which must colour cells and opt in, or the check would pass on nothing.
-  if (required && !painted.some(hasPlain)) return [`${where}: no coloured cell carries step words, so none could be checked`];
-  if (!painted.some(hasPlain)) return [];
-  return painted
-    .filter((td) => { const p = td.querySelector('.comparanda-plain'); return !p || getComputedStyle(p).display === 'none' || (p.textContent ?? '').trim() === ''; })
-    .map((td) => `${where}: cell ${td.dataset['cell']} does not show its step`);
+  const plains = Array.from(el.querySelectorAll('tbody td .comparanda-plain'));
+  // An encoding opts in by setting `plain` on a cell: from then on every coloured cell of it must show one (#367), all or
+  // nothing by design. `required` is for the encoding this check exists for, which must colour cells and opt in, or it
+  // would pass on nothing.
+  if (required && !painted.some((td) => td.querySelector('.comparanda-plain'))) return [`${where}: no coloured cell carries step words, so none could be checked`];
+  if (plains.length === 0) return [];
+  // The words inside the brackets (the span always renders its brackets), and for `value` a step.
+  const wordsOk = (p: Element) => (required ? /\(\s*\S*\s*step/ : /\(\s*\S/).test(p.textContent ?? '');
+  const shown = (p: Element | null) => p !== null && getComputedStyle(p).display !== 'none' && wordsOk(p);
+  return [
+    ...plains.filter((p) => !shown(p)).map((p) => `${where}: step words in cell ${p.closest('td')!.dataset['cell']} are hidden or empty`),
+    ...painted.filter((td) => !shown(td.querySelector('.comparanda-plain'))).map((td) => `${where}: cell ${td.dataset['cell']} does not show its step`),
+  ];
 };
 
 /** Each medium alone, the other's emulation put back: Playwright's `emulateMedia` changes only what it is given. */
@@ -1283,7 +1288,7 @@ const a22 = A22_MEDIA.map(({ over, name, emulate, hidden }): Check<BrowserEnv> =
   },
   broken: {
     what: `the step words are hidden in ${name} only`,
-    mustSay: /does not show its step/,
+    mustSay: /does not show its step|hidden or empty/,
     sabotage: (env) => env.afterMount((el) => {
       const style = document.createElement('style');
       style.textContent = `${hidden} { .comparanda-matrix .comparanda-plain { display: none !important; } }`;
