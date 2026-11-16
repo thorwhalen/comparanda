@@ -407,6 +407,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
         {glyph && <Glyph reason={glyph} />}
         <span class="comparanda-shown">{text}</span>
         {hatch && <Hatch level={hatch} />}
+        {mark.plain && <span class="comparanda-plain" aria-hidden="true">{` (${mark.plain})`}</span>}
         {mark.badge && <span class="comparanda-badge" aria-hidden="true">{mark.badge}</span>}
         {mark.strip && <Strip strip={mark.strip} ramp={mark.ramp} />}
         {said && <span class="comparanda-sr">{said}</span>}

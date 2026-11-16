@@ -165,6 +165,8 @@ describe('value', () => {
     const rents = ctx.alternatives.filter((alt) => typeof ctx.read(alt, 'rent')?.value === 'number')
       .sort((x, y) => (ctx.read(x, 'rent')!.value as number) - (ctx.read(y, 'rent')!.value as number));
     expect(p.mark(rents[0]!, 'rent').said).toBe(', best step for this criterion, where lower is better');
+    // The same step, shown where the fills are gone (#345).
+    expect(p.mark(rents[0]!, 'rent').plain).toBe('best step, where lower is better');
   });
 
   it('a 1-5 rating spans the ramp end to end', () => {

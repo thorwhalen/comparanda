@@ -72,7 +72,8 @@ export const value = /* @__PURE__ */ defineEncoding({
       // The step in words, so it is not told by colour alone (#208). "Best" is toward the criterion's
       // preferred end, so a decreasing one says so: its best step holds its lowest values.
       const lower = m!.preference === 'decreasing' ? ', where lower is better' : '';
-      return { swatch, said: `, ${said[step]} step for this criterion${lower}` };
+      // Shown only where the fills are gone (print, forced colors): a 1 on a decreasing criterion would read the wrong way round (#345).
+      return { swatch, said: `, ${said[step]} step for this criterion${lower}`, plain: `${said[step]} step${lower}` };
     };
     for (const alt of ctx.alternatives) for (const crit of ctx.criteria) mark(alt, crit);
     return {
@@ -83,6 +84,7 @@ export const value = /* @__PURE__ */ defineEncoding({
         notes: [
           'Each column is placed on its own declared range, in its own preferred direction, so the same shade means "as good" in every column, not "the same number".',
           'Criteria with no direction of preference (a target, an order, a category), or nothing to place a value on, are left uncoloured.',
+          'Where colours are not shown (print, forced colors), each coloured cell names its step beside the value.',
         ],
       },
     };
