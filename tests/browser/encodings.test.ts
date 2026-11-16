@@ -219,29 +219,34 @@ describe('an encoding\'s own palette', () => {
 });
 
 describe('a derived palette paints only the matrix that wrote it (#346)', () => {
-  it('two matrices, two encodings, one swatch id in two colours: each paints its own', () => {
-    const encodingWith = (id: string, fill: readonly [string, string]) => defineEncoding({
-      id, label: id, texture: { channel: 'none', because: 'a test.' },
-      prepare: () => ({
-        legend: { title: id, entries: [{ swatch: 'shared-1', label: id }], notes: [] },
-        mark: () => ({ swatch: 'shared-1' }),
-        palette: { 'shared-1': { light: fill, dark: fill } },
-      }),
-    });
-    const [a, b] = [encodingWith('own-a', ['#ffe8a8', '#1b1d21']), encodingWith('own-b', ['#bee1ff', '#1b1d21'])];
-    const registry = createEncodingRegistry([...SHIPPED_ENCODINGS, a, b]);
-    const second = document.createElement('div');
-    document.body.append(second);
-    try {
-      mount({ analysis: relocation, measure: 'score', encoding: 'own-a' }, registry);
-      handles.push(mountMatrix(second, { analysis: relocation, measure: 'score', encoding: 'own-b' }, { encodings: registry }));
-      const fillOf = (root: HTMLElement) => getComputedStyle(root.querySelector<HTMLElement>('td[data-swatch]')!).backgroundColor;
-      expect(fillOf(el)).toBe('rgb(255, 232, 168)');
-      expect(fillOf(second)).toBe('rgb(190, 225, 255)');
-    } finally {
-      second.remove();
-    }
+  const encodingWith = (id: string, light: string, dark: string) => defineEncoding({
+    id, label: id, texture: { channel: 'none', because: 'a test.' },
+    prepare: () => ({
+      legend: { title: id, entries: [{ swatch: 'shared-1', label: id }], notes: [] },
+      mark: () => ({ swatch: 'shared-1' }),
+      palette: { 'shared-1': { light: [light, '#1b1d21'], dark: [dark, '#e6e8eb'] } },
+    }),
   });
+  const [a, b] = [encodingWith('own-a', '#ffe8a8', '#4a3d14'), encodingWith('own-b', '#bee1ff', '#143a4a')];
+  const registry = createEncodingRegistry([...SHIPPED_ENCODINGS, a, b]);
+  for (const [theme, fills] of [['light', ['rgb(255, 232, 168)', 'rgb(190, 225, 255)']], ['dark', ['rgb(74, 61, 20)', 'rgb(20, 58, 74)']]] as const) {
+    it(`two matrices, two encodings, one swatch id in two colours: each paints its own cells and legend, ${theme} theme`, () => {
+      const second = document.createElement('div');
+      document.body.append(second);
+      el.dataset['theme'] = theme;
+      second.dataset['theme'] = theme;
+      try {
+        mount({ analysis: relocation, measure: 'score', encoding: 'own-a' }, registry);
+        handles.push(mountMatrix(second, { analysis: relocation, measure: 'score', encoding: 'own-b' }, { encodings: registry }));
+        const fills_ = (root: HTMLElement) => ['td[data-swatch]', '.comparanda-swatch[data-swatch]']
+          .map((q) => getComputedStyle(root.querySelector<HTMLElement>(q)!).backgroundColor);
+        expect(fills_(el)).toEqual([fills[0], fills[0]]);
+        expect(fills_(second)).toEqual([fills[1], fills[1]]);
+      } finally {
+        second.remove();
+      }
+    });
+  }
 });
 
 describe('the value encoding says its step (#208)', () => {

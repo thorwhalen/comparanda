@@ -78,12 +78,24 @@ ${scope} {${light}
 }
 
 /**
- * The stylesheet for swatches an encoding adds to the static palette: their variables per theme, and their rules,
- * scoped to the one matrix whose `data-palette` is `owner` (#346), so two matrices' encodings may define one id
- * in different colours. `:where` adds no specificity, so the rules tie the muted-ink and print rules as before.
+ * A name for a derived palette, from its colours (FNV-1a over its variables): the matrix carries it as `data-palette`
+ * and the stylesheet is scoped to it (#346). Content, not a counter or `useId`, because both of those repeat across
+ * render roots and module copies; two matrices that derive the same colours share a name and rules, which is harmless.
  */
-export function derivedPaletteCss(palette: Readonly<Record<string, Swatch>>, owner: string): string {
-  const scope = `.comparanda-matrix:where([data-palette="${owner}"])`;
+export function paletteName(palette: Readonly<Record<string, Swatch>>): string {
+  let h = 0x811c9dc5;
+  for (const ch of paletteVars(palette, 'light') + paletteVars(palette, 'dark')) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193);
+  return `p${(h >>> 0).toString(36)}`;
+}
+
+/**
+ * The stylesheet for swatches an encoding adds to the static palette: their variables per theme, and their rules,
+ * scoped to the matrices whose `data-palette` is the palette's `paletteName` (#346), so two matrices' encodings may
+ * define one id in different colours. `:where` adds no specificity, so the rules tie the muted-ink and print rules
+ * as before. The name is hash-made, so safe in the attribute selector.
+ */
+export function derivedPaletteCss(palette: Readonly<Record<string, Swatch>>): string {
+  const scope = `.comparanda-matrix:where([data-palette="${paletteName(palette)}"])`;
   return `${themed(paletteVars(palette, 'light'), paletteVars(palette, 'dark'), scope)}
 ${paletteRules(palette, scope)}`;
 }
