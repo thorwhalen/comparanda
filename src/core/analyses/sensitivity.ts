@@ -40,7 +40,7 @@
 import type { Analysis } from '../schema/analysis.js';
 import { measurementFor } from '../schema/structure.js';
 import type { Measurement } from '../schema/measurement.js';
-import { makeReadings } from './readings.js';
+import { makePlacements } from './readings.js';
 import {
   weightedSum, separability,
   type WeightedSumOptions, type WeightedSumRefusal, type WeightedSumResult, type WeightedSumRow,
@@ -267,7 +267,7 @@ export function sensitivity(a: Analysis, opts: SensitivityOptions): SensitivityR
 
   // The contribution matrix the perturbation is computed over: one interval per
   // (alternative, weighted criterion), read exactly as the weighted sum read it.
-  const read = makeReadings(a, opts.measure);
+  const place = makePlacements(a, opts.measure);
   const measurements = new Map<string, Measurement>();
   for (const { criterionId } of base.basis) {
     const crit = a.criteria.find((c) => c.id === criterionId);
@@ -279,16 +279,13 @@ export function sensitivity(a: Analysis, opts: SensitivityOptions): SensitivityR
     const byCriterion = new Map<string, Contribution>();
     for (const { criterionId } of base.basis) {
       const m = measurements.get(criterionId)!;
-      const r = read(row.alternativeId, criterionId, m);
-      if (r.kind === 'structural') {
-        byCriterion.set(criterionId, { applies: false, observed: false, lo: 0, hi: 0 });
-      } else if (r.kind === 'value' && r.numeric !== undefined) {
-        const u = (r.numeric - m.range!.min) / (m.range!.max - m.range!.min);
-        const p = m.preference === 'decreasing' ? 1 - u : u;
-        byCriterion.set(criterionId, { applies: true, observed: true, lo: p, hi: p });
-      } else {
-        byCriterion.set(criterionId, { applies: true, observed: false, lo: 0, hi: 1 });
-      }
+      const r = place(row.alternativeId, criterionId, m);
+      byCriterion.set(
+        criterionId,
+        r.kind === 'structural' ? { applies: false, observed: false, lo: 0, hi: 0 }
+          : r.kind === 'position' ? { applies: true, observed: true, lo: r.at, hi: r.at }
+            : { applies: true, observed: false, lo: 0, hi: 1 },
+      );
     }
     contributions.set(row.alternativeId, byCriterion);
   }

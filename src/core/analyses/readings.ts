@@ -3,7 +3,8 @@
  * interval, or a reason it cannot take part.
  *
  * Shared by `findNonDiscriminatingCriteria` and `pughTally` so the two agree
- * about what a blank means. The rules are dominance's (ADR-0019): a contingent
+ * about what a blank means, and, placed on a criterion's range (`makePlacements`), by
+ * the weighted sum, its sensitivity and `rankShare`. The rules are dominance's (ADR-0019): a contingent
  * blank widens to the criterion's declared range, a structural absence (a
  * structural missingness code, or a declared inapplicable group pair) leaves the
  * comparison. Missingness is read through the vocabulary's flags, never by
@@ -64,3 +65,27 @@ export function widenedCells(
   return n;
 }
 
+/** A value's position in its declared range, oriented so 1 is best: what the weighted sum, its sensitivity and `rankShare` all sum. */
+function positionInRange(v: number, m: Measurement): number {
+  const { min, max } = m.range!;
+  const u = (v - min) / (max - min);
+  return m.preference === 'decreasing' ? 1 - u : u;
+}
+
+/** One cell as a weighted aggregation reads it: a position in [0, 1], a blank (anywhere in it), or not applicable. */
+export type Placed = { kind: 'position'; at: number } | { kind: 'blank' } | { kind: 'structural' };
+
+/**
+ * A prepared reader over one analysis and one measure that places each cell for a weighted aggregation, so the three
+ * (`weightedSum`, `sensitivity`, `rankShare`) read a cell one way. The criterion's measurement must declare a range
+ * and a preference direction: the weighted sum refuses a weighted criterion that does not.
+ */
+export function makePlacements(a: Analysis, measure: string): (altId: string, critId: string, m: Measurement) => Placed {
+  const read = makeReadings(a, measure);
+  return (altId, critId, m) => {
+    const r = read(altId, critId, m);
+    if (r.kind === 'structural') return { kind: 'structural' };
+    // A value this criterion cannot place (a string level) reads as a blank: anywhere in the declared range.
+    return r.kind === 'value' && r.numeric !== undefined ? { kind: 'position', at: positionInRange(r.numeric, m) } : { kind: 'blank' };
+  };
+}

@@ -30,10 +30,11 @@
  */
 import type { Analysis } from '../schema/analysis.js';
 import { measurementFor } from '../schema/structure.js';
-import { makeReadings } from './readings.js';
+import { seededRandom } from './seeded-random.js';
+import { makePlacements, type Placed } from './readings.js';
 import type { RowWords } from './rank-flow.js';
 import type { AnalysisResult } from './registry.js';
-import { positionInRange, weightedSum, type WeightedSumOptions, type WeightedSumRefusal } from './weighted-sum.js';
+import { weightedSum, type WeightedSumOptions, type WeightedSumRefusal } from './weighted-sum.js';
 
 /** Working default: the share's noise at this count is about 0.5 percentage points. */
 export const DEFAULT_RANK_SHARE_SAMPLES = 10_000;
@@ -92,21 +93,6 @@ export interface RankShareResult extends AnalysisResult {
   caption: string;
 }
 
-/** A small seeded generator (mulberry32): uniform in [0, 1), reproducible. */
-export function seededRandom(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** One row's reading of each weighted criterion: a position in [0, 1], a blank (anywhere in it), or not applicable. */
-type Cell = { kind: 'position'; at: number } | { kind: 'blank' } | { kind: 'structural' };
-
 export function rankShare(a: Analysis, opts: RankShareOptions): RankShareResult {
   const {
     samples = DEFAULT_RANK_SHARE_SAMPLES, seed = DEFAULT_RANK_SHARE_SEED, holdsAtShare = DEFAULT_HOLDS_AT_SHARE, words = ROW_WORDS,
@@ -132,13 +118,9 @@ export function rankShare(a: Analysis, opts: RankShareOptions): RankShareResult 
 
   const scored = declared.rows.filter((r) => r.status !== 'not-scored');
   const unscored = declared.rows.flatMap((r) => (r.status === 'not-scored' ? [{ alternativeId: r.alternativeId, label: r.label }] : []));
-  const read = makeReadings(a, opts.measure);
-  const grid: Cell[][] = scored.map((row) => positive.map(({ criterionId }): Cell => {
-    const m = measurementFor(a.criteria.find((c) => c.id === criterionId)!, opts.measure)!;
-    const r = read(row.alternativeId, criterionId, m);
-    if (r.kind === 'structural') return { kind: 'structural' };
-    return r.kind === 'value' && r.numeric !== undefined ? { kind: 'position', at: positionInRange(r.numeric, m) } : { kind: 'blank' };
-  }));
+  const place = makePlacements(a, opts.measure);
+  const measurements = positive.map(({ criterionId }) => measurementFor(a.criteria.find((c) => c.id === criterionId)!, opts.measure)!);
+  const placed: Placed[][] = scored.map((row) => positive.map(({ criterionId }, c) => place(row.alternativeId, criterionId, measurements[c]!)));
 
   const n = scored.length;
   const k = positive.length;
@@ -165,7 +147,7 @@ export function rankShare(a: Analysis, opts: RankShareOptions): RankShareResult 
       let low = 0;
       let high = 0;
       for (let c = 0; c < k; c += 1) {
-        const cell = grid[i]![c]!;
+        const cell = placed[i]![c]!;
         if (cell.kind === 'structural') continue;
         applicable += w[c]!;
         if (cell.kind === 'position') { low += w[c]! * cell.at; high += w[c]! * cell.at; } else high += w[c]!;
