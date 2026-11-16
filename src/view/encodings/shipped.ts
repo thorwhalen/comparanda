@@ -58,8 +58,7 @@ export const value = /* @__PURE__ */ defineEncoding({
       return { unavailable: `no criterion places a ${ctx.measure} on a range or a list of levels with a preferred direction.` };
     }
     const counts = new Map<SwatchId, number>();
-    const word = ['Worst fifth', 'Second fifth', 'Middle fifth', 'Fourth fifth', 'Best fifth'];
-    // Said per cell as a step of the five-step ramp, not a fifth: a three-level scale lands on steps 1, 3 and 5.
+    // Said per cell, and in the legend, as a step of the five-step ramp, not a fifth: a three-level scale lands on steps 1, 3 and 5.
     const said = ['worst', 'second', 'middle', 'fourth', 'best'];
     const mark = (alt: string, crit: string): CellMark => {
       const m = placed.get(crit);
@@ -81,7 +80,7 @@ export const value = /* @__PURE__ */ defineEncoding({
       mark,
       legend: {
         title: `${capitalise(ctx.measure)}, toward each criterion's best`,
-        entries: STEPS.map((swatch, i) => ({ swatch, label: `${word[i]} of the criterion's range`, count: counts.get(swatch) ?? 0 })),
+        entries: STEPS.map((swatch, i) => ({ swatch, label: `${capitalise(said[i]!)} step of the criterion's range`, count: counts.get(swatch) ?? 0 })),
         notes: [
           'Each column is placed on its own declared range, in its own preferred direction, so the same shade means "as good" in every column, not "the same number".',
           'Criteria with no direction of preference (a target, an order, a category), or nothing to place a value on, are left uncoloured.',

@@ -14,7 +14,7 @@ import { withBrowserEnv } from './browser-env.js';
 import { gateTests, passesOf } from './gate.js';
 import { passesFor, type CheckId } from './spec.js';
 
-const ENGINE_DEPENDENT: readonly CheckId[] = ['A13', 'A15', 'A16', 'A18', 'A20'];
+const ENGINE_DEPENDENT: readonly CheckId[] = ['A13', 'A15', 'A16', 'A18', 'A20', 'A22'];
 
 const checks = BROWSER_CHECKS.filter((c) => ENGINE_DEPENDENT.includes(c.id));
 

@@ -767,6 +767,7 @@ reason-code set (ADR-0009 permits it) requires a matching glyph, which the view 
 | A19 | Standalone bundle issues zero network requests (already required by ADR-0013) | Playwright request interception |
 | A20 | `prefers-reduced-motion: reduce` disables drag animation and smooth scroll | Playwright |
 | A21 | Every hatched cell has visually hidden text that names its level (the hatch itself is `aria-hidden`; added by #355) | DOM query |
+| A22 | Where the fills are gone (forced colors, print) every cell the `value` encoding colours shows its step in words beside its value (added by #357) | `emulateMedia` + DOM query |
 
 Note on A1: axe-core catches a minority of real accessibility defects. It is a floor, not a gate on
 quality — A2–A20 are where the value is.

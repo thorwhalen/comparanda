@@ -165,6 +165,8 @@ describe('value', () => {
     const rents = ctx.alternatives.filter((alt) => typeof ctx.read(alt, 'rent')?.value === 'number')
       .sort((x, y) => (ctx.read(x, 'rent')!.value as number) - (ctx.read(y, 'rent')!.value as number));
     expect(p.mark(rents[0]!, 'rent').said).toBe(', best step for this criterion, where lower is better');
+    // The legend says the steps in the cells' own words (#357).
+    expect(p.legend.entries.map((e) => e.label)).toEqual(['Worst', 'Second', 'Middle', 'Fourth', 'Best'].map((w) => `${w} step of the criterion's range`));
     // The same step, shown where the fills are gone (#345).
     expect(p.mark(rents[0]!, 'rent').plain).toBe('best step, where lower is better');
     // An increasing criterion carries no direction suffix, and a cell with no colour no words.
