@@ -165,6 +165,12 @@ describe('value', () => {
     const rents = ctx.alternatives.filter((alt) => typeof ctx.read(alt, 'rent')?.value === 'number')
       .sort((x, y) => (ctx.read(x, 'rent')!.value as number) - (ctx.read(y, 'rent')!.value as number));
     expect(p.mark(rents[0]!, 'rent').said).toBe(', best step for this criterion, where lower is better');
+    // The same step, shown where the fills are gone (#345).
+    expect(p.mark(rents[0]!, 'rent').plain).toBe('best step, where lower is better');
+    // An increasing criterion carries no direction suffix, and a cell with no colour no words.
+    const plains = ctx.alternatives.flatMap((a) => ctx.criteria.map((c) => p.mark(a, c))).map((m) => [m.swatch, m.plain] as const);
+    for (const [swatch, plain] of plains) expect(plain === undefined).toBe(swatch === undefined);
+    expect(plains.some(([, plain]) => plain !== undefined && !plain.includes('lower'))).toBe(true);
   });
 
   it('a 1-5 rating spans the ramp end to end', () => {

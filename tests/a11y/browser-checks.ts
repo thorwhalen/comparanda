@@ -782,6 +782,15 @@ const paintedBackgrounds = (root: Element, where: string): string[] => Array.fro
   .filter((node) => parseColour(getComputedStyle(node).backgroundColor)[3] !== 0)
   .map((node) => `${where}: ${node.tagName.toLowerCase()} "${node.textContent!.trim().slice(0, 20)}" still paints a background`);
 
+/** The value encoding's step is a colour; where the fills are gone each coloured cell must show it in words (#345). */
+const stepsShown = (el: HTMLElement, where: string): string[] => {
+  const painted = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-swatch]'));
+  if (painted.length === 0) return [`${where}: no cell was coloured, so no step could be checked`];
+  return painted
+    .filter((td) => { const p = td.querySelector('.comparanda-plain'); return !p || getComputedStyle(p).display === 'none' || !/step/.test(p.textContent ?? ''); })
+    .map((td) => `${where}: cell ${td.dataset['cell']} does not show its step`);
+};
+
 /** Every reason code in force on a cell of its own, so a code added without its glyph fails here (ADR-0009, ADR-0029). */
 const EVERY_CODE = everyCode().analysis;
 const BANDED = viewsOf(relocation)[1]!.view!;
@@ -789,6 +798,8 @@ const MEDIUM_CASES: readonly (readonly [string, Analysis, ViewState?])[] = [
   ['missingness', relocation], ['missingness', EVERY_CODE], ['uncertainty-suppressed', confident], ['text-only', relocation],
   // The same hatch, drawn from each value's evidence quality when no confidence measure exists (#330).
   ['uncertainty-suppressed', evidenced],
+  // The value encoding's fills carry a step that the cell must then say in print and forced colors (#345).
+  ['value', relocation],
   // Banded on both axes: the omitted block's glyph and words must survive too (#93).
   ['missingness', relocation, BANDED], ['text-only', relocation, BANDED],
 ];
@@ -804,6 +815,7 @@ const a15: Check<BrowserEnv> = {
     for (const [encoding, analysis, view] of MEDIUM_CASES) {
       const { el } = env.mount({ analysis, measure: 'score', encoding, ...(view ? { view } : {}) });
       found.push(...channelsSurvive(el, `forced colors / ${caseName(encoding, analysis, view)}`));
+      if (encoding === 'value') found.push(...stepsShown(el, `forced colors / ${encoding}`));
       if (encoding !== 'text-only' && el.querySelector('td svg') === null) found.push(`forced colors / ${encoding}: no glyph or hatch was drawn at all`);
     }
     return cap(found);
@@ -830,6 +842,7 @@ const a18: Check<BrowserEnv> = {
         const { el } = env.mount({ analysis, measure: 'score', encoding, ...(view ? { view } : {}) }, { theme });
         // A printer may drop backgrounds: the ink and the marks must hold against paper, wherever the cells' own fills were.
         found.push(...channelsSurvive(el, where, { paper: PAPER }), ...paintedBackgrounds(el, where));
+        if (encoding === 'value') found.push(...stepsShown(el, where));
       }
     }
     return cap(found);

@@ -60,6 +60,11 @@ export interface CellMark {
   readonly badge?: string;
   /** What a screen reader hears after the value, in words: the badge's meaning, never its symbol. */
   readonly said?: string;
+  /**
+   * The same meaning as `said`, but shown: a short phrase the cell displays only where the display has dropped
+   * its colours (print, forced colors), so a colour-only distinction is not lost there. Hidden on screen.
+   */
+  readonly plain?: string;
   /** The rater dot strip (ADR-0024): data the matrix draws, with its range-bracket form for a narrow cell. */
   readonly strip?: RaterStrip;
   /** The strip's narrowest form (ADR-0024): its step of the disagreement ramp, drawn when even the bracket does not fit. */

@@ -180,7 +180,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
 & .comparanda-swatch.comparanda-strip-ramp { display: none; min-width: 0; padding: 0; inline-size: 100%; block-size: 0.7em; box-shadow: inset 0 0 0 1px currentColor; }
 & td .comparanda-hatch { margin-inline-start: 0.4em; }
 & .comparanda-key { list-style: none; padding: 0; margin: 0 0 0.25em; display: flex; flex-wrap: wrap; gap: 0.25em 1em; }
-& .comparanda-forced-only, & .comparanda-print-only { display: none; }
+& .comparanda-forced-only, & .comparanda-print-only, & .comparanda-plain { display: none; }
 & .comparanda-legend { margin: 0 0 0.5em; }
 & .comparanda-legend-title { margin: 0 0 0.25em; font-weight: 600; }
 & .comparanda-legend ul { list-style: none; padding: 0; margin: 0 0 0.25em; display: flex; flex-wrap: wrap; gap: 0.25em 1em; }
@@ -290,6 +290,7 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   & thead tr.comparanda-band + tr th { top: var(--cmp-band-block, calc(2.1em + 2px)); }
   & .comparanda-swatch { forced-color-adjust: none; }
   & .comparanda-forced-only { display: block; }
+  & .comparanda-plain { display: inline; }
   & .comparanda-panel, & .comparanda-bar span { border-width: 1px; border-color: CanvasText; }
   & th[data-drop] { border-color: Highlight; }
 }
@@ -302,5 +303,6 @@ ${paletteRules(PALETTE, '.comparanda-matrix')}
   & tbody td[data-swatch] { color: var(--cmp-ink); }
   & .comparanda-swatch { print-color-adjust: exact; -webkit-print-color-adjust: exact; outline: 1px solid var(--cmp-ink); }
   & .comparanda-print-only { display: block; }
+  & .comparanda-plain { display: inline; }
 }
 `.replace(/^(\s*)& |, & /gm, (m) => m.replace('&', '.comparanda-matrix'));
