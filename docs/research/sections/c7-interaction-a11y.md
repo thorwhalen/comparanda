@@ -768,6 +768,7 @@ reason-code set (ADR-0009 permits it) requires a matching glyph, which the view 
 | A20 | `prefers-reduced-motion: reduce` disables drag animation and smooth scroll | Playwright |
 | A21 | Every hatched cell has visually hidden text that names its level (the hatch itself is `aria-hidden`; added by #355) | DOM query |
 | A22 | Where the fills are gone (forced colors, print) every cell the `value` encoding colours shows its step in words beside its value (added by #357) | `emulateMedia` + DOM query |
+| A23 | A rating on an ordinal scale with a declared range is heard with its top ("4 of 5"), not as a bare number (added by #361) | DOM query |
 
 Note on A1: axe-core catches a minority of real accessibility defects. It is a floor, not a gate on
 quality — A2–A20 are where the value is.

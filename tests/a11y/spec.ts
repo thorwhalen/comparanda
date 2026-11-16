@@ -1,7 +1,7 @@
 /**
  * The accessibility merge gate's checks, by number (ADR-0029, #105).
  *
- * `docs/research/sections/c7-interaction-a11y.md` is where A1-A20 came from (A21 and A22 were added by #355 and #357);
+ * `docs/research/sections/c7-interaction-a11y.md` is where A1-A20 came from (A21 to A23 were added by #355, #357 and #361);
  * this is the list CI reads (ADR-0029: "the suite is then authoritative"). Each
  * check is implemented once, in the runtime its mechanism needs, and each has a
  * deliberately broken fixture proving it fails on its own (`gate.ts`).
@@ -33,6 +33,9 @@ export const PANELS_SURFACE = 'the analysis panels';
  */
 export const RANK_FLOW_SURFACE = 'the rank-flow lines';
 
+/** A21's second pass (#361): the words of a hatched cell agree with its density, with a fixture of their own. */
+export const DENSITY_SURFACE = 'the words against the hatch density';
+
 /** A22's second pass (#357): the grid's pass is under forced colors, this one under print, each with its own fixture. */
 export const PRINT_SURFACE = 'print';
 
@@ -58,8 +61,9 @@ export const AUTOMATED = [
   { id: 'A18', runtime: 'browser', over: [PANELS_SURFACE], title: 'Print: numeral and glyph present with backgrounds suppressed' },
   { id: 'A19', runtime: 'standalone', title: 'The standalone bundle makes zero network requests' },
   { id: 'A20', runtime: 'browser', title: 'prefers-reduced-motion disables animation and smooth scroll' },
-  { id: 'A21', runtime: 'browser', title: 'Every hatched cell says its level in words' },
+  { id: 'A21', runtime: 'browser', over: [DENSITY_SURFACE], title: 'Every hatched cell says its level in words' },
   { id: 'A22', runtime: 'browser', over: [PRINT_SURFACE], title: 'A step carried by colour is shown in words in forced colors and print' },
+  { id: 'A23', runtime: 'browser', title: 'A rating on a declared scale says what it is out of' },
 ] as const satisfies readonly CheckSpec[];
 
 export type CheckId = (typeof AUTOMATED)[number]['id'];
