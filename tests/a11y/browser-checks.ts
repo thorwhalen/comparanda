@@ -27,6 +27,7 @@ import { SHIPPED_ENCODINGS, type MountMatrixProps } from '../../src/view/index.j
 import { vsupTrees } from '../../src/view/encodings/vsup-derive.js';
 import { GRAPHIC_CONTRAST_MIN, TEXT_CONTRAST_MIN } from '../../src/view/encodings/contrast.js';
 import type { Theme } from '../../src/view/theme.js';
+import { relocationWithRaterSpread } from '../fixtures/rater-spread.js';
 import { vsupGrid } from '../fixtures/vsup-grid.js';
 import { treeFailures } from '../support/cvd-browser.js';
 import { everyCode, heard } from '../support/every-code.js';
@@ -1189,13 +1190,17 @@ const levelRank = (level: string): number | undefined => ({ low: 1, medium: 2, h
 const NOUN_OF: Readonly<Record<string, string>> = { confidence: 'confidence', disagreement: 'agreement' };
 const HATCH_NOUN = new Map(SHIPPED_ENCODINGS.flatMap((e) => (e.texture.channel === 'hatch' ? [[e.id, NOUN_OF[e.texture.carries]!] as const] : [])));
 
+/** What the hatch is read over: the gate's fixtures, and the rater spread the disagreement hatch needs (kept out of `FIXTURES`: every check sweeps those, and a sixth made the gate time out). */
+const HATCH_FIXTURES: Readonly<Record<string, Analysis>> = { ...FIXTURES, 'relocation with rater spread': relocationWithRaterSpread() };
+
 /** What A21 reads in each hatched cell: that it says a level (the grid's pass), and that the level agrees with the density (the pass over `DENSITY_SURFACE`). */
 function hatchFindings(env: BrowserEnv, mode: 'present' | 'agrees'): string[] {
   const found: string[] = [];
   for (const encoding of HATCH_ENCODINGS) {
     const noun = HATCH_NOUN.get(encoding)!;
     let hatchedAnywhere = false;
-    for (const [name, analysis] of Object.entries(FIXTURES)) {
+    let compared = false;
+    for (const [name, analysis] of Object.entries(HATCH_FIXTURES)) {
       const { el } = env.mount({ analysis, measure: 'score', encoding });
       /** Per column (words are per column, on its own scale): what each density was said to be. */
       const saidAt = new Map<string, Map<string, Set<string>>>();
@@ -1220,6 +1225,7 @@ function hatchFindings(env: BrowserEnv, mode: 'present' | 'agrees'): string[] {
         for (const [density, levels] of byDensity) {
           if (levels.size > 1) found.push(`${encoding} / ${name} / ${column}: hatch density ${density} is said as ${[...levels].join(' and ')}, not one level`);
         }
+        if (byDensity.size > 1) compared = true;
         // A denser hatch is a lower confidence or agreement: strictly, within one column's words.
         const ordered = [...byDensity].map(([d, l]) => [Number(d), levelRank([...l][0]!)] as const).filter((x): x is readonly [number, number] => x[1] !== undefined).sort((x, y) => x[0] - y[0]);
         for (let i = 1; i < ordered.length; i += 1) {
@@ -1228,6 +1234,8 @@ function hatchFindings(env: BrowserEnv, mode: 'present' | 'agrees'): string[] {
       }
     }
     if (!hatchedAnywhere) found.push(`${encoding}: no fixture drew a hatch, so its words could not be checked`);
+    // Agreement of words with density is only shown where two densities meet in one column: else it is trivially true (#369).
+    else if (mode === 'agrees' && !compared) found.push(`${encoding}: no fixture hatched two densities in one column, so the words were not compared with the density`);
   }
   return cap(found);
 }
