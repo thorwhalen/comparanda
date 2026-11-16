@@ -65,7 +65,7 @@ import {
 import { Glyph, GLYPH_KEYS, glyphName, Hatch, isHatchLevel, Strip, type GlyphKey, type HatchLevel } from './channels.js';
 import { isRaterStrip, raterStripInView } from '../core/rater-strip.js';
 import type { ScalarValue } from '../core/schema/values.js';
-import { derivedPaletteCss, MATRIX_CSS, stripCss } from './matrix-css.js';
+import { derivedPaletteCss, MATRIX_CSS, paletteName, stripCss } from './matrix-css.js';
 import { DERIVED_SWATCHES, PALETTE, type Pair, type Swatch } from './encodings/palette.js';
 import { TEXT_CONTRAST_MIN, wcagContrastRatio } from './encodings/contrast.js';
 import { revealClear } from './sticky.js';
@@ -636,6 +636,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
     <div
       class="comparanda-matrix" ref={root}
       data-encoding={active.id}
+      data-palette={prepared.palette ? paletteName(prepared.palette) : undefined}
       // Every encoding this view was composed with, so a host -- or the build's zero-network check -- can
       // know what the page can draw without importing its registry.
       data-encodings={encodings.ids.join(' ')}
