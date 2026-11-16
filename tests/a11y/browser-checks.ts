@@ -21,6 +21,7 @@ import { userEvent } from '@vitest/browser/context';
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, setDetailPanel, setFocus, setGrouping, type ViewState } from '../../src/core/view-state.js';
 import { CORE_MISSING_CODES, vocabularyOf } from '../../src/index.js';
+import { measurementFor } from '../../src/core/schema/structure.js';
 import { anonymousIdentity } from '../../src/store/index.js';
 import { SHIPPED_ENCODINGS, type MountMatrixProps } from '../../src/view/index.js';
 import { vsupTrees } from '../../src/view/encodings/vsup-derive.js';
@@ -1182,36 +1183,48 @@ const HATCH_ENCODINGS = SHIPPED_ENCODINGS.filter((e) => e.texture.channel === 'h
 const LEVEL_WORDS = /\b(confidence|agreement)\s+(low|medium|high|\d+)\b/i;
 
 /** A level as a number to order by: its word, or the digits it was said in; undefined for a level this check cannot order. */
-const levelRank = (level: string): number | undefined => ({ low: 1, medium: 2, high: 3 } as Record<string, number>)[level.toLowerCase()] ?? (/^\d+$/.test(level) ? Number(level) : undefined);
+const levelRank = (level: string): number | undefined => ({ low: 1, medium: 2, high: 3 } as Record<string, number>)[level.toLowerCase()] ?? (/^\d+(\.\d+)?$/.test(level) ? Number(level) : undefined);
+
+/** The word a hatched cell must say its level after, from what the hatch carries: a disagreement hatch is told as agreement. */
+const NOUN_OF: Readonly<Record<string, string>> = { confidence: 'confidence', disagreement: 'agreement' };
+const HATCH_NOUN = new Map(SHIPPED_ENCODINGS.flatMap((e) => (e.texture.channel === 'hatch' ? [[e.id, NOUN_OF[e.texture.carries]!] as const] : [])));
 
 /** What A21 reads in each hatched cell: that it says a level (the grid's pass), and that the level agrees with the density (the pass over `DENSITY_SURFACE`). */
 function hatchFindings(env: BrowserEnv, mode: 'present' | 'agrees'): string[] {
   const found: string[] = [];
   for (const encoding of HATCH_ENCODINGS) {
+    const noun = HATCH_NOUN.get(encoding)!;
     let hatchedAnywhere = false;
     for (const [name, analysis] of Object.entries(FIXTURES)) {
       const { el } = env.mount({ analysis, measure: 'score', encoding });
-      const saidAt = new Map<string, Set<string>>();
+      /** Per column (words are per column, on its own scale): what each density was said to be. */
+      const saidAt = new Map<string, Map<string, Set<string>>>();
       for (const td of Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-hatch]'))) {
         hatchedAnywhere = true;
         // After the label span ("Criterion, Alternative, "): a criterion named "Confidence interval" must not say it.
         const said = Array.from(td.querySelectorAll('.comparanda-sr')).slice(1).map((n) => n.textContent).join('');
-        const level = LEVEL_WORDS.exec(said)?.[2];
+        // The noun the hatch carries, not the first of two: a confidence measure's words are the matrix's, not the hatch's.
+        const level = new RegExp(`\\b${noun}\\s+(low|medium|high|\\d+(?:\\.\\d+)?)(?![\\d.])`, 'i').exec(said)?.[1];
         if (level === undefined) {
-          if (mode === 'present') found.push(`${encoding} / ${name}: cell ${td.dataset['cell']} is hatched (level ${td.dataset['hatch']}) and says no level in words`);
+          if (mode === 'present') found.push(`${encoding} / ${name}: cell ${td.dataset['cell']} is hatched (level ${td.dataset['hatch']}) and says no ${noun} level in words`);
           continue;
         }
+        const column = td.dataset['pair']!.split('\u0000')[1]!;
         const density = td.dataset['hatch']!;
-        saidAt.set(density, (saidAt.get(density) ?? new Set()).add(level.toLowerCase()));
+        const byDensity = saidAt.get(column) ?? new Map<string, Set<string>>();
+        byDensity.set(density, (byDensity.get(density) ?? new Set()).add(level.toLowerCase()));
+        saidAt.set(column, byDensity);
       }
       if (mode === 'present') continue;
-      for (const [density, levels] of saidAt) {
-        if (levels.size > 1) found.push(`${encoding} / ${name}: hatch density ${density} is said as ${[...levels].join(' and ')}, not one level`);
-      }
-      // A denser hatch is a lower confidence or agreement: strictly, wherever the words can be ordered.
-      const ordered = [...saidAt].map(([d, l]) => [Number(d), levelRank([...l][0]!)] as const).filter((x): x is readonly [number, number] => x[1] !== undefined).sort((x, y) => x[0] - y[0]);
-      for (let i = 1; i < ordered.length; i += 1) {
-        if (!(ordered[i]![1] < ordered[i - 1]![1])) found.push(`${encoding} / ${name}: a denser hatch (${ordered[i]![0]}) is not said as a lower level than a sparser one (${ordered[i - 1]![0]})`);
+      for (const [column, byDensity] of saidAt) {
+        for (const [density, levels] of byDensity) {
+          if (levels.size > 1) found.push(`${encoding} / ${name} / ${column}: hatch density ${density} is said as ${[...levels].join(' and ')}, not one level`);
+        }
+        // A denser hatch is a lower confidence or agreement: strictly, within one column's words.
+        const ordered = [...byDensity].map(([d, l]) => [Number(d), levelRank([...l][0]!)] as const).filter((x): x is readonly [number, number] => x[1] !== undefined).sort((x, y) => x[0] - y[0]);
+        for (let i = 1; i < ordered.length; i += 1) {
+          if (!(ordered[i]![1] < ordered[i - 1]![1])) found.push(`${encoding} / ${name} / ${column}: a denser hatch (${ordered[i]![0]}) is not said as a lower level than a sparser one (${ordered[i - 1]![0]})`);
+        }
       }
     }
     if (!hatchedAnywhere) found.push(`${encoding}: no fixture drew a hatch, so its words could not be checked`);
@@ -1224,7 +1237,7 @@ const a21: Check<BrowserEnv> = {
   run: (env) => hatchFindings(env, 'present'),
   broken: {
     what: 'one hatched cell\'s words are removed, its hatch kept',
-    mustSay: /says no level in words/,
+    mustSay: /says no \w+ level in words/,
     sabotage: (env) => env.afterMount((el) => {
       // Applied to every check's mount in the cross-fixture run: a mount with no hatched cell is left as it is.
       const sr = Array.from(el.querySelectorAll('tbody td[data-hatch] .comparanda-sr')).find((n) => LEVEL_WORDS.test(n.textContent ?? ''));
@@ -1285,11 +1298,15 @@ const a21density: Check<BrowserEnv> = {
     sabotage: (env) => env.afterMount((el) => {
       const words = (td: Element) => Array.from(td.querySelectorAll('.comparanda-sr')).find((n) => LEVEL_WORDS.test(n.textContent ?? ''));
       const hatched = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-hatch]')).filter((td) => words(td));
-      const by = (d: string) => hatched.find((td) => td.dataset['hatch'] === d);
-      const [sparse, dense] = [by('1') ?? hatched.find((td) => td.dataset['hatch'] !== '3'), by('3')];
-      if (!sparse || !dense || sparse === dense) return;
-      const [a, b] = [words(sparse)!, words(dense)!];
-      [a.textContent, b.textContent] = [b.textContent, a.textContent];
+      // Words are per column: swap within one column that has two densities.
+      for (const column of new Set(hatched.map((td) => td.dataset['pair']!.split('\u0000')[1]))) {
+        const cells = hatched.filter((td) => td.dataset['pair']!.split('\u0000')[1] === column).sort((x, y) => Number(x.dataset['hatch']) - Number(y.dataset['hatch']));
+        const [sparse, dense] = [cells[0]!, cells[cells.length - 1]!];
+        if (sparse.dataset['hatch'] === dense.dataset['hatch']) continue;
+        const [a, b] = [words(sparse)!, words(dense)!];
+        [a.textContent, b.textContent] = [b.textContent, a.textContent];
+        return;
+      }
     }),
   },
 };
@@ -1310,10 +1327,10 @@ const a23: Check<BrowserEnv> = {
       for (const td of Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-state="value"]'))) {
         const critId = td.dataset['pair']!.split('\u0000')[1]!;
         const crit = analysis.criteria.find((c) => c.id === critId);
-        const m = crit && (crit.measurements?.['score'] ?? crit.defaultMeasurement);
+        const m = crit && measurementFor(crit, 'score');
         if (!m || m.level !== 'ordinal' || !m.range || !/^-?\d/.test(td.querySelector('.comparanda-shown')?.textContent ?? '')) continue;
         rated += 1;
-        const said = Array.from(td.querySelectorAll('.comparanda-sr')).map((n) => n.textContent).join('');
+        const said = Array.from(td.querySelectorAll('.comparanda-sr')).slice(1).map((n) => n.textContent).join('');
         if (!new RegExp(`\\bof ${m.range.max}\\b`).test(said)) found.push(`${name}: cell ${td.dataset['cell']} is a rating and does not say its scale ("of ${m.range.max}")`);
       }
       if (rated === 0 && name === 'languages') found.push(`${name}: no rating was found, so no scale could be checked`);

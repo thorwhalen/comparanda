@@ -132,3 +132,5 @@ The `value` encoding's fill says a step of the criterion's range that the cell's
 ## Amendment, 2026-11-16: A21 checks agreement, A23 checks a rating's scale (#361)
 
 **A21** gains a second pass, over the hatch density: within each mount, one density is said as one level, and a denser hatch is said as a strictly lower level than a sparser one, wherever the words can be ordered (low, medium, high, or digits). It has its own broken fixture, which swaps the words of the sparsest and densest hatch. **A23** (browser): a value cell on an ordinal criterion with a declared range is heard with its top ("4 of 5"); A3 only asked that a cell not be blank, so a cell that lost "of 5" passed it.
+
+Known gap of the agreement half: with the gate's fixtures `consensus-suppressed` hatches one cell at one density, so its "one density, one level, denser is lower" is trivially true there and its swapped-words fixture cannot fire on it; the confidence half is proven on three-level words. A fixture with real rater spread is needed (#369). Words are compared within one column (each has its own scale), and read after the noun the hatch carries.
