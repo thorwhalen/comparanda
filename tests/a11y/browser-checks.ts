@@ -1253,12 +1253,21 @@ const a21: Check<BrowserEnv> = {
  * text alone does not say. Where the fills are gone (forced colors, print) each coloured cell must show that step in
  * words beside its value (`CellMark.plain`, #345); a screen reader hears it in the cell's hidden words either way.
  */
-const stepsShown = (el: HTMLElement, where: string): string[] => {
+const stepsShown = (el: HTMLElement, where: string, { required = false }: { required?: boolean } = {}): string[] => {
   const painted = Array.from(el.querySelectorAll<HTMLElement>('tbody td[data-swatch]'));
-  if (painted.length === 0) return [`${where}: no cell was coloured, so no step could be checked`];
-  return painted
-    .filter((td) => { const p = td.querySelector('.comparanda-plain'); return !p || getComputedStyle(p).display === 'none' || !/step/.test(p.textContent ?? ''); })
-    .map((td) => `${where}: cell ${td.dataset['cell']} does not show its step`);
+  const plains = Array.from(el.querySelectorAll('tbody td .comparanda-plain'));
+  // An encoding opts in by setting `plain` on a cell: from then on every coloured cell of it must show one (#367), all or
+  // nothing by design. `required` is for the encoding this check exists for, which must colour cells and opt in, or it
+  // would pass on nothing.
+  if (required && !painted.some((td) => td.querySelector('.comparanda-plain'))) return [`${where}: no coloured cell carries step words, so none could be checked`];
+  if (plains.length === 0) return [];
+  // The words inside the brackets (the span always renders its brackets), and for `value` a step.
+  const wordsOk = (p: Element) => (required ? /\(\s*\S*\s*step/ : /\(\s*\S/).test(p.textContent ?? '');
+  const shown = (p: Element | null) => p !== null && getComputedStyle(p).display !== 'none' && wordsOk(p);
+  return [
+    ...plains.filter((p) => !shown(p)).map((p) => `${where}: step words in cell ${p.closest('td')!.dataset['cell']} are hidden or empty`),
+    ...painted.filter((td) => !shown(td.querySelector('.comparanda-plain'))).map((td) => `${where}: cell ${td.dataset['cell']} does not show its step`),
+  ];
 };
 
 /** Each medium alone, the other's emulation put back: Playwright's `emulateMedia` changes only what it is given. */
@@ -1274,12 +1283,12 @@ const a22 = A22_MEDIA.map(({ over, name, emulate, hidden }): Check<BrowserEnv> =
     await env.media(emulate);
     if (!matchMedia(name === 'print' ? 'print' : '(forced-colors: active)').matches) return [`${name} was not emulated`];
     if (name === 'print' && matchMedia('(forced-colors: active)').matches) return ['forced colors was still on in the print pass'];
-    const { el } = env.mount({ analysis: relocation, measure: 'score', encoding: 'value' });
-    return cap(stepsShown(el, `${name} / value`));
+    // Every shipped encoding: one that opts into `plain` shows it on every coloured cell, and `value` must (it is what this is for).
+    return cap(ENCODING_IDS.flatMap((encoding) => stepsShown(env.mount({ analysis: relocation, measure: 'score', encoding }).el, `${name} / ${encoding}`, { required: encoding === 'value' })));
   },
   broken: {
     what: `the step words are hidden in ${name} only`,
-    mustSay: /does not show its step/,
+    mustSay: /does not show its step|hidden or empty/,
     sabotage: (env) => env.afterMount((el) => {
       const style = document.createElement('style');
       style.textContent = `${hidden} { .comparanda-matrix .comparanda-plain { display: none !important; } }`;
