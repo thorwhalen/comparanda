@@ -21,7 +21,15 @@ export type TakeName = (typed: string) => Promise<void>;
  * `undefined` holds nothing; `''` is a field emptied but not yet left, still held, so the panel is not pulled out from
  * under the reader. Typing redraws nothing; only letting a hold go does, so a panel kept for it alone can close.
  */
-export interface NameDraft { get(): string | undefined; set(typed: string | undefined): void }
+export interface NameDraft {
+  get(): string | undefined;
+  set(typed: string | undefined): void;
+  /**
+   * Told each name typed, so every field shows the draft as it is typed and not only once focused (#353). Optional,
+   * so a host's own draft without it keeps working: the field then takes the draft up when it is focused.
+   */
+  subscribe?(listener: (typed: string) => void): () => void;
+}
 
 /** What a panel that signs its writes is given to ask for a name. */
 export interface NameWrites {
@@ -38,12 +46,17 @@ export interface NameWrites {
 export function useNameDraft(asked: unknown): NameDraft {
   const [, redraw] = useState({});
   const typed = useRef<string>();
-  if (!asked) typed.current = undefined;
-  return {
+  const listeners = useRef(new Set<(typed: string) => void>());
+  // One object for the matrix's life, so a field subscribes once; a draft is only ever read through it.
+  const draft = useRef<NameDraft>();
+  draft.current ??= {
     get: () => typed.current,
-    // Let go only by a field that held it (`release`): a panel kept for it alone closes.
-    set: (t) => { typed.current = t; if (t === undefined) redraw({}); },
+    // Typing redraws only the fields that listen; only letting a hold go (`undefined`) redraws the matrix, so a panel kept for it alone can close.
+    set: (t) => { typed.current = t; if (t === undefined) redraw({}); else listeners.current.forEach((l) => l(t)); },
+    subscribe: (listener) => { listeners.current.add(listener); return () => { listeners.current.delete(listener); }; },
   };
+  if (!asked) typed.current = undefined;
+  return draft.current;
 }
 
 /**
@@ -56,15 +69,18 @@ export function NameForm({ name, idBase, draft }: { name: TakeName; idBase: stri
   // Left empty, by focus or by leaving the tree, the hold goes; never on emptying the box, which would drop focus out from under the reader.
   const release = () => { if (draft?.get() === '') draft.set(undefined); };
   useLayoutEffect(() => release, []);
+  // Another field's typing shows here at once (#353), without the matrix being drawn again.
+  useLayoutEffect(() => draft?.subscribe?.(setText), [draft]);
+  // Focus moving within the form (the box to its own button) keeps the hold; leaving the form lets it go (#352).
+  const leaving = (e: FocusEvent) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) release(); };
   return (
-    <form class="comparanda-compose" onSubmit={submit} data-detail="name">
+    <form class="comparanda-compose" onSubmit={submit} onFocusOut={leaving} data-detail="name">
       <label for={`${idBase}-name`}>Your name</label>
       <input
         id={`${idBase}-name`} type="text" autocomplete="name" {...refusedField(error, `${idBase}-name-error`, `${idBase}-name-hint`)} value={text}
         onInput={(e) => { const v = (e.currentTarget as HTMLInputElement).value; setText(v); draft?.set(v); }}
         // The other panel's field may have been typed in, or emptied, since this one was drawn.
         onFocus={() => draft && setText(draft.get() ?? '')}
-        onBlur={release}
       />
       <p id={`${idBase}-name-hint`} class="comparanda-panel-hint">
         Saved on this device, not in an account. It is shown beside what you write, marked unverified: nobody checks it.
