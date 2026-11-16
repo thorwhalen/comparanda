@@ -387,6 +387,8 @@ interface SuppressionSpec {
   certainty: (alt: string, crit: string) => ScalarValue | undefined;
   /** What a layer is a level of: "confidence", "agreement". */
   noun: string;
+  /** Say the layer in each coloured cell's words (", agreement low"), for a view whose matrix does not say it already (#355). */
+  sayLayer?: boolean;
   /** What makes a cell recede: "confidence falls". */
   falls: string;
   noCell: string;
@@ -418,7 +420,8 @@ function suppressedBy(ctx: EncodingContext, spec: SuppressionSpec): PreparedEnco
         const swatch = vsupSwatchId(k, m, layer, node);
         // Density says how far from the most confident layer, on one scale for every column: 3 is the root.
         const hatch = Math.round((3 * (m - 1 - layer)) / (m - 1));
-        marks.set(`${alt}\u0000${crit}`, hatch > 0 ? { swatch, hatch: hatch as 1 | 2 | 3 } : { swatch });
+        const said = spec.sayLayer ? { said: `, ${spec.noun} ${column.layerWords[layer]}` } : {};
+        marks.set(`${alt}\u0000${crit}`, hatch > 0 ? { swatch, hatch: hatch as 1 | 2 | 3, ...said } : { swatch, ...said });
         const label = `${capitalise(groupWords(column.tree.layers[layer]![node]!, column).replace(/^any$/, `any ${ctx.measure}`))}, ${column.layerWords[layer]} ${spec.noun}`;
         const key = `${swatch}\u0000${label}`;
         const seen = used.get(key) ?? { swatch, label, column, layer, node, count: 0, criteria: new Set<string>() };
@@ -571,6 +574,7 @@ export const consensusSuppressed = /* @__PURE__ */ defineEncoding({
         return strip ? stripDisagreement(strip)?.index : undefined;
       },
       noun: 'agreement',
+      sayLayer: true,
       falls: 'the raters disagree',
       noCell: `no shown cell has two or more ratings of a ${ctx.measure} on a scale of three or more levels to measure disagreement on.`,
       noColumn: ' to suppress by its raters\' disagreement',

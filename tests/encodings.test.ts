@@ -329,9 +329,9 @@ describe('the two drawn over the disagreement index (#258)', () => {
     const p = prepared(consensusSuppressed, withStrips(rated({ unanimous: [5, 5, 5, 5], bimodal: [1, 1, 5, 5], lone: [3] })));
     const top = mergeTree(5, 3).layers.length - 1;
     // Unanimity: the most-agreed layer, the value's own leaf, no hatch.
-    expect(p.mark('unanimous', 'c')).toEqual({ swatch: vsupSwatchId(5, 3, top, 4) });
+    expect(p.mark('unanimous', 'c')).toEqual({ swatch: vsupSwatchId(5, 3, top, 4), said: ', agreement high' });
     // Perfect bimodality: the root, densest hatch.
-    expect(p.mark('bimodal', 'c')).toMatchObject({ swatch: vsupSwatchId(5, 3, 0, 0), hatch: 3 });
+    expect(p.mark('bimodal', 'c')).toMatchObject({ swatch: vsupSwatchId(5, 3, 0, 0), hatch: 3, said: ', agreement low' });
     expect(p.mark('lone', 'c')).toEqual({});
     expect(p.legend.title).toMatch(/as the raters disagree/);
     expect(p.legend.entries.map((e) => e.label).join(' ')).toMatch(/high agreement/);
