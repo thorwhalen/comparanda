@@ -47,7 +47,7 @@ import {
   type RankColumn, type RankFlow, type RankMove, type RankPlace, type RankScenario, type RowWords,
 } from '../core/analyses/rank-flow.js';
 import { raterCriteria, raterRanking } from '../core/analyses/rater-ranking.js';
-import type { rankShare, RankShareResult } from '../core/analyses/rank-share.js';
+import type { rankShare } from '../core/analyses/rank-share.js';
 import { firstOrderChange, type sensitivity, type WeightChange } from '../core/analyses/sensitivity.js';
 import { withSubstitutionWeight, type weightedSum } from '../core/analyses/weighted-sum.js';
 import type { Analysis } from '../core/schema/analysis.js';
@@ -55,6 +55,7 @@ import { aliasesOf, type Aliases } from '../core/schema/structure.js';
 import { attributions } from '../core/identity.js';
 import { hiddenOf, inShownOrder } from '../core/layout.js';
 import type { AnalysisPanelProps } from './agreement.js';
+import { RankShareFigure } from './rank-share-figure.js';
 import { HiddenNote } from './shown.js';
 import { capitalise } from './words.js';
 
@@ -228,105 +229,13 @@ function WeightingFlow({ ctx, selection, optIn, samples }: { ctx: Context; selec
       {model
         ? <RankFlowFigure ctx={ctx} model={model} lead={sens.caption} rankOne="Rank 1 is the highest weighted sum." />
         : <p role="note" data-refused="">{`The changed weighting is refused: ${changed.refused!.message}`}</p>}
-      {optIn.rankShare && <RankShareFigure ctx={ctx} selection={selection} run={optIn.rankShare} samples={samples} />}
+      {optIn.rankShare && <RankShareFigure analysis={analysis} measure={measure} id={id} names={ctx.names} words={ctx.rowWords} selection={selection} run={optIn.rankShare} samples={samples} />}
       <p class="comparanda-panel-hint" data-finding="">{`As declared: ${sens.finding}`}</p>
       {[...sens.warnings, ...extra].map((w) => <p key={w} class="comparanda-panel-hint" role="note" data-warning="">{w}</p>)}
       <ul class="comparanda-panel-hint" aria-label="What this ranking assumes">
         {sens.assumptions.map((a) => <li key={a}>{a}</li>)}
       </ul>
     </>
-  );
-}
-
-/** A row holds its rank when this share of the sampled weightings, or more, put it at one rank. */
-const HOLDS_AT_SHARE = 0.9;
-
-/** A share as a person reads it: whole percent, with "under 1%" for a share that is not none. */
-const percentSaid = (x: number) => (x === 0 ? '0%' : x < 0.005 ? 'under 1%' : `${Math.round(x * 100)}%`);
-
-/** The geometry of the share drawing, in SVG user units: label column, cell width and height, bar height, padding, type size. */
-const SHARE_PLOT = Object.freeze({ label: 140, cell: 44, row: 22, bar: 10, pad: 8, font: 11 });
-
-/**
- * `rankShare` (#343): how the ranks spread across every weighting at once, drawn as a bar per alternative and
- * rank whose length is the share (shape, not colour) and said in the table under it. The caption is a stability
- * statement: how many rows keep one rank under joint changes of weight, never which row is first.
- */
-function RankShareFigure({ ctx: { analysis, measure, id, names, rowWords }, selection, run, samples }: {
-  ctx: Context; selection: string[]; run: NonNullable<WeightingOptIn['rankShare']>; samples: number | undefined;
-}) {
-  const key = selection.join('\u0000');
-  const result: RankShareResult = useMemo(
-    () => run(analysis, { measure, alternativeIds: selection, ...(samples !== undefined ? { samples } : {}) }),
-    [analysis, measure, key, samples],
-  );
-  if (result.refused) return null;
-  if (result.rows.length === 0) return <p role="note" data-rank-share-refused="">{`No ranks to spread: no ${rowWords.alternative} is scored at the declared weights.`}</p>;
-  const label = (cid: string) => analysis.criteria.find((c) => c.id === cid)?.label ?? cid;
-  const { label: labelW, cell, row, bar, pad, font } = SHARE_PLOT;
-  const ranks = Array.from({ length: result.ranks }, (_, k) => k + 1);
-  const holds = result.rows.filter((r) => Math.max(...r.shares) >= HOLDS_AT_SHARE).length;
-  const caption = `Across ${result.samples} random weightings of the ${result.basis.length} weighted ${result.basis.length === 1 ? 'criterion' : 'criteria'}, `
-    + `${holds} of the ${result.rows.length} ${result.rows.length === 1 ? rowWords.alternative : rowWords.alternatives} keep one rank in at least ${HOLDS_AT_SHARE * 100}% of them`
-    + `${holds === result.rows.length ? ': the order is stable under joint changes of weight.' : `; the others spread over several ranks: the order is not stable under joint changes of weight.`}`;
-  const width = labelW + ranks.length * cell + pad;
-  const height = row * (result.rows.length + 1) + pad;
-  return (
-    <figure aria-labelledby={`${id}-share-caption`} data-rank-share="">
-      <figcaption id={`${id}-share-caption`}><strong>{caption}</strong></figcaption>
-      <div role="region" tabIndex={0} aria-label="The rank shares drawing; it scrolls sideways where it is wider than the page" style={{ overflowX: 'auto' }}>
-        <svg
-          viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" fill="currentColor"
-          aria-label={`For each ${rowWords.alternative}, a bar at each rank as long as the share of weightings that put it there. The table below says the same in words.`}
-        >
-          {ranks.map((r) => <text key={`h${r}`} x={labelW + (r - 0.5) * cell} y={row - 6} text-anchor="middle" font-size={font} fill="currentColor">{`Rank ${r}`}</text>)}
-          {result.rows.map((r, i) => (
-            <g key={r.alternativeId} data-share-row={r.alternativeId}>
-              <text x={labelW - pad} y={row * (i + 1) + row / 2 + 4} text-anchor="end" font-size={font} fill="currentColor">{names(r.alternativeId)}</text>
-              {r.shares.map((x, k) => (x > 0 && (
-                <rect
-                  key={k} data-rank={k + 1} x={labelW + k * cell + 2} y={row * (i + 1) + (row - bar) / 2} width={Math.max(1, x * (cell - 4))} height={bar}
-                  fill="currentColor" stroke="currentColor"
-                />
-              )))}
-            </g>
-          ))}
-        </svg>
-      </div>
-      <table class="comparanda-analysis-table">
-        <caption>{`Share of the weightings that put each ${rowWords.alternative} at each rank, in words`}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{capitalise(rowWords.alternative)}</th>
-            {ranks.map((r) => <th key={r} scope="col">{`Rank ${r}`}</th>)}
-            <th scope="col">Rank left open by the data</th>
-            <th scope="col">Central weighting</th>
-          </tr>
-        </thead>
-        <tbody>
-          {result.rows.map((r) => (
-            <tr key={r.alternativeId} data-row={r.alternativeId}>
-              <th scope="row">{names(r.alternativeId)}</th>
-              {r.shares.map((x, k) => <td key={k}>{percentSaid(x)}</td>)}
-              <td data-unsettled="">{percentSaid(r.unsettled)}</td>
-              <td data-central="">
-                {r.centralWeights
-                  ? r.centralWeights.map((w) => `${label(w.criterionId)} ${percentSaid(w.weight)}`).join(', ')
-                  : 'never settled first'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {result.unscored.length > 0 && (
-        <p class="comparanda-panel-hint" data-unscored="">
-          {`Not in these shares, as in the ranking above: ${result.unscored.map((u) => `${names(u.alternativeId)} (${u.label})`).join('; ')}.`}
-        </p>
-      )}
-      <ul class="comparanda-panel-hint" aria-label="What these shares assume">
-        {result.assumptions.map((a) => <li key={a}>{a}</li>)}
-      </ul>
-    </figure>
   );
 }
 

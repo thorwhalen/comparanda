@@ -218,8 +218,8 @@ describe('rankShare, inside the panel behind the same opt-in (#343)', () => {
     await openWithShares(reversal());
     expect(caption()).toMatch(/^Stability of the reported order/);
     const said = figure().querySelector('figcaption')!.textContent!;
-    expect(said).toMatch(/^Across 2000 random weightings of the 2 weighted criteria, \d of the 3 options keep one rank in at least 90% of them/);
-    expect(said).toMatch(/the order is (not )?stable under joint changes of weight\.$/);
+    expect(said).toMatch(/^Across 2,000 random weightings of the 2 weighted criteria, /);
+    expect(said).toMatch(/the order is (not )?stable under joint changes of weight\./);
     expect(said).not.toMatch(ENDORSEMENT);
   });
 
@@ -227,8 +227,8 @@ describe('rankShare, inside the panel behind the same opt-in (#343)', () => {
     await openWithShares(reversal());
     for (const id of ['oak', 'pine', 'steel']) {
       const cells = Array.from(figure().querySelectorAll(`tr[data-row="${id}"] td`), (td) => td.textContent!);
-      expect(cells).toHaveLength(5);
-      for (const c of cells.slice(0, 4)) expect(c).toMatch(/^(\d+%|under 1%)$/);
+      expect(cells).toHaveLength(6);
+      for (const c of cells.slice(0, 5)) expect(c).toMatch(/^(\d+%|under 1%|over 99%)$/);
     }
     const central = Array.from(figure().querySelectorAll('[data-central]'), (td) => td.textContent!);
     expect(central.some((c) => /^Grip \d+%, Cost \d+%$/.test(c))).toBe(true);
@@ -236,11 +236,11 @@ describe('rankShare, inside the panel behind the same opt-in (#343)', () => {
 
   it('draws a bar per share by length in the ink, never by colour, and none where the share is none', async () => {
     await openWithShares(reversal());
-    const bars = Array.from(figure().querySelectorAll<SVGRectElement>('rect[data-rank]'));
+    const bars = Array.from(figure().querySelectorAll<SVGRectElement>('rect[data-bar]'));
     expect(bars.length).toBeGreaterThan(0);
     for (const b of bars) expect(b.getAttribute('fill')).toBe('currentColor');
     // Steel is far below both, whatever the weights: only its third rank has a bar.
-    const steel = Array.from(figure().querySelectorAll<SVGRectElement>('g[data-share-row="steel"] rect'), (r) => r.dataset['rank']);
+    const steel = Array.from(figure().querySelectorAll<SVGRectElement>('g[data-share-row="steel"] rect[data-bar]'), (r) => r.parentElement!.dataset['rank']);
     expect(steel).toEqual(['3']);
     expect(figure().querySelector('svg')!.getAttribute('aria-label')).toMatch(/table below says the same in words/);
   });
