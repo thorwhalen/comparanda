@@ -22,3 +22,20 @@ describe('the automated set', () => {
     expect(listed).toEqual(AUTOMATED.map((c) => c.id));
   });
 });
+
+describe('the cross-fixture matrix in shards (#375)', () => {
+  it('holds every fixture in exactly one shard, whatever the number of checks or shards', async () => {
+    const { shardOf } = await import('./gate.js');
+    const { MATRIX_SHARDS } = await import('../../vitest.a11y.config.js');
+    for (const count of [1, 2, 3, MATRIX_SHARDS, 7]) {
+      for (const n of [0, 1, 5, 27, 40]) {
+        const items = Array.from({ length: n }, (_, i) => i);
+        const shares = Array.from({ length: count }, (_, i) => shardOf(items, [i + 1, count]));
+        expect(shares.flat().sort((a, b) => a - b)).toEqual(items);
+        expect(Math.max(...shares.map((s) => s.length)) - Math.min(...shares.map((s) => s.length))).toBeLessThanOrEqual(1);
+      }
+    }
+    expect(() => shardOf([1], [0, 2])).toThrow(/shard/);
+    expect(() => shardOf([1], [3, 2])).toThrow(/shard/);
+  });
+});

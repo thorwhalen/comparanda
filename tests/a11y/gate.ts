@@ -53,15 +53,63 @@ const SECOND = 1000;
 /** The passes `checks` implement, by name, in order: compared with `passesFor`, so no pass can be dropped or added unlisted. */
 export const passesOf = <E>(checks: readonly Check<E>[]): string[] => checks.map((c) => passName(c.id, c.over));
 
+/** One share of the cross-fixture matrix: shard `index` (1-based) of `count`. */
+export type Shard = readonly [index: number, count: number];
+
+/**
+ * The fixtures shard `index` of `count` crosses with every other check: every `count`-th one,
+ * starting at the `index`-th, so the shards together hold each fixture exactly once whatever
+ * the number of checks, and a new check joins one shard without moving the others' fixtures much.
+ */
+export function shardOf<T>(items: readonly T[], [index, count]: Shard): T[] {
+  if (!Number.isInteger(count) || count < 1 || !Number.isInteger(index) || index < 1 || index > count) {
+    throw new Error(`a shard is 1..count of count, not ${index} of ${count}`);
+  }
+  return items.filter((_, i) => i % count === index - 1);
+}
+
+/**
+ * The cross-fixture matrix: each check's broken fixture, run against every other check, trips
+ * none beyond those it declares in `alsoTrips` (and trips each of those). Its cost is the number
+ * of checks times the time of all the checks, so it grows with the square of the checks (#375);
+ * `shard` runs one share of the fixtures, so the shares can run side by side (`vitest.a11y.config.ts`).
+ */
+export function crossFixtureTests<E>(
+  runtime: Runtime, checks: readonly Check<E>[], withEnv: WithEnv<E>,
+  { timeout = 60 * SECOND, shard = [1, 1] as Shard }: { timeout?: number; shard?: Shard } = {},
+): void {
+  const violations = (check: Check<E>, sabotage?: BrokenFixture<E>['sabotage']) =>
+    withEnv(sabotage, async (env) => check.run(env));
+  describe(`the ${runtime} cross-fixture matrix, shard ${shard[0]} of ${shard[1]}`, () => {
+    for (const check of shardOf(checks, shard)) {
+      it(`${passName(check.id, check.over)}: its broken fixture (${check.broken.what}) trips no other check`, { timeout: timeout * 4 }, async () => {
+        const tripped: string[] = [];
+        for (const other of checks) {
+          // Another pass of the same number is the same check over another surface, not a neighbour.
+          if (other.id === check.id) continue;
+          const found = await violations(other, check.broken.sabotage);
+          if (found.length > 0) tripped.push(other.id);
+        }
+        const required = Object.keys(check.alsoTrips ?? {});
+        const stale = required.filter((id) => !tripped.includes(id));
+        expect(stale, `the fixture for ${check.id} no longer trips ${stale.join(', ')}: remove the allowance from alsoTrips`).toEqual([]);
+        const surprising = tripped.filter((id) => !required.includes(id));
+        expect(surprising, `the fixture for ${check.id} (${check.broken.what}) also fails ${surprising.join(', ')}, so ${check.id} is not shown to fail on its own`).toEqual([]);
+      });
+    }
+  });
+}
+
 /**
  * Register the gate's tests for one runtime's checks. `partial` is for a second
  * engine that runs only the checks whose answer depends on the engine: it need
  * not implement every number (the first engine's file asserts that), and it
  * skips the cross-fixture matrix, which is about the checks, not the engine.
+ * `matrix: false` leaves the matrix to its own files (`crossFixtureTests`), run in shards.
  */
 export function gateTests<E>(
   runtime: Runtime, checks: readonly Check<E>[], withEnv: WithEnv<E>,
-  { timeout = 60 * SECOND, partial = false }: { timeout?: number; partial?: boolean } = {},
+  { timeout = 60 * SECOND, partial = false, matrix = true }: { timeout?: number; partial?: boolean; matrix?: boolean } = {},
 ): void {
   const violations = (check: Check<E>, sabotage?: BrokenFixture<E>['sabotage']) =>
     withEnv(sabotage, async (env) => check.run(env));
@@ -88,22 +136,7 @@ export function gateTests<E>(
           expect(found.some((f) => check.broken.mustSay!.test(f)), `${check.id} noticed, but not by ${check.broken.mustSay}: ${found.slice(0, 3).join(' | ')}`).toBe(true);
         }
       });
-
-      if (!partial) it('and its broken fixture trips no other check', { timeout: timeout * 4 }, async () => {
-        const tripped: string[] = [];
-        for (const other of checks) {
-          // Another pass of the same number is the same check over another surface, not a neighbour.
-          if (other.id === check.id) continue;
-          const found = await violations(other, check.broken.sabotage);
-          if (found.length > 0) tripped.push(other.id);
-        }
-        const required = Object.keys(check.alsoTrips ?? {});
-        const allowed = required;
-        const stale = required.filter((id) => !tripped.includes(id));
-        expect(stale, `the fixture for ${check.id} no longer trips ${stale.join(', ')}: remove the allowance from alsoTrips`).toEqual([]);
-        const surprising = tripped.filter((id) => !allowed.includes(id));
-        expect(surprising, `the fixture for ${check.id} (${check.broken.what}) also fails ${surprising.join(', ')}, so ${check.id} is not shown to fail on its own`).toEqual([]);
-      });
     });
   }
+  if (!partial && matrix) crossFixtureTests(runtime, checks, withEnv, { timeout });
 }

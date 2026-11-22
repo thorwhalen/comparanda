@@ -174,8 +174,9 @@ jobs:
         run: for i in 1 2 3; do timeout 5m pnpm exec playwright install-deps $PW_ENGINES && break; done
 
       - name: A1-A23, and the broken fixture for each
-        # About 13 minutes locally and 12 to 21 on a runner: every check's broken fixture is run against every other check, so
-        # the run grows with the square of the checks (#375). The job's 45-minute ceiling still holds the install and this together.
+        # Every check's broken fixture is run against every other check, so that matrix grows with the square of the checks:
+        # it runs in MATRIX_SHARDS browsers side by side (vitest.a11y.config.ts, #375); raise that number when this step nears
+        # its limit. The job's 45-minute ceiling still holds the install and this together.
         timeout-minutes: 30
         run: pnpm test:a11y
 
