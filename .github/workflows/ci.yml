@@ -196,7 +196,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Every part of the accessibility gate passed
-        run: test "${{ needs.a11y-part.result }}" = success || { echo "a11y-part: ${{ needs.a11y-part.result }}"; exit 1; }
+        env:
+          PARTS: ${{ needs.a11y-part.result }}
+        run: |
+          echo "every part of the gate: $PARTS"
+          test "$PARTS" = success
 
   hygiene:
     runs-on: ubuntu-latest
