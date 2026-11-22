@@ -15,6 +15,7 @@ import type { Analysis } from '../schema/analysis.js';
 import { reducedValue, vocabularyOf, cellIndex, cellKey } from '../schema/analysis.js';
 import { makeInapplicability } from '../schema/groups.js';
 import type { Measurement } from '../schema/measurement.js';
+import { measurementFor } from '../schema/structure.js';
 import { isWidenedByDisclosure, type ScalarValue } from '../schema/values.js';
 
 export type Reading =
@@ -80,9 +81,18 @@ export type Placed = { kind: 'position'; at: number } | { kind: 'blank' } | { ki
  * (`weightedSum`, `sensitivity`, `rankShare`) read a cell one way. The criterion's measurement must declare a range
  * and a preference direction: the weighted sum refuses a weighted criterion that does not.
  */
-export function makePlacements(a: Analysis, measure: string): (altId: string, critId: string, m: Measurement) => Placed {
+export function makePlacements(a: Analysis, measure: string): (altId: string, critId: string, m?: Measurement) => Placed {
   const read = makeReadings(a, measure);
-  return (altId, critId, m) => {
+  const declared = new Map<string, Measurement | undefined>();
+  /** The criterion's measurement for this measure, found once per criterion (#373), unless the caller already holds it. */
+  const measurementOf = (critId: string): Measurement => {
+    if (!declared.has(critId)) declared.set(critId, measurementFor(a.criteria.find((c) => c.id === critId)!, measure));
+    const m = declared.get(critId);
+    if (!m) throw new Error(`makePlacements: criterion "${critId}" declares no measurement for "${measure}"`);
+    return m;
+  };
+  return (altId, critId, given) => {
+    const m = given ?? measurementOf(critId);
     const r = read(altId, critId, m);
     if (r.kind === 'structural') return { kind: 'structural' };
     // A value this criterion cannot place (a string level) reads as a blank: anywhere in the declared range.

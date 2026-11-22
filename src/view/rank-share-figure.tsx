@@ -7,7 +7,7 @@
  * The caption is the analysis's own (`RankShareResult.caption`): a stability statement, never which row is first, so
  * this view cannot recaption it as an endorsement. The shares are computed once opened, like every analysis panel.
  */
-import { useMemo } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 import type { rankShare, RankShareResult } from '../core/analyses/rank-share.js';
 import type { RowWords } from '../core/analyses/rank-flow.js';
@@ -26,10 +26,20 @@ export function RankShareFigure({ analysis, measure, id, names, words, selection
   selection: string[]; run: typeof rankShare; samples: number | undefined;
 }) {
   const key = selection.join('\u0000');
-  const result: RankShareResult = useMemo(
-    () => run(analysis, { measure, alternativeIds: selection, words, ...(samples !== undefined ? { samples } : {}) }),
-    [analysis, measure, key, samples],
-  );
+  const compute = () => run(analysis, { measure, alternativeIds: selection, words, ...(samples !== undefined ? { samples } : {}) });
+  // The first drawing is computed in place; a later change (a new `analysis` identity while the panel is open) is
+  // recomputed when the browser is idle, the earlier shares staying up meanwhile: the run costs 55-300 ms (#373).
+  const [result, setResult] = useState<RankShareResult>(compute);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    const idle = (globalThis as { requestIdleCallback?: (f: () => void) => number }).requestIdleCallback;
+    const cancel = (globalThis as { cancelIdleCallback?: (h: number) => void }).cancelIdleCallback;
+    const run_ = () => setResult(compute());
+    if (idle && cancel) { const h = idle(run_); return () => cancel(h); }
+    const h = setTimeout(run_, 0);
+    return () => clearTimeout(h);
+  }, [analysis, measure, key, samples]);
   if (result.refused) return null;
   if (result.rows.length === 0) return <p role="note" data-rank-share-refused="">{`No ranks to spread: no ${words.alternative} is scored at the declared weights.`}</p>;
   const label = (cid: string) => analysis.criteria.find((c) => c.id === cid)?.label ?? cid;

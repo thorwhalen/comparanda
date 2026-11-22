@@ -119,8 +119,7 @@ export function rankShare(a: Analysis, opts: RankShareOptions): RankShareResult 
   const scored = declared.rows.filter((r) => r.status !== 'not-scored');
   const unscored = declared.rows.flatMap((r) => (r.status === 'not-scored' ? [{ alternativeId: r.alternativeId, label: r.label }] : []));
   const place = makePlacements(a, opts.measure);
-  const measurements = positive.map(({ criterionId }) => measurementFor(a.criteria.find((c) => c.id === criterionId)!, opts.measure)!);
-  const placed: Placed[][] = scored.map((row) => positive.map(({ criterionId }, c) => place(row.alternativeId, criterionId, measurements[c]!)));
+  const placed: Placed[][] = scored.map((row) => positive.map(({ criterionId }) => place(row.alternativeId, criterionId)));
 
   const n = scored.length;
   const k = positive.length;
