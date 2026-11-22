@@ -268,18 +268,11 @@ export function sensitivity(a: Analysis, opts: SensitivityOptions): SensitivityR
   // The contribution matrix the perturbation is computed over: one interval per
   // (alternative, weighted criterion), read exactly as the weighted sum read it.
   const place = makePlacements(a, opts.measure);
-  const measurements = new Map<string, Measurement>();
-  for (const { criterionId } of base.basis) {
-    const crit = a.criteria.find((c) => c.id === criterionId);
-    const m = crit ? measurementFor(crit, opts.measure) : undefined;
-    if (m) measurements.set(criterionId, m);
-  }
   const contributions = new Map<string, Map<string, Contribution>>();
   for (const row of base.rows) {
     const byCriterion = new Map<string, Contribution>();
     for (const { criterionId } of base.basis) {
-      const m = measurements.get(criterionId)!;
-      const r = place(row.alternativeId, criterionId, m);
+      const r = place(row.alternativeId, criterionId);
       byCriterion.set(
         criterionId,
         r.kind === 'structural' ? { applies: false, observed: false, lo: 0, hi: 0 }
