@@ -39,3 +39,12 @@ describe('the cross-fixture matrix in shards (#375)', () => {
     expect(() => shardOf([1], [3, 2])).toThrow(/shard/);
   });
 });
+
+describe('CI runs every part of the gate (#375)', () => {
+  it('the a11y-part matrix in ci.yml lists exactly A11Y_PARTS', async () => {
+    const { A11Y_PARTS } = await import('../../vitest.a11y.config.js');
+    const ci = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.github/workflows/ci.yml'), 'utf8');
+    const listed = /^\s+part: \[([^\]]*)\]/m.exec(ci)?.[1]?.split(',').map((p) => p.trim());
+    expect(listed).toEqual([...A11Y_PARTS]);
+  });
+});

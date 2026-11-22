@@ -117,14 +117,22 @@ jobs:
         # are tested as well as the source.
         run: pnpm build && pnpm test:standalone
 
-  a11y-gate:
-    env:
-      PW_ENGINES: chromium firefox
+  a11y-part:
     # The accessibility merge gate (ADR-0029, #105): the automated set A1-A23,
     # each check shown to hold on the shipped view and to fail on its own
-    # deliberately broken fixture. Its own job, so that the status a branch
-    # protection rule requires is named for what it protects and a red here
-    # cannot be mistaken for a flaky unit test.
+    # deliberately broken fixture. In parts, each on its own runner (#375): the
+    # cross-fixture matrix grows with the square of the checks, so it runs in
+    # shards, and six browsers on one runner starve each other into timeouts.
+    # The parts are A11Y_PARTS in vitest.a11y.config.ts (spec.gate.ts checks
+    # this list against it); the a11y-gate job below requires them all.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [main, matrix-1, matrix-2, matrix-3]
+    env:
+      A11Y_PART: ${{ matrix.part }}
+      # Firefox runs only the engine-dependent checks, in the main part.
+      PW_ENGINES: ${{ matrix.part == 'main' && 'chromium firefox' || 'chromium' }}
     runs-on: ubuntu-latest
     # The job's ceiling is the install's and the tests' together: a slow apt mirror (10-17 minutes, #305) must not
     # eat the tests' time. Each step below carries its own limit, so a stuck install fails as itself.
@@ -174,11 +182,21 @@ jobs:
         run: for i in 1 2 3; do timeout 5m pnpm exec playwright install-deps $PW_ENGINES && break; done
 
       - name: A1-A23, and the broken fixture for each
-        # Every check's broken fixture is run against every other check, so that matrix grows with the square of the checks:
-        # it runs in MATRIX_SHARDS browsers side by side (vitest.a11y.config.ts, #375); raise that number when this step nears
-        # its limit. The job's 45-minute ceiling still holds the install and this together.
+        # This part of the gate (A11Y_PART). Every check's broken fixture is run against every other check, so that matrix
+        # grows with the square of the checks: it is split into MATRIX_SHARDS parts (vitest.a11y.config.ts, #375); raise that
+        # number, and the matrix list above, when a part nears this limit. The job's 45-minute ceiling holds the install too.
         timeout-minutes: 30
         run: pnpm test:a11y
+
+  a11y-gate:
+    # The status a branch protection rule requires, named for what it protects so a red here
+    # cannot be mistaken for a flaky unit test: green only when every part of the gate is.
+    needs: a11y-part
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every part of the accessibility gate passed
+        run: test "${{ needs.a11y-part.result }}" = success || { echo "a11y-part: ${{ needs.a11y-part.result }}"; exit 1; }
 
   hygiene:
     runs-on: ubuntu-latest
