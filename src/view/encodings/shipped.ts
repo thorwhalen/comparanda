@@ -71,11 +71,14 @@ export const value = /* @__PURE__ */ defineEncoding({
       // The step in words, so it is not told by colour alone (#208). "Best" is toward the criterion's
       // preferred end, so a decreasing one says so: its best step holds its lowest values.
       const lower = m!.preference === 'decreasing' ? ', where lower is better' : '';
-      // Shown only where the fills are gone (print, forced colors): a 1 on a decreasing criterion would read the wrong way round (#345).
+      // Shown only where the fills are gone (print, forced colors): a 1 on a decreasing criterion would read the wrong way round (#345),
+      // which the legend says once for those criteria; saying it in each cell grew a printed row by a fifth (#367).
       const named = `${said[step]} step`;
-      return { swatch, said: `, ${named} for this criterion${lower}`, plain: `${named}${lower}` };
+      return { swatch, said: `, ${named} for this criterion${lower}`, plain: named };
     };
     for (const alt of ctx.alternatives) for (const crit of ctx.criteria) mark(alt, crit);
+    const lowerBetter = ctx.criteria.filter((c) => placed.get(c)?.preference === 'decreasing')
+      .map((c) => ctx.analysis.criteria.find((x) => x.id === c)?.label ?? c);
     return {
       mark,
       legend: {
@@ -85,6 +88,7 @@ export const value = /* @__PURE__ */ defineEncoding({
           'Each column is placed on its own declared range, in its own preferred direction, so the same shade means "as good" in every column, not "the same number".',
           'Criteria with no direction of preference (a target, an order, a category), or nothing to place a value on, are left uncoloured.',
           'Where colours are not shown (print, forced colors), each coloured cell names its step beside the value.',
+          ...(lowerBetter.length > 0 ? [`Where lower is better, the best step holds the lowest values: ${lowerBetter.join(', ')}.`] : []),
         ],
       },
     };
