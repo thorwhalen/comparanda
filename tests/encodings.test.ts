@@ -168,7 +168,9 @@ describe('value', () => {
     // The legend says the steps in the cells' own words (#357).
     expect(p.legend.entries.map((e) => e.label)).toEqual(['Worst', 'Second', 'Middle', 'Fourth', 'Best'].map((w) => `${w} step of the criterion's range`));
     // The same step, shown where the fills are gone (#345).
-    expect(p.mark(rents[0]!, 'rent').plain).toBe('best step, where lower is better');
+    // The direction is said once, in the legend, not in every cell (#367: it grew a printed row by a fifth).
+    expect(p.mark(rents[0]!, 'rent').plain).toBe('best step');
+    expect(p.legend.notes.some((n) => /^Where lower is better, the best step holds the lowest values: .*\bRent\b/.test(n))).toBe(true);
     // An increasing criterion carries no direction suffix, and a cell with no colour no words.
     const plains = ctx.alternatives.flatMap((a) => ctx.criteria.map((c) => p.mark(a, c))).map((m) => [m.swatch, m.plain] as const);
     for (const [swatch, plain] of plains) expect(plain === undefined).toBe(swatch === undefined);
