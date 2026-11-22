@@ -20,7 +20,11 @@ const CONFIDENCE: Record<string, readonly ('low' | 'medium' | 'high')[]> = {
 };
 
 export function languagesWithConfidence(
-  { measurement = CONFIDENCE_MEASUREMENT }: { measurement?: Record<string, unknown> } = {},
+  { measurement = CONFIDENCE_MEASUREMENT, said = (level) => level }: {
+    measurement?: Record<string, unknown>;
+    /** The value recorded for each of the three levels, for a scale that is not low/medium/high (#369). */
+    said?: (level: 'low' | 'medium' | 'high') => string | number;
+  } = {},
 ): Analysis {
   const json = structuredClone(languagesJson) as Record<string, any>;
   json['measures'] = [...json['measures'], { name: 'confidence', label: 'Confidence' }];
@@ -30,7 +34,7 @@ export function languagesWithConfidence(
     levels.forEach((value, i) => json['cells'].push({
       alternativeId: alt, criterionId: criteria[i], measure: 'confidence',
       assertions: [{
-        id: `${alt}-${criteria[i]}-confidence`, authorId: 'ana', at: '2026-08-22T09:00:00Z', value,
+        id: `${alt}-${criteria[i]}-confidence`, authorId: 'ana', at: '2026-08-22T09:00:00Z', value: said(value),
         justification: 'how much of the evidence we could check', evidence: [], version: 1, independence: 'independent',
       }],
     }));

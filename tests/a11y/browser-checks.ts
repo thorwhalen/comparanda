@@ -27,6 +27,7 @@ import { SHIPPED_ENCODINGS, type MountMatrixProps } from '../../src/view/index.j
 import { vsupTrees } from '../../src/view/encodings/vsup-derive.js';
 import { GRAPHIC_CONTRAST_MIN, TEXT_CONTRAST_MIN } from '../../src/view/encodings/contrast.js';
 import type { Theme } from '../../src/view/theme.js';
+import { languagesWithConfidence } from '../fixtures/confidence.js';
 import { relocationWithRaterSpread } from '../fixtures/rater-spread.js';
 import { vsupGrid } from '../fixtures/vsup-grid.js';
 import { treeFailures } from '../support/cvd-browser.js';
@@ -1191,7 +1192,16 @@ const NOUN_OF: Readonly<Record<string, string>> = { confidence: 'confidence', di
 const HATCH_NOUN = new Map(SHIPPED_ENCODINGS.flatMap((e) => (e.texture.channel === 'hatch' ? [[e.id, NOUN_OF[e.texture.carries]!] as const] : [])));
 
 /** What the hatch is read over: the gate's fixtures, and the rater spread the disagreement hatch needs (kept out of `FIXTURES`: every check sweeps those, and a sixth made the gate time out). */
-const HATCH_FIXTURES: Readonly<Record<string, Analysis>> = { ...FIXTURES, 'relocation with rater spread': relocationWithRaterSpread() };
+const HATCH_FIXTURES: Readonly<Record<string, Analysis>> = {
+  ...FIXTURES,
+  'relocation with rater spread': relocationWithRaterSpread(),
+  // The confidence half over the other scales a confidence is recorded on (#369): each said in a different way.
+  'confidence on two levels': languagesWithConfidence({ measurement: { level: 'ordinal', preference: 'increasing', levels: ['low', 'high'] }, said: (l) => (l === 'high' ? 'high' : 'low') }),
+  'confidence on digit levels': languagesWithConfidence({ measurement: { level: 'ordinal', preference: 'increasing', levels: [1, 2, 3, 4] }, said: (l) => ({ low: 1, medium: 3, high: 4 })[l] }),
+  'confidence on a decreasing scale': languagesWithConfidence({ measurement: { level: 'ordinal', preference: 'decreasing', levels: ['high', 'medium', 'low'] } }),
+  'confidence on a range': languagesWithConfidence({ measurement: { level: 'interval', preference: 'increasing', range: { min: 0, max: 1 } }, said: (l) => ({ low: 0.1, medium: 0.5, high: 0.9 })[l] }),
+  'confidence on a decreasing range': languagesWithConfidence({ measurement: { level: 'interval', preference: 'decreasing', range: { min: 0, max: 1 } }, said: (l) => ({ low: 0.9, medium: 0.5, high: 0.1 })[l] }),
+};
 
 /** What A21 reads in each hatched cell: that it says a level (the grid's pass), and that the level agrees with the density (the pass over `DENSITY_SURFACE`). */
 function hatchFindings(env: BrowserEnv, mode: 'present' | 'agrees'): string[] {
@@ -1227,7 +1237,9 @@ function hatchFindings(env: BrowserEnv, mode: 'present' | 'agrees'): string[] {
         }
         if (byDensity.size > 1) compared = true;
         // A denser hatch is a lower confidence or agreement: strictly, within one column's words.
-        const ordered = [...byDensity].map(([d, l]) => [Number(d), levelRank([...l][0]!)] as const).filter((x): x is readonly [number, number] => x[1] !== undefined).sort((x, y) => x[0] - y[0]);
+        // Digits say the measure's own value, so on a decreasing confidence scale a larger number is the lower confidence (#369).
+        const sign = /^\d/.test([...[...byDensity][0]![1]][0]!) && analysis.criteria.find((c) => c.id === column)?.measurements['confidence']?.preference === 'decreasing' ? -1 : 1;
+        const ordered = [...byDensity].map(([d, l]) => [Number(d), (() => { const r = levelRank([...l][0]!); return r === undefined ? undefined : sign * r; })()] as const).filter((x): x is readonly [number, number] => x[1] !== undefined).sort((x, y) => x[0] - y[0]);
         for (let i = 1; i < ordered.length; i += 1) {
           if (!(ordered[i]![1] < ordered[i - 1]![1])) found.push(`${encoding} / ${name} / ${column}: a denser hatch (${ordered[i]![0]}) is not said as a lower level than a sparser one (${ordered[i - 1]![0]})`);
         }
