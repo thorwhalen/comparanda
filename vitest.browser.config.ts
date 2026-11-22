@@ -32,7 +32,8 @@ export default defineConfig({
       enabled: true,
       provider: 'playwright',
       headless: true,
-      instances: [{ browser: 'chromium' }],
+      // Engines named once, as in CI (`PW_ENGINES`); WebKit's focus model differs from Chromium's (#371).
+      instances: (process.env['PW_ENGINES'] ?? 'chromium').split(/\s+/).filter(Boolean).map((browser) => ({ browser: browser as 'chromium' | 'firefox' | 'webkit' })),
       commands: { emulateMedia },
     },
   },
