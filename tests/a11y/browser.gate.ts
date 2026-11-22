@@ -7,4 +7,5 @@ import { BROWSER_CHECKS } from './browser-checks.js';
 import { withBrowserEnv } from './browser-env.js';
 import { gateTests } from './gate.js';
 
-gateTests('browser', BROWSER_CHECKS, withBrowserEnv);
+// The cross-fixture matrix runs in shards beside this file (browser-matrix.gate.ts, #375).
+gateTests('browser', BROWSER_CHECKS, withBrowserEnv, { matrix: false });
