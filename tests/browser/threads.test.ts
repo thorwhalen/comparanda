@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
+import { press } from './press.js';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { startThread } from '../../src/core/threads.js';
@@ -91,7 +92,8 @@ describe('threads in the panel', () => {
     // Reopened (#186): back in the open list, and the resolution is kept as a comment.
     const resolvedItem = threads().querySelector('[data-resolved] > [data-thread]')!;
     const reopenedId = resolvedItem.getAttribute('data-thread')!;
-    await userEvent.click(Array.from(resolvedItem.querySelectorAll('button')).find((b) => b.textContent === 'Reopen thread')!);
+    // Pressed with focus on it, as a keyboard reader does: the focus checked below is where it goes when the button leaves.
+    await press(Array.from(resolvedItem.querySelectorAll('button')).find((b) => b.textContent === 'Reopen thread')!);
     await settled();
     const back = threads().querySelector(`ol:not([data-resolved]) > [data-thread="${reopenedId}"]`)!;
     expect(back.textContent).toMatch(/Reopened\. It had been resolved by Dana \(human, unverified\) \[dana\], 2026-10-13T12:00:00\.000Z\./);
@@ -195,7 +197,7 @@ describe('focus while a thread write is in flight (#197)', () => {
       control.failing = true;
       control.calls = 0;
       const target = buttonNamed(button);
-      await userEvent.click(target);
+      await press(target);
       // In flight: still the focused element, marked unavailable, and a second click does nothing.
       expect(document.activeElement).toBe(target);
       expect(target.getAttribute('aria-disabled')).toBe('true');
@@ -227,7 +229,7 @@ describe('a busy compose form (#197)', () => {
     await userEvent.click(box);
     await userEvent.keyboard('one thought');
     const send = box.closest('form')!.querySelector('button')!;
-    await userEvent.click(send);
+    await press(send);
     expect(document.activeElement).toBe(send);
     send.click();
     send.click();

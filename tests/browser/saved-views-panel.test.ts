@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
+import { inWebKit } from './press.js';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, transpose, type ViewState } from '../../src/core/view-state.js';
@@ -138,7 +139,8 @@ describe('the saved-views panel', () => {
     expect(el.querySelector('.comparanda-matrix')!.getAttribute('data-orientation')).toBe('standard');
   });
 
-  it('renames and deletes by keyboard, keeping focus in the panel', async () => {
+  // Safari moves Tab past buttons unless macOS keyboard navigation is on: a WebKit difference, not ours (#371).
+  it.skipIf(inWebKit)('renames and deletes by keyboard, keeping focus in the panel', async () => {
     const { store } = standalone();
     await store.create(initialViewState(relocation), { analysisId: relocation.id, name: 'Cost first', ...ana });
     handle = mountMatrix(el, { analysis: relocation, measure: 'score', savedViews: { store } });

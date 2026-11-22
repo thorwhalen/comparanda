@@ -17,7 +17,7 @@ describe('in a real browser', () => {
   it('is a browser: the DOM exists here, unlike in the core suite', () => {
     expect(typeof document).toBe('object');
     expect(typeof window).toBe('object');
-    expect(navigator.userAgent).toMatch(/Chrome|Chromium|HeadlessChrome/);
+    expect(navigator.userAgent).toMatch(/Chrome|Chromium|HeadlessChrome|Firefox|AppleWebKit/);
   });
 
   it('validates both fixtures exactly as Node does', () => {

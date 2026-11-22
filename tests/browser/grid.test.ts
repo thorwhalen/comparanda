@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
+import { inWebKit } from './press.js';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import {
@@ -67,7 +68,8 @@ describe('the grid', () => {
     expect(el.querySelector('[aria-activedescendant]')).toBeNull();
   });
 
-  it('Tab enters on the roving stop and the next Tab leaves the grid', async () => {
+  // Safari moves Tab past buttons unless macOS keyboard navigation is on: a WebKit difference, not ours (#371).
+  it.skipIf(inWebKit)('Tab enters on the roving stop and the next Tab leaves the grid', async () => {
     mount({ analysis: languages, measure: 'score' });
     cellAt('2:3').focus();
     expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['2:3']);

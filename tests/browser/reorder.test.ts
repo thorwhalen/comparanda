@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
+import { press } from './press.js';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, lockRun, setFilter, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
@@ -168,7 +169,7 @@ describe('seriation as an action', () => {
     const line = el.querySelector('[data-order="alternatives"]')!;
     expect(line.textContent).toMatch(/in the order the analysis gives them/);
     const button = line.querySelector('button')!;
-    await userEvent.click(button);
+    await press(button);
     expect(views.at(-1)!.alternativeOrder.provenance.kind).toBe('seriated');
     expect(el.querySelector('[data-order="alternatives"]')!.textContent).toMatch(/arranged to put similar ones next to each other/);
     expect(said()).toMatch(/arranged to reveal structure/);

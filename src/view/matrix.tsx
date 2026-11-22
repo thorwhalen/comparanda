@@ -79,7 +79,7 @@ import { useNameDraft, type NameWrites } from './name-form.js';
 import { SavedViewsPanel, type SavedViewsPort } from './saved-views.js';
 import { commitMove, MoveMenu, type ReorderContext, type Step } from './reorder.js';
 import { startPointerDrag } from './pointer-reorder.js';
-import { activeElementOf, messageOf } from './dom.js';
+import { activeElementOf, keepFocusOnPress, messageOf } from './dom.js';
 import { describeOrder, describePlace } from '../core/reorder.js';
 import { makeInapplicableDeclarations, pickableGroups, type Axis } from '../core/schema/groups.js';
 import { resolveAnchor } from '../core/schema/anchors.js';
@@ -233,6 +233,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const [menu, setMenu] = useState<string | undefined>(undefined);
   /** The menu focus-out just closed, so the click on its own handle that caused it does not reopen it. */
   const closedBy = useRef<string | undefined>(undefined);
+  /** The menu a press on its own handle just closed: that press's click must not reopen it (#371). */
+  const closedByPress = useRef<string | undefined>(undefined);
   /**
    * The cell whose tooltip shows (ADR-0027): the one-line justification and the confidence flag. No timer
    * closes it; Escape does, and `muted` keeps it closed until the reader moves to another cell. It holds
@@ -432,8 +434,20 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           // Named "Move <label>" from words already on the page: no text of its own in the header.
           aria-labelledby={`${helpId}-move ${helpId}-l-${r}-${c}`}
           aria-expanded={menu === menuKey ? 'true' : 'false'}
+          // A press on the handle of its open menu closes it, on the press and back on the header, as
+          // Escape does: focus never leaves the menu for the page first. That leaving closed it on a
+          // timer race the click lost in WebKit, which then reopened it (#371).
+          onMouseDown={(event: MouseEvent) => {
+            closedByPress.current = undefined;
+            if (menu !== menuKey) return;
+            event.preventDefault();
+            closedByPress.current = menuKey;
+            setMenu(undefined);
+            root.current?.querySelector<HTMLElement>(`[data-cell="${r}:${c}"]`)?.focus();
+          }}
           onClick={(event: MouseEvent) => {
             event.stopPropagation();
+            if (closedByPress.current === menuKey) { closedByPress.current = undefined; return; }
             // A press on the handle of an open menu closed it already (focus left it); do not reopen it.
             if (closedBy.current === menuKey) { closedBy.current = undefined; return; }
             setMenu(menu === menuKey ? undefined : menuKey);
@@ -635,6 +649,8 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   return (
     <div
       class="comparanda-matrix" ref={root}
+      // A press on the focused control keeps focus on it: WebKit would move it to the page (#371).
+      onMouseDownCapture={keepFocusOnPress}
       data-encoding={active.id}
       data-palette={prepared.palette ? paletteName(prepared.palette) : undefined}
       // Every encoding this view was composed with, so a host -- or the build's zero-network check -- can
