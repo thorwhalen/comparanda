@@ -181,10 +181,10 @@ Cross-tab sync is the `storage` event, last-write-wins, for the view-state key o
 
 ### 2026-10-27 — Saved views get their own providers (#71)
 
-- **Status:** accepted, pending the owner's confirmation in #291
+- **Status:** accepted; confirmed in #291 (2026-11-09, as recommended)
 - **Date:** 2026-10-27
 
 The 2026-08-22 amendment's clause 1 put saved views inside the analysis document. Building them (#71) found a reason it cannot hold as written: **a personal view must never travel in a shared document**, and one port cannot keep it out. So `savedViewStore` (`store/saved-views.ts`) is the 2026-08-21 amendment's `SavedViewStore` arriving on time. It keeps personal views in the owner's provider, and shared and locked views, and sequences, in providers beside the analysis. Every provider is injected and in memory by default, and `getCapabilities()` still gates every write.
 
-What this costs: the standalone file does not yet carry shared views or their locks, which ADR-0007 clause 3 promises. The way back is an addition at this seam: a shared provider backed by the analysis document, once the schema carries saved views (a cross-repo change with rubricator). Writes are one at a time within a store; several clients on one shared provider need a versioned write (#290), as the analysis has.
+What this costs: the standalone file does not yet carry shared views or their locks, which ADR-0007 clause 3 promises. The way back is an addition at this seam: a shared provider backed by the analysis document, `documentSavedViews(source)`, once the schema carries saved views (a cross-repo change with rubricator); tracked in #384. It is what lets a lock travel in the mailed file, with no change for callers. Writes are one at a time within a store; several clients on one shared provider need a versioned write (#290), as the analysis has.
 
