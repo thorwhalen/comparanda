@@ -67,11 +67,14 @@ export function messageOf(e: unknown): string {
  * action leaves focus where it was) then lost it in Safari only. Cancelling the
  * press's default on the focused control keeps focus where it is; a press on any
  * other control is left alone, so Chromium and Firefox still focus what is
- * clicked, and Safari still does not. Text fields are left alone: their press
- * places the caret. Bound once, as a capture handler on the view's root.
+ * clicked, and Safari still does not. Buttons, checkboxes, radios and
+ * summaries are the controls Safari will not focus on a press; text fields are
+ * left alone (their press places the caret). In Firefox a cancelled press shows
+ * no `:active` state on the focused control: cosmetic, and accepted. Bound once,
+ * as a capture handler on the view's root.
  */
 export function keepFocusOnPress(event: MouseEvent): void {
   const on = event.target as Element | null;
-  const control = on?.closest?.('button, [role="button"], [role="menuitem"]');
+  const control = on?.closest?.('button, [role="button"], [role="menuitem"], input[type="checkbox"], input[type="radio"], summary');
   if (control && control === activeElementOf(control)) event.preventDefault();
 }

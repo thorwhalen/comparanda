@@ -442,6 +442,10 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
             if (menu !== menuKey) return;
             event.preventDefault();
             closedByPress.current = menuKey;
+            // Cleared once the press is over: a press dragged off the handle never sends it its click,
+            // and a later click with no press (a host's .click(), a screen reader) must still open the menu.
+            const doc = (event.currentTarget as Element).ownerDocument;
+            doc.addEventListener('mouseup', () => setTimeout(() => { if (closedByPress.current === menuKey) closedByPress.current = undefined; }, 0), { once: true, capture: true });
             setMenu(undefined);
             root.current?.querySelector<HTMLElement>(`[data-cell="${r}:${c}"]`)?.focus();
           }}

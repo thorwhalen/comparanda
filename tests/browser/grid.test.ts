@@ -8,7 +8,6 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
-import { inWebKit } from './press.js';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import {
@@ -26,7 +25,7 @@ const languages = Analysis.parse(languagesJson);
 const relocation = Analysis.parse(relocationJson);
 
 let el: HTMLElement;
-let after: HTMLButtonElement;
+let after: HTMLInputElement;
 const handles: MatrixHandle[] = [];
 const mount = (props: MountMatrixProps) => {
   const handle = mountMatrix(el, props);
@@ -36,8 +35,9 @@ const mount = (props: MountMatrixProps) => {
 
 beforeEach(() => {
   el = document.createElement('div');
-  after = document.createElement('button');
-  after.textContent = 'after the matrix';
+  // A text field, not a button: Safari moves Tab past buttons unless macOS keyboard navigation is on (#371).
+  after = document.createElement('input');
+  after.setAttribute('aria-label', 'after the matrix');
   document.body.append(el, after);
 });
 afterEach(() => {
@@ -68,8 +68,7 @@ describe('the grid', () => {
     expect(el.querySelector('[aria-activedescendant]')).toBeNull();
   });
 
-  // Safari moves Tab past buttons unless macOS keyboard navigation is on: a WebKit difference, not ours (#371).
-  it.skipIf(inWebKit)('Tab enters on the roving stop and the next Tab leaves the grid', async () => {
+  it('Tab enters on the roving stop and the next Tab leaves the grid', async () => {
     mount({ analysis: languages, measure: 'score' });
     cellAt('2:3').focus();
     expect(stops().map((s) => s.getAttribute('data-cell'))).toEqual(['2:3']);
