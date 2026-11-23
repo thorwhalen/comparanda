@@ -16,6 +16,11 @@
  * carry the same facts in other channels (ADR-0028); this is the colour channel's
  * own floor, and where a tree cannot clear it the fix is fewer value steps,
  * never a different hue.
+ *
+ * Not checked, by decision (#203): the same value at different confidence
+ * layers. Confidence is carried by the hatch, and redundant encoding is the
+ * colour-vision rule, so colour need not carry it too; under tritanopia some
+ * of those pairs are under 1 ΔE*76 apart, and that is accepted.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 

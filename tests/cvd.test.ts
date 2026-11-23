@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { CVD_MIN_DELTA_E, DEFICIENCIES, distance, lab, parseHex, simulate, type Rgb8 } from './support/cvd.js';
+import { CVD_MIN_DELTA_E, deltaE2000, DEFICIENCIES, distance, distance2000, lab, parseHex, simulate, type Rgb8 } from './support/cvd.js';
 
 describe('simulate', () => {
   it.each(DEFICIENCIES)('%s leaves every grey alone: a dichromat sees neutrals as everyone does', (deficiency) => {
@@ -51,7 +51,28 @@ describe('distance', () => {
     expect(distance(parseHex('#336699'), parseHex('#336699'))).toBe(0);
   });
 
-  it('puts the separability floor at 4.5: twice a just-noticeable difference of about 2.3, rounded down', () => {
-    expect(CVD_MIN_DELTA_E).toBe(4.5);
+  it('puts the separability floor at 3 in ΔE*00, just above the closest pair the shipped palettes paint', () => {
+    expect(CVD_MIN_DELTA_E).toBe(3);
+  });
+});
+
+describe('deltaE2000', () => {
+  // Pairs from Sharma, Wu & Dalal (2005), table 1: [Lab 1, Lab 2, ΔE*00].
+  const SHARMA: readonly (readonly [readonly [number, number, number], readonly [number, number, number], number])[] = [
+    [[50, 2.6772, -79.7751], [50, 0, -82.7485], 2.0425],
+    [[50, 3.1571, -77.2803], [50, 0, -82.7485], 2.8615],
+    [[50, 0, 0], [50, -1, 2], 2.3669],
+    [[50, 2.5, 0], [73, 25, -18], 27.1492],
+    [[60.2574, -34.0099, 36.2677], [60.4626, -34.1751, 39.4387], 1.2644],
+  ];
+  it.each(SHARMA)('%j to %j is %d', (x, y, expected) => {
+    expect(deltaE2000(x, y)).toBeCloseTo(expected, 4);
+    expect(deltaE2000(y, x)).toBeCloseTo(expected, 4);
+  });
+
+  it('is zero from a colour to itself, and smaller than ΔE*76 for a dark saturated pair', () => {
+    expect(distance2000(parseHex('#336699'), parseHex('#336699'))).toBe(0);
+    const [x, y] = [parseHex('#1b3a5c'), parseHex('#1f4a6e')];
+    expect(distance2000(x, y)).toBeLessThan(distance(x, y));
   });
 });

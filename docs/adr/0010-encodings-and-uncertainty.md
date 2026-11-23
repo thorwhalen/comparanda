@@ -340,6 +340,8 @@ The answer to the question this ADR left open: **the composited palette does not
 
 What the gate does not yet check, filed for follow-up: the same value at different confidence layers (confidence is carried by the hatch as well as by colour, so the hatch is relied on there), and a perceptual distance (ΔE*00) rather than ΔE*76.
 
+**2026-11-23, the follow-ups settled (#203).** The same value at different confidence layers stays unchecked, by decision: confidence is carried by the hatch, and redundant encoding is the colour-vision rule, so colour need not carry it too. The gate now measures CIEDE2000 (ΔE*00), with its own floor of 3 (`CVD_MIN_DELTA_E`). ΔE*76 overstated differences among dark, saturated colours, so one ΔE*76 floor was stricter on pale pairs than on dark ones. The closest pair the shipped palettes paint, dark 5×4 at layer 2, is about 3.35 in ΔE*00, so the margin is about 0.35, against 0.1 before. A cell's colour is read as the colour covering most of a strip across its right half, not one pixel, so an inset outline near the edge of a narrow cell cannot be read instead. Widening the dark ramp would add margin, but it changes the palette module the standalone bundle carries, so it waits on the byte budget (#332).
+
 ## Amendment, 2026-11-09: a third party's palette is held to the same test, and a colour's words are its own (#208)
 
 The sprint review of the encoding PRs found five places where what a reader sees rested on colour, or on a palette nobody had checked. Nothing above is reversed; three statements are sharpened.
