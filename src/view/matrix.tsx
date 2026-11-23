@@ -233,8 +233,6 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const [menu, setMenu] = useState<string | undefined>(undefined);
   /** The menu focus-out just closed, so the click on its own handle that caused it does not reopen it. */
   const closedBy = useRef<string | undefined>(undefined);
-  /** The menu a press on its own handle just closed: that press's click must not reopen it (#371). */
-  const closedByPress = useRef<string | undefined>(undefined);
   /**
    * The cell whose tooltip shows (ADR-0027): the one-line justification and the confidence flag. No timer
    * closes it; Escape does, and `muted` keeps it closed until the reader moves to another cell. It holds
@@ -420,6 +418,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
   const header = (e: LayoutEntry, scope: 'row' | 'col', r: number, c: number) => {
     const axis = (scope === 'row' ? rows : columns).axis;
     const menuKey = `${axis}:${e.id}`;
+    const toHeader = () => root.current?.querySelector<HTMLElement>(`[data-cell="${r}:${c}"]`)?.focus();
     return (
     <th
       scope={scope} key={e.id} {...stop(r, c)} data-axis={axis} data-entry={e.id}
@@ -434,24 +433,19 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           // Named "Move <label>" from words already on the page: no text of its own in the header.
           aria-labelledby={`${helpId}-move ${helpId}-l-${r}-${c}`}
           aria-expanded={menu === menuKey ? 'true' : 'false'}
-          // A press on the handle of its open menu closes it, on the press and back on the header, as
-          // Escape does: focus never leaves the menu for the page first. That leaving closed it on a
-          // timer race the click lost in WebKit, which then reopened it (#371).
+          // A press on the handle of its open menu closes it there and then, back on the header as Escape
+          // does: focus never leaves the menu for the page first, which closed it on a timer race the click
+          // lost in WebKit, so it reopened (#371). The click is then skipped, until the press is over.
           onMouseDown={(event: MouseEvent) => {
-            closedByPress.current = undefined;
             if (menu !== menuKey) return;
             event.preventDefault();
-            closedByPress.current = menuKey;
-            // Cleared once the press is over: a press dragged off the handle never sends it its click,
-            // and a later click with no press (a host's .click(), a screen reader) must still open the menu.
-            const doc = (event.currentTarget as Element).ownerDocument;
-            doc.addEventListener('mouseup', () => setTimeout(() => { if (closedByPress.current === menuKey) closedByPress.current = undefined; }, 0), { once: true, capture: true });
+            closedBy.current = menuKey;
+            addEventListener('mouseup', () => setTimeout(() => { closedBy.current = undefined; }), { once: true });
             setMenu(undefined);
-            root.current?.querySelector<HTMLElement>(`[data-cell="${r}:${c}"]`)?.focus();
+            toHeader();
           }}
           onClick={(event: MouseEvent) => {
             event.stopPropagation();
-            if (closedByPress.current === menuKey) { closedByPress.current = undefined; return; }
             // A press on the handle of an open menu closed it already (focus left it); do not reopen it.
             if (closedBy.current === menuKey) { closedBy.current = undefined; return; }
             setMenu(menu === menuKey ? undefined : menuKey);
@@ -484,7 +478,7 @@ export function Matrix({ analysis, measure, vocabulary, encoding, encodings, vie
           labelledBy={`${helpId}-move ${helpId}-l-${r}-${c}`}
           onClose={(refocus) => {
             setMenu(undefined);
-            if (refocus) root.current?.querySelector<HTMLElement>(`[data-cell="${r}:${c}"]`)?.focus();
+            if (refocus) toHeader();
             else {
               closedBy.current = menuKey;
               setTimeout(() => { if (closedBy.current === menuKey) closedBy.current = undefined; }, 0);
