@@ -16,6 +16,13 @@
  * carry the same facts in other channels (ADR-0028); this is the colour channel's
  * own floor, and where a tree cannot clear it the fix is fewer value steps,
  * never a different hue.
+ *
+ * Not checked, by decision (#203): pairs on different confidence layers. The
+ * numeral carries the value and the hatch the confidence, and redundant
+ * encoding is the colour-vision rule, so colour need not carry them too. Under
+ * tritanopia, light 4 × 4's level 3 on layer 1 and level 1 on layer 3 are about
+ * 1 ΔE*76 apart: by colour alone "3, unsure" looks like "1, sure", and the
+ * numeral tells them apart. That is accepted.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 

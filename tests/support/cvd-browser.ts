@@ -14,10 +14,15 @@ import { nodeFill, VSUP_SPEC } from '../../src/view/encodings/vsup-derive.js';
 import { nodeOf, vsupSwatchId, type MergeTree } from '../../src/view/encodings/vsup.js';
 import { THEMES, type Theme } from '../../src/view/theme.js';
 import { gridAlternative } from '../fixtures/vsup-grid.js';
-import { CVD_MIN_DELTA_E, DEFICIENCIES, distance, parseHex, simulate, type Rgb8 } from './cvd.js';
+import { CVD_MIN_DELTA_E, DEFICIENCIES, distance, distance2000, parseHex, simulate, type Rgb8 } from './cvd.js';
 
-/** Where a cell's own fill shows: this fraction across from its left edge, level with its middle, clear of the border and of the left-aligned numeral and glyph. */
-const SAMPLE_FRACTION = 0.9;
+/**
+ * Where a cell's own fill shows: a strip level with its middle, from these
+ * fractions across, right of the left-aligned numeral and glyph. The commonest
+ * colour in the strip is taken as the fill (and still checked against the palette), so a border or an inset outline near the
+ * right edge of a narrow cell, a few pixels wide, cannot be read instead (#203).
+ */
+const SAMPLE_STRIP: readonly [from: number, to: number] = [0.55, 0.97];
 
 /** The rule that keeps a tooltip out of a screenshot of a cell (#95). */
 const NO_TOOLTIP = '[role="tooltip"] { display: none !important; }';
@@ -46,8 +51,16 @@ export async function paintedColour(cell: Element): Promise<Rgb8> {
   canvas.height = bitmap.height;
   const context = canvas.getContext('2d', { willReadFrequently: true })!;
   context.drawImage(bitmap, 0, 0);
-  const [r, g, b] = context.getImageData(Math.round(bitmap.width * SAMPLE_FRACTION), Math.floor(bitmap.height / 2), 1, 1).data;
-  return [r!, g!, b!];
+  const x0 = Math.round(bitmap.width * SAMPLE_STRIP[0]);
+  const x1 = Math.max(x0 + 1, Math.round(bitmap.width * SAMPLE_STRIP[1]));
+  const strip = context.getImageData(x0, Math.floor(bitmap.height / 2), x1 - x0, 1).data;
+  const counts = new Map<number, number>();
+  for (let i = 0; i < strip.length; i += 4) {
+    const key = (strip[i]! << 16) | (strip[i + 1]! << 8) | strip[i + 2]!;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const [mode] = [...counts.entries()].reduce((best, entry) => (entry[1] > best[1] ? entry : best));
+  return [(mode >> 16) & 255, (mode >> 8) & 255, mode & 255];
 }
 
 /**
@@ -86,12 +99,12 @@ export async function treeFailures(el: HTMLElement, handle: MatrixHandle, tree: 
     const seen = (c: Rgb8) => simulate(deficiency, c);
     painted.forEach((nodes, layer) => {
       for (let node = 0; node + 1 < nodes.length; node++) {
-        const d = distance(seen(nodes[node]!), seen(nodes[node + 1]!));
-        if (d < CVD_MIN_DELTA_E) failures.push(`${deficiency}: layer ${layer}, groups ${node} and ${node + 1} are ΔE ${d.toFixed(1)} apart; at least ${CVD_MIN_DELTA_E} is required`);
+        const d = distance2000(seen(nodes[node]!), seen(nodes[node + 1]!));
+        if (d < CVD_MIN_DELTA_E) failures.push(`${deficiency}: layer ${layer}, groups ${node} and ${node + 1} are ΔE ${d.toFixed(2)} apart (CIEDE2000); at least ${CVD_MIN_DELTA_E} is required`);
       }
     });
-    const root = distance(seen(painted[0]![0]!), seen(surface));
-    if (root < CVD_MIN_DELTA_E) failures.push(`${deficiency}: the root is ΔE ${root.toFixed(1)} from the surface; at least ${CVD_MIN_DELTA_E} is required`);
+    const root = distance2000(seen(painted[0]![0]!), seen(surface));
+    if (root < CVD_MIN_DELTA_E) failures.push(`${deficiency}: the root is ΔE ${root.toFixed(2)} (CIEDE2000) from the surface; at least ${CVD_MIN_DELTA_E} is required`);
   }
   return failures;
 }
