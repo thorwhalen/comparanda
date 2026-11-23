@@ -25,7 +25,7 @@ const languages = Analysis.parse(languagesJson);
 const relocation = Analysis.parse(relocationJson);
 
 let el: HTMLElement;
-let after: HTMLButtonElement;
+let after: HTMLInputElement;
 const handles: MatrixHandle[] = [];
 const mount = (props: MountMatrixProps) => {
   const handle = mountMatrix(el, props);
@@ -35,8 +35,9 @@ const mount = (props: MountMatrixProps) => {
 
 beforeEach(() => {
   el = document.createElement('div');
-  after = document.createElement('button');
-  after.textContent = 'after the matrix';
+  // A text field, not a button: Safari moves Tab past buttons unless macOS keyboard navigation is on (#371).
+  after = document.createElement('input');
+  after.setAttribute('aria-label', 'after the matrix');
   document.body.append(el, after);
 });
 afterEach(() => {

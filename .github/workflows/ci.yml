@@ -58,9 +58,15 @@ jobs:
         run: pnpm lint:boundaries
 
   browser:
+    # Chromium, and WebKit for Safari's focus model, which differs (#371): a button is not focused by a click there, and Tab skips buttons.
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
     env:
       # Written once: the cache key, the install and the system libraries all follow it, so an engine added here cannot be cached under a key that lacks it.
-      PW_ENGINES: chromium
+      PW_ENGINES: ${{ matrix.engine }}
+      COMPARANDA_BROWSERS: ${{ matrix.engine }}
     # A real browser, provisioned now because the accessibility gate (ADR-0029)
     # needs one and a Phase 3 rewrite of the workflow is the alternative (#41).
     # New browser tests are new files under tests/browser/; this job's shape
@@ -114,7 +120,8 @@ jobs:
 
       - name: Standalone build, opened from file://
         # Built first, so the shipped dist/cli.js and dist/standalone/main.js
-        # are tested as well as the source.
+        # are tested as well as the source. Once: it launches Chromium itself.
+        if: matrix.engine == 'chromium'
         run: pnpm build && pnpm test:standalone
 
   a11y-part:

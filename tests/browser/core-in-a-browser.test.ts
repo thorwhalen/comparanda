@@ -6,6 +6,7 @@
  * browser engine as in Node. It is also the seed of the browser job the
  * accessibility gate (ADR-0029) needs: new browser tests are new files here.
  */
+import { server } from '@vitest/browser/context';
 import { describe, it, expect } from 'vitest';
 
 import { Analysis, validateAnalysis, completeness } from '../../src/core/schema/analysis.js';
@@ -17,7 +18,9 @@ describe('in a real browser', () => {
   it('is a browser: the DOM exists here, unlike in the core suite', () => {
     expect(typeof document).toBe('object');
     expect(typeof window).toBe('object');
-    expect(navigator.userAgent).toMatch(/Chrome|Chromium|HeadlessChrome/);
+    expect(['chromium', 'firefox', 'webkit']).toContain(server.browser);
+    expect(navigator.userAgent).toMatch(/HeadlessChrome|Chrome\/|Firefox\/|Version\/[\d.]+.*Safari/);
+    expect(navigator.userAgent).not.toMatch(/jsdom|HappyDOM/);
   });
 
   it('validates both fixtures exactly as Node does', () => {

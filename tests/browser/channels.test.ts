@@ -13,6 +13,7 @@
  * under that emulation, so what is read here is what such a reader sees.
  */
 import { commands } from '@vitest/browser/context';
+import { inWebKit } from './press.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Analysis, coreReasonOf, initialViewState, setGrouping, vocabularyOf } from '../../src/index.js';
@@ -157,7 +158,8 @@ describe('the channels are drawn', () => {
   });
 });
 
-describe('forced colors (ADR-0028)', () => {
+// WebKit has no forced-colors emulation, so these would test nothing there (#371).
+describe.skipIf(inWebKit)('forced colors (ADR-0028)', () => {
   for (const [encoding, analysis] of [['missingness', relocation], ['uncertainty-suppressed', confident], ['text-only', relocation]] as const) {
     it(`numeral, glyph and hatch survive, and the cells keep their frame: ${encoding}`, async () => {
       await commands.emulateMedia({ forcedColors: 'active' });

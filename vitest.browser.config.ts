@@ -32,7 +32,7 @@ export default defineConfig({
       enabled: true,
       provider: 'playwright',
       headless: true,
-      // Engines for this suite (`COMPARANDA_BROWSERS`, not CI's `PW_ENGINES`, which the a11y gate sets for itself); WebKit's focus model differs from Chromium's (#371).
+      // Engines for this suite (`COMPARANDA_BROWSERS`; CI's browser job sets it per engine, chromium and webkit); WebKit's focus model differs from Chromium's (#371).
       instances: (process.env['COMPARANDA_BROWSERS'] ?? 'chromium').split(/\s+/).filter(Boolean).map((browser) => ({ browser: browser as 'chromium' | 'firefox' | 'webkit' })),
       commands: { emulateMedia },
     },

@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
+import { inWebKit, press } from './press.js';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { anonymousIdentity, inMemoryAnalysisSource, localIdentity, type IdentityStorage } from '../../src/store/index.js';
@@ -56,10 +57,10 @@ describe('the suggestions panel', () => {
     expect(entry('sg-rent-tai').textContent).toMatch(/Staged: accept\./);
     // Nothing written yet.
     expect((await source.getOne(relocation.id))!.suggestions.every((s) => s.status === 'open')).toBe(true);
-    await userEvent.click(button(entry('sg-rent-tai'), 'Undo'));
+    await press(button(entry('sg-rent-tai'), 'Undo'));
     expect(entry('sg-rent-tai').hasAttribute('data-staged')).toBe(false);
     expect(document.activeElement?.textContent).toBe('Accept');
-    await userEvent.click(button(panel()!, 'Write 1 decision'));
+    await press(button(panel()!, 'Write 1 decision'));
     await settled(); await settled();
     const doc = (await source.getOne(relocation.id))!;
     expect(doc.suggestions.find((s) => s.id === first.id)).toMatchObject({ status: 'accepted', decidedBy: 'dana', decidedAt: '2026-10-20T12:00:00.000Z' });
@@ -254,7 +255,8 @@ describe('naming a local identity before its first decision (#274)', () => {
     expect(there().value).toBe('');
   });
 
-  it('keeps a held panel when Tab moves from its emptied name field to its own button, and lets it go on leaving the form (#352)', async () => {
+  // Safari moves Tab past buttons unless macOS keyboard navigation is on: a WebKit difference, not ours (#371).
+  it.skipIf(inWebKit)('keeps a held panel when Tab moves from its emptied name field to its own button, and lets it go on leaving the form (#352)', async () => {
     const source = inMemoryAnalysisSource(relocation);
     handle = mountMatrix(el, { analysis: relocation, measure: 'score', source, identity: localIdentity({ storage: memory() }) }, at);
     await settled();

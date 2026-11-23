@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
+import { inWebKit } from './press.js';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { tombstone } from '../../src/core/schema/anchors.js';
@@ -36,7 +37,8 @@ describe('re-attaching from the orphan tray', () => {
     expect(entry()!.querySelector('[data-reattach]')).toBeNull();
   });
 
-  it('offers the successor first and moves the thread there through the source, by keyboard', async () => {
+  // Safari moves Tab past buttons unless macOS keyboard navigation is on: a WebKit difference, not ours (#371).
+  it.skipIf(inWebKit)('offers the successor first and moves the thread there through the source, by keyboard', async () => {
     const source = inMemoryAnalysisSource(orphaned);
     handle = mountMatrix(el, { analysis: orphaned, measure: 'score', source, identity: anonymousIdentity({ id: 'dana', displayName: 'Dana' }) });
     const select = entry()!.querySelector<HTMLSelectElement>('[data-reattach] select')!;
