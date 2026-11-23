@@ -51,7 +51,7 @@ describe('distance', () => {
     expect(distance(parseHex('#336699'), parseHex('#336699'))).toBe(0);
   });
 
-  it('puts the separability floor at 3 in ΔE*00, just above the closest pair the shipped palettes paint', () => {
+  it('puts the separability floor at 3 in ΔE*00, just below the closest pair the shipped palettes paint', () => {
     expect(CVD_MIN_DELTA_E).toBe(3);
   });
 });

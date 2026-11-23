@@ -133,8 +133,11 @@ export const parseHex = (hex: string): Rgb8 => [1, 3, 5].map((i) => parseInt(hex
  *
  * CIEDE2000, not ΔE*76 (#203): ΔE*76 overstates differences among saturated and
  * dark colours, so the same floor was stricter on a pale pair than on a dark one.
- * 3 is a little above the closest pair the shipped palettes paint (about 3.35,
- * the dark theme's 5 × 4 tree, layer 2) and comfortably above a just-noticeable
- * difference (about 1 in ΔE*00).
+ * 3 is about three just-noticeable differences (one is about 1 in ΔE*00), and
+ * it was chosen to sit just below the closest pair the shipped palettes paint
+ * (about 3.35, the dark theme's 5 × 4 tree, layer 2): it is fitted to the
+ * palette, not derived on its own. For a typical pair it is about 10% laxer than
+ * the old 4.5 ΔE*76 (the median ratio ΔE*00 / ΔE*76 is 0.74), and stricter for
+ * about a quarter of them.
  */
 export const CVD_MIN_DELTA_E = 3;

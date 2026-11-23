@@ -17,10 +17,12 @@
  * own floor, and where a tree cannot clear it the fix is fewer value steps,
  * never a different hue.
  *
- * Not checked, by decision (#203): the same value at different confidence
- * layers. Confidence is carried by the hatch, and redundant encoding is the
- * colour-vision rule, so colour need not carry it too; under tritanopia some
- * of those pairs are under 1 ΔE*76 apart, and that is accepted.
+ * Not checked, by decision (#203): pairs on different confidence layers. The
+ * numeral carries the value and the hatch the confidence, and redundant
+ * encoding is the colour-vision rule, so colour need not carry them too. Under
+ * tritanopia, light 4 × 4's level 3 on layer 1 and level 1 on layer 3 are about
+ * 1 ΔE*76 apart: by colour alone "3, unsure" looks like "1, sure", and the
+ * numeral tells them apart. That is accepted.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 

@@ -18,8 +18,8 @@ import { CVD_MIN_DELTA_E, DEFICIENCIES, distance, distance2000, parseHex, simula
 
 /**
  * Where a cell's own fill shows: a strip level with its middle, from these
- * fractions across, right of the left-aligned numeral and glyph. The colour that
- * covers most of the strip is the fill, so a border or an inset outline near the
+ * fractions across, right of the left-aligned numeral and glyph. The commonest
+ * colour in the strip is taken as the fill (and still checked against the palette), so a border or an inset outline near the
  * right edge of a narrow cell, a few pixels wide, cannot be read instead (#203).
  */
 const SAMPLE_STRIP: readonly [from: number, to: number] = [0.55, 0.97];
