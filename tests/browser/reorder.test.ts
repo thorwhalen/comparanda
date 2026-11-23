@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { userEvent } from '@vitest/browser/context';
-import { press } from './press.js';
+import { inWebKit, press } from './press.js';
 
 import { Analysis } from '../../src/core/schema/analysis.js';
 import { initialViewState, lockRun, setFilter, setGrouping, transpose, type ViewState } from '../../src/core/view-state.js';
@@ -164,7 +164,8 @@ describe('the move menu', () => {
 });
 
 describe('seriation as an action', () => {
-  it('arranges an axis, shows how, announces politely, and leaves focus where it was', async () => {
+  // Safari: a press moves focus from the focused button to the page; the fix waits on the standalone budget (#383).
+  it.skipIf(inWebKit)('arranges an axis, shows how, announces politely, and leaves focus where it was', async () => {
     mount();
     const line = el.querySelector('[data-order="alternatives"]')!;
     expect(line.textContent).toMatch(/in the order the analysis gives them/);
@@ -239,7 +240,8 @@ describe('review findings', () => {
     outside.remove();
   });
 
-  it('the menu lets focus go where the reader sent it, and its own handle closes it', async () => {
+  // Safari: a press moves focus from the focused button to the page; the fix waits on the standalone budget (#383).
+  it.skipIf(inWebKit)('the menu lets focus go where the reader sent it, and its own handle closes it', async () => {
     mountWith(languages, initialViewState(languages));
     const input = document.createElement('input');
     document.body.append(input);

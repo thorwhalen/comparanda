@@ -57,24 +57,3 @@ export function mirrorPageTheme(el: Element): () => void {
 export function messageOf(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
-
-/**
- * A press on the control that already has focus keeps focus there (#371).
- *
- * WebKit (Safari) does not make buttons mouse-focusable: pressing the button that
- * has focus moves focus from it to the page. Every control whose activation
- * keeps focus on it (a busy write stays announced on its button, #197; an
- * action leaves focus where it was) then lost it in Safari only. Cancelling the
- * press's default on the focused control keeps focus where it is; a press on any
- * other control is left alone, so Chromium and Firefox still focus what is
- * clicked, and Safari still does not. Buttons, checkboxes, radios and
- * summaries are the controls Safari will not focus on a press; text fields are
- * left alone (their press places the caret). In Firefox a cancelled press shows
- * no `:active` state on the focused control: cosmetic, and accepted. Bound once,
- * as a capture handler on the view's root.
- */
-export function keepFocusOnPress(event: MouseEvent): void {
-  const on = event.target as Element | null;
-  const control = on?.closest?.('button, [role="button"], [role="menuitem"], input[type="checkbox"], input[type="radio"], summary');
-  if (control && control === activeElementOf(control)) event.preventDefault();
-}
