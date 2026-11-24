@@ -43,7 +43,7 @@ export interface ByteBudget {
  * committed to and not yet bundled. A future dependency is charged by adding a `Reservation` here.
  */
 export const STANDALONE_BUDGET: ByteBudget = Object.freeze({
-  limit: 213 * kB,
+  limit: 214 * kB, // +1 kB for the Safari focus fixes (#371, #383); see ADR-0017's 2026-11-23 amendment
   reserved: Object.freeze([]) as readonly Reservation[],
 });
 

@@ -221,7 +221,7 @@ describe('the command', () => {
     );
     expect(stdout).toMatch(/kB raw, .* kB gzipped/);
     // The shell, against the budget (#116); a reservation, when one is held, is added to it.
-    expect(stdout).toMatch(/the page without the analysis: [\d.]+ kB, of a 213\.0 kB budget/);
+    expect(stdout).toMatch(/the page without the analysis: [\d.]+ kB, of a 214\.0 kB budget/);
     expect(Analysis.parse(inlinedAnalysis(await readFile(out, 'utf8')))).toEqual(relocation);
     // Every successful build says the file may be refused as an attachment, and what to do instead (#118).
     expect(stdout).toContain(MAILING_NOTE);
